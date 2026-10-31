@@ -1,0 +1,34 @@
+{
+  "name": "royalty-erp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Music-label royalty ERP, iteration 1 (Believe master + B17 publishing)",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @erp/backend",
+    "start": "npm run start -w @erp/backend",
+    "dev:client": "npm run dev -w @erp/frontend",
+    "demo": "npm run demo -w @erp/backend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build:client": "npm run build -w @erp/frontend",
+    "import:legacy": "npm run import:legacy -w @erp/backend",
+    "migrate:ch": "npm run migrate:ch -w @erp/backend",
+    "migrate:pg": "docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm postgres-migrate",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

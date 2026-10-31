@@ -1,0 +1,19 @@
+node_modules/
+packages/frontend/dist/
+*.log
+.DS_Store
+
+# Secrets (the template stays)
+.env
+.env.*
+!.env.example
+
+# Databases and uploaded files of the app (local only, personal data).
+# Contents are ignored; only the folder structure is kept through .gitkeep.
+/data/**
+!/data/**/
+!/data/**/.gitkeep
+
+# Reference material with personal data: only the README is tracked
+/context_data/*
+!/context_data/README.md

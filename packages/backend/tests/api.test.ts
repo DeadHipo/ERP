@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { join } from 'node:path';
+import { createApp } from '../src/api/app';
+import { approvedAppendix, confirmedOwner, newFacade, TMP, writeBelieve } from './helpers/fixtures';
+
+const I1 = 'QZTST2600001';
+const UPC = '1234567890123';
+
+function setup() {
+  const f = newFacade();
+  const app = createApp(f, { tmpDir: join(TMP, 'api-uploads') });
+  return { f, app };
+}
+
+describe('JSON API', () => {
+  it('streams a Believe upload and returns 409 with a clear message for a second file of the same period', async () => {
+    const { f, app } = setup();
+    const file = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10.5' }]);
+    const ok = await request(app)
+      .post('/api/v1/sources/believe')
+      .attach('file', file.path, file.fileName)
+      .field('generatedAt', '2026-08-09T10:00:00Z');
+    expect(ok.status).toBe(201);
+    expect(ok.body.reportingMonth).toBe('2026-07');
+    expect(ok.body.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const again = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '11' }], { reportId: '9999' });
+    const dup = await request(app).post('/api/v1/sources/believe').attach('file', again.path, again.fileName);
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.code).toBe('duplicate_period');
+    expect(dup.body.error.message).toMatch(/already loaded/);
+    f.close();
+  });
+
+  it('lists the lines of the chosen report files with filters and paging, and validates the query', async () => {
+    const { f, app } = setup();
+    const file = writeBelieve('2026-07', [
+      { isrc: I1, upc: UPC, net: '10.5', platform: 'Spotify' },
+      { isrc: I1, upc: UPC, net: '2', platform: 'Deezer' },
+    ]);
+    const up = await request(app).post('/api/v1/sources/believe').attach('file', file.path, file.fileName);
+    expect(up.status).toBe(201);
+    const all = await request(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&limit=1`);
+    expect(all.status).toBe(200);
+    expect(all.body.total).toMatchObject({ keys: '2', net: '12.5' });
+    expect(all.body.items).toHaveLength(1);
+    expect(all.body.items[0]).toMatchObject({
+      isrc: I1,
+      platform: 'Spotify',
+      net: '10.5',
+      account: '1052428',
+    });
+    const one = await request(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&platform=Deezer`);
+    expect(one.body.items.map((l: { net: string }) => l.net)).toEqual(['2']);
+    const facets = await request(app).get(`/api/v1/sources/lines/facets?fileId=${up.body.id}`);
+    expect(facets.body.platforms).toEqual(['Deezer', 'Spotify']);
+    expect((await request(app).get('/api/v1/sources/lines?limit=0')).status).toBe(400);
+    expect((await request(app).get('/api/v1/sources/lines?sort=drop')).status).toBe(400);
+    const bad = await request(app).get('/api/v1/sources/lines?fileId=11111111-1111-1111-1111-111111111111');
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe('validation_error');
+    f.close();
+  });
+
+  it('validates input with zod and returns the error envelope', async () => {
+    const { f, app } = setup();
+    const bad = await request(app).post('/api/v1/owners').send({ name: '', kind: 'x' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe('validation_error');
+    const limit = await request(app).get('/api/v1/splits?limit=abc');
+    expect(limit.status).toBe(400);
+    f.close();
+  });
+
+  it('warns about possible duplicates instead of creating them', async () => {
+    const { f, app } = setup();
+    await request(app).post('/api/v1/owners').send({ name: 'Ivan Synthetic', kind: 'person' }).expect(201);
+    const dup = await request(app).post('/api/v1/owners').send({ name: 'ivan synthetic', kind: 'person' });
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.details.similar).toHaveLength(1);
+    await request(app)
+      .post('/api/v1/owners')
+      .send({ name: 'ivan synthetic', kind: 'person', force: true })
+      .expect(201);
+    f.close();
+  });
+
+  it('owner balance and payout through HTTP: money as decimal strings', async () => {
+    const { f, app } = setup();
+    const a = confirmedOwner(f, 'Owner A', ['A1']);
+    f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
+    f.createSplit({
+      isrc: I1,
+      validFrom: '2020-01-01',
+      shares: [{ artistId: a.artists[0]?.id as string, percent: '50' }],
+      documentId: approvedAppendix(f).id,
+    });
+    await f.ingestBelieve(
+      writeBelieve('2026-07', [
+        { isrc: I1, upc: UPC, net: '0.000000002' },
+        { isrc: I1, upc: UPC, net: '300', country: 'Peru' },
+      ]),
+    );
+    const bal = await request(app)
+      .get(`/api/v1/owners/${a.owner.id}/balance?from=2026-07&to=2026-07&basis=report`)
+      .expect(200);
+    expect(bal.body.total.payable).toBe('150.000000001');
+    expect(bal.body.period.received).toBe('300.000000002');
+    const payout = await request(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({}).expect(201);
+    expect(payout.body.amountCents).toBe(15000);
+    const blocked = await request(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
+    expect(blocked.status).toBe(422);
+    expect(blocked.body.error.code).toBe('payout_blocked');
+    f.close();
+  });
+});

@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "royalty-erp (postgres)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "erp",
+      "Username": "erp",
+      "SSLMode": "prefer"
+    }
+  }
+}

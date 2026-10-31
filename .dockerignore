@@ -1,0 +1,23 @@
+# Dependencies and build output (installed/built inside the image)
+node_modules
+**/node_modules
+packages/frontend/dist
+coverage
+
+# Local data, secrets and reference material (personal data, many GB)
+data
+context_data
+.env
+.env.*
+!.env.example
+
+# Not needed in the image
+docs
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+.DS_Store
+*.log
+*.md

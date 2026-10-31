@@ -1,0 +1,47 @@
+# Поверх docker-compose.yml: порты наружу (127.0.0.1; исключение — HTTP ClickHouse, слушает все интерфейсы) и именованные тома
+# (на Mac они заметно быстрее bind-mount для ClickHouse и Postgres).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Один этот файл без основного не запускается: в нём нет образов.
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:${DB_PORT}:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql
+
+  clickhouse:
+    ports:
+      - '0.0.0.0:${CLICKHOUSE_HTTP_PORT}:8123' # HTTP: @clickhouse/client, curl, Play UI /play; наружу через KeenDNS (ch-client), нужен пароль в .env
+      - '127.0.0.1:${CLICKHOUSE_NATIVE_PORT}:9000' # native: clickhouse-client, DBeaver
+    volumes:
+      - ch_data:/var/lib/clickhouse
+
+  # Только для разработки: веб-интерфейс Postgres на http://127.0.0.1:${PGADMIN_PORT}
+  # Вход: PGADMIN_EMAIL / PGADMIN_PASSWORD из .env; сервер уже добавлен, пароль БД (DB_PASSWORD) спросит один раз.
+  pgadmin:
+    image: dpage/pgadmin4:9.19
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${PGADMIN_PORT}:80'
+    environment:
+      TZ: ${TZ}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./packages/backend/config/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  pg_data:
+  ch_data:
+  pgadmin_data:
