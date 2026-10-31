@@ -144,3 +144,4 @@ Use separate background agents to raise quality; do not wait for permission.
 - Use search agents to read the old projects and notes under `context_data/data/` (plans, reports, md files) and report how something worked and what pitfalls were recorded.
 - Use a reconciliation agent to compare one month with the current ERP and explain every difference.
 - Reviewer and search agents only read; code writing agents work only outside `docs/` and `context_data/`. You verify their findings yourself, fix real problems, and record the outcome in `docs/97_принятые_решения.md`.
+# ERP
