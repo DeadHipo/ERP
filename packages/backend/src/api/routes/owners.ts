@@ -3,6 +3,7 @@ import * as S from '@erp/shared/api-schemas';
 import { ConflictError } from '../../shared/errors';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { timed, timedSync } from '../../shared/timing';
 
 /** Module 1: owners, artists, tracks, documents, contracts. */
 export function ownersRouter(facade: Facade) {
@@ -22,16 +23,14 @@ export function ownersRouter(facade: Facade) {
         },
       );
     }
-    res
-      .status(201)
-      .json(
-        await owners.createOwner({
-          name: b.name,
-          kind: b.kind,
-          ipi: b.ipi ?? null,
-          aliases: b.aliases ?? [],
-        }),
-      );
+    res.status(201).json(
+      await owners.createOwner({
+        name: b.name,
+        kind: b.kind,
+        ipi: b.ipi ?? null,
+        aliases: b.aliases ?? [],
+      }),
+    );
   });
   r.post('/owners/merge', async (req, res) => {
     const b = parse(S.mergeOwnersBody, req.body);
@@ -39,7 +38,10 @@ export function ownersRouter(facade: Facade) {
   });
   r.get('/owners/:id', async (req, res) => res.json(await facade.ownerDetail(param(req, 'id'))));
   r.get('/owners/:id/balance', async (req, res) =>
-    res.json(await facade.ownerBalance(param(req, 'id'), parse(S.periodQuery, req.query))),
+    timed(`GET /owners/${param(req, 'id')}/balance`, async () => {
+      const b = await facade.ownerBalance(param(req, 'id'), parse(S.periodQuery, req.query));
+      timedSync('res.json (serialize + send)', () => res.json(b));
+    }),
   );
   r.post('/owners/:id/payouts', async (req, res) => {
     const b = parse(S.createPayoutBody, req.body ?? {});

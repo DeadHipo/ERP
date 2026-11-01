@@ -8,6 +8,7 @@ import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
 import { stubPaymentService, type PaymentService } from './payment-service';
 import type { Db } from '../shared/pg-db';
+import { timed, timedSync } from '../shared/timing';
 
 export interface FacadeConfig {
   /**
@@ -126,17 +127,30 @@ export function createFacadeContext(
 
   /** The owner balance and the Believe files it was calculated from (a payout snapshot records them). */
   async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}) {
-    const id = await owners.resolveOwnerId(ownerId);
-    await owners.getOwner(id);
-    const calc = await calculate(modules, await opDocIds());
+    const id = await timed('owners.resolveOwnerId + getOwner', async () => {
+      const id = await owners.resolveOwnerId(ownerId);
+      await owners.getOwner(id);
+      return id;
+    });
+    const docIds = await timed(
+      'settlements.allOperations (document ids)',
+      opDocIds,
+      (r) => `${r.length} ids`,
+    );
+    const calc = await timed('calculate', () => calculate(modules, docIds));
     // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
-    const { owner, operations } = await db.snapshot(async () => ({
-      owner: await owners.getOwner(id),
-      operations: await settlements.listOperations({ ownerId: id }),
-    }));
+    const { owner, operations } = await timed(
+      'pg snapshot: owner + operations',
+      () =>
+        db.snapshot(async () => ({
+          owner: await owners.getOwner(id),
+          operations: await settlements.listOperations({ ownerId: id }),
+        })),
+      (r) => `${r.operations.length} operations`,
+    );
     return {
       files: calc.believeFiles,
-      balance: { owner, ...ownerBalance(calc, id, operations, f) },
+      balance: { owner, ...timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f)) },
     };
   }
 

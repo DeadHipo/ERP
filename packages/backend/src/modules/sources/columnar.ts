@@ -1,4 +1,5 @@
 import type { ClickHouseClient } from '@clickhouse/client';
+import { note, timed } from '../../shared/timing';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -100,7 +101,7 @@ function linesWhere(fileIds: string[], f: LinesFilter): { where: string; params:
 }
 
 /**
- * Everything the loader asks of ClickHouse (migrations/clickhouse/0001_believe.sql). A file is written to its own stage
+ * Everything the loader asks of ClickHouse (migrations/clickhouse/0001_believe.sql, 0002_units_projection.sql). A file is written to its own stage
  * table and joins believe.rows in one step (ATTACH PARTITION), so a half-loaded file is never visible.
  * Table names are built only from a checked UUID, never from user text.
  */
@@ -114,8 +115,21 @@ export function createBelieveColumnar(
 ) {
   const DB = names.database;
   const STAGE_DB = names.stageDatabase;
-  const json = async <T>(query: string, query_params?: Record<string, unknown>): Promise<T[]> =>
-    (await ch.query({ query, query_params, format: 'JSONEachRow' })).json<T>();
+  const select = async <T>(
+    query: string,
+    query_params: Record<string, unknown> | undefined,
+    format: 'JSONEachRow' | 'JSONCompactEachRow',
+  ): Promise<T[]> => {
+    const rs = await timed('query (until the first bytes)', () => ch.query({ query, query_params, format }));
+    // The server's own numbers (duration, rows and bytes read): system.query_log by this id.
+    note('query_id', rs.query_id);
+    return timed('read + parse JSON', () => rs.json<T>());
+  };
+  const json = <T>(query: string, query_params?: Record<string, unknown>) =>
+    select<T>(query, query_params, 'JSONEachRow');
+  /** Rows as arrays, without the column names: a fifth less to send and parse for large results. */
+  const compact = <T extends unknown[]>(query: string, query_params?: Record<string, unknown>) =>
+    select<T>(query, query_params, 'JSONCompactEachRow');
   const stageTable = (fileId: string) => {
     if (!UUID_RE.test(fileId)) throw new Error(`Not a file id: ${fileId}`);
     return `${STAGE_DB}.rows_${fileId.replaceAll('-', '')}`;
@@ -199,26 +213,23 @@ export function createBelieveColumnar(
         params.to = `${filter.to}-01`;
       }
       // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
-      const rows = await json<{
-        fid: string;
-        isrc: string;
-        upc: string;
-        rm: string;
-        sm: string;
-        net: string;
-      }>(
+      // The view is answered from the `units` projection of believe.rows (D-122). Hundreds of thousands of units:
+      // compact rows (arrays in the order of the SELECT).
+      const rows = await compact<
+        [fid: string, isrc: string, upc: string, rm: string, sm: string, net: string]
+      >(
         `SELECT toString(file_id) AS fid, isrc, upc, toString(reporting_month) AS rm,
                 toString(sales_month) AS sm, toString(net_revenue) AS net
          FROM ${DB}.units WHERE ${where.join(' AND ')}`,
         params,
       );
-      return rows.map((r) => ({
-        fileId: r.fid,
-        isrc: r.isrc,
-        upc: r.upc,
-        reportingMonth: r.rm.slice(0, 7),
-        salesMonth: r.sm.slice(0, 7),
-        net: r.net,
+      return rows.map(([fid, isrc, upc, rm, sm, net]) => ({
+        fileId: fid,
+        isrc,
+        upc,
+        reportingMonth: rm.slice(0, 7),
+        salesMonth: sm.slice(0, 7),
+        net,
       }));
     },
 

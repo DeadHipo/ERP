@@ -10,6 +10,9 @@
 - Reads always start from the registry: take `loaded` files, then query ClickHouse with `file_id IN (...)`.
   A file that is not `loaded` must never count. `snapshot()` returns files and units together for one calculation.
 - Equal line keys are **not** merged at load; the views `sum()` them. Do not switch to SummingMergeTree (D-102).
+- `believe.rows` has an aggregate projection `units` (D-122): the `units` view is answered from it. The stage table
+  must stay `CREATE TABLE … AS believe.rows` so that a file's parts carry it; a part without it still counts, only
+  slowly. A materialized view would not work here: `ATTACH PARTITION` does not trigger one.
 - ClickHouse alias trap: never name a result alias like a column (`toString(file_id) AS file_id` silently changes
   the `WHERE`). Use another name.
 - Money from ClickHouse is `Decimal(38,12)` read as **text**; convert with `Decimal` / `parsePico` from

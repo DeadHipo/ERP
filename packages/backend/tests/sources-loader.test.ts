@@ -95,6 +95,41 @@ describe.runIf(postgresUp && clickhouseUp)('Believe loader (PostgreSQL registry 
     expect(await stageTables()).toBe('0'); // the stage table is gone
   });
 
+  it('keeps the units projection in every attached part and answers the units view from it (D-122)', async () => {
+    const rows: Spec[] = [
+      { isrc: 'QZTST2600011', net: '1.5' },
+      { isrc: 'QZTST2600011', net: '2.25', platform: 'Other' },
+      { isrc: 'QZTST2600012', net: '-0.000000000001' },
+    ];
+    const rec = await loader.ingestBelieve(file('9999003', '2026-08', report(rows, '2026-08')));
+    // the stage table was created AS rows, so the part arrived with its projection already built
+    const parts = await rowsOf<{ name: string; projections: string[] }>(
+      `SELECT name, projections FROM system.parts WHERE database = {db:String} AND table = 'rows' AND active AND position(partition, {id:String}) > 0`,
+      { db: iso.database, id: rec.id },
+    );
+    expect(parts.length).toBeGreaterThan(0);
+    for (const p of parts) expect(p.projections).toContain('units');
+
+    const query = `SELECT isrc, toString(net_revenue) AS net FROM ${iso.database}.units WHERE file_id IN {ids:Array(UUID)} ORDER BY isrc`;
+    const plan = (await rowsOf<{ explain: string }>(`EXPLAIN ${query}`, { ids: [rec.id] }))
+      .map((r) => r.explain)
+      .join('\n');
+    expect(plan).toContain('ReadFromMergeTree (units)');
+    // the projection gives exactly what the raw lines give
+    const viaProjection = await rowsOf(query, { ids: [rec.id] });
+    const viaRows = await rowsOf(`${query} SETTINGS optimize_use_projections = 0`, { ids: [rec.id] });
+    expect(viaProjection).toEqual([
+      { isrc: 'QZTST2600011', net: '3.75' },
+      { isrc: 'QZTST2600012', net: '-0.000000000001' },
+    ]);
+    expect(viaRows).toEqual(viaProjection);
+    const units = await iso.columnar.units([rec.id]);
+    expect(units.map((u) => [u.isrc, u.reportingMonth, u.net])).toEqual([
+      ['QZTST2600011', '2026-08', '3.75'],
+      ['QZTST2600012', '2026-08', '-0.000000000001'],
+    ]);
+  });
+
   it('refuses a second file for the same account and month, and the same file again', async () => {
     const other = file(ACCOUNT_A, '2026-07', report([{ isrc: 'XX-TST-26-00009' }]));
     await expect(loader.ingestBelieve(other)).rejects.toMatchObject({

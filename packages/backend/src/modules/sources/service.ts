@@ -2,6 +2,7 @@ import { assertMonth } from '../../shared/dates';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { normalizeIsrc, normalizeUpc } from '../../shared/identifiers';
 import { parsePico, picoToString } from '../../shared/money';
+import { timed, timedSync } from '../../shared/timing';
 import type { BelieveColumnar, LinesFacets, LinesSort, LineRow, LinesTotal } from './columnar';
 import { createBelieveLoader, type LoadInput } from './loader';
 import type { SourceFileRecord, SourceFilesRegistry } from './registry';
@@ -141,13 +142,22 @@ export function createSourcesService(deps: SourcesDeps) {
     async snapshot(
       filter: { from?: string; to?: string; basis?: 'report' | 'sales' } = {},
     ): Promise<{ files: ActiveFile[]; units: SourceUnit[] }> {
-      const files = await registry.loaded();
-      const accountOf = new Map(files.map((f) => [f.id, f.account]));
-      const rows = await columnar.units(
-        files.map((f) => f.id),
-        filter,
+      const files = await timed(
+        'pg: registry.loaded',
+        () => registry.loaded(),
+        (r) => `${r.length} files`,
       );
-      return {
+      const accountOf = new Map(files.map((f) => [f.id, f.account]));
+      const rows = await timed(
+        'clickhouse: units',
+        () =>
+          columnar.units(
+            files.map((f) => f.id),
+            filter,
+          ),
+        (r) => `${r.length} units`,
+      );
+      return timedSync('map units (parsePico)', () => ({
         files: files.map(({ id, sha256, reportingMonth, fileName }) => ({
           id,
           sha256,
@@ -163,7 +173,7 @@ export function createSourcesService(deps: SourcesDeps) {
           salesMonth: r.salesMonth,
           netPico: parsePico(r.net),
         })),
-      };
+      }));
     },
 
     /** Units grouped by ISRC + UPC + report month + sales month, optionally filtered by month range. */

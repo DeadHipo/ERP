@@ -20,9 +20,10 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 - `npm ci`
 - `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` first: PostgreSQL, ClickHouse and the one-shot migrations (`npm run migrate:ch`, `npm run migrate:pg` by hand)
 - `npm run typecheck` (all workspaces: backend, frontend, shared). The repo is an npm workspaces monorepo: `packages/{backend,frontend,shared}` (D-116); install only from the root
-- `REQUIRE_STACK=1 npm test` (vitest, 186 tests on 2026-11-01, a few seconds; the ones that need the stack create their own private databases and drop them; without `REQUIRE_STACK=1` they are silently skipped when the stack is down)
+- `REQUIRE_STACK=1 npm test` (vitest, 187 tests on 2026-11-01, a few seconds; the ones that need the stack create their own private databases and drop them; without `REQUIRE_STACK=1` they are silently skipped when the stack is down)
 - `npm run lint` (eslint over the whole repo)
 - `npm run build:client` (vite build)
+- `LOG_TIMINGS=1` before `npm run dev` (or `main.ts`) prints a tree of step timings per request: balance, `calculate()`, every ClickHouse read (D-122)
 - `npm run dev` (API on :3000 with `<repo>/data`) and `npm run dev:client` (Vite, proxies `/api`); OpenAPI at `/api/v1/openapi.json`, Swagger UI at `/api/v1/docs`
 - `npm run demo` / `npm run import:legacy`: demo mode is not maintained since the Believe move (D-112); `import:legacy` rebuilds reference data from `context_data/data/erp/data/erp.db` and needs the stack
 - `npx tsx packages/backend/scripts/reconcile-erp.ts data/real` (July 2026 vs old ERP; needs erp.db)
