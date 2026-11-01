@@ -1,5 +1,7 @@
 # ERP (new architecture): instructions for agents
 
+> Status 2026-11-01: iteration 1 is built. This file is its original brief; the domain rules (section 5) are still the rules. For the current state read `CLAUDE.md` and `docs/agents/` first; known stale statements here are listed in `docs/agents/05_doc_drift.md`.
+
 You are building the first iteration (MVP) of a music-label royalty ERP **from scratch**, following the architecture documents in `docs/`. Those documents are written in Russian; read them in full before writing code. All code, comments, identifiers, docs and commit messages you produce must be in **English**.
 
 ## 1. Sources of truth (read in this order)
@@ -10,7 +12,7 @@ You are building the first iteration (MVP) of a music-label royalty ERP **from s
 4. `docs/аудит/закрытые_вопросы.md` (decisions already taken during the audit)
 5. `docs/97_принятые_решения.md` (decisions you and other agents take during implementation)
 
-If documents conflict, the newer dated statement wins. The old projects under `context_data/data/` (`erp`, `zero-erp`) are an **information source only**: read their documents, code and databases to understand how things worked, but do not run them, do not start their servers or containers, and do not use Docker. Databases are opened strictly read-only. Everything under `context_data/data/` is **reference material only**: never edit it, never import code from it, and do not take it at face value (verify against the architecture documents). It contains two old projects, `context_data/data/erp/` (with `build/`, `docs/`) and `context_data/data/zero-erp/`, the data folder `context_data/data/data/`, and contract examples (`context_data/data/Договора образцы/`, `context_data/data/Паблишинг — отдельные договоры/`, `context_data/data/контракты 0to8/`, `context_data/data/03_контракты/`).
+If documents conflict, the newer dated statement wins. The old projects under `context_data/data/` (`erp`, `zero-erp`) are an **information source only**: read their documents, code and databases to understand how things worked, but do not run them and do not start their servers or containers (Docker is used only for this project's own PostgreSQL and ClickHouse, D-103). Databases are opened strictly read-only. Everything under `context_data/data/` is **reference material only**: never edit it, never import code from it, and do not take it at face value (verify against the architecture documents). It contains two old projects, `context_data/data/erp/` (with `build/`, `docs/`) and `context_data/data/zero-erp/`, the data folder `context_data/data/data/`, and contract examples (`context_data/data/Договора образцы/`, `context_data/data/Паблишинг — отдельные договоры/`, `context_data/data/контракты 0to8/`, `context_data/data/03_контракты/`).
 
 ## 2. Scope of iteration 1 (MVP)
 
@@ -100,7 +102,7 @@ Facade
 
 - **Never stop to ask.** When something is undefined or contradictory: pick the simplest reasonable option consistent with the documents, implement it, and append the question and your decision to `docs/97_принятые_решения.md` (format inside that file). Do not edit the architecture documents themselves.
 - Allowed without asking: create files in the repository (outside `docs/` and `context_data/`), install npm packages, run migrations and tests, create/delete SQLite files under `data/`.
-- Not allowed: modifying anything under `docs/` except appending to `docs/97_принятые_решения.md`; deleting or editing anything under `context_data/`; running `git commit` or `git push` unless the user asks.
+- Not allowed: modifying anything under `docs/` except appending to `docs/97_принятые_решения.md` and keeping the agent guides in `docs/agents/` current (D-120); deleting or editing anything under `context_data/`; running `git commit` or `git push` unless the user asks.
 - **Personal data:** the source folders contain personal data (passports, names, addresses, emails). Never copy it into the repository, fixtures, tests, logs or docs. Use synthetic data in fixtures. Real data may only be read from `context_data/data/` at import time.
 - Large files: the Believe CSV files are up to 1 GB each. Stream them; never load a whole file into memory. Develop against one month first (July 2026), full history later.
 - Definition of done for a task: types compile (`tsc --noEmit`), tests pass, and the decision log is updated.
@@ -125,7 +127,7 @@ Facade
 
 ## 8. Pages (minimal React frontend)
 
-Keep it small: one React page component per page, shared table/form components, data fetched from the JSON API, modular structure (one folder per domain module under `client/src/`). Required pages:
+Keep it small: one React page component per page, shared table/form components, data fetched from the JSON API, modular structure (one folder per domain module under `packages/frontend/src/`). Required pages:
 
 - `/owners`: list of owners, create an owner; `/owners/:id`: the owner, its artists (pseudonyms), tracks with ISRC, documents and their status.
 - `/documents`: document registry; attach a document, mark it approved (for documents that require manager approval).
