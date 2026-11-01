@@ -4,6 +4,7 @@ import type { OwnersService } from '../modules/owners';
 import type { SplitsService } from '../modules/splits';
 import type { ActiveFile, SourcesService } from '../modules/sources';
 import type { PublishingService } from '../modules/publishing';
+import type { Db } from '../shared/pg-db';
 
 /** Category of money in the completeness check (09, principle 11). */
 export type Category = 'B' | 'C';
@@ -61,12 +62,14 @@ export interface Calculation {
   /** The Believe files these units were read from, exactly (stored with a payout). */
   believeFiles: ActiveFile[];
   publishing: PublishingResult[];
-  artistIndex: ReturnType<OwnersService['artistIndex']>;
+  artistIndex: Awaited<ReturnType<OwnersService['artistIndex']>>;
   confirmedOwners: Set<string>;
   documentStatus: (id: string | null | undefined) => 'approved' | 'not_approved' | 'not_attached' | 'missing';
 }
 
 export interface Modules {
+  /** The PostgreSQL database of the modules: the calculation reads them in one snapshot. */
+  db: Db;
   owners: OwnersService;
   splits: SplitsService;
   sources: SourcesService;
@@ -76,28 +79,31 @@ export interface Modules {
 /**
  * Full recalculation from scratch over all loaded data: no stored accruals, no caches.
  * The sources (PostgreSQL + ClickHouse) are read first, as one snapshot of the loaded files; then every other module is
- * read in one synchronous stretch (better-sqlite3), so all totals come from one consistent version of the data.
+ * read in one read-only REPEATABLE READ transaction (db.snapshot), so all totals come from one consistent version of
+ * the data (D-012, D-121).
  */
 export async function calculate(m: Modules, extraDocumentIds: string[] = []): Promise<Calculation> {
   const snapshot = await m.sources.snapshot();
-  const artistIndex = m.owners.artistIndex();
-  const confirmedOwners = m.owners.confirmedOwnerIds();
-  // Publishing is never accrued to a label (08, decision 7): a writer resolved to a label owner counts as unmapped.
-  const labelOwners = new Set(
-    m.owners
-      .listOwners()
-      .filter((o) => o.kind === 'label')
-      .map((o) => o.id),
-  );
-  const knownPairs = m.owners.knownPairs();
-  const splitIndex = m.splits.index();
-  const terms = m.publishing.allTerms();
-  const docIds = [
-    ...splitIndex.documentIds(),
-    ...terms.map((t) => t.documentId).filter((x): x is string => !!x),
-    ...extraDocumentIds,
-  ];
-  const statuses = m.owners.documentStatuses(docIds);
+  const { artistIndex, confirmedOwners, labelOwners, knownPairs, splitIndex, statuses, accruals } =
+    await m.db.snapshot(async () => {
+      const artistIndex = await m.owners.artistIndex();
+      const confirmedOwners = await m.owners.confirmedOwnerIds();
+      // Publishing is never accrued to a label (08, decision 7): a writer resolved to a label owner counts as unmapped.
+      const labelOwners = new Set(
+        (await m.owners.listOwners()).filter((o) => o.kind === 'label').map((o) => o.id),
+      );
+      const knownPairs = await m.owners.knownPairs();
+      const splitIndex = await m.splits.index();
+      const terms = await m.publishing.allTerms();
+      const docIds = [
+        ...splitIndex.documentIds(),
+        ...terms.map((t) => t.documentId).filter((x): x is string => !!x),
+        ...extraDocumentIds,
+      ];
+      const statuses = await m.owners.documentStatuses(docIds);
+      const accruals = await m.publishing.accruals({}, await m.owners.ownerResolver());
+      return { artistIndex, confirmedOwners, labelOwners, knownPairs, splitIndex, statuses, accruals };
+    });
   const documentStatus = (id: string | null | undefined) =>
     id ? (statuses.get(id) ?? 'missing') : 'missing';
 
@@ -156,29 +162,27 @@ export async function calculate(m: Modules, extraDocumentIds: string[] = []): Pr
     units.push({ ...base, status: 'allocated', ours: net.sub(allocated), allocations });
   }
 
-  const publishing: PublishingResult[] = m.publishing
-    .accruals({}, (id) => m.owners.resolveOwnerId(id))
-    .map((raw) => {
-      const a = { ...raw, ownerId: raw.ownerId && !labelOwners.has(raw.ownerId) ? raw.ownerId : null };
-      let reason: CReason | null = null;
-      if (!a.ownerId) reason = 'writer_unmapped';
-      else if (!confirmedOwners.has(a.ownerId)) reason = 'owner_unconfirmed';
-      else if (a.defaultTerms || documentStatus(a.termsDocumentId) !== 'approved')
-        reason = 'publishing_terms_unconfirmed';
-      return {
-        period: a.period,
-        reportMonth: a.reportMonth,
-        writerName: a.writerName,
-        ownerId: a.ownerId,
-        workTitle: a.workTitle,
-        payable: a.payable,
-        percent: a.percent,
-        authorAmount: a.ownerId ? a.authorAmount : ZERO,
-        labelAmount: a.ownerId ? a.payable.sub(a.authorAmount) : ZERO,
-        category: reason ? 'C' : 'B',
-        reason,
-      };
-    });
+  const publishing: PublishingResult[] = accruals.map((raw) => {
+    const a = { ...raw, ownerId: raw.ownerId && !labelOwners.has(raw.ownerId) ? raw.ownerId : null };
+    let reason: CReason | null = null;
+    if (!a.ownerId) reason = 'writer_unmapped';
+    else if (!confirmedOwners.has(a.ownerId)) reason = 'owner_unconfirmed';
+    else if (a.defaultTerms || documentStatus(a.termsDocumentId) !== 'approved')
+      reason = 'publishing_terms_unconfirmed';
+    return {
+      period: a.period,
+      reportMonth: a.reportMonth,
+      writerName: a.writerName,
+      ownerId: a.ownerId,
+      workTitle: a.workTitle,
+      payable: a.payable,
+      percent: a.percent,
+      authorAmount: a.ownerId ? a.authorAmount : ZERO,
+      labelAmount: a.ownerId ? a.payable.sub(a.authorAmount) : ZERO,
+      category: reason ? 'C' : 'B',
+      reason,
+    };
+  });
 
   return { units, believeFiles: snapshot.files, publishing, artistIndex, confirmedOwners, documentStatus };
 }

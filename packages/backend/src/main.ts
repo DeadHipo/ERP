@@ -9,10 +9,11 @@ const dataDir = resolve(process.argv[2] ?? process.env.ERP_DATA_DIR ?? join(root
 const port = Number(process.env.PORT ?? 3000);
 const threshold = Number(process.env.PAYOUT_THRESHOLD_CENTS ?? 10000);
 
-// The Believe sources: file registry in PostgreSQL, report lines in ClickHouse (settings from <repo>/.env).
-const { sources, close: closeSources } = connectSources(join(dataDir, 'files', 'sources'));
+// The modules in PostgreSQL; the Believe sources: file registry in PostgreSQL, report lines in ClickHouse
+// (settings from <repo>/.env). The data directory keeps only the original files and temporary uploads (D-121).
+const { db, sources, close: closeSources } = connectSources(join(dataDir, 'files', 'sources'));
 
-const facade = openFacade({ dataDir, payoutThresholdCents: threshold, sources });
+const facade = openFacade({ db, dataDir, payoutThresholdCents: threshold, sources });
 const app = createApp(facade, {
   tmpDir: join(dataDir, 'tmp'),
   clientDist: join(root, 'packages', 'frontend', 'dist'),
@@ -24,7 +25,6 @@ const server = app.listen(port, () =>
 
 function shutdown() {
   server.close(async () => {
-    facade.close();
     await closeSources();
     process.exit(0);
   });

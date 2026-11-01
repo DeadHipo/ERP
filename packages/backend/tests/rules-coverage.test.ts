@@ -21,7 +21,7 @@ const UPC = '1234567890123';
 
 describe('README 5: Believe line key', () => {
   it('release type is a key dimension; gross and quantity are summed for identical keys', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const base = { isrc: I1, upc: UPC, net: '1', gross: '2', quantity: 3 };
     const loaded = await f.ingestBelieve(
       writeBelieve('2026-07', [base, { ...base }, { ...base, releaseType: 'Video Release' }]),
@@ -38,11 +38,10 @@ describe('README 5: Believe line key', () => {
       { t: 'Music Release', q: '6', n: '2' },
       { t: 'Video Release', q: '3', n: '1' },
     ]);
-    f.close();
   });
 
   it('account is part of the scope: two accounts load the same month; the same account twice is refused', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const rows = (net: string) => [{ isrc: I1, upc: UPC, net }];
     await f.ingestBelieve(writeBelieve('2026-07', rows('1'), { account: '1052428', reportId: '9000011' }));
     await f.ingestBelieve(writeBelieve('2026-07', rows('2'), { account: '1055956', reportId: '9000012' }));
@@ -50,54 +49,56 @@ describe('README 5: Believe line key', () => {
       f.ingestBelieve(writeBelieve('2026-07', rows('3'), { account: '1055956', reportId: '9000013' })),
     ).rejects.toThrow(/already loaded/);
     expect(await f.modules.sources.listFiles()).toHaveLength(2);
-    f.close();
   });
 });
 
 describe('README 5: splits have one level only', () => {
-  it('a share is always an artist: an owner or label id is not accepted as a share', () => {
-    const f = newFacade();
-    const { owner } = confirmedOwner(f, 'Owner One', ['One']);
-    expect(() =>
-      f.createSplit({ isrc: I1, validFrom: '2026-01-01', shares: [{ artistId: owner.id, percent: '50' }] }),
-    ).toThrow(/not found/i);
-    f.close();
+  it('a share is always an artist: an owner or label id is not accepted as a share', async () => {
+    const f = await newFacade();
+    const { owner } = await confirmedOwner(f, 'Owner One', ['One']);
+    await expect(
+      async () =>
+        await f.createSplit({
+          isrc: I1,
+          validFrom: '2026-01-01',
+          shares: [{ artistId: owner.id, percent: '50' }],
+        }),
+    ).rejects.toThrow(/not found/i);
   });
 });
 
 describe('README 5: buyout payment is not part of the balance', () => {
   it('after a buyout the seller has no payout, recoupment or operation from it', async () => {
-    const f = newFacade();
-    const { owner, artists } = confirmedOwner(f, 'Seller Owner', ['Seller']);
+    const f = await newFacade();
+    const { owner, artists } = await confirmedOwner(f, 'Seller Owner', ['Seller']);
     const sellerId = artists[0]?.id as string;
-    const s = f.createSplit({
+    const s = await f.createSplit({
       isrc: I1,
       validFrom: '2026-01-01',
       shares: [{ artistId: sellerId, percent: '50' }],
     });
-    f.confirmSplit(s.id, approvedAppendix(f).id);
-    f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [sellerId], title: 'T' });
-    f.buyout({
+    await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [sellerId], title: 'T' });
+    await f.buyout({
       isrcs: [I1],
       sellerArtistId: sellerId,
       effectiveFrom: '2026-07-01',
-      documentId: approvedDoc(f, 'buyout').id,
+      documentId: (await approvedDoc(f, 'buyout')).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
     const b = await f.ownerBalance(owner.id);
-    expect(f.modules.settlements.listOperations({ ownerId: owner.id })).toHaveLength(0);
+    expect(await f.modules.settlements.listOperations({ ownerId: owner.id })).toHaveLength(0);
     expect(b.total.paid.toFixed()).toBe('0');
     expect(b.total.recouped.toFixed()).toBe('0');
     expect(b.total.earned.toFixed()).toBe('0');
-    f.close();
   });
 });
 
 describe('README 5: operations', () => {
-  it('in/out with a signed amount and optional fields; no operation type is stored', () => {
-    const f = newFacade();
-    const { owner, artists } = confirmedOwner(f, 'Ops Owner', ['Ops']);
-    const op = f.createOperation({
+  it('in/out with a signed amount and optional fields; no operation type is stored', async () => {
+    const f = await newFacade();
+    const { owner, artists } = await confirmedOwner(f, 'Ops Owner', ['Ops']);
+    const op = await f.createOperation({
       direction: 'in',
       amount: '12.34',
       artistId: artists[0]?.id as string,
@@ -105,38 +106,37 @@ describe('README 5: operations', () => {
       date: '2026-08-01',
       period: '2026-07',
       scope: { kind: 'isrcs', isrcs: [I1] },
-      documentId: approvedDoc(f, 'adjustment_basis', owner.id).id,
+      documentId: (await approvedDoc(f, 'adjustment_basis', owner.id)).id,
       comment: 'synthetic deduction',
     });
-    const stored = f.modules.settlements.listOperations({ ownerId: owner.id })[0];
+    const stored = (await f.modules.settlements.listOperations({ ownerId: owner.id }))[0];
     expect(stored).toMatchObject({ direction: 'in', amountCents: 1234, period: '2026-07' });
     expect(stored?.scope).toEqual({ kind: 'isrcs', isrcs: [I1] });
     expect(Object.keys(op)).not.toContain('type');
     expect(Object.keys(stored ?? {})).not.toContain('type');
-    f.close();
   });
 
-  it('an outgoing operation without a scope is a plain payout and only the payout button makes one', () => {
-    const f = newFacade();
-    const { owner, artists } = confirmedOwner(f, 'Scope Owner', ['Scope']);
-    expect(() =>
-      f.createOperation({
-        direction: 'out',
-        amount: '50',
-        artistId: artists[0]?.id as string,
-        ownerId: owner.id,
-        date: '2026-08-01',
-        documentId: approvedDoc(f, 'advance_basis', owner.id).id,
-        comment: 'advance without scope',
-      }),
-    ).toThrow(/payout button/i);
-    f.close();
+  it('an outgoing operation without a scope is a plain payout and only the payout button makes one', async () => {
+    const f = await newFacade();
+    const { owner, artists } = await confirmedOwner(f, 'Scope Owner', ['Scope']);
+    await expect(
+      async () =>
+        await f.createOperation({
+          direction: 'out',
+          amount: '50',
+          artistId: artists[0]?.id as string,
+          ownerId: owner.id,
+          date: '2026-08-01',
+          documentId: (await approvedDoc(f, 'advance_basis', owner.id)).id,
+          comment: 'advance without scope',
+        }),
+    ).rejects.toThrow(/payout button/i);
   });
 });
 
 describe('README 5: B17 amount column', () => {
   it('Total Payable is used, not the net amount column', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Detail');
     ws.addRow([
@@ -153,34 +153,36 @@ describe('README 5: B17 amount column', () => {
     await wb.xlsx.writeFile(path);
     const r = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' });
     expect(r.statement.totalPayable.toString()).toBe('10');
-    f.close();
   });
 
   it('the author gets the contract percent of Total Payable and the label keeps the rest', async () => {
-    const f = newFacade();
-    const { owner } = confirmedOwner(f, 'Writer Owner', ['Writer']);
-    f.modules.owners.addOwnerAlias(owner.id, 'Synthetic Writer');
-    f.setPublishingTerms({
+    const f = await newFacade();
+    const { owner } = await confirmedOwner(f, 'Writer Owner', ['Writer']);
+    await f.modules.owners.addOwnerAlias(owner.id, 'Synthetic Writer');
+    await f.setPublishingTerms({
       ownerId: owner.id,
       percent: '70',
       validFrom: '2020-01-01',
-      documentId: approvedDoc(f, 'contract', owner.id).id,
+      documentId: (await approvedDoc(f, 'contract', owner.id)).id,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'Synthetic Writer', title: 'S', payable: '100' }]));
-    f.resolveWriters();
+    await f.resolveWriters();
     expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('70');
-    f.close();
   });
 });
 
 describe('README 5: period filter', () => {
   it('the period filter uses the report date by default; the sales date only on request', async () => {
-    const f = newFacade();
-    const { owner, artists } = confirmedOwner(f, 'Period Owner', ['Period']);
+    const f = await newFacade();
+    const { owner, artists } = await confirmedOwner(f, 'Period Owner', ['Period']);
     const id = artists[0]?.id as string;
-    const s = f.createSplit({ isrc: I1, validFrom: '2026-01-01', shares: [{ artistId: id, percent: '50' }] });
-    f.confirmSplit(s.id, approvedAppendix(f).id);
-    f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+    const s = await f.createSplit({
+      isrc: I1,
+      validFrom: '2026-01-01',
+      shares: [{ artistId: id, percent: '50' }],
+    });
+    await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
     await f.ingestBelieve(
       writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-05' }]),
     );
@@ -189,7 +191,6 @@ describe('README 5: period filter', () => {
     expect(byDefault.period?.received.toFixed()).toBe('100');
     const bySales = await f.ownerBalance(owner.id, { from: '2026-07', to: '2026-07', basis: 'sales' });
     expect(bySales.period?.received.toFixed()).toBe('0');
-    f.close();
   });
 });
 
@@ -216,7 +217,7 @@ describe('README 5: no floats in money', () => {
       e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : [],
     );
 
-  it('the source never parses or rounds money as a float', () => {
+  it('the source never parses or rounds money as a float', async () => {
     const offenders: string[] = [];
     for (const file of files(join(process.cwd(), 'src'))) {
       const text = readFileSync(file, 'utf8');
@@ -229,16 +230,16 @@ describe('README 5: no floats in money', () => {
   });
 
   it('balance, reconciliation and payout snapshot carry money as decimal strings or whole cents only', async () => {
-    const f = newFacade();
-    const { owner, artists } = confirmedOwner(f, 'Float Owner', ['Float']);
+    const f = await newFacade();
+    const { owner, artists } = await confirmedOwner(f, 'Float Owner', ['Float']);
     const id = artists[0]?.id as string;
-    const s = f.createSplit({
+    const s = await f.createSplit({
       isrc: I1,
       validFrom: '2026-01-01',
       shares: [{ artistId: id, percent: '33.333333' }],
     });
-    f.confirmSplit(s.id, approvedAppendix(f).id);
-    f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+    await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
     await f.ingestBelieve(
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '0.1' },
@@ -255,18 +256,17 @@ describe('README 5: no floats in money', () => {
     const json = (x: unknown) => JSON.parse(JSON.stringify(x)) as unknown;
     walk(json(await f.ownerBalance(owner.id)), 'balance');
     walk(json(await f.reconciliation()), 'reconciliation');
-    walk(json(f.modules.settlements.getSnapshot(payout.id)), 'snapshot');
+    walk(json(await f.modules.settlements.getSnapshot(payout.id)), 'snapshot');
     expect(fractional).toEqual([]);
     // exact: (0.1 + 0.2 + 1000.000000000001) x 0.33333333, paid rounded down to whole cents
     expect(Number.isInteger(payout.amountCents)).toBe(true);
     expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('333.43332999900033333333');
-    f.close();
   });
 });
 
 describe('README 5: key dimensions account and reporting month', () => {
   it('identical lines in two accounts or two reporting months stay separate units and are not merged', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const line = (net: string) => [{ isrc: I1, upc: UPC, net, salesMonth: '2026-06' }];
     await f.ingestBelieve(writeBelieve('2026-07', line('1'), { account: '1052428', reportId: '9000021' }));
     await f.ingestBelieve(writeBelieve('2026-07', line('2'), { account: '1055956', reportId: '9000022' }));
@@ -281,7 +281,6 @@ describe('README 5: key dimensions account and reporting month', () => {
     ]);
     // three files, three keys: identical lines of different files are not merged
     expect(await testQuery((db) => `SELECT toString(count()) AS n FROM ${db}.lines`)).toEqual([{ n: '3' }]);
-    f.close();
   });
 });
 
@@ -290,16 +289,16 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-15T10:00:00Z'));
     try {
-      const f = newFacade();
-      const { owner, artists } = confirmedOwner(f, 'Today Owner', ['Today']);
+      const f = await newFacade();
+      const { owner, artists } = await confirmedOwner(f, 'Today Owner', ['Today']);
       const id = artists[0]?.id as string;
-      const s = f.createSplit({
+      const s = await f.createSplit({
         isrc: I1,
         validFrom: '2026-01-01',
         shares: [{ artistId: id, percent: '50' }],
       });
-      f.confirmSplit(s.id, approvedAppendix(f).id);
-      f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+      await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
+      await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
       await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('50');
       // a later report changes "today" at once; the July period view does not move
@@ -313,13 +312,12 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
       // the payout is dated today and counts as soon as its proof exists
       const p = await f.createPayout(owner.id);
       expect(p.date).toBe('2026-09-15');
-      f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
+      await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('0');
       // the only stored record is the payout operation itself; balances are never stored
-      expect(f.modules.settlements.listOperations({ ownerId: owner.id }).map((o) => o.amountCents)).toEqual([
-        6000,
-      ]);
-      f.close();
+      expect(
+        (await f.modules.settlements.listOperations({ ownerId: owner.id })).map((o) => o.amountCents),
+      ).toEqual([6000]);
     } finally {
       vi.useRealTimers();
     }
@@ -328,27 +326,28 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
 
 describe('README 5: payout snapshot and B17 file names (D-100)', () => {
   it('the payout snapshot stores the hashes of the B17 statements as well as the Believe files', async () => {
-    const f = newFacade();
-    const { owner } = confirmedOwner(f, 'Snapshot Owner', ['Snap']);
-    f.modules.owners.addOwnerAlias(owner.id, 'Snapshot Writer');
-    f.setPublishingTerms({
+    const f = await newFacade();
+    const { owner } = await confirmedOwner(f, 'Snapshot Owner', ['Snap']);
+    await f.modules.owners.addOwnerAlias(owner.id, 'Snapshot Writer');
+    await f.setPublishingTerms({
       ownerId: owner.id,
       percent: '50',
       validFrom: '2020-01-01',
-      documentId: approvedDoc(f, 'contract', owner.id).id,
+      documentId: (await approvedDoc(f, 'contract', owner.id)).id,
     });
     const r = await f.ingestB17(
       await writeB17('Q22026', [{ writer: 'Snapshot Writer', title: 'S', payable: '40' }]),
     );
-    f.resolveWriters();
+    await f.resolveWriters();
     const payout = await f.createPayout(owner.id);
-    const snap = f.modules.settlements.getSnapshot(payout.id) as { files: { b17: { sha256: string }[] } };
+    const snap = (await f.modules.settlements.getSnapshot(payout.id)) as {
+      files: { b17: { sha256: string }[] };
+    };
     expect(snap.files.b17[0]?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(snap.files.b17[0]?.sha256).toBe(r.statement.sha256);
-    f.close();
   });
 
-  it('a quarter in a B17 file name must stand alone', () => {
+  it('a quarter in a B17 file name must stand alone', async () => {
     expect(quartersFromFileName('0to8_Q42024_Q12025_Publishing_Breakdown.xlsx')).toEqual([
       '2024-Q4',
       '2025-Q1',

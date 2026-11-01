@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BELIEVE_COLUMNS } from '../../src/modules/sources';
 import { openFacade } from '../../src/facade';
-import { testSources } from './test-sources';
+import type { PaymentService } from '../../src/facade/payment-service';
+import { testSources, testStack } from './test-sources';
 import { TMP } from './tmp-root';
 
 // Synthetic test data only: invented ISRCs, UPCs, names and amounts.
@@ -136,33 +137,48 @@ export async function writeB17(
   return { path, fileName };
 }
 
-export function newFacade(threshold = 0) {
-  return openFacade({ dataDir: ':memory:', payoutThresholdCents: threshold, sources: testSources() });
+/**
+ * A facade on the private PostgreSQL database of this test file (D-121): the module tables and the sources are emptied
+ * first, so every facade starts from nothing. Two facades of one test that must see the same data share one facade.
+ */
+export async function newFacade(threshold = 0, opts: { paymentService?: PaymentService } = {}) {
+  const stack = await testStack();
+  await stack.resetModules();
+  const dataDir = join(TMP, `facade-${randomUUID()}`);
+  mkdirSync(dataDir, { recursive: true });
+  return openFacade({
+    db: stack.db,
+    dataDir,
+    payoutThresholdCents: threshold,
+    sources: testSources(),
+    ...opts,
+  });
 }
 
-export type TestFacade = ReturnType<typeof newFacade>;
+export type TestFacade = Awaited<ReturnType<typeof newFacade>>;
 
 /** Owner with an approved contract listing its artists. */
-export function confirmedOwner(f: TestFacade, name: string, pseudonyms: string[]) {
+export async function confirmedOwner(f: TestFacade, name: string, pseudonyms: string[]) {
   const o = f.modules.owners;
-  const owner = o.createOwner({ name, kind: 'person' });
-  const artists = pseudonyms.map((p) => o.createArtist({ pseudonym: p, ownerId: owner.id }));
-  const doc = o.createDocument({
+  const owner = await o.createOwner({ name, kind: 'person' });
+  const artists = [];
+  for (const p of pseudonyms) artists.push(await o.createArtist({ pseudonym: p, ownerId: owner.id }));
+  const doc = await o.createDocument({
     kind: 'contract',
     title: `Dummy contract ${name}`,
     fileRef: `dummy://${name}.pdf`,
     ownerId: owner.id,
     requiresApproval: true,
   });
-  o.approveDocument(doc.id, 'manager');
-  o.createContract({ ownerId: owner.id, documentId: doc.id, artistIds: artists.map((a) => a.id) });
+  await o.approveDocument(doc.id, 'manager');
+  await o.createContract({ ownerId: owner.id, documentId: doc.id, artistIds: artists.map((a) => a.id) });
   return { owner, artists, contractDocId: doc.id };
 }
 
 /** Approved appendix document confirming splits. */
-export function approvedAppendix(f: TestFacade, ownerId: string | null = null) {
+export async function approvedAppendix(f: TestFacade, ownerId: string | null = null) {
   const o = f.modules.owners;
-  const d = o.createDocument({
+  const d = await o.createDocument({
     kind: 'appendix',
     title: 'Dummy appendix (Schedule C)',
     fileRef: 'dummy://appendix.pdf',
@@ -172,13 +188,13 @@ export function approvedAppendix(f: TestFacade, ownerId: string | null = null) {
   return o.approveDocument(d.id, 'manager');
 }
 
-export function approvedDoc(
+export async function approvedDoc(
   f: TestFacade,
   kind: 'buyout' | 'advance_basis' | 'adjustment_basis' | 'contract' | 'appendix',
   ownerId: string | null = null,
 ) {
   const o = f.modules.owners;
-  const d = o.createDocument({
+  const d = await o.createDocument({
     kind,
     title: `Dummy ${kind}`,
     fileRef: `dummy://${kind}.pdf`,

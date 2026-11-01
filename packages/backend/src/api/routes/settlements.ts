@@ -8,30 +8,32 @@ export function settlementsRouter(facade: Facade) {
   const { settlements } = facade.modules;
   const r = Router();
 
-  r.get('/settlements/operations', (req, res) => {
+  r.get('/settlements/operations', async (req, res) => {
     const ownerId = parse(S.listQuery, req.query).ownerId;
-    res.json(settlements.listOperations(ownerId ? { ownerId } : {}));
+    res.json(await settlements.listOperations(ownerId ? { ownerId } : {}));
   });
-  r.post('/settlements/operations', (req, res) =>
-    res.status(201).json(facade.createOperation(parse(S.createOperationBody, req.body))),
+  r.post('/settlements/operations', async (req, res) =>
+    res.status(201).json(await facade.createOperation(parse(S.createOperationBody, req.body))),
   );
-  r.post('/settlements/operations/:id/proof', (req, res) =>
-    res.json(facade.attachPaymentProof(param(req, 'id'), parse(S.proofBody, req.body))),
+  r.post('/settlements/operations/:id/proof', async (req, res) =>
+    res.json(await facade.attachPaymentProof(param(req, 'id'), parse(S.proofBody, req.body))),
   );
-  r.post('/settlements/operations/:id/deferred', (req, res) =>
-    res.json(settlements.setDeferred(param(req, 'id'), parse(S.deferredBody, req.body).deferred)),
+  r.post('/settlements/operations/:id/deferred', async (req, res) =>
+    res.json(await settlements.setDeferred(param(req, 'id'), parse(S.deferredBody, req.body).deferred)),
   );
-  r.post('/settlements/operations/:id/deactivate', (req, res) => {
+  r.post('/settlements/operations/:id/deactivate', async (req, res) => {
     const body = parse(S.deactivateBody, req.body);
     res.json(
-      settlements.deactivate(param(req, 'id'), body.reason, { transferFailed: body.transferFailed ?? false }),
+      await settlements.deactivate(param(req, 'id'), body.reason, {
+        transferFailed: body.transferFailed ?? false,
+      }),
     );
   });
-  r.post('/settlements/operations/:id/return', (req, res) =>
-    res.status(201).json(facade.returnPayout(param(req, 'id'), parse(S.returnBody, req.body))),
+  r.post('/settlements/operations/:id/return', async (req, res) =>
+    res.status(201).json(await facade.returnPayout(param(req, 'id'), parse(S.returnBody, req.body))),
   );
-  r.get('/settlements/operations/:id/snapshot', (req, res) =>
-    res.json(settlements.getSnapshot(param(req, 'id'))),
+  r.get('/settlements/operations/:id/snapshot', async (req, res) =>
+    res.json(await settlements.getSnapshot(param(req, 'id'))),
   );
 
   return r;

@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import type { ModuleDb } from '../../shared/db';
-import { pubStatementPeriods, pubStatements, pubTerms, pubWriters, publishingSchema } from './schema';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import type { Db } from '../../shared/pg-db';
+import { Decimal } from '../../shared/money';
+import { pubStatementPeriods, pubStatements, pubTerms, pubWriters } from './schema';
 
-export type PublishingDb = ModuleDb<typeof publishingSchema>;
 export type StatementRow = typeof pubStatements.$inferSelect;
 export type WriterRow = typeof pubWriters.$inferSelect;
 export type TermsRow = typeof pubTerms.$inferSelect;
@@ -31,89 +31,148 @@ export interface AggregatedLine {
   payablePico: bigint;
 }
 
-/** All SQL of the publishing module lives here. */
-export function createPublishingRepository(db: PublishingDb) {
-  const { orm, sqlite } = db;
-  const sumByStatement = sqlite
-    .prepare('SELECT COALESCE(SUM(payable_pico),0) AS s, COUNT(*) AS n FROM pub_lines WHERE statement_id = ?')
-    .safeIntegers(true);
-  const aggregated = sqlite
-    .prepare(
-      `SELECT l.period AS period, l.writer_norm AS writerNorm, MIN(l.writer_name) AS writerName, l.work_title AS workTitle,
-              l.songwriters AS songwriters, SUM(l.payable_pico) AS payablePico
-       FROM pub_lines l JOIN pub_statements s ON s.id = l.statement_id WHERE s.status = 'loaded'
-       GROUP BY l.period, l.writer_norm, l.songwriters, l.work_title`,
-    )
-    .safeIntegers(true);
-  const insertLineStmt = sqlite.prepare(
-    `INSERT INTO pub_lines (statement_id, line_no, period, writer_name, writer_norm, songwriters, work_title, work_code, operation_type, retailer, country, payable_pico)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-  );
+/** A writer registered by a statement load when absent (role as it ends up after the load's own upgrades). */
+export interface WriterInsert {
+  writerNorm: string;
+  displayName: string;
+  role: 'holder' | 'songwriter';
+}
 
+/** Lines per INSERT: 12 array parameters per statement (unnest), so the size is bound by memory, not by parameters. */
+const LINE_CHUNK = 5000;
+
+/** PostgreSQL keeps numeric as entered or padded; the application keeps percents canonical ('50', '14.34'). */
+const canonicalTerms = (r: TermsRow): TermsRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
+
+/** All SQL of the publishing module lives here (schema `publishing`). */
+export function createPublishingRepository(db: Db) {
+  const orm = () => db.orm();
   return {
-    transaction<T>(fn: () => T): T {
-      return sqlite.transaction(fn)();
-    },
+    transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
+    snapshot: <T>(fn: () => Promise<T>): Promise<T> => db.snapshot(fn),
 
     // ---- statements and lines ----
-    periodTaken: (period: string) =>
-      orm
-        .select()
-        .from(pubStatementPeriods)
-        .where(and(eq(pubStatementPeriods.source, 'b17'), eq(pubStatementPeriods.period, period)))
-        .get(),
-    statementBySha: (sha256: string) =>
-      orm.select().from(pubStatements).where(eq(pubStatements.sha256, sha256)).get(),
-    insertStatement: (row: typeof pubStatements.$inferInsert) => orm.insert(pubStatements).values(row).run(),
-    insertStatementPeriod: (period: string, statementId: string) =>
-      orm.insert(pubStatementPeriods).values({ source: 'b17', period, statementId }).run(),
-    insertLine(l: LineInsert): void {
-      insertLineStmt.run(
-        l.statementId,
-        l.lineNo,
-        l.period,
-        l.writerName,
-        l.writerNorm,
-        l.songwriters,
-        l.workTitle,
-        l.workCode,
-        l.operationType,
-        l.retailer,
-        l.country,
-        l.payablePico,
-      );
+    periodTaken: async (period: string) =>
+      (
+        await orm()
+          .select()
+          .from(pubStatementPeriods)
+          .where(and(eq(pubStatementPeriods.source, 'b17'), eq(pubStatementPeriods.period, period)))
+      )[0],
+    statementBySha: async (sha256: string) =>
+      (await orm().select().from(pubStatements).where(eq(pubStatements.sha256, sha256)))[0],
+    insertStatement: async (row: typeof pubStatements.$inferInsert) => {
+      await orm().insert(pubStatements).values(row);
+    },
+    insertStatementPeriod: async (period: string, statementId: string) => {
+      await orm().insert(pubStatementPeriods).values({ source: 'b17', period, statementId });
+    },
+    /** Inserts the lines in chunks, one multi-row INSERT (unnest of column arrays) per chunk. */
+    async insertLines(lines: LineInsert[]): Promise<void> {
+      for (let i = 0; i < lines.length; i += LINE_CHUNK) {
+        const c = lines.slice(i, i + LINE_CHUNK);
+        await db.query(
+          `INSERT INTO publishing.pub_lines (statement_id, line_no, period, writer_name, writer_norm, songwriters,
+                                             work_title, work_code, operation_type, retailer, country, payable_pico)
+           SELECT * FROM unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
+                                $8::text[], $9::text[], $10::text[], $11::text[], $12::bigint[])`,
+          [
+            c.map((l) => l.statementId),
+            c.map((l) => l.lineNo),
+            c.map((l) => l.period),
+            c.map((l) => l.writerName),
+            c.map((l) => l.writerNorm),
+            c.map((l) => l.songwriters),
+            c.map((l) => l.workTitle),
+            c.map((l) => l.workCode),
+            c.map((l) => l.operationType),
+            c.map((l) => l.retailer),
+            c.map((l) => l.country),
+            c.map((l) => l.payablePico.toString()),
+          ],
+        );
+      }
     },
     /** The control figures of the lines stored for a statement. */
-    linesCheck(statementId: string): { sum: bigint; count: bigint } {
-      const r = sumByStatement.get(statementId) as { s: bigint; n: bigint };
-      return { sum: r.s, count: r.n };
+    async linesCheck(statementId: string): Promise<{ sum: bigint; count: bigint }> {
+      const r = await db.query<{ s: string; n: string }>(
+        `SELECT COALESCE(SUM(payable_pico), 0)::text AS s, COUNT(*)::text AS n
+         FROM publishing.pub_lines WHERE statement_id = $1`,
+        [statementId],
+      );
+      const row = r.rows[0] as { s: string; n: string };
+      return { sum: BigInt(row.s), count: BigInt(row.n) };
     },
-    setStatementTotal: (id: string, totalPayable: string) =>
-      orm.update(pubStatements).set({ totalPayable }).where(eq(pubStatements.id, id)).run(),
-    getStatement: (id: string) => orm.select().from(pubStatements).where(eq(pubStatements.id, id)).get(),
-    listStatements: () => orm.select().from(pubStatements).all(),
-    /** Lines of loaded statements summed per (period, writer, songwriters, work). */
-    aggregatedLines: () => aggregated.all() as AggregatedLine[],
+    setStatementTotal: async (id: string, totalPayable: string) => {
+      await orm().update(pubStatements).set({ totalPayable }).where(eq(pubStatements.id, id));
+    },
+    getStatement: async (id: string) =>
+      (await orm().select().from(pubStatements).where(eq(pubStatements.id, id)))[0],
+    /** In load order, as the SQLite rowid order was. */
+    listStatements: () =>
+      orm().select().from(pubStatements).orderBy(asc(pubStatements.uploadedAt), asc(pubStatements.id)),
+    /**
+     * Lines of loaded statements summed per (period, writer, songwriters, work). Text compares byte-wise (COLLATE "C")
+     * and NULL songwriters come first, as in the SQLite version, so MIN(writer_name) and the row order do not depend on
+     * the database locale.
+     */
+    async aggregatedLines(): Promise<AggregatedLine[]> {
+      const r = await db.query<{
+        period: string;
+        writer_norm: string;
+        writer_name: string;
+        work_title: string;
+        songwriters: string | null;
+        payable: string;
+      }>(
+        `SELECT l.period, l.writer_norm, MIN(l.writer_name COLLATE "C") AS writer_name, l.work_title, l.songwriters,
+                SUM(l.payable_pico)::text AS payable
+         FROM publishing.pub_lines l JOIN publishing.pub_statements s ON s.id = l.statement_id
+         WHERE s.status = 'loaded'
+         GROUP BY l.period, l.writer_norm, l.songwriters, l.work_title
+         ORDER BY l.period COLLATE "C", l.writer_norm COLLATE "C", l.songwriters COLLATE "C" NULLS FIRST,
+                  l.work_title COLLATE "C"`,
+      );
+      return r.rows.map((x) => ({
+        period: x.period,
+        writerNorm: x.writer_norm,
+        writerName: x.writer_name,
+        workTitle: x.work_title,
+        songwriters: x.songwriters,
+        payablePico: BigInt(x.payable),
+      }));
+    },
 
     // ---- writers ----
-    insertWriterIfAbsent: (row: typeof pubWriters.$inferInsert) =>
-      orm.insert(pubWriters).values(row).onConflictDoNothing().run(),
-    /** A name seen first as a songwriter is upgraded to holder. */
-    upgradeToHolder: (writerNorm: string) =>
-      orm
-        .update(pubWriters)
-        .set({ role: 'holder' })
-        .where(and(eq(pubWriters.writerNorm, writerNorm), eq(pubWriters.role, 'songwriter')))
-        .run(),
-    /** A writer marked external is retried when it shows up again as a holder. */
-    retryExternal: (writerNorm: string) =>
-      orm
-        .update(pubWriters)
-        .set({ resolution: 'unmapped' })
-        .where(and(eq(pubWriters.writerNorm, writerNorm), eq(pubWriters.resolution, 'external')))
-        .run(),
+    /** Registers the writers of a load that do not exist yet (unmapped, no owner); existing rows are kept. */
+    async insertWritersIfAbsent(rows: WriterInsert[]): Promise<void> {
+      if (rows.length === 0) return;
+      await db.query(
+        `INSERT INTO publishing.pub_writers (writer_norm, display_name, owner_id, resolution, role)
+         SELECT n, d, NULL, 'unmapped', r FROM unnest($1::text[], $2::text[], $3::text[]) AS t(n, d, r)
+         ON CONFLICT (writer_norm) DO NOTHING`,
+        [rows.map((w) => w.writerNorm), rows.map((w) => w.displayName), rows.map((w) => w.role)],
+      );
+    },
+    /** Names seen first as songwriters are upgraded to holders. */
+    async upgradeToHolders(writerNorms: string[]): Promise<void> {
+      if (writerNorms.length === 0) return;
+      await db.query(
+        `UPDATE publishing.pub_writers SET role = 'holder' WHERE writer_norm = ANY($1::text[]) AND role = 'songwriter'`,
+        [writerNorms],
+      );
+    },
+    /** Writers marked external are retried when they show up again as holders. */
+    async retryExternal(writerNorms: string[]): Promise<void> {
+      if (writerNorms.length === 0) return;
+      await db.query(
+        `UPDATE publishing.pub_writers SET resolution = 'unmapped'
+         WHERE writer_norm = ANY($1::text[]) AND resolution = 'external'`,
+        [writerNorms],
+      );
+    },
     unmappedWriters: () =>
-      orm
+      orm()
         .select({
           writerNorm: pubWriters.writerNorm,
           displayName: pubWriters.displayName,
@@ -121,33 +180,46 @@ export function createPublishingRepository(db: PublishingDb) {
           resolution: pubWriters.resolution,
         })
         .from(pubWriters)
-        .where(isNull(pubWriters.ownerId))
-        .all(),
-    setWriterResolution: (writerNorm: string, resolution: 'external' | 'ambiguous') =>
-      orm.update(pubWriters).set({ resolution }).where(eq(pubWriters.writerNorm, writerNorm)).run(),
-    allWriters: () => orm.select().from(pubWriters).all(),
-    getWriter: (writerNorm: string) =>
-      orm.select().from(pubWriters).where(eq(pubWriters.writerNorm, writerNorm)).get(),
-    mapWriter: (writerNorm: string, ownerId: string, resolution: WriterRow['resolution']) =>
-      orm.update(pubWriters).set({ ownerId, resolution }).where(eq(pubWriters.writerNorm, writerNorm)).run(),
-    reassignWriters: (fromOwnerId: string, intoOwnerId: string) =>
-      orm
+        .where(isNull(pubWriters.ownerId)),
+    setWriterResolution: async (writerNorm: string, resolution: 'external' | 'ambiguous') => {
+      await orm().update(pubWriters).set({ resolution }).where(eq(pubWriters.writerNorm, writerNorm));
+    },
+    allWriters: () => orm().select().from(pubWriters),
+    getWriter: async (writerNorm: string) =>
+      (await orm().select().from(pubWriters).where(eq(pubWriters.writerNorm, writerNorm)))[0],
+    mapWriter: async (writerNorm: string, ownerId: string, resolution: WriterRow['resolution']) => {
+      await orm()
+        .update(pubWriters)
+        .set({ ownerId, resolution })
+        .where(eq(pubWriters.writerNorm, writerNorm));
+    },
+    reassignWriters: async (fromOwnerId: string, intoOwnerId: string) => {
+      await orm()
         .update(pubWriters)
         .set({ ownerId: intoOwnerId, resolution: 'merged' })
-        .where(eq(pubWriters.ownerId, fromOwnerId))
-        .run(),
+        .where(eq(pubWriters.ownerId, fromOwnerId));
+    },
 
     // ---- contract terms ----
-    termsOfOwner: (ownerId: string) => orm.select().from(pubTerms).where(eq(pubTerms.ownerId, ownerId)).all(),
-    termsOfOwners: (ownerIds: string[]) =>
+    termsOfOwner: async (ownerId: string) =>
+      (await orm().select().from(pubTerms).where(eq(pubTerms.ownerId, ownerId))).map(canonicalTerms),
+    termsOfOwners: async (ownerIds: string[]) =>
       ownerIds.length === 0
         ? []
-        : orm.select().from(pubTerms).where(inArray(pubTerms.ownerId, ownerIds)).all(),
-    allTerms: () => orm.select().from(pubTerms).all(),
-    getTerms: (id: string) => orm.select().from(pubTerms).where(eq(pubTerms.id, id)).get(),
-    closeTerms: (id: string, validTo: string) =>
-      orm.update(pubTerms).set({ validTo }).where(eq(pubTerms.id, id)).run(),
-    insertTerms: (row: typeof pubTerms.$inferInsert) => orm.insert(pubTerms).values(row).run(),
+        : (await orm().select().from(pubTerms).where(inArray(pubTerms.ownerId, ownerIds))).map(
+            canonicalTerms,
+          ),
+    allTerms: async () => (await orm().select().from(pubTerms)).map(canonicalTerms),
+    getTerms: async (id: string) => {
+      const r = (await orm().select().from(pubTerms).where(eq(pubTerms.id, id)))[0];
+      return r && canonicalTerms(r);
+    },
+    closeTerms: async (id: string, validTo: string) => {
+      await orm().update(pubTerms).set({ validTo }).where(eq(pubTerms.id, id));
+    },
+    insertTerms: async (row: typeof pubTerms.$inferInsert) => {
+      await orm().insert(pubTerms).values(row);
+    },
   };
 }
 

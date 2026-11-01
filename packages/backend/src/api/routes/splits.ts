@@ -7,25 +7,27 @@ import { param, parse } from '../http';
 export function splitsRouter(facade: Facade) {
   const r = Router();
 
-  r.get('/splits', (req, res) => {
+  r.get('/splits', async (req, res) => {
     const q = parse(S.listQuery, req.query);
     res.json(
-      facade.listSplits({
+      await facade.listSplits({
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
         limit: q.limit ?? 200,
       }),
     );
   });
-  r.post('/splits', (req, res) =>
-    res.status(201).json(facade.createSplit(parse(S.createSplitBody, req.body))),
+  r.post('/splits', async (req, res) =>
+    res.status(201).json(await facade.createSplit(parse(S.createSplitBody, req.body))),
   );
-  r.post('/splits/change', (req, res) =>
-    res.status(201).json(facade.changeSplit(parse(S.changeSplitBody, req.body))),
+  r.post('/splits/change', async (req, res) =>
+    res.status(201).json(await facade.changeSplit(parse(S.changeSplitBody, req.body))),
   );
-  r.post('/splits/buyout', (req, res) => res.status(201).json(facade.buyout(parse(S.buyoutBody, req.body))));
-  r.post('/splits/:id/confirm', (req, res) =>
-    res.json(facade.confirmSplit(param(req, 'id'), parse(S.confirmSplitBody, req.body).documentId)),
+  r.post('/splits/buyout', async (req, res) =>
+    res.status(201).json(await facade.buyout(parse(S.buyoutBody, req.body))),
+  );
+  r.post('/splits/:id/confirm', async (req, res) =>
+    res.json(await facade.confirmSplit(param(req, 'id'), parse(S.confirmSplitBody, req.body).documentId)),
   );
 
   return r;

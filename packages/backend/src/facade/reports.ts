@@ -81,7 +81,7 @@ export function reportsApi(ctx: FacadeContext) {
         isrcsWithoutSplit: [...noSplit.entries()]
           .map(([isrc, net]) => ({ isrc, net }))
           .sort((a, b) => b.net.cmp(a.net)),
-        ambiguousWriters: publishing.listWriters().filter((w) => w.resolution === 'ambiguous'),
+        ambiguousWriters: (await publishing.listWriters()).filter((w) => w.resolution === 'ambiguous'),
       };
     },
 
@@ -90,7 +90,12 @@ export function reportsApi(ctx: FacadeContext) {
       const isrc = assertIsrc(isrcRaw);
       const calc = await calculate(modules);
       const units = calc.units.filter((u) => u.isrc === isrc);
-      return { isrc, splits: splits.listSplits({ isrc }), units, breakdown: await sources.breakdown(isrc) };
+      return {
+        isrc,
+        splits: await splits.listSplits({ isrc }),
+        units,
+        breakdown: await sources.breakdown(isrc),
+      };
     },
   };
   return api;

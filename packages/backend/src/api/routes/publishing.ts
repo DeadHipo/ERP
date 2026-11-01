@@ -23,13 +23,13 @@ export function publishingRouter(facade: Facade, opts: { tmpDir: string }) {
       await up.cleanup();
     }
   });
-  r.get('/publishing/writers', (_req, res) => res.json(publishing.listWriters()));
-  r.post('/publishing/writers/:norm/map', (req, res) =>
-    res.json(facade.mapWriter(param(req, 'norm'), parse(S.mapWriterBody, req.body))),
+  r.get('/publishing/writers', async (_req, res) => res.json(await publishing.listWriters()));
+  r.post('/publishing/writers/:norm/map', async (req, res) =>
+    res.json(await facade.mapWriter(param(req, 'norm'), parse(S.mapWriterBody, req.body))),
   );
-  r.post('/publishing/writers/resolve', (_req, res) => res.json(facade.resolveWriters()));
-  r.post('/publishing/terms', (req, res) =>
-    res.status(201).json(facade.setPublishingTerms(parse(S.publishingTermsBody, req.body))),
+  r.post('/publishing/writers/resolve', async (_req, res) => res.json(await facade.resolveWriters()));
+  r.post('/publishing/terms', async (req, res) =>
+    res.status(201).json(await facade.setPublishingTerms(parse(S.publishingTermsBody, req.body))),
   );
 
   return r;

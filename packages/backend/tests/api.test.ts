@@ -7,15 +7,15 @@ import { approvedAppendix, confirmedOwner, newFacade, TMP, writeBelieve } from '
 const I1 = 'QZTST2600001';
 const UPC = '1234567890123';
 
-function setup() {
-  const f = newFacade();
+async function setup() {
+  const f = await newFacade();
   const app = createApp(f, { tmpDir: join(TMP, 'api-uploads') });
   return { f, app };
 }
 
 describe('JSON API', () => {
   it('streams a Believe upload and returns 409 with a clear message for a second file of the same period', async () => {
-    const { f, app } = setup();
+    const { app } = await setup();
     const file = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10.5' }]);
     const ok = await request(app)
       .post('/api/v1/sources/believe')
@@ -29,11 +29,10 @@ describe('JSON API', () => {
     expect(dup.status).toBe(409);
     expect(dup.body.error.code).toBe('duplicate_period');
     expect(dup.body.error.message).toMatch(/already loaded/);
-    f.close();
   });
 
   it('lists the lines of the chosen report files with filters and paging, and validates the query', async () => {
-    const { f, app } = setup();
+    const { app } = await setup();
     const file = writeBelieve('2026-07', [
       { isrc: I1, upc: UPC, net: '10.5', platform: 'Spotify' },
       { isrc: I1, upc: UPC, net: '2', platform: 'Deezer' },
@@ -59,21 +58,19 @@ describe('JSON API', () => {
     const bad = await request(app).get('/api/v1/sources/lines?fileId=11111111-1111-1111-1111-111111111111');
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe('validation_error');
-    f.close();
   });
 
   it('validates input with zod and returns the error envelope', async () => {
-    const { f, app } = setup();
+    const { app } = await setup();
     const bad = await request(app).post('/api/v1/owners').send({ name: '', kind: 'x' });
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe('validation_error');
     const limit = await request(app).get('/api/v1/splits?limit=abc');
     expect(limit.status).toBe(400);
-    f.close();
   });
 
   it('warns about possible duplicates instead of creating them', async () => {
-    const { f, app } = setup();
+    const { app } = await setup();
     await request(app).post('/api/v1/owners').send({ name: 'Ivan Synthetic', kind: 'person' }).expect(201);
     const dup = await request(app).post('/api/v1/owners').send({ name: 'ivan synthetic', kind: 'person' });
     expect(dup.status).toBe(409);
@@ -82,18 +79,17 @@ describe('JSON API', () => {
       .post('/api/v1/owners')
       .send({ name: 'ivan synthetic', kind: 'person', force: true })
       .expect(201);
-    f.close();
   });
 
   it('owner balance and payout through HTTP: money as decimal strings', async () => {
-    const { f, app } = setup();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
-    f.createSplit({
+    const { f, app } = await setup();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
+    await f.createSplit({
       isrc: I1,
       validFrom: '2020-01-01',
       shares: [{ artistId: a.artists[0]?.id as string, percent: '50' }],
-      documentId: approvedAppendix(f).id,
+      documentId: (await approvedAppendix(f)).id,
     });
     await f.ingestBelieve(
       writeBelieve('2026-07', [
@@ -111,6 +107,5 @@ describe('JSON API', () => {
     const blocked = await request(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
     expect(blocked.status).toBe(422);
     expect(blocked.body.error.code).toBe('payout_blocked');
-    f.close();
   });
 });

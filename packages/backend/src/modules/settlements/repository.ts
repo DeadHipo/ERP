@@ -1,53 +1,57 @@
 import { desc, eq } from 'drizzle-orm';
-import type { ModuleDb } from '../../shared/db';
-import { operations, payoutSnapshots, settlementsSchema } from './schema';
+import type { Db } from '../../shared/pg-db';
+import { operations, payoutSnapshots } from './schema';
 
-export type SettlementsDb = ModuleDb<typeof settlementsSchema>;
 export type OperationRow = typeof operations.$inferSelect;
 
-/** All SQL of the settlements module lives here. */
-export function createSettlementsRepository(db: SettlementsDb) {
-  const { orm } = db;
+/** All SQL of the settlements module lives here (schema `settlements`). */
+export function createSettlementsRepository(db: Db) {
+  const orm = () => db.orm();
   return {
-    transaction<T>(fn: () => T): T {
-      return db.sqlite.transaction(fn)();
-    },
+    transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
 
-    insertOperation: (row: typeof operations.$inferInsert) => orm.insert(operations).values(row).run(),
-    getOperation: (id: string) => orm.select().from(operations).where(eq(operations.id, id)).get(),
+    insertOperation: async (row: typeof operations.$inferInsert) => {
+      await orm().insert(operations).values(row);
+    },
+    getOperation: async (id: string): Promise<OperationRow | undefined> =>
+      (await orm().select().from(operations).where(eq(operations.id, id)))[0],
     /** Newest first. */
     listOperations: () =>
-      orm.select().from(operations).orderBy(desc(operations.date), desc(operations.createdAt)).all(),
-    allOperations: () => orm.select().from(operations).all(),
+      orm().select().from(operations).orderBy(desc(operations.date), desc(operations.createdAt)),
+    allOperations: () => orm().select().from(operations),
     /** Operations that refer to the given payout (returns), active or not. */
     operationsReferring: (operationRef: string) =>
-      orm.select().from(operations).where(eq(operations.operationRef, operationRef)).all(),
+      orm().select().from(operations).where(eq(operations.operationRef, operationRef)),
     operationsOfOwner: (ownerId: string) =>
-      orm.select().from(operations).where(eq(operations.ownerId, ownerId)).all(),
+      orm().select().from(operations).where(eq(operations.ownerId, ownerId)),
 
-    setPaymentProof: (id: string, documentId: string) =>
-      orm
+    setPaymentProof: async (id: string, documentId: string) => {
+      await orm()
         .update(operations)
         .set({ paymentProofId: documentId, deferred: false })
-        .where(eq(operations.id, id))
-        .run(),
-    setDeferred: (id: string, deferred: boolean) =>
-      orm.update(operations).set({ deferred }).where(eq(operations.id, id)).run(),
-    setDeactivated: (id: string, at: string, reason: string) =>
-      orm
+        .where(eq(operations.id, id));
+    },
+    setDeferred: async (id: string, deferred: boolean) => {
+      await orm().update(operations).set({ deferred }).where(eq(operations.id, id));
+    },
+    setDeactivated: async (id: string, at: string, reason: string) => {
+      await orm()
         .update(operations)
         .set({ deactivatedAt: at, deactivatedReason: reason })
-        .where(eq(operations.id, id))
-        .run(),
-    setExternalRef: (id: string, externalRef: string) =>
-      orm.update(operations).set({ externalRef }).where(eq(operations.id, id)).run(),
-    reassignOwner: (fromOwnerId: string, intoOwnerId: string) =>
-      orm.update(operations).set({ ownerId: intoOwnerId }).where(eq(operations.ownerId, fromOwnerId)).run(),
+        .where(eq(operations.id, id));
+    },
+    setExternalRef: async (id: string, externalRef: string) => {
+      await orm().update(operations).set({ externalRef }).where(eq(operations.id, id));
+    },
+    reassignOwner: async (fromOwnerId: string, intoOwnerId: string) => {
+      await orm().update(operations).set({ ownerId: intoOwnerId }).where(eq(operations.ownerId, fromOwnerId));
+    },
 
-    insertSnapshot: (row: typeof payoutSnapshots.$inferInsert) =>
-      orm.insert(payoutSnapshots).values(row).run(),
-    getSnapshot: (operationId: string) =>
-      orm.select().from(payoutSnapshots).where(eq(payoutSnapshots.operationId, operationId)).get(),
+    insertSnapshot: async (row: typeof payoutSnapshots.$inferInsert) => {
+      await orm().insert(payoutSnapshots).values(row);
+    },
+    getSnapshot: async (operationId: string) =>
+      (await orm().select().from(payoutSnapshots).where(eq(payoutSnapshots.operationId, operationId)))[0],
   };
 }
 

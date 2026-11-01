@@ -15,35 +15,25 @@ export type { FacadeConfig, ShareSpec } from './context';
 
 /**
  * The facade: the only place that composes modules. It recalculates everything from scratch for every request.
- * Modules do not know about it. The methods are grouped by topic in the sibling files; this file only opens the
+ * Modules do not know about it. All modules live in one PostgreSQL database (config.db, a schema per module); the
+ * facade wraps writes that span modules in one transaction and reads that span them in one snapshot (D-121). The methods are grouped by topic in the sibling files; this file only opens the
  * modules and puts the groups together.
  */
 export function openFacade(config: FacadeConfig) {
-  const mem = config.dataDir === ':memory:';
-  const file = (name: string) => (mem ? ':memory:' : join(config.dataDir, `${name}.sqlite`));
-  const files = (name: string) =>
-    join(
-      mem ? join(import.meta.dirname, '..', '..', '..', '..', 'data', 'test-files') : config.dataDir,
-      'files',
-      name,
-    );
-  const ownersM = openOwnersModule(file('owners'));
-  const splitsM = openSplitsModule(file('splits'));
-  const settlementsM = openSettlementsModule(file('settlements'));
-  const publishingM = openPublishingModule(file('publishing'), files('publishing'));
-  const owners: OwnersService = ownersM.service;
-  const splits: SplitsService = splitsM.service;
+  const { db } = config;
+  const owners: OwnersService = openOwnersModule(db).service;
+  const splits: SplitsService = openSplitsModule(db).service;
   const sources: SourcesService = config.sources;
-  const settlements: SettlementsService = settlementsM.service;
-  const publishing: PublishingService = publishingM.service;
-  const ctx = createFacadeContext(config, { owners, splits, sources, settlements, publishing });
+  const settlements: SettlementsService = openSettlementsModule(db).service;
+  const publishing: PublishingService = openPublishingModule(
+    db,
+    join(config.dataDir, 'files', 'publishing'),
+  ).service;
+  const ctx = createFacadeContext(config, { db, owners, splits, sources, settlements, publishing });
 
   return {
+    db,
     modules: { owners, splits, sources, settlements, publishing },
-
-    close() {
-      for (const m of [ownersM, splitsM, settlementsM, publishingM]) m.close();
-    },
 
     ...splitsApi(ctx),
     ...sourcesApi(ctx),

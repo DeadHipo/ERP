@@ -13,11 +13,10 @@ import {
 } from '../../shared/dates';
 import { Decimal, picoToDecimal, picoToString } from '../../shared/money';
 import { sha256File } from '../../shared/files';
+import type { Db } from '../../shared/pg-db';
 import { createPublishingRepository } from './repository';
-import type { PublishingDb, StatementRow } from './repository';
+import type { StatementRow, TermsRow, WriterInsert, WriterRow } from './repository';
 import { parseSongwriters, quartersFromFileName, readB17Statement, type B17Line } from './b17-format';
-
-export type { PublishingDb } from './repository';
 
 export interface StatementView {
   id: string;
@@ -69,9 +68,13 @@ const view = (s: StatementRow): StatementView => ({
   warnings: JSON.parse(s.warnings) as string[],
 });
 
-export function createPublishingService(db: PublishingDb, storageDir: string) {
+/** A unique violation of PostgreSQL (sha256 or the quarter of a statement, taken by a concurrent load). */
+const isUniqueViolation = (e: unknown) =>
+  (e as { code?: string }).code === '23505' || /UNIQUE/.test((e as Error).message);
+
+export function createPublishingService(db: Db, storageDir: string) {
   const repo = createPublishingRepository(db);
-  const tx = <T>(fn: () => T): T => repo.transaction(fn);
+  const tx = <T>(fn: () => Promise<T>): Promise<T> => repo.transaction(fn);
 
   const periodTaken = repo.periodTaken;
 
@@ -105,7 +108,7 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
     {
       if (!/\.xlsx$/i.test(input.fileName)) throw new ValidationError('B17 statements are accepted as .xlsx');
       for (const q of quartersFromFileName(input.fileName)) {
-        const taken = periodTaken(q);
+        const taken = await periodTaken(q);
         if (taken) {
           throw new ConflictError(
             `A B17 statement for ${q} is already loaded. A second file for the same period is not accepted.`,
@@ -117,7 +120,7 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
         }
       }
       const sha256 = await sha256File(input.path);
-      const same = repo.statementBySha(sha256);
+      const same = await repo.statementBySha(sha256);
       if (same) throw new ConflictError(`This file was already loaded as ${same.fileName}`, 'duplicate_file');
       const providedGeneratedAt = input.generatedAt ? normalizeTimestamp(input.generatedAt) : null;
       await mkdir(storageDir, { recursive: true });
@@ -138,15 +141,15 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
         for await (const l of readB17Statement(input.path, input.fileName)) lines.push(l);
         if (lines.length === 0) throw new ValidationError('The statement has no lines');
         const periods = [...new Set(lines.map((l) => l.period))].sort();
-        tx(() => {
+        await tx(async () => {
           for (const p of periods) {
-            const taken = periodTaken(p);
+            const taken = await periodTaken(p);
             if (taken)
               throw new ConflictError(`A B17 statement for ${p} is already loaded`, 'duplicate_period', {
                 existingStatementId: taken.statementId,
               });
           }
-          repo.insertStatement({
+          await repo.insertStatement({
             id,
             source: 'b17',
             periods: JSON.stringify(periods),
@@ -161,12 +164,30 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
             totalPayable: '0',
             warnings: '[]',
           });
-          for (const p of periods) repo.insertStatementPeriod(p, id);
+          for (const p of periods) await repo.insertStatementPeriod(p, id);
           let total = 0n;
+          // The writers of the load are worked out in memory, in line order, and written set-based afterwards.
+          // The result is the same as registering them line by line: a new name is inserted with the display name and
+          // role of its first appearance, a songwriter that also appears as a holder ends as holder, and existing
+          // rows are only upgraded (songwriter -> holder) and retried (external -> unmapped) for the holders.
+          const newWriters = new Map<string, WriterInsert>();
+          const holders = new Set<string>();
           const seenSongwriters = new Set<string>();
-          for (const l of lines) {
+          const rows = lines.map((l) => {
             const norm = normalizeName(l.writerName);
-            repo.insertLine({
+            total += l.payablePico;
+            const known = newWriters.get(norm);
+            if (known) known.role = 'holder';
+            else newWriters.set(norm, { writerNorm: norm, displayName: l.writerName, role: 'holder' });
+            holders.add(norm);
+            for (const name of parseSongwriters(l.songwriters)) {
+              if (seenSongwriters.has(name)) continue;
+              seenSongwriters.add(name);
+              const sn = normalizeName(name);
+              if (!newWriters.has(sn))
+                newWriters.set(sn, { writerNorm: sn, displayName: name, role: 'songwriter' });
+            }
+            return {
               statementId: id,
               lineNo: l.lineNo,
               period: l.period,
@@ -179,38 +200,21 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
               retailer: l.retailer,
               country: l.country,
               payablePico: l.payablePico,
-            });
-            total += l.payablePico;
-            repo.insertWriterIfAbsent({
-              writerNorm: norm,
-              displayName: l.writerName,
-              ownerId: null,
-              resolution: 'unmapped',
-              role: 'holder',
-            });
-            // A name seen first as a songwriter is upgraded to holder: a holder without owner gets one (unknown author).
-            repo.upgradeToHolder(norm);
-            repo.retryExternal(norm);
-            for (const name of parseSongwriters(l.songwriters)) {
-              if (seenSongwriters.has(name)) continue;
-              seenSongwriters.add(name);
-              repo.insertWriterIfAbsent({
-                writerNorm: normalizeName(name),
-                displayName: name,
-                ownerId: null,
-                resolution: 'unmapped',
-                role: 'songwriter',
-              });
-            }
-          }
-          const check = repo.linesCheck(id);
+            };
+          });
+          await repo.insertLines(rows);
+          await repo.insertWritersIfAbsent([...newWriters.values()]);
+          // A name seen first as a songwriter is upgraded to holder: a holder without owner gets one (unknown author).
+          await repo.upgradeToHolders([...holders]);
+          await repo.retryExternal([...holders]);
+          const check = await repo.linesCheck(id);
           if (check.sum !== total || check.count !== BigInt(lines.length))
             throw new ValidationError('Control check failed for the statement');
-          repo.setStatementTotal(id, picoToString(total));
+          await repo.setStatementTotal(id, picoToString(total));
         });
       } catch (e) {
         if (created) await rm(storedPath, { force: true });
-        if (/UNIQUE/.test((e as Error).message)) {
+        if (isUniqueViolation(e)) {
           throw new ConflictError('This statement or its quarter is already loaded', 'duplicate_period');
         }
         throw e;
@@ -220,68 +224,74 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
   }
 
   const rest = {
-    getStatement(id: string): StatementView {
-      const s = repo.getStatement(id);
+    async getStatement(id: string): Promise<StatementView> {
+      const s = await repo.getStatement(id);
       if (!s) throw new NotFoundError('Statement', id);
       return view(s);
     },
 
-    listStatements(): StatementView[] {
-      return repo.listStatements().map(view);
+    async listStatements(): Promise<StatementView[]> {
+      return (await repo.listStatements()).map(view);
     },
 
-    activeStatements() {
-      return rest
-        .listStatements()
+    async activeStatements(): Promise<{ id: string; sha256: string; periods: string[]; fileName: string }[]> {
+      return (await rest.listStatements())
         .filter((s) => s.status === 'loaded')
         .map((s) => ({ id: s.id, sha256: s.sha256, periods: s.periods, fileName: s.fileName }));
     },
 
     // ---- writers ----
     /** Writers without an owner yet; songwriters marked external are retried (aliases may have been added since). */
-    unmappedWriters(): { writerNorm: string; displayName: string; role: string; resolution: string }[] {
+    unmappedWriters(): Promise<
+      { writerNorm: string; displayName: string; role: string; resolution: string }[]
+    > {
       return repo.unmappedWriters();
     },
 
     /** A songwriter that is none of our owners: an external co-writer, not paid by us. */
-    markWriterExternal(writerNorm: string): void {
-      repo.setWriterResolution(writerNorm, 'external');
+    markWriterExternal(writerNorm: string): Promise<void> {
+      return repo.setWriterResolution(writerNorm, 'external');
     },
 
-    listWriters() {
+    listWriters(): Promise<WriterRow[]> {
       return repo.allWriters();
     },
 
-    mapWriter(
+    async mapWriter(
       writerNorm: string,
       ownerId: string,
       resolution: 'matched' | 'created_waiting_documents' | 'manual' | 'merged',
-    ): void {
-      if (!repo.getWriter(writerNorm)) throw new NotFoundError('Writer', writerNorm);
-      repo.mapWriter(writerNorm, ownerId, resolution);
+    ): Promise<void> {
+      if (!(await repo.getWriter(writerNorm))) throw new NotFoundError('Writer', writerNorm);
+      await repo.mapWriter(writerNorm, ownerId, resolution);
     },
 
-    markWriterAmbiguous(writerNorm: string): void {
-      repo.setWriterResolution(writerNorm, 'ambiguous');
+    markWriterAmbiguous(writerNorm: string): Promise<void> {
+      return repo.setWriterResolution(writerNorm, 'ambiguous');
     },
 
     /** After a merge of owners the publishing identifier is replaced by the surviving owner. */
-    reassignOwner(fromOwnerId: string, intoOwnerId: string): void {
-      tx(() => {
+    reassignOwner(fromOwnerId: string, intoOwnerId: string): Promise<void> {
+      return tx(async () => {
         // Terms stay with their record: they are resolved through the merge, and the surviving owner's own terms win.
-        repo.reassignWriters(fromOwnerId, intoOwnerId);
+        await repo.reassignWriters(fromOwnerId, intoOwnerId);
       });
     },
 
     // ---- contract terms ----
     /** The author's percentage of the money for our registered share (usually 50); the remainder stays with the label. */
-    setTerms(input: { ownerId: string; percent: string; validFrom: string; documentId?: string | null }) {
+    async setTerms(input: {
+      ownerId: string;
+      percent: string;
+      validFrom: string;
+      documentId?: string | null;
+    }): Promise<TermsRow | undefined> {
       if (!/^\d+(\.\d+)?$/.test(input.percent) || new Decimal(input.percent).gt(100)) {
         throw new ValidationError(`Invalid author percent "${input.percent}"`);
       }
       const validFrom = assertDate(input.validFrom);
-      return tx(() => {
-        const existing = repo.termsOfOwner(input.ownerId);
+      return tx(async () => {
+        const existing = await repo.termsOfOwner(input.ownerId);
         if (existing.some((t) => t.validFrom >= validFrom)) {
           throw new ConflictError('Publishing terms already start on or after this date', 'terms_overlap');
         }
@@ -292,10 +302,10 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
               'Changing publishing terms requires a document',
               'document_required',
             );
-          repo.closeTerms(open.id, validFrom);
+          await repo.closeTerms(open.id, validFrom);
         }
         const id = newId();
-        repo.insertTerms({
+        await repo.insertTerms({
           id,
           ownerId: input.ownerId,
           percent: input.percent,
@@ -308,11 +318,11 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
       });
     },
 
-    termsOf(ownerIds: string[]) {
+    termsOf(ownerIds: string[]): Promise<TermsRow[]> {
       return repo.termsOfOwners(ownerIds);
     },
 
-    allTerms() {
+    allTerms(): Promise<TermsRow[]> {
       return repo.allTerms();
     },
 
@@ -320,11 +330,15 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
      * Accruals per (quarter, writer, work): Total Payable times the author's contract percentage, accrued to the owner.
      * Terms are chosen by the report date (first day of the quarter's last month).
      */
-    accruals(
+    async accruals(
       filter: { from?: string; to?: string } = {},
       resolveOwner: (id: string) => string = (id) => id,
-    ): PublishingAccrual[] {
-      const writers = new Map(repo.allWriters().map((w) => [w.writerNorm, w]));
+    ): Promise<PublishingAccrual[]> {
+      // Writers, terms and lines are read from one consistent version (D-012).
+      const [allWriters, terms, lines] = await repo.snapshot(
+        async () => [await repo.allWriters(), await repo.allTerms(), await repo.aggregatedLines()] as const,
+      );
+      const writers = new Map(allWriters.map((w) => [w.writerNorm, w]));
       // Owner resolution is memoised: one lookup per owner, not per row and term.
       const memo = new Map<string, string>();
       const resolveUncached = resolveOwner;
@@ -333,7 +347,6 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
         if (r === undefined) memo.set(id, (r = resolveUncached(id)));
         return r;
       };
-      const terms = repo.allTerms();
       const result: PublishingAccrual[] = [];
       const push = (
         r: { period: string; workTitle: string },
@@ -367,7 +380,7 @@ export function createPublishingService(db: PublishingDb, storageDir: string) {
           defaultTerms: t === undefined,
         });
       };
-      for (const r of repo.aggregatedLines()) {
+      for (const r of lines) {
         const reportMonth = quarterEndMonth(r.period);
         if (!inMonthRange(reportMonth, filter.from, filter.to)) continue;
         const payable = picoToDecimal(r.payablePico);

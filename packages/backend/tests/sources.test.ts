@@ -27,7 +27,7 @@ describe('streaming CSV parser', () => {
 });
 
 describe('Believe file name', () => {
-  it('takes account and reporting month from the name; tolerates browser copies', () => {
+  it('takes account and reporting month from the name; tolerates browser copies', async () => {
     expect(parseBelieveFileName('2102409_1052428_2026-07-01_2026-07-01.csv.zip')).toEqual({
       reportId: '2102409',
       account: '1052428',
@@ -42,7 +42,7 @@ describe('Believe file name', () => {
 
 describe('Believe loading (README 5: line key, summing, duplicates, sha256)', () => {
   it('sums lines with the same key; names are not part of the key', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const file = writeBelieve('2026-07', [
       { isrc: 'qz-tst-26-00001', upc: UPC, net: '0.100000000001', quantity: 2, artistName: 'Name A' },
       { isrc: ISRC, upc: UPC, net: '0.2', quantity: 3, artistName: 'Name B (different)' },
@@ -55,19 +55,17 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     const units = await f.modules.sources.units();
     expect(units).toHaveLength(1);
     expect(units[0]?.isrc).toBe(ISRC);
-    f.close();
   });
 
   it('stores the sha256 of the file', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const file = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]);
     const loaded = await f.ingestBelieve(file);
     expect(loaded.sha256).toBe(createHash('sha256').update(readFileSync(file.path)).digest('hex'));
-    f.close();
   });
 
   it('a second file for an already loaded (reporting month, account) is an error', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
     const second = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '2' }], { reportId: '9000002' });
     await expect(f.ingestBelieve(second)).rejects.toMatchObject({
@@ -82,11 +80,10 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
       }),
     );
     expect(await f.modules.sources.listFiles()).toHaveLength(2);
-    f.close();
   });
 
   it('the same file content under another month name is rejected by sha256', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const a = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]);
     await f.ingestBelieve(a);
     const copy = tmpPath('9000009_1052428_2026-08-01_2026-08-01.csv');
@@ -94,11 +91,10 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     await expect(
       f.ingestBelieve({ path: copy, fileName: '9000009_1052428_2026-08-01_2026-08-01.csv' }),
     ).rejects.toMatchObject({ code: 'duplicate_file' });
-    f.close();
   });
 
   it('rejects a whole file on a bad line and keeps nothing (atomic)', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const bad = writeBelieve('2026-07', [
       { isrc: ISRC, upc: UPC, net: '1' },
       { isrc: ISRC, upc: UPC, net: 'abc', country: 'Chile' },
@@ -109,29 +105,26 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     expect(await f.modules.sources.units()).toHaveLength(0);
     // the period is free again after a failed load
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
-    f.close();
   });
 
   it('only USD is accepted (everything inside is USD)', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await expect(
       f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', currency: 'EUR' }])),
     ).rejects.toThrow(/only USD/);
-    f.close();
   });
 
   it('a line of another reporting month is rejected', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await expect(
       f.ingestBelieve(
         writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', reportingMonth: '2026-06' }]),
       ),
     ).rejects.toThrow(/differs/);
-    f.close();
   });
 
   it('keeps negative lines and lines without ISRC', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const loaded = await f.ingestBelieve(
       writeBelieve('2026-07', [
         { isrc: ISRC, upc: UPC, net: '-0.5', quantity: -1 },
@@ -144,11 +137,10 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
       ['', '3000000000000'],
       [ISRC, '-500000000000'],
     ]);
-    f.close();
   });
 
   it('streams a large file (200k lines) without loading it into memory', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const fileName = '9100000_1052428_2026-07-01_2026-07-01.csv';
     const path = tmpPath(fileName);
     const out = createWriteStream(path);
@@ -173,10 +165,9 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     expect(loaded.lineCount).toBe(200_000);
     expect(loaded.netTotal).toBe('0.2');
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(300 * 1024 * 1024);
-    f.close();
   }, 120_000);
 
-  it('header has all Believe columns', () => {
+  it('header has all Believe columns', async () => {
     expect(BELIEVE_COLUMNS).toHaveLength(21);
   });
 });

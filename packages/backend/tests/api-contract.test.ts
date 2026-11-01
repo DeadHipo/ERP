@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { join } from 'node:path';
@@ -35,10 +35,12 @@ function expressRoutes(app: Express): string[] {
 }
 
 describe('API contract', () => {
-  const f = newFacade();
-  const app = createApp(f, { tmpDir: join(TMP, 'contract-uploads') });
+  let app: Express;
   const covered = new Set<string>();
-  afterAll(() => f.close());
+  beforeAll(async () => {
+    const f = await newFacade();
+    app = createApp(f, { tmpDir: join(TMP, 'contract-uploads') });
+  });
 
   /** Calls an operation by its template path and checks status and response body against the contract. */
   async function call(
@@ -199,12 +201,12 @@ describe('API contract', () => {
     });
   });
 
-  it('the scenario touched every operation of the contract', () => {
+  it('the scenario touched every operation of the contract', async () => {
     const missing = API_OPERATIONS.map(operationKey).filter((k) => !covered.has(k));
     expect(missing).toEqual([]);
   });
 
-  it('the contract lists exactly the routes Express has', () => {
+  it('the contract lists exactly the routes Express has', async () => {
     const real = expressRoutes(app)
       .filter((r) => r !== 'GET /openapi.json')
       .sort();

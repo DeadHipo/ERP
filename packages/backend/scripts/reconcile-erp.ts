@@ -3,7 +3,10 @@
  * with the accruals of the current ERP (context_data/data/erp/data/erp.db, read-only). Differences are expected; each one
  * is classified by cause. Output: data/<demo>/recon/summary.json and diffs.csv (aggregated amounts, no names).
  *
- * Usage: npx tsx scripts/reconcile-erp.ts [dataDir]
+ * Reads the modules from the PostgreSQL database of <repo>/.env (DB_*, D-121; choose the data set with DB_DATABASE) and
+ * the sources from the PostgreSQL registry and ClickHouse; dataDir is only where the original files and recon/ live.
+ *
+ * Usage: DB_DATABASE=<db> npx tsx scripts/reconcile-erp.ts [dataDir]
  */
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -16,7 +19,9 @@ import { normalizeIsrc } from '../src/shared/identifiers';
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(process.argv[2] ?? join(root, 'data', 'demo'));
-const erp = new DatabaseSync(resolve(root, 'context_data', 'data', 'erp', 'data', 'erp.db'), { readOnly: true });
+const erp = new DatabaseSync(resolve(root, 'context_data', 'data', 'erp', 'data', 'erp.db'), {
+  readOnly: true,
+});
 const all = <T>(sql: string, ...p: (string | number)[]) => erp.prepare(sql).all(...p) as T[];
 const D = (v: string | number | null | undefined) => new Decimal(v ?? 0);
 const MONTH = '2026-07';
@@ -26,14 +31,15 @@ const inScope = (u: { reportingMonth: string; account: string }) =>
   u.reportingMonth === MONTH && u.account === ACCOUNT;
 
 const stack = connectSources(join(dataDir, 'files', 'sources')); // PostgreSQL + ClickHouse (docker compose up -d)
-const f = openFacade({ dataDir, payoutThresholdCents: 0, sources: stack.sources });
+const { db } = stack;
+const f = openFacade({ db, dataDir, payoutThresholdCents: 0, sources: stack.sources });
 const { owners, splits, sources, publishing } = f.modules;
-const calc = await calculate({ owners, splits, sources, publishing });
+const calc = await calculate({ db, owners, splits, sources, publishing });
 
 // party id of every new artist (stored in origin by the import)
 const partyOfArtist = new Map<string, number>();
-for (const [id, a] of owners.artistIndex()) {
-  const artist = owners.getArtist(id);
+for (const [id, a] of await owners.artistIndex()) {
+  const artist = await owners.getArtist(id);
   const m = /^legacy-erp:party:(\d+)$/.exec(artist.origin);
   if (m && id === a.id) partyOfArtist.set(id, Number(m[1]));
 }
@@ -143,7 +149,7 @@ const rounding = [...old.keys()].filter(
 
 // ---------- publishing B17 2026-Q2, per owner group ----------
 const ownerOfParty = new Map<number, string>();
-for (const o of owners.listOwners()) {
+for (const o of await owners.listOwners()) {
   const m = /^legacy-erp:parties:(.+)$/.exec(o.origin);
   if (m) for (const p of (m[1] as string).split(',')) ownerOfParty.set(Number(p), o.id);
 }
@@ -229,6 +235,5 @@ writeFileSync(
       ),
   ].join('\n'),
 );
-f.close();
 await stack.close();
 console.log(JSON.stringify(summary, null, 2));

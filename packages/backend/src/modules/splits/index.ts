@@ -1,11 +1,9 @@
-import { openModuleDb } from '../../shared/db';
-import { SPLITS_DDL, splitsSchema } from './schema';
+import type { Db } from '../../shared/pg-db';
 import { createSplitsService } from './service';
 
 export * from './service';
 
-/** Opens the splits module with its own SQLite file. */
-export function openSplitsModule(file: string) {
-  const db = openModuleDb(file, SPLITS_DDL, splitsSchema);
-  return { service: createSplitsService(db), close: db.close, sqlite: db.sqlite };
+/** Opens the splits module on the shared PostgreSQL database (schema `splits`, migrations/postgres/0002_splits.sql). */
+export function openSplitsModule(db: Db) {
+  return { service: createSplitsService(db) };
 }

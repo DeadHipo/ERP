@@ -69,7 +69,7 @@ function writeZip(path: string, entries: { name: string; data: Buffer; date?: Da
 
 describe('sources: zip input, key dimensions, recovery, validation', () => {
   it('loads a zipped report; more than one entry or a non-CSV entry is rejected', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const csv = Buffer.from(believeCsv('2026-07', [{ isrc: I1, upc: UPC, net: '1.5' }]));
     const name = '9100001_1052428_2026-07-01_2026-07-01.csv.zip';
     const path = tmpPath(name);
@@ -105,11 +105,10 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
     const files = await f.modules.sources.listFiles();
     expect(files.filter((x) => x.status === 'loaded').map((x) => x.reportingMonth)).toEqual(['2026-07']);
     expect(files.filter((x) => x.status === 'failed')).toHaveLength(3); // each refused file is recorded as failed
-    f.close();
   });
 
   it('every key dimension separates lines; only identical keys are summed', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const base = { isrc: I1, upc: UPC, net: '1' };
     const loaded = await f.ingestBelieve(
       writeBelieve('2026-07', [
@@ -125,11 +124,10 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
     );
     expect(loaded.lineCount).toBe(8);
     expect((await testFileTotals(loaded.id)).keys).toBe('7');
-    f.close();
   });
 
   it('an invalid month in the file name is rejected before anything is stored', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const file = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }]);
     const bad = tmpPath('9000001_1052428_2026-13-01_2026-13-01.csv');
     writeFileSync(bad, readFileSync(file.path));
@@ -137,36 +135,40 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
       f.ingestBelieve({ path: bad, fileName: '9000001_1052428_2026-13-01_2026-13-01.csv' }),
     ).rejects.toThrow(/Invalid month/);
     expect(await f.modules.sources.listFiles()).toHaveLength(0);
-    f.close();
   });
 });
 
 describe('publishing: terms, merges, statement checks', () => {
   async function setup() {
-    const f = newFacade();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
+    const f = await newFacade();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     return { f, a };
   }
 
   it('terms with an unapproved document wait; changing open terms needs a document; terms follow the report date', async () => {
     const { f, a } = await setup();
-    const doc = f.modules.owners.createDocument({
+    const doc = await f.modules.owners.createDocument({
       kind: 'contract',
       title: 'Dummy publishing terms',
       fileRef: 'dummy://t',
       ownerId: a.owner.id,
       requiresApproval: true,
     });
-    f.setPublishingTerms({ ownerId: a.owner.id, percent: '50', validFrom: '2020-01-01', documentId: doc.id });
-    expect(() =>
-      f.setPublishingTerms({ ownerId: a.owner.id, percent: '60', validFrom: '2026-04-01' }),
-    ).toThrow(/requires a document/);
-    f.setPublishingTerms({
+    await f.setPublishingTerms({
+      ownerId: a.owner.id,
+      percent: '50',
+      validFrom: '2020-01-01',
+      documentId: doc.id,
+    });
+    await expect(
+      async () => await f.setPublishingTerms({ ownerId: a.owner.id, percent: '60', validFrom: '2026-04-01' }),
+    ).rejects.toThrow(/requires a document/);
+    await f.setPublishingTerms({
       ownerId: a.owner.id,
       percent: '0',
       validFrom: '2026-04-01',
-      documentId: approvedDoc(f, 'buyout', a.owner.id).id,
+      documentId: (await approvedDoc(f, 'buyout', a.owner.id)).id,
     });
     await f.ingestB17(
       await writeB17('Q12026', [{ writer: 'OWNER, A', title: 'S', payable: '100', period: '1Q26' }]),
@@ -177,56 +179,57 @@ describe('publishing: terms, merges, statement checks', () => {
       '50',
     );
     expect(rows.find((r) => r.month === '2026-06')?.ourShare.toFixed()).toBe('100'); // 0% after the buyout date
-    f.close();
   });
 
   it('publishing terms are refused for a label and for a document of another owner', async () => {
     const { f, a } = await setup();
-    const label = f.modules.owners.createOwner({ name: 'Some Label', kind: 'label' });
-    expect(() => f.setPublishingTerms({ ownerId: label.id, percent: '50', validFrom: '2020-01-01' })).toThrow(
-      /label/,
-    );
-    const other = confirmedOwner(f, 'Owner B', ['B1']);
-    expect(() =>
-      f.setPublishingTerms({
-        ownerId: a.owner.id,
-        percent: '50',
-        validFrom: '2020-01-01',
-        documentId: other.contractDocId,
-      }),
-    ).toThrow(/another owner/);
-    f.close();
+    const label = await f.modules.owners.createOwner({ name: 'Some Label', kind: 'label' });
+    await expect(
+      async () => await f.setPublishingTerms({ ownerId: label.id, percent: '50', validFrom: '2020-01-01' }),
+    ).rejects.toThrow(/label/);
+    const other = await confirmedOwner(f, 'Owner B', ['B1']);
+    await expect(
+      async () =>
+        await f.setPublishingTerms({
+          ownerId: a.owner.id,
+          percent: '50',
+          validFrom: '2020-01-01',
+          documentId: other.contractDocId,
+        }),
+    ).rejects.toThrow(/another owner/);
   });
 
   it('a person is never merged into a label, so publishing cannot reach a label', async () => {
     const { f } = await setup();
-    const label = confirmedOwner(f, 'Label Owner', []);
-    const stub = f.modules.owners.createOwner({ name: 'Writer Unknown', kind: 'person' });
-    expect(() => f.mergeOwners(stub.id, label.owner.id, 'x')).not.toThrow(); // both person in this helper
-    const realLabel = f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
-    const stub2 = f.modules.owners.createOwner({ name: 'Writer Two', kind: 'person' });
-    expect(() => f.modules.owners.mergeOwners(stub2.id, realLabel.id, 'x')).toThrow(/different kinds/);
-    f.close();
+    const label = await confirmedOwner(f, 'Label Owner', []);
+    const stub = await f.modules.owners.createOwner({ name: 'Writer Unknown', kind: 'person' });
+    await f.mergeOwners(stub.id, label.owner.id, 'x'); // must not throw: both person in this helper
+    const realLabel = await f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
+    const stub2 = await f.modules.owners.createOwner({ name: 'Writer Two', kind: 'person' });
+    await expect(async () => await f.modules.owners.mergeOwners(stub2.id, realLabel.id, 'x')).rejects.toThrow(
+      /different kinds/,
+    );
   });
 
   it('the surviving owner keeps its own terms after a merge', async () => {
     const { f, a } = await setup();
-    f.setPublishingTerms({
+    await f.setPublishingTerms({
       ownerId: a.owner.id,
       percent: '40',
       validFrom: '2020-01-01',
       documentId: a.contractDocId,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'Writer Stub', title: 'S', payable: '100' }]));
-    const stub = f.modules.owners.listOwners().find((o) => o.origin === 'publishing') as { id: string };
-    f.setPublishingTerms({ ownerId: stub.id, percent: '90', validFrom: '2020-01-01' });
-    f.mergeOwners(stub.id, a.owner.id, 'same person');
+    const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing') as {
+      id: string;
+    };
+    await f.setPublishingTerms({ ownerId: stub.id, percent: '90', validFrom: '2020-01-01' });
+    await f.mergeOwners(stub.id, a.owner.id, 'same person');
     expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('40');
-    f.close();
   });
 
   it('statement checks: Period differs from the file quarter, non-USD, Payable column, same file again', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await expect(
       f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1', period: '1Q26' }])),
     ).rejects.toThrow(/differs/);
@@ -252,17 +255,15 @@ describe('publishing: terms, merges, statement checks', () => {
     await expect(
       f.ingestB17({ path: p3, fileName: '0to8_Q42025_Publishing_Statement.xlsx' }),
     ).rejects.toThrow(/only USD/);
-    f.close();
   });
 
   it('two simultaneous uploads of the same statement: one loads, the other is refused, the kept original survives', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const file = await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1' }]);
     const results = await Promise.allSettled([f.ingestB17(file), f.ingestB17(file)]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    const kept = f.modules.publishing.listStatements()[0];
+    const kept = (await f.modules.publishing.listStatements())[0];
     expect(kept).toBeDefined();
-    f.close();
   });
 });
 
@@ -276,47 +277,46 @@ describe('final review: dates, adjustment documents, label guard, contracts', ()
   });
 
   it('a credit is not counted through a payment proof: it needs an approved basis document', async () => {
-    const f = newFacade();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    const proof = f.modules.owners.createDocument({
+    const f = await newFacade();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    const proof = await f.modules.owners.createDocument({
       kind: 'payment_proof',
       title: 'p',
       fileRef: 'dummy://p',
       requiresApproval: false,
       ownerId: a.owner.id,
     });
-    expect(() =>
-      f.createOperation({
-        direction: 'in',
-        amount: '-50',
-        artistId: a.artists[0]?.id as string,
-        date: '2026-08-01',
-        paymentProofId: proof.id,
-        comment: 'x',
-      }),
-    ).toThrow(/basis document/);
-    f.close();
+    await expect(
+      async () =>
+        await f.createOperation({
+          direction: 'in',
+          amount: '-50',
+          artistId: a.artists[0]?.id as string,
+          date: '2026-08-01',
+          paymentProofId: proof.id,
+          comment: 'x',
+        }),
+    ).rejects.toThrow(/basis document/);
   });
 
   it('a writer mapped to a label owner is never paid as B: it stays unmapped (C)', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'Label Writer', title: 'S', payable: '100' }]));
-    const label = confirmedOwner(f, 'Label Co', []);
-    const labelOwner = f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
+    const label = await confirmedOwner(f, 'Label Co', []);
+    const labelOwner = await f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
     void label;
-    f.modules.publishing.mapWriter('label writer', labelOwner.id, 'manual'); // a module-level mapping bypassing the facade check
+    await f.modules.publishing.mapWriter('label writer', labelOwner.id, 'manual'); // a module-level mapping bypassing the facade check
     const r = (await f.reconciliation()).find((x) => x.source === 'b17');
     expect(r?.B_notOurs.toFixed()).toBe('0');
     expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('100');
-    f.close();
   });
 
-  it('a contract rejects duplicated, merged or foreign artists, and a document of another owner', () => {
-    const f = newFacade();
+  it('a contract rejects duplicated, merged or foreign artists, and a document of another owner', async () => {
+    const f = await newFacade();
     const o = f.modules.owners;
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    const b = confirmedOwner(f, 'Owner B', ['B1']);
-    const doc = o.createDocument({
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    const b = await confirmedOwner(f, 'Owner B', ['B1']);
+    const doc = await o.createDocument({
       kind: 'contract',
       title: 'c',
       fileRef: 'dummy://c',
@@ -324,109 +324,114 @@ describe('final review: dates, adjustment documents, label guard, contracts', ()
       requiresApproval: false,
     });
     const a1 = a.artists[0]?.id as string;
-    expect(() => o.createContract({ ownerId: a.owner.id, documentId: doc.id, artistIds: [a1, a1] })).toThrow(
-      /twice/,
-    );
-    expect(() =>
-      o.createContract({ ownerId: a.owner.id, documentId: doc.id, artistIds: [b.artists[0]?.id as string] }),
-    ).toThrow(/another owner/);
-    expect(() => o.createContract({ ownerId: b.owner.id, documentId: doc.id, artistIds: [] })).toThrow(
-      /another owner/,
-    );
-    const dup = o.createArtist({ pseudonym: 'A1 copy', ownerId: a.owner.id });
-    o.mergeArtists(dup.id, a1, 'dup');
-    expect(() => o.createContract({ ownerId: a.owner.id, documentId: doc.id, artistIds: [dup.id] })).toThrow(
-      /merged/,
-    );
-    expect(() => o.addOwnerAlias(a.owner.id, '  ,  ')).toThrow(/empty/);
-    f.close();
+    await expect(
+      async () => await o.createContract({ ownerId: a.owner.id, documentId: doc.id, artistIds: [a1, a1] }),
+    ).rejects.toThrow(/twice/);
+    await expect(
+      async () =>
+        await o.createContract({
+          ownerId: a.owner.id,
+          documentId: doc.id,
+          artistIds: [b.artists[0]?.id as string],
+        }),
+    ).rejects.toThrow(/another owner/);
+    await expect(
+      async () => await o.createContract({ ownerId: b.owner.id, documentId: doc.id, artistIds: [] }),
+    ).rejects.toThrow(/another owner/);
+    const dup = await o.createArtist({ pseudonym: 'A1 copy', ownerId: a.owner.id });
+    await o.mergeArtists(dup.id, a1, 'dup');
+    await expect(
+      async () => await o.createContract({ ownerId: a.owner.id, documentId: doc.id, artistIds: [dup.id] }),
+    ).rejects.toThrow(/merged/);
+    await expect(async () => await o.addOwnerAlias(a.owner.id, '  ,  ')).rejects.toThrow(/empty/);
   });
 });
 
 describe('final module reviews: advances are payouts, smaller checks', () => {
   it('an advance needs a confirmed owner and no blocking payout, like the payout button', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const o = f.modules.owners;
-    const stub = o.createOwner({ name: 'Stub Owner', kind: 'person' });
-    const artist = o.createArtist({ pseudonym: 'Stub Artist', ownerId: stub.id });
-    const basis = o.createDocument({
+    const stub = await o.createOwner({ name: 'Stub Owner', kind: 'person' });
+    const artist = await o.createArtist({ pseudonym: 'Stub Artist', ownerId: stub.id });
+    const basis = await o.createDocument({
       kind: 'advance_basis',
       title: 'b',
       fileRef: 'dummy://b',
       ownerId: stub.id,
       requiresApproval: false,
     });
-    expect(() =>
-      f.createOperation({
-        direction: 'out',
-        amount: '10',
-        artistId: artist.id,
-        date: '2026-01-01',
-        scope: { kind: 'any' },
-        documentId: basis.id,
-        comment: 'adv',
-      }),
-    ).toThrow(/approved contract/);
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
+    await expect(
+      async () =>
+        await f.createOperation({
+          direction: 'out',
+          amount: '10',
+          artistId: artist.id,
+          date: '2026-01-01',
+          scope: { kind: 'any' },
+          documentId: basis.id,
+          comment: 'adv',
+        }),
+    ).rejects.toThrow(/approved contract/);
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
     const artistId = a.artists[0]?.id as string;
-    o.createTrack({ title: 't', isrc: I1, upc: UPC });
-    f.createSplit({
+    await o.createTrack({ title: 't', isrc: I1, upc: UPC });
+    await f.createSplit({
       isrc: I1,
       validFrom: '2020-01-01',
       shares: [{ artistId, percent: '50' }],
-      documentId: approvedDoc(f, 'appendix').id,
+      documentId: (await approvedDoc(f, 'appendix')).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
     await f.createPayout(a.owner.id); // no proof yet
-    expect(() =>
-      f.createOperation({
-        direction: 'out',
-        amount: '10',
-        artistId,
-        date: '2026-01-01',
-        scope: { kind: 'any' },
-        documentId: approvedDoc(f, 'advance_basis', a.owner.id).id,
-        comment: 'adv',
-      }),
-    ).toThrow(/blocked/);
-    f.close();
+    await expect(
+      async () =>
+        await f.createOperation({
+          direction: 'out',
+          amount: '10',
+          artistId,
+          date: '2026-01-01',
+          scope: { kind: 'any' },
+          documentId: (await approvedDoc(f, 'advance_basis', a.owner.id)).id,
+          comment: 'adv',
+        }),
+    ).rejects.toThrow(/blocked/);
   });
 
   it('the same existing artist twice in a split is refused before anything is created; a return cannot precede its payout', async () => {
-    const f = newFacade();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
+    const f = await newFacade();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
     const artistId = a.artists[0]?.id as string;
-    const before = f.modules.owners.artistIndex().size;
-    expect(() =>
-      f.createSplit({
-        isrc: I1,
-        validFrom: '2020-01-01',
-        shares: [
-          { artistId, percent: '10' },
-          { artistId, percent: '10' },
-          { newArtistPseudonym: 'New', percent: '5' },
-        ],
-      }),
-    ).toThrow(/twice/);
-    expect(f.modules.owners.artistIndex().size).toBe(before);
-    f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
-    f.createSplit({
+    const before = (await f.modules.owners.artistIndex()).size;
+    await expect(
+      async () =>
+        await f.createSplit({
+          isrc: I1,
+          validFrom: '2020-01-01',
+          shares: [
+            { artistId, percent: '10' },
+            { artistId, percent: '10' },
+            { newArtistPseudonym: 'New', percent: '5' },
+          ],
+        }),
+    ).rejects.toThrow(/twice/);
+    expect((await f.modules.owners.artistIndex()).size).toBe(before);
+    await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
+    await f.createSplit({
       isrc: I1,
       validFrom: '2020-01-01',
       shares: [{ artistId, percent: '50' }],
-      documentId: approvedDoc(f, 'appendix').id,
+      documentId: (await approvedDoc(f, 'appendix')).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
     const p = await f.createPayout(a.owner.id);
-    f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
-    expect(() => f.returnPayout(p.id, { fileRef: 'dummy://r', date: '2000-01-01', comment: 'x' })).toThrow(
-      /before its payout/,
-    );
-    f.close();
+    await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
+    await expect(
+      async () => await f.returnPayout(p.id, { fileRef: 'dummy://r', date: '2000-01-01', comment: 'x' }),
+    ).rejects.toThrow(/before its payout/);
   });
 
   it('a B17 statement with two detail sheets loads (line numbers are unique across sheets); sha256 and generation date are stored', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     const wb = new ExcelJS.Workbook();
     for (const name of ['Part 1', 'Part 2']) {
       const ws = wb.addWorksheet(name);
@@ -445,19 +450,18 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
     expect(res.statement.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(res.statement.generatedAt).toBe('2026-08-01T00:00:00.000Z');
     expect(res.statement.generatedAtSource).toBe('provided');
-    f.close();
   });
 });
 
 describe('B17 songwriters: lines belong to our writers (D-087)', () => {
   it('a line is split equally among our listed writers; external co-writers are ignored; no writer of ours -> rights-holder', async () => {
-    const f = newFacade();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    const b = confirmedOwner(f, 'Owner B', ['B1']);
-    f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
-    f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
+    const f = await newFacade();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    const b = await confirmedOwner(f, 'Owner B', ['B1']);
+    await f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
+    await f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
     for (const o of [a, b])
-      f.setPublishingTerms({
+      await f.setPublishingTerms({
         ownerId: o.owner.id,
         percent: '50',
         validFrom: '2020-01-01',
@@ -483,44 +487,42 @@ describe('B17 songwriters: lines belong to our writers (D-087)', () => {
     expect(r?.B_notOurs.toFixed()).toBe('150');
     expect(r?.C_breakdown.owner_unconfirmed?.toFixed()).toBe('20');
     expect(r?.discrepancy.toFixed()).toBe('0');
-    f.close();
   });
 });
 
 describe('B17 songwriters: final review fixes', () => {
   it('a name seen first as a songwriter and later as a rights-holder gets an owner (unknown author rule)', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await f.ingestB17(
       await writeB17('Q12026', [
         { writer: 'PUB LTD', title: 'S1', payable: '10', period: '1Q26', songwriters: 'Nora Newcomer' },
       ]),
     );
     expect(
-      f.modules.publishing.listWriters().find((w) => w.displayName === 'Nora Newcomer')?.resolution,
+      (await f.modules.publishing.listWriters()).find((w) => w.displayName === 'Nora Newcomer')?.resolution,
     ).toBe('external');
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'Nora Newcomer', title: 'S2', payable: '20' }]));
-    const w = f.modules.publishing.listWriters().find((x) => x.displayName === 'Nora Newcomer');
+    const w = (await f.modules.publishing.listWriters()).find((x) => x.displayName === 'Nora Newcomer');
     expect(w?.role).toBe('holder');
     expect(w?.ownerId).toBeTruthy();
     const r = (await f.reconciliation()).find((x) => x.month === '2026-06');
     expect(r?.C_breakdown.writer_unmapped).toBeUndefined();
     expect(r?.C_breakdown.owner_unconfirmed?.toFixed()).toBe('10');
-    f.close();
   });
 
   it("an ambiguous songwriter's part stays unmapped; a three-way split adds up exactly", async () => {
-    const f = newFacade();
-    const a = confirmedOwner(f, 'Owner A', ['A1']);
-    const b = confirmedOwner(f, 'Owner B', ['B1']);
-    f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
-    f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
+    const f = await newFacade();
+    const a = await confirmedOwner(f, 'Owner A', ['A1']);
+    const b = await confirmedOwner(f, 'Owner B', ['B1']);
+    await f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
+    await f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
     // two owners carry the same name: that songwriter is ambiguous and waits for the operator
-    const c1 = confirmedOwner(f, 'Twin One', ['T1']);
-    const c2 = confirmedOwner(f, 'Twin Two', ['T2']);
-    f.modules.owners.addOwnerAlias(c1.owner.id, 'Ivan Twin');
-    f.modules.owners.addOwnerAlias(c2.owner.id, 'Ivan Twin');
+    const c1 = await confirmedOwner(f, 'Twin One', ['T1']);
+    const c2 = await confirmedOwner(f, 'Twin Two', ['T2']);
+    await f.modules.owners.addOwnerAlias(c1.owner.id, 'Ivan Twin');
+    await f.modules.owners.addOwnerAlias(c2.owner.id, 'Ivan Twin');
     for (const o of [a, b])
-      f.setPublishingTerms({
+      await f.setPublishingTerms({
         ownerId: o.owner.id,
         percent: '100',
         validFrom: '2020-01-01',
@@ -540,13 +542,12 @@ describe('B17 songwriters: final review fixes', () => {
     expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('33.33333333333333333334');
     expect(r?.B_notOurs.toFixed()).toBe('66.66666666666666666666');
     expect(r?.discrepancy.toFixed()).toBe('0');
-    f.close();
   });
 });
 
 describe('sources: units', () => {
   it('equal keys are summed per unit (ISRC + UPC + report month + sales month)', async () => {
-    const f = newFacade();
+    const f = await newFacade();
     await f.ingestBelieve(
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '1.5', salesMonth: '2026-06' },
@@ -559,6 +560,5 @@ describe('sources: units', () => {
       ['2026-06', '1500000000000'],
       ['2026-07', '2250000000000'],
     ]);
-    f.close();
   });
 });

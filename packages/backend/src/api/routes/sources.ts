@@ -10,7 +10,7 @@ export function sourcesRouter(facade: Facade, opts: { tmpDir: string }) {
   const r = Router();
 
   r.get('/sources/files', async (_req, res) =>
-    res.json({ believe: await sources.listFiles(), b17: publishing.listStatements() }),
+    res.json({ believe: await sources.listFiles(), b17: await publishing.listStatements() }),
   );
   r.get('/sources/lines', async (req, res) => {
     const { fileId, ...rest } = parse(S.sourceLinesQuery, req.query);

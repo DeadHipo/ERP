@@ -7,9 +7,15 @@ import { type PublishingService } from '../modules/publishing';
 import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
 import { stubPaymentService, type PaymentService } from './payment-service';
+import type { Db } from '../shared/pg-db';
 
 export interface FacadeConfig {
-  /** Directory with one SQLite file per module (owners, splits, settlements, publishing), or ':memory:' for tests. */
+  /**
+   * The PostgreSQL database of the modules owners, splits, settlements and publishing (one schema each, D-121).
+   * The caller owns the pool and closes it.
+   */
+  db: Db;
+  /** Directory of the kept original files (files/publishing/...). */
   dataDir: string;
   /** The sources module: Believe files in PostgreSQL + ClickHouse. The caller owns the connections and closes them. */
   sources: SourcesService;
@@ -32,6 +38,7 @@ const SPLIT_DOCUMENT_KINDS = ['appendix', 'contract', 'buyout'];
 export function createFacadeContext(
   config: FacadeConfig,
   m: {
+    db: Db;
     owners: OwnersService;
     splits: SplitsService;
     sources: SourcesService;
@@ -39,19 +46,19 @@ export function createFacadeContext(
     publishing: PublishingService;
   },
 ) {
-  const { owners, splits, sources, settlements, publishing } = m;
+  const { db, owners, splits, sources, settlements, publishing } = m;
   const payments = config.paymentService ?? stubPaymentService;
-  const modules = { owners, splits, sources, publishing };
+  const modules = { db, owners, splits, sources, publishing };
 
   /**
    * Payouts of an owner that block new money going out: no payment proof, a deferred one, or a proof that is not
    * approved (counted only once approved). Migrated payouts never block.
    */
-  function blockingPayoutsOf(ownerId: string) {
-    const pending = settlements
-      .listOperations({ ownerId })
-      .filter((o) => o.direction === 'out' && o.active && !o.migration);
-    const statuses = owners.documentStatuses(
+  async function blockingPayoutsOf(ownerId: string) {
+    const pending = (await settlements.listOperations({ ownerId })).filter(
+      (o) => o.direction === 'out' && o.active && !o.migration,
+    );
+    const statuses = await owners.documentStatuses(
       pending.map((o) => o.paymentProofId).filter((x): x is string => !!x),
     );
     return pending.filter(
@@ -59,15 +66,15 @@ export function createFacadeContext(
     );
   }
 
-  function opDocIds() {
-    return settlements
-      .allOperations()
-      .flatMap((o) => [o.documentId, o.paymentProofId].filter((x): x is string => !!x));
+  async function opDocIds() {
+    return (await settlements.allOperations()).flatMap((o) =>
+      [o.documentId, o.paymentProofId].filter((x): x is string => !!x),
+    );
   }
 
-  function checkSplitDocument(documentId: string | null | undefined) {
+  async function checkSplitDocument(documentId: string | null | undefined) {
     if (!documentId) return;
-    const d = owners.getDocument(documentId);
+    const d = await owners.getDocument(documentId);
     if (!SPLIT_DOCUMENT_KINDS.includes(d.kind))
       throw new ValidationError(
         `A split is confirmed by an appendix, contract or buyout document, not "${d.kind}"`,
@@ -75,9 +82,9 @@ export function createFacadeContext(
   }
 
   /** Validates every share before new artists are created, so a rejected split leaves nothing behind in module 1. */
-  function resolveShares(shares: ShareSpec[]) {
+  async function resolveShares(shares: ShareSpec[]) {
     // A merged artist id stands for the surviving artist (D-095): one person can appear only once in a split.
-    const idx = owners.artistIndex();
+    const idx = await owners.artistIndex();
     const canon = (id: string) => idx.get(id)?.id ?? id;
     const ids = shares
       .map((s) => s.artistId)
@@ -91,41 +98,51 @@ export function createFacadeContext(
     if (new Set(pseudonyms).size !== pseudonyms.length)
       throw new ValidationError('The same new artist appears twice in one split');
     for (const s of shares) {
-      if (s.artistId) owners.getArtist(s.artistId);
+      if (s.artistId) await owners.getArtist(s.artistId);
       else if (!s.newArtistPseudonym)
         throw new ValidationError('Each share needs an artistId or a newArtistPseudonym');
     }
-    return () =>
-      shares.map((s) =>
-        s.artistId
-          ? { artistId: canon(s.artistId), percent: s.percent }
-          : {
-              artistId: owners.createArtist({
-                pseudonym: s.newArtistPseudonym as string,
-                ownerId: null,
-                origin: 'split',
-              }).id,
-              percent: s.percent,
-            },
-      );
+    return async () => {
+      const out: { artistId: string; percent: string }[] = [];
+      for (const s of shares) {
+        out.push(
+          s.artistId
+            ? { artistId: canon(s.artistId), percent: s.percent }
+            : {
+                artistId: (
+                  await owners.createArtist({
+                    pseudonym: s.newArtistPseudonym as string,
+                    ownerId: null,
+                    origin: 'split',
+                  })
+                ).id,
+                percent: s.percent,
+              },
+        );
+      }
+      return out;
+    };
   }
 
   /** The owner balance and the Believe files it was calculated from (a payout snapshot records them). */
   async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}) {
-    const id = owners.resolveOwnerId(ownerId);
-    owners.getOwner(id);
-    const calc = await calculate(modules, opDocIds());
+    const id = await owners.resolveOwnerId(ownerId);
+    await owners.getOwner(id);
+    const calc = await calculate(modules, await opDocIds());
+    // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
+    const { owner, operations } = await db.snapshot(async () => ({
+      owner: await owners.getOwner(id),
+      operations: await settlements.listOperations({ ownerId: id }),
+    }));
     return {
       files: calc.believeFiles,
-      balance: {
-        owner: owners.getOwner(id),
-        ...ownerBalance(calc, id, settlements.listOperations({ ownerId: id }), f),
-      },
+      balance: { owner, ...ownerBalance(calc, id, operations, f) },
     };
   }
 
   return {
     config,
+    db,
     owners,
     splits,
     sources,

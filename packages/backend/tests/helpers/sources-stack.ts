@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { splitStatements } from '../../scripts/migrate-clickhouse';
 import { clickHouseConfigFromEnv, createClickHouse } from '../../src/shared/clickhouse';
 import { createPostgres, postgresConfigFromEnv } from '../../src/shared/postgres';
+import { createDb } from '../../src/shared/pg-db';
 import {
   createBelieveColumnar,
   createSourcesService,
@@ -47,9 +48,18 @@ export async function createIsolatedSources() {
   const columnar = createBelieveColumnar(ch, { database, stageDatabase });
   const service = createSourcesService({ registry, columnar, storageDir });
 
+  const db = createDb(pg.pool);
+  const moduleTables = (
+    await pg.pool.query<{ t: string }>(
+      `SELECT format('%I.%I', schemaname, tablename) AS t FROM pg_tables
+       WHERE schemaname IN ('owners', 'splits', 'settlements', 'publishing')`,
+    )
+  ).rows.map((r) => r.t);
+
   return {
     pg,
     ch,
+    db,
     registry,
     columnar,
     service,
@@ -68,6 +78,10 @@ export async function createIsolatedSources() {
       ).json<{ name: string }>();
       for (const t of stages) await ch.command({ query: `DROP TABLE IF EXISTS ${stageDatabase}.${t.name}` });
       await pg.pool.query('DELETE FROM source_files');
+    },
+    /** Empties every table of the modules owners, splits, settlements and publishing. */
+    async resetModules() {
+      if (moduleTables.length > 0) await pg.pool.query(`TRUNCATE ${moduleTables.join(', ')}`);
     },
     async close() {
       await pg.close();

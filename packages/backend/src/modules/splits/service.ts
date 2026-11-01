@@ -2,7 +2,8 @@ import { Decimal, sum } from '../../shared/money';
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
-import type { ShareRow, SplitRow, SplitsDb } from './repository';
+import type { Db } from '../../shared/pg-db';
+import type { ShareRow, SplitRow } from './repository';
 import { createSplitsRepository } from './repository';
 
 export interface ShareInput {
@@ -68,7 +69,7 @@ const overlaps = (
   b: { validFrom: string; validTo: string | null },
 ) => a.validFrom < (b.validTo ?? '9999-12-31') && b.validFrom < (a.validTo ?? '9999-12-31');
 
-export function createSplitsService(db: SplitsDb) {
+export function createSplitsService(db: Db) {
   const repo = createSplitsRepository(db);
 
   function view(s: SplitRow, shares: ShareRow[]): SplitView {
@@ -86,7 +87,7 @@ export function createSplitsService(db: SplitsDb) {
     };
   }
 
-  function insert(input: {
+  async function insert(input: {
     isrc: string;
     validFrom: IsoDate;
     validTo: IsoDate | null;
@@ -94,9 +95,9 @@ export function createSplitsService(db: SplitsDb) {
     documentId: string | null;
     origin: string;
     note?: string | null;
-  }): string {
+  }): Promise<string> {
     const id = newId();
-    repo.insertSplit({
+    await repo.insertSplit({
       id,
       isrc: input.isrc,
       validFrom: input.validFrom,
@@ -106,8 +107,9 @@ export function createSplitsService(db: SplitsDb) {
       note: input.note ?? null,
       createdAt: nowIso(),
     });
-    for (const s of input.shares)
-      repo.insertShare({ splitId: id, artistId: s.artistId, percent: s.percent.toFixed() });
+    await repo.insertShares(
+      input.shares.map((s) => ({ splitId: id, artistId: s.artistId, percent: s.percent.toFixed() })),
+    );
     return id;
   }
 
@@ -116,7 +118,7 @@ export function createSplitsService(db: SplitsDb) {
      * Creates a split for an ISRC. Without a confirming document the split is still calculated,
      * but the facade excludes it from totals (category C, "waiting for confirmation").
      */
-    createSplit(input: {
+    async createSplit(input: {
       isrc: string;
       validFrom: string;
       validTo?: string | null;
@@ -124,15 +126,15 @@ export function createSplitsService(db: SplitsDb) {
       documentId?: string | null;
       origin?: string;
       note?: string | null;
-    }): SplitView {
+    }): Promise<SplitView> {
       const isrc = assertIsrc(input.isrc);
       const validFrom = assertDate(input.validFrom);
       const validTo = input.validTo ? assertDate(input.validTo) : null;
       if (validTo !== null && validTo <= validFrom)
         throw new ValidationError('valid_to must be after valid_from');
       const shares = validateShares(input.shares);
-      return repo.transaction(() => {
-        for (const other of repo.splitsOfIsrc(isrc)) {
+      return repo.transaction(async () => {
+        for (const other of await repo.splitsOfIsrc(isrc)) {
           if (overlaps(other, { validFrom, validTo })) {
             throw new ConflictError(
               `Split period overlaps an existing split of ${isrc} from ${other.validFrom}`,
@@ -140,7 +142,7 @@ export function createSplitsService(db: SplitsDb) {
             );
           }
         }
-        const id = insert({
+        const id = await insert({
           isrc,
           validFrom,
           validTo,
@@ -157,28 +159,28 @@ export function createSplitsService(db: SplitsDb) {
      * Changes the split of an ISRC from a date: the split in force is closed at that date and a new one starts.
      * Every change must be confirmed by a document (a new contract, appendix or buyout).
      */
-    changeSplit(input: {
+    async changeSplit(input: {
       isrc: string;
       from: string;
       shares: ShareInput[];
       documentId: string;
       origin?: string;
       note?: string | null;
-    }): SplitView {
+    }): Promise<SplitView> {
       if (!input.documentId)
         throw new RuleViolationError('A split change requires a confirming document', 'document_required');
       const isrc = assertIsrc(input.isrc);
       const from = assertDate(input.from);
       const shares = validateShares(input.shares);
-      return repo.transaction(() => {
-        const existing = repo.splitsOfIsrc(isrc);
+      return repo.transaction(async () => {
+        const existing = await repo.splitsOfIsrc(isrc);
         const current = existing.find((s) => covers(s, from));
         // The new split lasts until the end of the split it replaces, or until the next existing split.
         let validTo: string | null;
         if (current) {
           validTo = current.validTo;
           // History is kept: a split replaced from its first day stays as an empty period [from, from).
-          repo.setValidTo(current.id, from);
+          await repo.setValidTo(current.id, from);
         } else {
           validTo =
             existing
@@ -186,7 +188,7 @@ export function createSplitsService(db: SplitsDb) {
               .filter((d) => d > from)
               .sort()[0] ?? null;
         }
-        const id = insert({
+        const id = await insert({
           isrc,
           validFrom: from,
           validTo,
@@ -207,19 +209,19 @@ export function createSplitsService(db: SplitsDb) {
     },
 
     /** Runs the checks of createSplit without writing (the facade calls it before creating new artists). */
-    checkCreate(input: {
+    async checkCreate(input: {
       isrc: string;
       validFrom: string;
       validTo?: string | null;
       percents: string[];
-    }): void {
+    }): Promise<void> {
       const isrc = assertIsrc(input.isrc);
       const validFrom = assertDate(input.validFrom);
       const validTo = input.validTo ? assertDate(input.validTo) : null;
       if (validTo !== null && validTo <= validFrom)
         throw new ValidationError('valid_to must be after valid_from');
       validateShares(input.percents.map((percent, i) => ({ artistId: `check-${i}`, percent })));
-      for (const other of repo.splitsOfIsrc(isrc)) {
+      for (const other of await repo.splitsOfIsrc(isrc)) {
         if (overlaps(other, { validFrom, validTo })) {
           throw new ConflictError(
             `Split period overlaps an existing split of ${isrc} from ${other.validFrom}`,
@@ -233,30 +235,30 @@ export function createSplitsService(db: SplitsDb) {
      * Buyout: the seller's share becomes 0 on the listed ISRCs from the effective date; our share (the remainder)
      * grows automatically. The buyout payment itself is not part of any balance.
      */
-    buyout(input: {
+    async buyout(input: {
       isrcs: string[];
       sellerArtistId: string;
       effectiveFrom: string;
       documentId: string;
       /** Every id that stands for the seller (the facade adds artists merged into it); default: the seller only. */
       sellerArtistIds?: string[];
-    }): SplitView[] {
+    }): Promise<SplitView[]> {
       const sellerIds = new Set(input.sellerArtistIds ?? [input.sellerArtistId]);
       sellerIds.add(input.sellerArtistId);
       if (!input.documentId)
         throw new RuleViolationError('A buyout requires a buyout document', 'document_required');
       const from = assertDate(input.effectiveFrom);
-      return repo.transaction(() =>
-        input.isrcs.flatMap((raw) => {
+      return repo.transaction(async () => {
+        const changed: SplitView[] = [];
+        for (const raw of input.isrcs) {
           const isrc = assertIsrc(raw);
-          const all = repo.splitsOfIsrc(isrc);
+          const all = await repo.splitsOfIsrc(isrc);
           const current = all.find((s) => covers(s, from));
           if (!current) throw new NotFoundError('Split in force for', `${isrc} at ${from}`);
           // The seller's share becomes 0 from the effective date on, also in splits that start later.
           const affected = [current, ...all.filter((s) => s.validFrom > from && s.validTo !== s.validFrom)];
-          const changed: SplitView[] = [];
           for (const s of affected) {
-            const shares = repo.sharesOf([s.id]);
+            const shares = await repo.sharesOf([s.id]);
             const seller = shares.filter((x) => sellerIds.has(x.artistId));
             if (s === current && seller.length === 0)
               throw new ValidationError(`Seller is not in the split of ${isrc}`);
@@ -266,7 +268,7 @@ export function createSplitsService(db: SplitsDb) {
               percent: sellerIds.has(x.artistId) ? '0' : x.percent,
             }));
             changed.push(
-              service.changeSplit({
+              await service.changeSplit({
                 isrc,
                 from: s === current ? from : s.validFrom,
                 shares: next,
@@ -275,14 +277,14 @@ export function createSplitsService(db: SplitsDb) {
               }),
             );
           }
-          return changed;
-        }),
-      );
+        }
+        return changed;
+      });
     },
 
     /** Attaches the confirming appendix document to an existing split. */
-    confirmSplit(splitId: string, documentId: string): SplitView {
-      const s = repo.getSplit(splitId);
+    async confirmSplit(splitId: string, documentId: string): Promise<SplitView> {
+      const s = await repo.getSplit(splitId);
       if (!s) throw new NotFoundError('Split', splitId);
       if (s.documentId && s.documentId !== documentId) {
         throw new ConflictError(
@@ -290,44 +292,55 @@ export function createSplitsService(db: SplitsDb) {
           'split_document_set',
         );
       }
-      repo.setDocument(splitId, documentId);
+      await repo.setDocument(splitId, documentId);
       return service.getSplit(splitId);
     },
 
-    getSplit(id: string): SplitView {
-      const s = repo.getSplit(id);
+    async getSplit(id: string): Promise<SplitView> {
+      const s = await repo.getSplit(id);
       if (!s) throw new NotFoundError('Split', id);
-      return view(s, repo.sharesOf([id]));
+      return view(s, await repo.sharesOf([id]));
     },
 
-    listSplits(filter: { isrc?: string; artistId?: string } = {}): SplitView[] {
+    async listSplits(filter: { isrc?: string; artistId?: string } = {}): Promise<SplitView[]> {
       let rows: SplitRow[];
-      if (filter.isrc) rows = repo.splitsOfIsrc(assertIsrc(filter.isrc));
-      else if (filter.artistId) {
-        const ids = new Set(repo.splitIdsOfArtist(filter.artistId));
-        rows = repo.allSplits().filter((s) => ids.has(s.id));
-      } else rows = repo.allSplits();
-      const shares = repo.sharesOf(rows.map((r) => r.id));
-      return rows.map((r) => view(r, shares));
+      let shares: ShareRow[];
+      if (filter.isrc) {
+        rows = await repo.splitsOfIsrc(assertIsrc(filter.isrc));
+        shares = await repo.sharesOf(rows.map((r) => r.id));
+      } else if (filter.artistId) {
+        const ids = new Set(await repo.splitIdsOfArtist(filter.artistId));
+        rows = (await repo.allSplits()).filter((s) => ids.has(s.id));
+        shares = await repo.sharesOf(rows.map((r) => r.id));
+      } else {
+        // every split: one read of all shares instead of a list of ids (13 000+ splits)
+        [rows, shares] = await db.snapshot(() => Promise.all([repo.allSplits(), repo.allShares()]));
+      }
+      const bySplit = new Map<string, ShareRow[]>();
+      for (const sh of shares) bySplit.set(sh.splitId, [...(bySplit.get(sh.splitId) ?? []), sh]);
+      return rows.map((r) => view(r, bySplit.get(r.id) ?? []));
     },
 
     /** The split in force for an ISRC on a date (the report date). */
-    splitAt(isrcRaw: string, date: string): SplitAtDate | undefined {
-      return service.index().at(assertIsrc(isrcRaw), date);
+    async splitAt(isrcRaw: string, date: string): Promise<SplitAtDate | undefined> {
+      return (await service.index()).at(assertIsrc(isrcRaw), date);
     },
 
     /**
      * In-memory index of all splits, built once per facade calculation (one consistent read of the module).
      */
-    index() {
+    async index() {
+      const [allSplits, allShares] = await db.snapshot(() =>
+        Promise.all([repo.allSplits(), repo.allShares()]),
+      );
       const byIsrc = new Map<string, SplitRow[]>();
-      for (const s of repo.allSplits()) {
+      for (const s of allSplits) {
         const list = byIsrc.get(s.isrc) ?? [];
         list.push(s);
         byIsrc.set(s.isrc, list);
       }
       const sharesBySplit = new Map<string, { artistId: string; percent: Decimal }[]>();
-      for (const sh of repo.allShares()) {
+      for (const sh of allShares) {
         const list = sharesBySplit.get(sh.splitId) ?? [];
         list.push({ artistId: sh.artistId, percent: new Decimal(sh.percent) });
         sharesBySplit.set(sh.splitId, list);
@@ -368,4 +381,4 @@ export function createSplitsService(db: SplitsDb) {
 }
 
 export type SplitsService = ReturnType<typeof createSplitsService>;
-export type SplitsIndex = ReturnType<SplitsService['index']>;
+export type SplitsIndex = Awaited<ReturnType<SplitsService['index']>>;

@@ -1,48 +1,38 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { bigint, boolean, date, pgSchema, text } from 'drizzle-orm/pg-core';
+import { isoTimestamp } from '../../shared/pg-db';
 
 // Settlements and payouts: every balance change is an operation `in` or `out` with a signed amount in integer cents.
 // There are no operation types; optional fields (artist, period, scope, document, payment proof, operation ref) say
 // what an operation is.
+// The DDL is migrations/postgres/0004_settlements.sql (schema `settlements`); change both.
 
-export const operations = sqliteTable('operations', {
+const s = pgSchema('settlements');
+
+export const operations = s.table('operations', {
   id: text('id').primaryKey(),
   direction: text('direction', { enum: ['in', 'out'] }).notNull(),
-  amountCents: integer('amount_cents').notNull(),
+  amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
   ownerId: text('owner_id'),
   artistId: text('artist_id'),
-  date: text('date').notNull(),
+  date: date('date', { mode: 'string' }).notNull(),
   period: text('period'),
+  /** JSON text of the recoup scope. */
   scope: text('scope'),
   documentId: text('document_id'),
   paymentProofId: text('payment_proof_id'),
   operationRef: text('operation_ref'),
-  deferred: integer('deferred', { mode: 'boolean' }).notNull(),
-  migration: integer('migration', { mode: 'boolean' }).notNull(),
+  deferred: boolean('deferred').notNull(),
+  migration: boolean('migration').notNull(),
   comment: text('comment').notNull(),
   externalRef: text('external_ref'),
-  createdAt: text('created_at').notNull(),
-  deactivatedAt: text('deactivated_at'),
+  createdAt: isoTimestamp('created_at').notNull(),
+  deactivatedAt: isoTimestamp('deactivated_at'),
   deactivatedReason: text('deactivated_reason'),
 });
 
-export const payoutSnapshots = sqliteTable('payout_snapshots', {
+export const payoutSnapshots = s.table('payout_snapshots', {
   operationId: text('operation_id').primaryKey(),
-  createdAt: text('created_at').notNull(),
+  createdAt: isoTimestamp('created_at').notNull(),
+  /** The snapshot JSON exactly as written (text, not jsonb, so it is kept byte for byte). */
   payload: text('payload').notNull(),
 });
-
-export const settlementsSchema = { operations, payoutSnapshots };
-
-export const SETTLEMENTS_DDL = `
-CREATE TABLE IF NOT EXISTS operations (
-  id TEXT PRIMARY KEY, direction TEXT NOT NULL, amount_cents INTEGER NOT NULL, owner_id TEXT, artist_id TEXT,
-  date TEXT NOT NULL, period TEXT, scope TEXT, document_id TEXT, payment_proof_id TEXT, operation_ref TEXT,
-  deferred INTEGER NOT NULL DEFAULT 0, migration INTEGER NOT NULL DEFAULT 0, comment TEXT NOT NULL, external_ref TEXT,
-  created_at TEXT NOT NULL, deactivated_at TEXT, deactivated_reason TEXT
-);
-CREATE INDEX IF NOT EXISTS operations_owner ON operations(owner_id);
-CREATE INDEX IF NOT EXISTS operations_artist ON operations(artist_id);
-CREATE TABLE IF NOT EXISTS payout_snapshots (
-  operation_id TEXT PRIMARY KEY REFERENCES operations(id), created_at TEXT NOT NULL, payload TEXT NOT NULL
-);
-`;

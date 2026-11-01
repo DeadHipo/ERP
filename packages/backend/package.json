@@ -16,7 +16,6 @@
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@clickhouse/client": "^1.24.1",
     "@erp/shared": "*",
-    "better-sqlite3": "^13.0.3",
     "busboy": "^1.6.0",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.45.4",
@@ -27,7 +26,6 @@
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/busboy": "^1.5.5",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.2",

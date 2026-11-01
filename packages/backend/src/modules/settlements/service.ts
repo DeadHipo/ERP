@@ -2,10 +2,9 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
-import type { OperationRow, SettlementsDb } from './repository';
+import type { OperationRow } from './repository';
+import type { Db } from '../../shared/pg-db';
 import type { Scope, ScopeKind } from './recoup';
-
-export type { SettlementsDb } from './repository';
 
 export interface OperationView {
   id: string;
@@ -91,12 +90,11 @@ function validateScope(scope: Scope): Scope {
   return { kind: scope.kind, ...(isrcs ? { isrcs } : {}), ...(excludeIsrcs ? { excludeIsrcs } : {}) };
 }
 
-export function createSettlementsService(db: SettlementsDb) {
+export function createSettlementsService(db: Db) {
   const repo = createSettlementsRepository(db);
-  const tx = <T>(fn: () => T): T => repo.transaction(fn);
 
-  function get(id: string): OperationRow {
-    const o = repo.getOperation(id);
+  async function get(id: string): Promise<OperationRow> {
+    const o = await repo.getOperation(id);
     if (!o) throw new NotFoundError('Operation', id);
     return o;
   }
@@ -109,135 +107,146 @@ export function createSettlementsService(db: SettlementsDb) {
      * - in with a positive amount is a deduction (penalty, recalculation) tied to an artist; its scope defaults to "any";
      * - in with a negative amount adds to the balance: a return of a failed payout (operationRef) or a credit (artist).
      */
-    createOperation(input: OperationInput): OperationView {
-      if (!Number.isInteger(input.amountCents) || input.amountCents === 0)
-        throw new ValidationError('Amount must be a non-zero number of cents');
-      const date = assertDate(input.date);
-      let scope = input.scope ? validateScope(input.scope) : null;
-      if (input.direction === 'out') {
-        if (input.amountCents < 0)
-          throw new ValidationError('An out operation has a positive amount; use a return (in) instead');
-        if (!input.ownerId) throw new ValidationError('A payout goes to an owner');
-        if (scope) {
-          if (!input.artistId) throw new ValidationError('A recoupable payout is tied to an artist');
-          if (!input.documentId)
+    async createOperation(input: OperationInput): Promise<OperationView> {
+      return repo.transaction(async () => {
+        if (!Number.isInteger(input.amountCents) || input.amountCents === 0)
+          throw new ValidationError('Amount must be a non-zero number of cents');
+        const date = assertDate(input.date);
+        let scope = input.scope ? validateScope(input.scope) : null;
+        if (input.direction === 'out') {
+          if (input.amountCents < 0)
+            throw new ValidationError('An out operation has a positive amount; use a return (in) instead');
+          if (!input.ownerId) throw new ValidationError('A payout goes to an owner');
+          if (scope) {
+            if (!input.artistId) throw new ValidationError('A recoupable payout is tied to an artist');
+            if (!input.documentId)
+              throw new RuleViolationError(
+                'A recoupable payout (advance) needs a basis document',
+                'document_required',
+              );
+          }
+        } else if (input.amountCents > 0) {
+          if (!input.artistId) throw new ValidationError('A deduction is tied to an artist');
+          scope = scope ?? { kind: 'any' };
+        } else if (input.operationRef) {
+          // A return reverses a payout that counted: plain payout, active, confirmed by a payment proof (or migrated).
+          const ref = await get(input.operationRef);
+          if (ref.direction !== 'out' || ref.scope)
+            throw new ValidationError('A return refers to a payout (out without scope)');
+          if (ref.deactivatedAt) throw new ValidationError('The payout is inactive');
+          if (!ref.paymentProofId && !ref.migration)
             throw new RuleViolationError(
-              'A recoupable payout (advance) needs a basis document',
-              'document_required',
+              'The payout never counted (no payment proof): deactivate it instead',
+              'payout_not_counted',
             );
+          const returned = (await repo.operationsReferring(ref.id))
+            .filter((o) => o.deactivatedAt === null)
+            .reduce((s, o) => s - o.amountCents, 0);
+          if (returned - input.amountCents > ref.amountCents)
+            throw new ValidationError('Returns cannot exceed the payout');
+          input = { ...input, ownerId: ref.ownerId };
+          scope = null;
+        } else {
+          if (!input.artistId) throw new ValidationError('A credit is tied to an artist');
+          scope = null;
         }
-      } else if (input.amountCents > 0) {
-        if (!input.artistId) throw new ValidationError('A deduction is tied to an artist');
-        scope = scope ?? { kind: 'any' };
-      } else if (input.operationRef) {
-        // A return reverses a payout that counted: plain payout, active, confirmed by a payment proof (or migrated).
-        const ref = get(input.operationRef);
-        if (ref.direction !== 'out' || ref.scope)
-          throw new ValidationError('A return refers to a payout (out without scope)');
-        if (ref.deactivatedAt) throw new ValidationError('The payout is inactive');
-        if (!ref.paymentProofId && !ref.migration)
-          throw new RuleViolationError(
-            'The payout never counted (no payment proof): deactivate it instead',
-            'payout_not_counted',
-          );
-        const returned = repo
-          .operationsReferring(ref.id)
-          .filter((o) => o.deactivatedAt === null)
-          .reduce((s, o) => s - o.amountCents, 0);
-        if (returned - input.amountCents > ref.amountCents)
-          throw new ValidationError('Returns cannot exceed the payout');
-        input = { ...input, ownerId: ref.ownerId };
-        scope = null;
-      } else {
-        if (!input.artistId) throw new ValidationError('A credit is tied to an artist');
-        scope = null;
-      }
-      const id = newId();
-      repo.insertOperation({
-        id,
-        direction: input.direction,
-        amountCents: input.amountCents,
-        ownerId: input.ownerId ?? null,
-        artistId: input.artistId ?? null,
-        date,
-        period: input.period ?? null,
-        scope: scope ? JSON.stringify(scope) : null,
-        documentId: input.documentId ?? null,
-        paymentProofId: input.paymentProofId ?? null,
-        operationRef: input.operationRef ?? null,
-        deferred: input.deferred ?? false,
-        migration: input.migration ?? false,
-        comment: input.comment,
-        externalRef: input.externalRef ?? null,
-        createdAt: nowIso(),
-        deactivatedAt: null,
-        deactivatedReason: null,
+        const id = newId();
+        await repo.insertOperation({
+          id,
+          direction: input.direction,
+          amountCents: input.amountCents,
+          ownerId: input.ownerId ?? null,
+          artistId: input.artistId ?? null,
+          date,
+          period: input.period ?? null,
+          scope: scope ? JSON.stringify(scope) : null,
+          documentId: input.documentId ?? null,
+          paymentProofId: input.paymentProofId ?? null,
+          operationRef: input.operationRef ?? null,
+          deferred: input.deferred ?? false,
+          migration: input.migration ?? false,
+          comment: input.comment,
+          externalRef: input.externalRef ?? null,
+          createdAt: nowIso(),
+          deactivatedAt: null,
+          deactivatedReason: null,
+        });
+        return view(await get(id));
       });
-      return view(get(id));
     },
 
-    getOperation: (id: string) => view(get(id)),
+    getOperation: async (id: string): Promise<OperationView> => view(await get(id)),
 
-    listOperations(filter: { ownerId?: string; artistId?: string } = {}): OperationView[] {
-      let rows = repo.listOperations();
+    async listOperations(filter: { ownerId?: string; artistId?: string } = {}): Promise<OperationView[]> {
+      let rows = await repo.listOperations();
       if (filter.ownerId) rows = rows.filter((r) => r.ownerId === filter.ownerId);
       if (filter.artistId) rows = rows.filter((r) => r.artistId === filter.artistId);
       return rows.map(view);
     },
 
-    allOperations: (): OperationView[] => repo.allOperations().map(view),
+    allOperations: async (): Promise<OperationView[]> => (await repo.allOperations()).map(view),
 
     /** The payment proof makes a payout count (from the transfer); the deferred flag is cleared. */
-    attachPaymentProof(id: string, documentId: string): OperationView {
-      const o = get(id);
-      if (o.direction !== 'out') throw new ValidationError('Payment proofs belong to payouts');
-      if (o.deactivatedAt) throw new ValidationError('The operation is inactive');
-      if (o.paymentProofId) throw new ConflictError('The payout already has a payment proof', 'proof_exists');
-      repo.setPaymentProof(id, documentId);
-      return view(get(id));
+    async attachPaymentProof(id: string, documentId: string): Promise<OperationView> {
+      return repo.transaction(async () => {
+        const o = await get(id);
+        if (o.direction !== 'out') throw new ValidationError('Payment proofs belong to payouts');
+        if (o.deactivatedAt) throw new ValidationError('The operation is inactive');
+        if (o.paymentProofId)
+          throw new ConflictError('The payout already has a payment proof', 'proof_exists');
+        await repo.setPaymentProof(id, documentId);
+        return view(await get(id));
+      });
     },
 
     /** A deferred payment (queued at the payment service) blocks new payouts for the owner until the proof arrives. */
-    setDeferred(id: string, deferred: boolean): OperationView {
-      const o = get(id);
-      if (o.direction !== 'out') throw new ValidationError('Only payouts can be deferred');
-      if (o.deactivatedAt || o.migration)
-        throw new ValidationError('Inactive or migrated payouts cannot be deferred');
-      repo.setDeferred(id, deferred);
-      return view(get(id));
+    async setDeferred(id: string, deferred: boolean): Promise<OperationView> {
+      return repo.transaction(async () => {
+        const o = await get(id);
+        if (o.direction !== 'out') throw new ValidationError('Only payouts can be deferred');
+        if (o.deactivatedAt || o.migration)
+          throw new ValidationError('Inactive or migrated payouts cannot be deferred');
+        await repo.setDeferred(id, deferred);
+        return view(await get(id));
+      });
     },
 
     /** Soft rollback: the record stays with a reason, recalculation from scratch ignores it. */
-    deactivate(id: string, reason: string, opts: { transferFailed?: boolean } = {}): OperationView {
-      const o = get(id);
-      if (o.deactivatedAt) throw new ConflictError('Operation is already inactive');
-      if (!reason.trim()) throw new ValidationError('A reason is required');
-      // A payout already sent to the payment service must not be rolled back silently, or the button would pay
-      // the same money again (D-101): with a proof the money left (use a return); without one the operator
-      // confirms that the transfer failed.
-      if (o.direction === 'out' && !o.scope && o.externalRef) {
-        if (o.paymentProofId)
-          throw new ConflictError(
-            'This payout was paid (proof attached): record a return instead',
-            'payout_paid',
-          );
-        if (!opts.transferFailed)
-          throw new ConflictError(
-            'This payout was sent to the payment service: confirm that the transfer failed to deactivate it',
-            'payout_sent',
-          );
-      }
-      const activeReturns = repo.operationsReferring(id).filter((r) => r.deactivatedAt === null);
-      if (activeReturns.length > 0)
-        throw new ConflictError('Deactivate the returns of this payout first', 'has_returns');
-      repo.setDeactivated(id, nowIso(), reason);
-      return view(get(id));
+    async deactivate(
+      id: string,
+      reason: string,
+      opts: { transferFailed?: boolean } = {},
+    ): Promise<OperationView> {
+      return repo.transaction(async () => {
+        const o = await get(id);
+        if (o.deactivatedAt) throw new ConflictError('Operation is already inactive');
+        if (!reason.trim()) throw new ValidationError('A reason is required');
+        // A payout already sent to the payment service must not be rolled back silently, or the button would pay
+        // the same money again (D-101): with a proof the money left (use a return); without one the operator
+        // confirms that the transfer failed.
+        if (o.direction === 'out' && !o.scope && o.externalRef) {
+          if (o.paymentProofId)
+            throw new ConflictError(
+              'This payout was paid (proof attached): record a return instead',
+              'payout_paid',
+            );
+          if (!opts.transferFailed)
+            throw new ConflictError(
+              'This payout was sent to the payment service: confirm that the transfer failed to deactivate it',
+              'payout_sent',
+            );
+        }
+        const activeReturns = (await repo.operationsReferring(id)).filter((r) => r.deactivatedAt === null);
+        if (activeReturns.length > 0)
+          throw new ConflictError('Deactivate the returns of this payout first', 'has_returns');
+        await repo.setDeactivated(id, nowIso(), reason);
+        return view(await get(id));
+      });
     },
 
     /** Payouts of an owner that are not confirmed by a payment proof yet (or deferred): they block new payouts. */
-    blockingPayouts(ownerId: string): OperationView[] {
-      return repo
-        .operationsOfOwner(ownerId)
+    async blockingPayouts(ownerId: string): Promise<OperationView[]> {
+      return (await repo.operationsOfOwner(ownerId))
         .filter(
           (o) =>
             o.direction === 'out' &&
@@ -248,27 +257,27 @@ export function createSettlementsService(db: SettlementsDb) {
         .map(view);
     },
 
-    setExternalRef(id: string, externalRef: string): void {
-      repo.setExternalRef(id, externalRef);
+    async setExternalRef(id: string, externalRef: string): Promise<void> {
+      await repo.setExternalRef(id, externalRef);
     },
 
     /** Stores a payout to an owner together with its snapshot (per-artist breakdown, file hashes). */
-    recordPayout(input: {
+    async recordPayout(input: {
       ownerId: string;
       amountCents: number;
       date: string;
       comment: string;
       externalRef?: string | null;
       snapshot: unknown;
-    }): OperationView {
-      return tx(() => {
-        if (service.blockingPayouts(input.ownerId).length > 0) {
+    }): Promise<OperationView> {
+      return repo.transaction(async () => {
+        if ((await service.blockingPayouts(input.ownerId)).length > 0) {
           throw new RuleViolationError(
             'A previous payout of this owner has no payment proof yet',
             'payout_blocked',
           );
         }
-        const op = service.createOperation({
+        const op = await service.createOperation({
           direction: 'out',
           amountCents: input.amountCents,
           ownerId: input.ownerId,
@@ -277,7 +286,7 @@ export function createSettlementsService(db: SettlementsDb) {
           externalRef: input.externalRef ?? null,
           deferred: true,
         });
-        repo.insertSnapshot({
+        await repo.insertSnapshot({
           operationId: op.id,
           createdAt: nowIso(),
           payload: JSON.stringify(input.snapshot),
@@ -286,14 +295,14 @@ export function createSettlementsService(db: SettlementsDb) {
       });
     },
 
-    getSnapshot(operationId: string): unknown {
-      const s = repo.getSnapshot(operationId);
+    async getSnapshot(operationId: string): Promise<unknown> {
+      const s = await repo.getSnapshot(operationId);
       if (!s) throw new NotFoundError('Payout snapshot', operationId);
       return JSON.parse(s.payload);
     },
 
-    reassignOwner(fromOwnerId: string, intoOwnerId: string): void {
-      repo.reassignOwner(fromOwnerId, intoOwnerId);
+    async reassignOwner(fromOwnerId: string, intoOwnerId: string): Promise<void> {
+      await repo.reassignOwner(fromOwnerId, intoOwnerId);
     },
   };
   return service;
