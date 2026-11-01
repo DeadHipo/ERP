@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-120 by topic)
+# Decision index (D-001 … D-121 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -11,7 +11,7 @@ Paths in entries before D-116 are old: read `src/…`, `tests/…`, `scripts/…
 Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer one) · ⚠ waits for the product owner.
 
 ## Process, layout, infrastructure
-- D-001 ORM: Drizzle + better-sqlite3 · in force (D-107 adds pg + @clickhouse/client)
+- D-001 ORM: Drizzle + better-sqlite3 · *refined by* D-107 (pg + @clickhouse/client), D-121 (SQLite removed: Drizzle pg-core)
 - D-004 No git commit/push unless asked · in force
 - D-005 Data volume: July 2026 first · historical (full history loaded, D-086, D-111)
 - D-006 Reference check vs old ERP · in force
@@ -28,7 +28,8 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-107 pg + Drizzle, @clickhouse/client · in force
 - D-115 One repo; docs in `docs/`, reference data in `context_data/` · in force
 - D-116 npm workspaces `packages/{backend,frontend,shared}` · in force
-- D-117 `repository.ts` in every SQLite module, facade split by topic, private test folders · in force
+- D-117 `repository.ts` in every module, facade split by topic, private test folders · in force
+- D-121 Modules owners/splits/settlements/publishing on PostgreSQL (schema per module, soft cross-module refs, async, global write lock, cross-module transactions, data transfer script) · in force
 - D-118 Routers per topic, `/api/v1` · in force
 - D-119 API contract as data, OpenAPI, Swagger · in force
 - D-120 Agent guides in `docs/agents/`, nested CLAUDE.md files · in force
@@ -36,7 +37,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 ## Money and consistency
 - D-002 Exact decimals, cents for operations, round only at payout · *refined by* D-010
 - D-010 Pico-USD integers for source amounts · in force (ClickHouse stores `Decimal(38,12)`, D-102)
-- D-012 One consistent read per calculation · in force (sources read first, then SQLite modules in one sync stretch, D-110)
+- D-012 One consistent read per calculation · in force (sources read first, then all modules in one PostgreSQL REPEATABLE READ snapshot, D-121)
 
 ## UI
 - ~~D-003 Server-rendered pages~~ → D-007
@@ -71,7 +72,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-031 File name, account, month, generation date · in force
 - D-032 Line key, summing, control check · in force; ⚠ which fields to store
 - D-033 Duplicates and the original file · in force
-- D-034 Upload robustness (serialized per module) · in force
+- D-034 Upload robustness (serialized per module) · in force (plus one advisory lock over all writes, D-121)
 - ⚠ D-035 Lines without ISRC and negative lines (M10)
 - D-036 Unit of calculation · in force
 - D-037 Performance target · historical (measurements: D-111)

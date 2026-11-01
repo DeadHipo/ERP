@@ -54,11 +54,11 @@ Three consequences that surprise newcomers:
 
 | Module | Owns | Storage | Docs | Key decisions |
 |---|---|---|---|---|
-| `owners` (module 1) | owners, artists (pseudonyms), tracks (ISRC+UPC), documents, contracts, merges | `owners.sqlite` | 02, 99, ADR-001 | D-016…D-024, D-095 |
-| `splits` | shares per ISRC with validity periods, buyouts | `splits.sqlite` | 04, ADR-003 | D-025…D-030 |
+| `owners` (module 1) | owners, artists (pseudonyms), tracks (ISRC+UPC), documents, contracts, merges | PostgreSQL schema `owners` | 02, 99, ADR-001 | D-016…D-024, D-095 |
+| `splits` | shares per ISRC with validity periods, buyouts | PostgreSQL schema `splits` | 04, ADR-003 | D-025…D-030 |
 | `sources` | Believe file registry and report lines | PostgreSQL `source_files` + ClickHouse `believe.rows` | 03, 06 | D-031…D-038, D-102…D-114 |
-| `publishing` | B17 statements, writers, publishing terms | `publishing.sqlite` | 08 | D-039…D-046, D-083, D-087 |
-| `settlements` | operations in/out, payouts, scopes, recoupment | `settlements.sqlite` | 07 | D-047…D-056, D-072, D-094 |
+| `publishing` | B17 statements, writers, publishing terms | PostgreSQL schema `publishing` | 08 | D-039…D-046, D-083, D-087 |
+| `settlements` | operations in/out, payouts, scopes, recoupment | PostgreSQL schema `settlements` | 07 | D-047…D-056, D-072, D-094 |
 | `facade` | nothing stored; composes all modules, calculates, pays | — | 09 | D-012, D-057…D-061 |
 
 Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never imports another module, the facade
@@ -86,10 +86,12 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
 
 - Iteration 1 is done: everything in `README.md` sections 2, 5 and 8, with tests for every rule in section 5
   (D-096, D-098). Believe moved to PostgreSQL + ClickHouse (D-102…D-114). Monorepo, `/api/v1`, OpenAPI (D-116…D-119).
+  The other four modules moved from SQLite to PostgreSQL, one schema each, with their data (D-121, branch `feature/pg`).
 - Real data: all 47 Believe files (two accounts, ~76M lines) and the B17 statements load through the API into
   `data/real` (D-086, D-111). Reconciliation with the old ERP for July 2026: every difference explained (D-067, D-081,
   D-092).
-- **Next, according to the log:** publishing (B17) is the next module to move/review (D-114). Postponed on purpose
+- **Next, according to the log:** every module is on PostgreSQL (D-121); the module 1 design talk (document service,
+  splits without ISRC, a `legacy_baseline` document for old data) is open. Postponed on purpose
   (D-112, D-114): replacing/deleting a loaded file via API/UI, app deployment (no Dockerfile), backups, server memory
   during a calculation, the 5–6 s recalculating pages, the slow split list, demo mode.
 - **Out of scope until asked:** ASCAP (iteration 2), authentication and roles, a real payment-service integration

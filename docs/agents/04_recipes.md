@@ -16,7 +16,7 @@ Without the stack the facade/sources tests are **skipped**, not failed: always u
 
 | Test | What it enforces | Typical way to break it |
 |---|---|---|
-| `tests/boundaries.test.ts` | a module imports no other module, no facade, no API; the API opens no module; 4 SQLite files + no SQLite in sources | importing `../splits` inside `modules/owners`; calling `openXModule` in a route |
+| `tests/boundaries.test.ts` | a module imports no other module, no facade, no API; the API opens no module; each of the 4 modules has its own PostgreSQL schema, no foreign key crosses schemas (D-121) | importing `../splits` inside `modules/owners`; calling `openXModule` in a route |
 | `tests/rules-coverage.test.ts` | one test per README §5 rule; **every `Number(` in `src` must be in an allow-list** | `Number(amount)` anywhere, even for a non-money value: add it to the allow-list only if it is really not money |
 | `tests/api-contract.test.ts` | every Express route is in `src/api/operations.ts`, every response fits its schema, **the scenario calls every operation** | adding a route without an `API_OPERATIONS` entry, or without calling it in the scenario |
 | `tests/review-*.test.ts` | regressions found by independent reviews (D-069…D-101) | "simplifying" a rule that a reviewer once found broken: read the D-entry named in the test |
@@ -33,15 +33,19 @@ Without the stack the facade/sources tests are **skipped**, not failed: always u
 5. Call it in the scenario of `tests/api-contract.test.ts`, plus a behaviour test where the rule lives.
 6. Client: method in `packages/frontend/src/api/client.ts` (typed by the shared schemas).
 
-## 3. Change a SQLite module's data (owners, splits, settlements, publishing)
+## 3. Change a module's data (owners, splits, settlements, publishing: PostgreSQL, D-121)
 
-- The table is described **twice** in `modules/<m>/schema.ts`: the DDL string (`<M>_DDL`) and the Drizzle table.
-  Change both.
-- **There are no SQLite migrations.** `openModuleDb` (`src/shared/db.ts`) runs the DDL with `CREATE TABLE IF NOT
-  EXISTS` on open, so a new column/table appears in new files (tests, empty dirs) but **not** in existing databases
-  (`data/real`, `data/demo`). For a new table that is fine. For a new column on an existing table you must also
-  write an idempotent upgrade (for example check `PRAGMA table_info` and `ALTER TABLE … ADD COLUMN`) and log it in 97.
-  Keep the SQL portable (D-011): TEXT/INTEGER, ISO dates, integer money.
+- The table is described **twice**: the DDL in a migration `migrations/postgres/NNNN_<name>.sql` (schema `<m>`) and
+  the Drizzle table in `modules/<m>/schema.ts` (`pgSchema('<m>')`). Change both.
+- A change is a **new** migration file (the next number); never edit an applied one (the runner rejects a changed
+  checksum). Write it idempotent (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`), apply with `npm run migrate:pg`;
+  tests apply all migrations to their private database automatically.
+- No foreign keys to another module's schema (`boundaries.test.ts`); ids of other modules are checked in the facade.
+- Types: `date` (read as 'YYYY-MM-DD'), `timestamptz` (`isoTimestamp`, ISO text), `bigint` money (cents mode
+  'number', pico as text → BigInt), `numeric` percents (canonical with `new Decimal(v).toFixed()`), JSON as text +
+  `IS JSON` when the bytes matter.
+- Repositories call `db.orm()` per query (never keep an executor); a check-then-write goes in `repo.transaction()`.
+- If the data must also be copied from old SQLite files, keep `scripts/migrate-sqlite-to-pg.ts` in step.
 - All SQL lives in `modules/<m>/repository.ts`; `service.ts` holds rules only (D-117).
 - Expose new reads/writes in `service.ts`; the facade decides how modules combine.
 
