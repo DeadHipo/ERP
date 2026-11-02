@@ -3,12 +3,59 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
-import type { ShareRow, SplitRow } from './repository';
+import type { ParticipationRow, ShareRow, SplitRow } from './repository';
 import { createSplitsRepository } from './repository';
 
 export interface ShareInput {
   artistId: string;
   percent: string;
+  /** The row's own document: overrides the split's document for this row only (D-126). */
+  documentId?: string | null;
+}
+
+export type ParticipationBase = 'net' | 'bucket';
+export type FundedFrom = 'top' | 'artist_pool' | 'artist_share' | 'label_share';
+const FUNDED_ORDER: FundedFrom[] = ['top', 'artist_pool', 'artist_share', 'label_share'];
+
+export interface ParticipationInput {
+  isrc: string;
+  /** The recipient pseudonym. */
+  artistId: string;
+  percent: string;
+  base: ParticipationBase;
+  fundedFrom: FundedFrom;
+  /** Only for `artist_share`: the artist whose amount the percent is taken from. */
+  fromArtistId?: string | null;
+  validFrom: string;
+  validTo?: string | null;
+  documentId?: string | null;
+  origin?: string;
+  note?: string | null;
+}
+
+export interface ParticipationView {
+  id: string;
+  isrc: string;
+  artistId: string;
+  percent: string;
+  base: ParticipationBase;
+  fundedFrom: FundedFrom;
+  fromArtistId: string | null;
+  validFrom: IsoDate;
+  validTo: IsoDate | null;
+  documentId: string | null;
+  origin: string;
+  note: string | null;
+}
+
+export interface ParticipationAtDate {
+  id: string;
+  artistId: string;
+  percent: Decimal;
+  base: ParticipationBase;
+  fundedFrom: FundedFrom;
+  fromArtistId: string | null;
+  documentId: string | null;
 }
 
 export interface SplitView {
@@ -19,7 +66,7 @@ export interface SplitView {
   documentId: string | null;
   origin: string;
   note: string | null;
-  shares: { artistId: string; percent: string }[];
+  shares: { artistId: string; percent: string; documentId: string | null }[];
   /** Our share is never stored: 100 minus the sum of artist and MC shares. */
   ourShare: string;
 }
@@ -27,7 +74,7 @@ export interface SplitView {
 export interface SplitAtDate {
   splitId: string;
   documentId: string | null;
-  shares: { artistId: string; percent: Decimal }[];
+  shares: { artistId: string; percent: Decimal; documentId: string | null }[];
   ourShare: Decimal;
 }
 
@@ -43,13 +90,15 @@ function parsePercent(raw: string): Decimal {
 }
 
 /** Validates shares: each 0..100, no artist twice, the sum not above 100 (our share cannot be negative). */
-export function validateShares(shares: ShareInput[]): { artistId: string; percent: Decimal }[] {
+export function validateShares(
+  shares: ShareInput[],
+): { artistId: string; percent: Decimal; documentId: string | null }[] {
   const seen = new Set<string>();
   const parsed = shares.map((s) => {
     if (!s.artistId) throw new ValidationError('Share without artist');
     if (seen.has(s.artistId)) throw new ValidationError(`Artist ${s.artistId} appears twice in one split`);
     seen.add(s.artistId);
-    return { artistId: s.artistId, percent: parsePercent(s.percent) };
+    return { artistId: s.artistId, percent: parsePercent(s.percent), documentId: s.documentId ?? null };
   });
   const total = sum(parsed.map((p) => p.percent));
   if (total.gt(HUNDRED)) {
@@ -82,16 +131,52 @@ export function createSplitsService(db: Db) {
       documentId: s.documentId,
       origin: s.origin,
       note: s.note,
-      shares: own.map((x) => ({ artistId: x.artistId, percent: x.percent })),
+      shares: own.map((x) => ({ artistId: x.artistId, percent: x.percent, documentId: x.documentId })),
       ourShare: HUNDRED.sub(sum(own.map((x) => new Decimal(x.percent)))).toFixed(),
     };
+  }
+
+  function partView(p: ParticipationRow): ParticipationView {
+    return {
+      id: p.id,
+      isrc: p.isrc,
+      artistId: p.artistId,
+      percent: p.percent,
+      base: p.base as ParticipationBase,
+      fundedFrom: p.fundedFrom as FundedFrom,
+      fromArtistId: p.fromArtistId,
+      validFrom: p.validFrom,
+      validTo: p.validTo,
+      documentId: p.documentId,
+      origin: p.origin,
+      note: p.note,
+    };
+  }
+
+  /** A pseudonym is a row or a participation on an ISRC and date, never both (D-126), checked from the split side. */
+  async function assertNoParticipation(
+    isrc: string,
+    period: { validFrom: string; validTo: string | null },
+    shares: { artistId: string; percent: Decimal }[],
+  ) {
+    if (period.validTo !== null && period.validTo <= period.validFrom) return; // empty period: nothing in force
+    const ids = new Set(shares.filter((x) => x.percent.gt(0)).map((x) => x.artistId));
+    if (ids.size === 0) return;
+    for (const p of await repo.participationsOfIsrc(isrc)) {
+      if (ids.has(p.artistId) && overlaps(p, period)) {
+        throw new RuleViolationError(
+          `Artist ${p.artistId} has a participation on ${isrc} from ${p.validFrom}: it cannot also be a split row`,
+          'double_participation',
+        );
+      }
+    }
   }
 
   async function insert(input: {
     isrc: string;
     validFrom: IsoDate;
     validTo: IsoDate | null;
-    shares: { artistId: string; percent: Decimal }[];
+    shares: { artistId: string; percent: Decimal; documentId: string | null }[];
     documentId: string | null;
     origin: string;
     note?: string | null;
@@ -108,7 +193,12 @@ export function createSplitsService(db: Db) {
       createdAt: nowIso(),
     });
     await repo.insertShares(
-      input.shares.map((s) => ({ splitId: id, artistId: s.artistId, percent: s.percent.toFixed() })),
+      input.shares.map((s) => ({
+        splitId: id,
+        artistId: s.artistId,
+        percent: s.percent.toFixed(),
+        documentId: s.documentId,
+      })),
     );
     return id;
   }
@@ -142,6 +232,7 @@ export function createSplitsService(db: Db) {
             );
           }
         }
+        await assertNoParticipation(isrc, { validFrom, validTo }, shares);
         const id = await insert({
           isrc,
           validFrom,
@@ -188,6 +279,7 @@ export function createSplitsService(db: Db) {
               .filter((d) => d > from)
               .sort()[0] ?? null;
         }
+        await assertNoParticipation(isrc, { validFrom: from, validTo }, shares);
         const id = await insert({
           isrc,
           validFrom: from,
@@ -282,6 +374,126 @@ export function createSplitsService(db: Db) {
       });
     },
 
+    /**
+     * Creates a participation: `percent` of `base` paid to the recipient pseudonym, funded from `fundedFrom`.
+     * Refused: an overlap for the same (ISRC, recipient, funded_from) `participation_overlap`; a recipient that is a
+     * split row on the ISRC in the period `double_participation`; Σ `top` above 100 `top_above_100`.
+     */
+    async createParticipation(input: ParticipationInput): Promise<ParticipationView> {
+      const isrc = assertIsrc(input.isrc);
+      const validFrom = assertDate(input.validFrom);
+      const validTo = input.validTo ? assertDate(input.validTo) : null;
+      if (validTo !== null && validTo <= validFrom)
+        throw new ValidationError('valid_to must be after valid_from');
+      if (!input.artistId) throw new ValidationError('Participation without recipient');
+      const percent = parsePercent(input.percent);
+      if (!FUNDED_ORDER.includes(input.fundedFrom))
+        throw new ValidationError(`Unknown funded_from "${input.fundedFrom}"`);
+      if (input.base !== 'net' && input.base !== 'bucket')
+        throw new ValidationError(`Unknown base "${input.base}"`);
+      const fromArtistId = input.fromArtistId || null;
+      if (input.fundedFrom === 'top' || input.fundedFrom === 'artist_pool') {
+        if (input.base !== 'net') throw new ValidationError(`${input.fundedFrom} requires base "net"`);
+      }
+      if (input.fundedFrom === 'artist_share') {
+        if (input.base !== 'bucket') throw new ValidationError('artist_share requires base "bucket"');
+        if (!fromArtistId) throw new ValidationError('artist_share requires fromArtistId');
+        if (fromArtistId === input.artistId)
+          throw new ValidationError('fromArtistId must differ from the recipient');
+      } else if (fromArtistId) {
+        throw new ValidationError('fromArtistId is only for artist_share');
+      }
+      return repo.transaction(async () => {
+        const existing = await repo.participationsOfIsrc(isrc);
+        const period = { validFrom, validTo };
+        for (const o of existing) {
+          if (o.artistId === input.artistId && o.fundedFrom === input.fundedFrom && overlaps(o, period)) {
+            throw new ConflictError(
+              `Participation period overlaps an existing one of ${input.artistId} on ${isrc} from ${o.validFrom}`,
+              'participation_overlap',
+            );
+          }
+        }
+        if (percent.gt(0)) {
+          for (const sp of await repo.splitsOfIsrc(isrc)) {
+            if (sp.validTo !== null && sp.validTo <= sp.validFrom) continue;
+            if (!overlaps(sp, period)) continue;
+            const row = (await repo.sharesOf([sp.id])).find(
+              (x) => x.artistId === input.artistId && new Decimal(x.percent).gt(0),
+            );
+            if (row) {
+              throw new RuleViolationError(
+                `Artist ${input.artistId} is a split row on ${isrc} from ${sp.validFrom}: it cannot also hold a participation`,
+                'double_participation',
+              );
+            }
+          }
+        }
+        if (input.fundedFrom === 'top') {
+          const total = sum([
+            percent,
+            ...existing
+              .filter((o) => o.fundedFrom === 'top' && overlaps(o, period))
+              .map((o) => new Decimal(o.percent)),
+          ]);
+          if (total.gt(HUNDRED)) {
+            throw new RuleViolationError(
+              `Off-the-top participations of ${isrc} sum to ${total.toFixed()}, above 100`,
+              'top_above_100',
+            );
+          }
+        }
+        const id = newId();
+        await repo.insertParticipation({
+          id,
+          isrc,
+          artistId: input.artistId,
+          percent: percent.toFixed(),
+          base: input.base,
+          fundedFrom: input.fundedFrom,
+          fromArtistId,
+          validFrom,
+          validTo,
+          documentId: input.documentId ?? null,
+          origin: input.origin ?? 'manual',
+          note: input.note ?? null,
+          createdAt: nowIso(),
+        });
+        return service.getParticipation(id);
+      });
+    },
+
+    /** Ends a participation at `validTo` (exclusive); it may only shorten the period. */
+    async closeParticipation(id: string, validToRaw: string): Promise<ParticipationView> {
+      const validTo = assertDate(validToRaw);
+      return repo.transaction(async () => {
+        const p = await repo.getParticipation(id);
+        if (!p) throw new NotFoundError('Participation', id);
+        if (validTo <= p.validFrom) throw new ValidationError('valid_to must be after valid_from');
+        if (p.validTo !== null && validTo > p.validTo)
+          throw new ValidationError('A participation can only be closed earlier, not extended');
+        await repo.setParticipationValidTo(id, validTo);
+        return service.getParticipation(id);
+      });
+    },
+
+    async getParticipation(id: string): Promise<ParticipationView> {
+      const p = await repo.getParticipation(id);
+      if (!p) throw new NotFoundError('Participation', id);
+      return partView(p);
+    },
+
+    async listParticipations(
+      filter: { isrc?: string; artistId?: string } = {},
+    ): Promise<ParticipationView[]> {
+      const rows = filter.isrc
+        ? await repo.participationsOfIsrc(assertIsrc(filter.isrc))
+        : filter.artistId
+          ? await repo.participationsOfArtist(filter.artistId)
+          : await repo.allParticipations();
+      return rows.filter((r) => !filter.artistId || r.artistId === filter.artistId).map(partView);
+    },
+
     /** Attaches the confirming appendix document to an existing split. */
     async confirmSplit(splitId: string, documentId: string): Promise<SplitView> {
       const s = await repo.getSplit(splitId);
@@ -330,19 +542,28 @@ export function createSplitsService(db: Db) {
      * In-memory index of all splits, built once per facade calculation (one consistent read of the module).
      */
     async index() {
-      const [allSplits, allShares] = await db.snapshot(() =>
-        Promise.all([repo.allSplits(), repo.allShares()]),
+      const [allSplits, allShares, allParts] = await db.snapshot(() =>
+        Promise.all([repo.allSplits(), repo.allShares(), repo.allParticipations()]),
       );
+      const partsByIsrc = new Map<string, ParticipationRow[]>();
+      for (const p of allParts) {
+        const list = partsByIsrc.get(p.isrc) ?? [];
+        list.push(p);
+        partsByIsrc.set(p.isrc, list);
+      }
       const byIsrc = new Map<string, SplitRow[]>();
       for (const s of allSplits) {
         const list = byIsrc.get(s.isrc) ?? [];
         list.push(s);
         byIsrc.set(s.isrc, list);
       }
-      const sharesBySplit = new Map<string, { artistId: string; percent: Decimal }[]>();
+      const sharesBySplit = new Map<
+        string,
+        { artistId: string; percent: Decimal; documentId: string | null }[]
+      >();
       for (const sh of allShares) {
         const list = sharesBySplit.get(sh.splitId) ?? [];
-        list.push({ artistId: sh.artistId, percent: new Decimal(sh.percent) });
+        list.push({ artistId: sh.artistId, percent: new Decimal(sh.percent), documentId: sh.documentId });
         sharesBySplit.set(sh.splitId, list);
       }
       const cache = new Map<string, SplitAtDate | undefined>();
@@ -350,12 +571,34 @@ export function createSplitsService(db: Db) {
         isrcs: () => [...byIsrc.keys()],
         documentIds: () => [
           ...new Set(
-            [...byIsrc.values()]
-              .flat()
-              .map((s) => s.documentId)
-              .filter((d): d is string => !!d),
+            [
+              ...[...byIsrc.values()].flat().map((s) => s.documentId),
+              ...allShares.map((s) => s.documentId),
+              ...allParts.map((p) => p.documentId),
+            ].filter((d): d is string => !!d),
           ),
         ],
+        /** Participations in force on a date, ordered top, artist_pool, artist_share, label_share, then validFrom, id. */
+        participationsAt(isrc: string, date: IsoDate): ParticipationAtDate[] {
+          return (partsByIsrc.get(isrc) ?? [])
+            .filter((p) => covers(p, date))
+            .sort(
+              (a, b) =>
+                FUNDED_ORDER.indexOf(a.fundedFrom as FundedFrom) -
+                  FUNDED_ORDER.indexOf(b.fundedFrom as FundedFrom) ||
+                a.validFrom.localeCompare(b.validFrom) ||
+                a.id.localeCompare(b.id),
+            )
+            .map((p) => ({
+              id: p.id,
+              artistId: p.artistId,
+              percent: new Decimal(p.percent),
+              base: p.base as ParticipationBase,
+              fundedFrom: p.fundedFrom as FundedFrom,
+              fromArtistId: p.fromArtistId,
+              documentId: p.documentId,
+            }));
+        },
         at(isrc: string, date: IsoDate): SplitAtDate | undefined {
           const key = `${isrc}|${date}`;
           if (cache.has(key)) return cache.get(key);

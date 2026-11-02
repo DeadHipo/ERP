@@ -24,6 +24,24 @@ export const splitShares = s.table(
     splitId: text('split_id').notNull(),
     artistId: text('artist_id').notNull(),
     percent: numeric('percent', { precision: 9, scale: 6 }).notNull(),
+    documentId: text('document_id'),
   },
   (t) => [primaryKey({ columns: [t.splitId, t.artistId] })],
 );
+
+// A percent of a base paid to a recipient pseudonym from one bucket (D-126). DDL: migrations/postgres/0008_participations.sql.
+export const participations = s.table('participations', {
+  id: text('id').primaryKey(),
+  isrc: text('isrc').notNull(),
+  artistId: text('artist_id').notNull(),
+  percent: numeric('percent', { precision: 9, scale: 6 }).notNull(),
+  base: text('base').notNull(),
+  fundedFrom: text('funded_from').notNull(),
+  fromArtistId: text('from_artist_id'),
+  validFrom: date('valid_from', { mode: 'string' }).notNull(),
+  validTo: date('valid_to', { mode: 'string' }),
+  documentId: text('document_id'),
+  origin: text('origin').notNull(),
+  note: text('note'),
+  createdAt: isoTimestamp('created_at').notNull(),
+});

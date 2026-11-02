@@ -1,6 +1,11 @@
 import { RuleViolationError, ValidationError } from '../shared/errors';
+import { assertDate, monthOf, monthStart } from '../shared/dates';
+import type { ParticipationInput } from '../modules/splits';
 import type { FacadeContext } from './context';
 import type { ShareSpec } from './context';
+
+/** Entry rule (M52): a rule date is the first day of its month, the whole month goes to the new holder. */
+const floorToMonth = (d: string) => monthStart(monthOf(assertDate(d)));
 
 export function splitsApi(ctx: FacadeContext) {
   const { db, owners, splits, checkSplitDocument, resolveShares } = ctx;
@@ -15,15 +20,16 @@ export function splitsApi(ctx: FacadeContext) {
       note?: string | null;
     }) {
       return db.transaction(async () => {
+        const validFrom = floorToMonth(input.validFrom);
         await checkSplitDocument(input.documentId);
         const build = await resolveShares(input.shares);
         await splits.checkCreate({
           isrc: input.isrc,
-          validFrom: input.validFrom,
+          validFrom,
           validTo: input.validTo ?? null,
           percents: input.shares.map((s) => s.percent),
         });
-        return splits.createSplit({ ...input, shares: await build() });
+        return splits.createSplit({ ...input, validFrom, shares: await build() });
       });
     },
     changeSplit(input: {
@@ -36,14 +42,15 @@ export function splitsApi(ctx: FacadeContext) {
       return db.transaction(async () => {
         if (!input.documentId)
           throw new RuleViolationError('A split change requires a confirming document', 'document_required');
+        const from = floorToMonth(input.from);
         await checkSplitDocument(input.documentId);
         const build = await resolveShares(input.shares);
         splits.checkChange({
           isrc: input.isrc,
-          from: input.from,
+          from,
           percents: input.shares.map((s) => s.percent),
         });
-        return splits.changeSplit({ ...input, shares: await build() });
+        return splits.changeSplit({ ...input, from, shares: await build() });
       });
     },
     async confirmSplit(splitId: string, documentId: string) {
@@ -60,7 +67,47 @@ export function splitsApi(ctx: FacadeContext) {
         const idx = await owners.artistIndex();
         const seller = idx.get(input.sellerArtistId)?.id ?? input.sellerArtistId;
         const sellerArtistIds = [...idx].filter(([, v]) => v.id === seller).map(([k]) => k);
-        return splits.buyout({ ...input, sellerArtistIds });
+        return splits.buyout({ ...input, effectiveFrom: floorToMonth(input.effectiveFrom), sellerArtistIds });
+      });
+    },
+    /** Creates a participation; its start is floored to the month start (M52). */
+    createParticipation(input: ParticipationInput) {
+      return db.transaction(async () => {
+        const validFrom = floorToMonth(input.validFrom);
+        await checkSplitDocument(input.documentId);
+        const idx = await owners.artistIndex();
+        const canon = (id: string) => idx.get(id)?.id ?? id;
+        await owners.getArtist(input.artistId);
+        if (input.fromArtistId) await owners.getArtist(input.fromArtistId);
+        return splits.createParticipation({
+          ...input,
+          artistId: canon(input.artistId),
+          fromArtistId: input.fromArtistId ? canon(input.fromArtistId) : null,
+          validFrom,
+        });
+      });
+    },
+    closeParticipation(id: string, validTo: string) {
+      return splits.closeParticipation(id, validTo);
+    },
+    /** Participations with pseudonyms, owner ids and document status. */
+    listParticipations(filter: { isrc?: string; artistId?: string } = {}) {
+      return db.snapshot(async () => {
+        const list = await splits.listParticipations(filter);
+        const idx = await owners.artistIndex();
+        const statuses = await owners.documentStatuses(
+          list.map((p) => p.documentId).filter((d): d is string => !!d),
+        );
+        return {
+          total: list.length,
+          items: list.map((p) => ({
+            ...p,
+            documentStatus: p.documentId ? (statuses.get(p.documentId) ?? 'missing') : 'missing',
+            pseudonym: idx.get(p.artistId)?.pseudonym ?? '?',
+            ownerId: idx.get(p.artistId)?.ownerId ?? null,
+            fromPseudonym: p.fromArtistId ? (idx.get(p.fromArtistId)?.pseudonym ?? '?') : null,
+          })),
+        };
       });
     },
     /** Splits with artist names and document status, for the splits page. */

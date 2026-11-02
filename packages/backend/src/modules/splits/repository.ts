@@ -1,12 +1,17 @@
 import { asc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { Decimal } from '../../shared/money';
-import { splitShares, splits } from './schema';
+import { participations, splitShares, splits } from './schema';
 
 export type SplitRow = typeof splits.$inferSelect;
 export type ShareRow = typeof splitShares.$inferSelect;
+export type ParticipationRow = typeof participations.$inferSelect;
 
 /** PostgreSQL pads numeric(9,6) with zeros; the application keeps percents as they were entered ('14.34'). */
+const canonicalPart = (r: ParticipationRow): ParticipationRow => ({
+  ...r,
+  percent: new Decimal(r.percent).toFixed(),
+});
 const canonicalShare = (r: ShareRow): ShareRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
 
 /** All SQL of the splits module lives here (schema `splits`). */
@@ -37,6 +42,39 @@ export function createSplitsRepository(db: Db) {
             canonicalShare,
           ),
     allShares: async () => (await orm().select().from(splitShares)).map(canonicalShare),
+    insertParticipation: async (row: typeof participations.$inferInsert) => {
+      await orm().insert(participations).values(row);
+    },
+    getParticipation: async (id: string) => {
+      const r = (await orm().select().from(participations).where(eq(participations.id, id)))[0];
+      return r ? canonicalPart(r) : undefined;
+    },
+    setParticipationValidTo: async (id: string, validTo: string | null) => {
+      await orm().update(participations).set({ validTo }).where(eq(participations.id, id));
+    },
+    participationsOfIsrc: async (isrc: string) =>
+      (
+        await orm()
+          .select()
+          .from(participations)
+          .where(eq(participations.isrc, isrc))
+          .orderBy(asc(participations.validFrom), asc(participations.id))
+      ).map(canonicalPart),
+    allParticipations: async () =>
+      (
+        await orm()
+          .select()
+          .from(participations)
+          .orderBy(asc(participations.isrc), asc(participations.validFrom), asc(participations.id))
+      ).map(canonicalPart),
+    participationsOfArtist: async (artistId: string) =>
+      (
+        await orm()
+          .select()
+          .from(participations)
+          .where(eq(participations.artistId, artistId))
+          .orderBy(asc(participations.isrc), asc(participations.validFrom), asc(participations.id))
+      ).map(canonicalPart),
     splitIdsOfArtist: async (artistId: string) =>
       (
         await orm()

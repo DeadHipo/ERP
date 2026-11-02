@@ -72,7 +72,12 @@ export const createContractBody = z.object({
 });
 
 export const shareSpec = z
-  .object({ artistId: z.string().optional(), newArtistPseudonym: z.string().optional(), percent })
+  .object({
+    artistId: z.string().optional(),
+    newArtistPseudonym: z.string().optional(),
+    percent,
+    documentId: z.string().nullish(),
+  })
   .refine((s) => !!s.artistId || !!s.newArtistPseudonym, 'artistId or newArtistPseudonym is required');
 
 export const createSplitBody = z.object({
