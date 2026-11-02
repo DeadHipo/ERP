@@ -5,6 +5,7 @@ import { Decimal } from '../../src/shared/money';
 import { normalizeName, normalizeUpc } from '../../src/shared/identifiers';
 import { Ctx, LOAD_DIR, errText, hasFile, pct, readJson } from './lib';
 import { stepTracks } from './steps-annex';
+import type { DocumentKind } from '../../src/modules/owners';
 
 // ================================================================= echo8 (4.4)
 
@@ -391,6 +392,185 @@ export async function stepTerms(ctx: Ctx) {
       log.event('terms_set', `${t.ownerId} ${t.percent}% ${t.operationType ?? 'any type'} from ${t.validFrom}`);
     } catch (e) {
       log.event('terms_error', `${t.ownerId}: ${errText(e)}`);
+    }
+  }
+}
+
+// ================================================================= contracts (4.7, D-133)
+
+interface IndexDoc {
+  sha256: string;
+  files: { name: string }[];
+  kind: string;
+  party: { pseudonyms: string[]; filename_pseudonym: string | null };
+  meta: { number: string | null };
+}
+const ROLE_WORDS = new Set([
+  'composer', 'owner', 'purchaser', 'artist', 'producer', 'licensor', 'licensee', 'seller', 'buyer', 'company',
+  'label', 'writer', 'publisher', 'client', 'contractor', 'author', 'assignor', 'assignee', 'party', 'parties',
+]);
+const KIND_LABEL: Record<string, string> = {
+  recording: 'Recording agreement',
+  co_pub: 'Co-publishing agreement',
+  co_ownership: 'Co-ownership agreement',
+  remix: 'Remix agreement',
+  other: 'Artist agreement',
+  schedule: 'Schedule',
+  advance: 'Advance addendum',
+};
+const OTHER_ARTIST_RE = /participation|exclusive|administration|short.?form|publishing/i;
+
+export async function stepContracts(ctx: Ctx) {
+  const { log } = ctx;
+  const indexPath = join(LOAD_DIR, '..', '..', 'context_data', 'contract_index', 'documents.json');
+  const docs = JSON.parse(readFileSync(indexPath, 'utf8')) as IndexDoc[];
+
+  // ---- (a) contract registry
+  log.h('Contracts from the PandaDoc index');
+  const confirmedBefore = new Set(ctx.contractOwners);
+  const ownersWithContract = new Set<string>();
+  const ownersWithDoc = new Set<string>();
+  let n = 0;
+  for (const d of docs) {
+    const isAppendix = d.kind === 'schedule' || d.kind === 'advance';
+    const fname = d.files[0]?.name ?? '';
+    const isContract =
+      d.kind === 'recording' || d.kind === 'co_pub' || d.kind === 'co_ownership' || d.kind === 'remix' ||
+      (d.kind === 'other' && OTHER_ARTIST_RE.test(fname));
+    if (!isContract && !isAppendix) {
+      log.count(`index_kind_not_loaded_${d.kind}`);
+      continue;
+    }
+    // candidate names
+    const raw = [...d.party.pseudonyms, ...(d.party.filename_pseudonym ? [d.party.filename_pseudonym] : [])];
+    const cands = new Map<string, string>();
+    for (const r of raw)
+      for (const part of [r, ...r.split('/')]) {
+        const nn = normalizeName(part);
+        if (nn.length < 2 || ROLE_WORDS.has(nn)) continue;
+        if (!cands.has(nn)) cands.set(nn, part.replace(/\s+/g, ' ').trim());
+      }
+    const byOwner = new Map<string, string[]>(); // owner -> artist ids
+    let ambiguous = 0;
+    let ownerless = 0;
+    for (const [nn] of cands) {
+      const found = [...(ctx.artistsByNorm.get(nn) ?? [])];
+      if (found.length === 0) continue;
+      if (found.length > 1) {
+        ambiguous++;
+        continue;
+      }
+      const a = ctx.artistsById.get(found[0] as string);
+      if (!a) continue;
+      if (!a.ownerId) {
+        ownerless++;
+        continue;
+      }
+      const l = byOwner.get(a.ownerId) ?? [];
+      if (!l.includes(a.id)) l.push(a.id);
+      byOwner.set(a.ownerId, l);
+    }
+    if (byOwner.size === 0) {
+      if (ambiguous > 0) log.event('skipped_ambiguous', `${d.kind} ${d.sha256.slice(0, 8)}: ${ambiguous} ambiguous pseudonym(s)`, 80);
+      else if (ownerless > 0) log.event('skipped_artist_without_owner', `${d.kind} ${d.sha256.slice(0, 8)}`, 80);
+      else log.event('no_match', `${d.kind} ${d.sha256.slice(0, 8)}: ${cands.size} candidate name(s)`, 80);
+      log.count(`doc_not_loaded_${d.kind}`);
+      continue;
+    }
+    if (ambiguous > 0) log.count('doc_with_ambiguous_extra_name');
+    for (const [ownerId, artistIds] of byOwner) {
+      const first = ctx.artistsById.get(artistIds[0] as string)?.pseudonym ?? '?';
+      const label = KIND_LABEL[d.kind] ?? 'Agreement';
+      const num = d.meta.number ? ` ${d.meta.number}` : '';
+      const title = `${label}${num} ${first} [${d.sha256.slice(0, 8)}]`;
+      const kind: DocumentKind = isAppendix ? 'appendix' : 'contract';
+      const existed = ctx.docs.has(`${kind}|${title}|${ownerId}`);
+      const docId = await ctx.ensureDoc({ kind, title, ownerId, approve: true, ref: `pandadoc:${d.sha256}` });
+      ownersWithDoc.add(ownerId);
+      if (existed) log.count('already_done');
+      if (kind === 'appendix') {
+        log.count(`appendix_${d.kind}`);
+        continue;
+      }
+      let hasContract = false;
+      if (existed && !docId.startsWith('dry:'))
+        hasContract = (await ctx.owners.contractsOfOwner(ownerId)).some((c) => c.documentId === docId);
+      if (hasContract) continue;
+      try {
+        if (ctx.apply) await ctx.owners.createContract({ ownerId, documentId: docId, number: d.meta.number ?? null, artistIds });
+        log.count('contracts_created');
+        log.count(`contracts_created_${d.kind}`);
+        ownersWithContract.add(ownerId);
+      } catch (e) {
+        log.event('contract_error', `${d.kind} ${d.sha256.slice(0, 8)}: ${errText(e)}`, 100);
+      }
+    }
+    if (++n % 200 === 0) console.log(`  contracts: ${n} documents`);
+  }
+  for (const o of ownersWithContract) ctx.contractOwners.add(o);
+  log.count('owners_with_new_contract', ownersWithContract.size);
+  log.count('owners_confirmed_before_run', confirmedBefore.size);
+
+  // ---- (b) legacy splits equal to the Annex registry
+  log.h('Legacy splits confirmed by the Annex 14 registry');
+  const diff = readJson<{
+    records: {
+      isrc: string;
+      classification: string;
+      subtype: string;
+      annex: { period: { from: string | null; to: string | null }; rowsExpected: { name: string; percent: number; artistId: string | null }[] };
+    }[];
+  }>('annex/splits_diff.json');
+  const annexDoc = await ctx.ensureDoc({
+    kind: 'appendix',
+    title: 'Annex 14 Splits by ISRC 2026-11-02',
+    approve: true,
+    ref: 'mvp-load:annex/splits',
+  });
+  const seen = new Set<string>();
+  for (const rec of diff.records) {
+    if (rec.classification !== 'same' || rec.subtype !== 'rows') continue;
+    const from = rec.annex.period.from ?? '2000-01-01';
+    const to = rec.annex.period.to;
+    const expected: { artistId: string; percent: string }[] = [];
+    let ok = true;
+    for (const r of rec.annex.rowsExpected.filter((x) => x.percent > 0)) {
+      const a = ctx.resolveArtist({ artistId: r.artistId, pseudonym: r.name });
+      if (a.status !== 'ok' || !a.id) {
+        ok = false;
+        break;
+      }
+      expected.push({ artistId: a.id, percent: pct(r.percent) });
+    }
+    if (!ok || expected.length === 0) {
+      log.count('splits_skipped_unresolved_rows');
+      continue;
+    }
+    for (const s of ctx.model.of(rec.isrc)) {
+      if (seen.has(s.id)) continue;
+      if (!(s.from < (to ?? '9999-12-31') && from < (s.to ?? '9999-12-31'))) continue;
+      if (s.docId) {
+        log.count('splits_already_have_document');
+        continue;
+      }
+      const cur = s.rows.map((r) => ({ artistId: ctx.knownArtist(r.artistId)?.id ?? r.artistId, percent: r.percent }));
+      const eq =
+        cur.length === expected.length &&
+        cur.every((x) => expected.some((y) => y.artistId === x.artistId && new Decimal(y.percent).eq(x.percent)));
+      if (!eq) {
+        log.count('splits_rows_differ_from_annex_left_unconfirmed');
+        continue;
+      }
+      seen.add(s.id);
+      try {
+        if (ctx.apply) await ctx.f.confirmSplit(s.id, annexDoc);
+        s.docId = annexDoc;
+        log.count('splits_confirmed');
+      } catch (e) {
+        log.event('split_confirm_error', `${rec.isrc}: ${errText(e)}`, 100);
+      }
+      if (log.counts.get('splits_confirmed') && (log.counts.get('splits_confirmed') as number) % 500 === 0)
+        console.log(`  splits confirmed: ${log.counts.get('splits_confirmed')}`);
     }
   }
 }

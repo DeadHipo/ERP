@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-132 by topic)
+# Decision index (D-001 … D-133 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -147,6 +147,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 ## Data of the MVP goal
 - D-131 Reference data of the MVP loaded through the facade (`scripts/mvp/load.ts`, idempotent by `mvp:<step>:<key>` markers): labels dictionary and sublabel rules, 9k tracks, Annex 14 registered splits (211 created, 80 changed), legacy mid-month dates normalised, 108 participations, Duetti buy-out splits, Echo8 splits (9,772, 387 with an RSA document) · in force · open: XENO XID (Schedule A), 17 pp buy-outs, 22 empty Annex records, M51 (196 ISRC), 415 Echo8 ISRC with an ambiguous name
 - D-132 Payment history and advances of `0to8 Main.xlsx` loaded (2,555 payouts/advances out, 104 deductions/carves in, 30 documents only), cash reconciled to 8,045,246.75; publishing terms by type for the exclusive administration agreement (90 % general, 50 % Synchronization) · in force · open: 25 rows of three ambiguous nicknames, 3 held credit rows, 3 carve rows covered by a participation
+- D-133 Contract registry loaded from the PandaDoc index (`load.ts contracts`: 440 contract documents with contracts rows, 61 appendices) and 3,504 legacy splits equal to the owner's Annex 14 registry confirmed by it · in force · open: B17 payees (legal-name owners) have no contract, 123 index documents without a stage-name match, 320,636.21 of account 1055956 without a split document
 - D-134 B17 statements 2024-Q4, 2025-Q1 (one file) and 2025-Q2 loaded through `facade.ingestB17` (`scripts/mvp/load-b17.ts`): 39,654 and 68,703 lines, b17 reconciliation 7 quarters at discrepancy 0 · in force · open: the Updated Q2 2026 file stays refused (D-041 ⚠)
 
 ## Review rounds (history; read when touching the reviewed area)
