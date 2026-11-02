@@ -30,6 +30,8 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 
 Definition of done for any change: typecheck clean, lint clean, `REQUIRE_STACK=1 npm test` passes, decision logged in 97 (and indexed in `docs/agents/03_decision_index.md`).
 
+Git: when a stage or step is finished and meets the definition of done, commit it (no need to ask). Never push; the owner pushes.
+
 ## Architecture in one screen
 - All backend paths below are under `packages/backend/`.
 - `src/modules/<m>/{schema.ts, repository.ts, service.ts, index.ts}` for owners (module 1: owners, artists, tracks, documents, contracts, merge), splits, sources (Believe), settlements (operations in/out, payouts, recoup), publishing (B17).
