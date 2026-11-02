@@ -3,19 +3,12 @@ import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
 import { newId, normalizeName } from '../../shared/identifiers';
-import {
-  assertDate,
-  inMonthRange,
-  monthStart,
-  normalizeTimestamp,
-  nowIso,
-  quarterEndMonth,
-} from '../../shared/dates';
-import { Decimal, picoToDecimal, picoToString } from '../../shared/money';
+import { assertDate, normalizeTimestamp, nowIso } from '../../shared/dates';
+import { Decimal, picoToString } from '../../shared/money';
 import { sha256File } from '../../shared/files';
 import type { Db } from '../../shared/pg-db';
 import { createPublishingRepository } from './repository';
-import type { StatementRow, TermsRow, WriterInsert, WriterRow } from './repository';
+import type { AggregatedLine, StatementRow, TermsRow, WriterInsert, WriterRow } from './repository';
 import { parseSongwriters, quartersFromFileName, readB17Statement, type B17Line } from './b17-format';
 
 export interface StatementView {
@@ -32,28 +25,6 @@ export interface StatementView {
   totalPayable: string;
   warnings: string[];
 }
-
-export interface PublishingAccrual {
-  source: 'b17';
-  period: string;
-  /** The report month of a quarterly statement: the last month of the quarter. */
-  reportMonth: string;
-  writerNorm: string;
-  writerName: string;
-  ownerId: string | null;
-  workTitle: string;
-  /** The operation type of the B17 line (null when the line has none). */
-  operationType: string | null;
-  payable: Decimal;
-  percent: Decimal;
-  authorAmount: Decimal;
-  termsId: string | null;
-  termsDocumentId: string | null;
-  /** True when no contract terms exist and the default 50% is used (counts as waiting for confirmation). */
-  defaultTerms: boolean;
-}
-
-export const DEFAULT_AUTHOR_PERCENT = '50';
 
 const view = (s: StatementRow): StatementView => ({
   id: s.id,
@@ -298,7 +269,9 @@ export function createPublishingService(db: Db, storageDir: string) {
       if (operationType !== null && operationType.trim() === '')
         throw new ValidationError('Operation type must not be empty');
       return tx(async () => {
-        const existing = (await repo.termsOfOwner(input.ownerId)).filter((t) => t.operationType === operationType);
+        const existing = (await repo.termsOfOwner(input.ownerId)).filter(
+          (t) => t.operationType === operationType,
+        );
         if (existing.some((t) => t.validFrom >= validFrom)) {
           throw new ConflictError('Publishing terms already start on or after this date', 'terms_overlap');
         }
@@ -335,107 +308,15 @@ export function createPublishingService(db: Db, storageDir: string) {
     },
 
     /**
-     * Accruals per (quarter, writer, work): Total Payable times the author's contract percentage, accrued to the owner.
-     * Terms are chosen by the report date (first day of the quarter's last month).
+     * Everything the facade needs to work out the publishing money, read from one consistent version (D-012):
+     * writers, terms and the aggregated lines of the loaded statements. The module computes no money (D-128 part 2).
      */
-    async accruals(
-      filter: { from?: string; to?: string } = {},
-      resolveOwner: (id: string) => string = (id) => id,
-    ): Promise<PublishingAccrual[]> {
-      // Writers, terms and lines are read from one consistent version (D-012).
-      const [allWriters, terms, lines] = await repo.snapshot(
-        async () => [await repo.allWriters(), await repo.allTerms(), await repo.aggregatedLines()] as const,
-      );
-      const writers = new Map(allWriters.map((w) => [w.writerNorm, w]));
-      // Owner resolution is memoised: one lookup per owner, not per row and term.
-      const memo = new Map<string, string>();
-      const resolveUncached = resolveOwner;
-      resolveOwner = (id: string) => {
-        let r = memo.get(id);
-        if (r === undefined) memo.set(id, (r = resolveUncached(id)));
-        return r;
-      };
-      const result: PublishingAccrual[] = [];
-      const push = (
-        r: { period: string; workTitle: string; operationType: string | null },
-        reportMonth: string,
-        writerNorm: string,
-        writerName: string,
-        ownerId: string | null,
-        payable: Decimal,
-      ) => {
-        const date = monthStart(reportMonth);
-        const valid = (x: (typeof terms)[number]) =>
-          x.validFrom <= date && (x.validTo === null || date < x.validTo);
-        // A term of the line's operation type first, then the one without a type (D-128).
-        const pick = (typed: boolean) => {
-          const fits = (x: (typeof terms)[number]) =>
-            valid(x) && (typed ? r.operationType !== null && x.operationType === r.operationType : x.operationType === null);
-          return (
-            terms.find((x) => x.ownerId === ownerId && fits(x)) ??
-            terms.find((x) => resolveOwner(x.ownerId) === ownerId && fits(x))
-          );
-        };
-        const t = ownerId ? (pick(true) ?? pick(false)) : undefined;
-        const percent = new Decimal(t?.percent ?? DEFAULT_AUTHOR_PERCENT);
-        result.push({
-          source: 'b17',
-          period: r.period,
-          reportMonth,
-          writerNorm,
-          writerName,
-          ownerId,
-          workTitle: r.workTitle,
-          operationType: r.operationType,
-          payable,
-          percent,
-          authorAmount: payable.mul(percent).div(100),
-          termsId: t?.id ?? null,
-          termsDocumentId: t?.documentId ?? null,
-          defaultTerms: t === undefined,
-        });
-      };
-      for (const r of lines) {
-        const reportMonth = quarterEndMonth(r.period);
-        if (!inMonthRange(reportMonth, filter.from, filter.to)) continue;
-        const payable = picoToDecimal(r.payablePico);
-        // The line belongs to our writers listed in "songwriters" (registered by us), in equal parts (08, decision 2).
-        // External co-writers are not ours. Without any of our writers the line goes to its rights-holder.
-        // Our writers on the line: mapped ones (key = owner) and ambiguous ones waiting for the operator
-        // (key = writer, owner null): an ambiguous writer's part stays unmapped (C), never goes to the others.
-        const ours = new Map<string, { norm: string; name: string; owner: string | null }>();
-        for (const name of parseSongwriters(r.songwriters)) {
-          const w = writers.get(normalizeName(name));
-          if (w?.ownerId) {
-            const owner = resolveOwner(w.ownerId);
-            if (!ours.has(owner)) ours.set(owner, { norm: w.writerNorm, name: w.displayName, owner });
-          } else if (w?.resolution === 'ambiguous') {
-            ours.set(`ambiguous:${w.writerNorm}`, { norm: w.writerNorm, name: w.displayName, owner: null });
-          }
-        }
-        if (ours.size > 0) {
-          // Equal parts cut at 20 decimals; the last writer takes the remainder so the parts add up to the line exactly.
-          const part = payable.div(ours.size).toDecimalPlaces(20, Decimal.ROUND_DOWN);
-          let left = payable;
-          let i = 0;
-          for (const w of ours.values()) {
-            const amount = ++i === ours.size ? left : part;
-            left = left.sub(amount);
-            push(r, reportMonth, w.norm, w.name, w.owner, amount);
-          }
-          continue;
-        }
-        const h = writers.get(r.writerNorm);
-        push(
-          r,
-          reportMonth,
-          r.writerNorm,
-          r.writerName,
-          h?.ownerId ? resolveOwner(h.ownerId) : null,
-          payable,
-        );
-      }
-      return result;
+    snapshotForCalculation(): Promise<{ writers: WriterRow[]; terms: TermsRow[]; lines: AggregatedLine[] }> {
+      return repo.snapshot(async () => ({
+        writers: await repo.allWriters(),
+        terms: await repo.allTerms(),
+        lines: await repo.aggregatedLines(),
+      }));
     },
   };
   const service = { ...head, ...rest };

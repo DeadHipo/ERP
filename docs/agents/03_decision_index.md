@@ -101,7 +101,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - ⚠ D-043 Author percent (default 50 %) and its confirmation
 - D-044 Publishing dates · in force
 - ⚠ D-045 Publishing buyouts
-- D-128 Publishing terms by operation type (part 1: module; migration 0009, `setTerms({ operationType })`, typed term wins; author share to the facade follows) · in force
+- D-128 Publishing terms by operation type (part 1: module; migration 0009, `setTerms({ operationType })`, typed term wins; part 2: writer parts, author share and B/C as pure facade layers `PUBLISHING_LAYERS`, the module only returns `snapshotForCalculation()`, G26a–e) · in force
 - D-046 Merge and publishing · in force
 - ~~D-082 Real B17 not loaded~~ → D-083
 - D-083 Real B17 loaded into data/real · in force; ⚠ merge of writers into confirmed owners

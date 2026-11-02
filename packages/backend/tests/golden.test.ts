@@ -1159,3 +1159,96 @@ describe('a layer that loses money shows as a discrepancy (10 §6)', () => {
     expect(bad.map((r) => r.discrepancy.toFixed())).toEqual(['20']);
   });
 });
+
+describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', () => {
+  const lines = [
+    { title: 'T-A', writer: 'HOLDER H', songwriters: 'W1, W2', payable: '100', operationType: 'Mechanical' },
+    { title: 'T-B', writer: 'HOLDER H', songwriters: 'W1, W2', payable: '100', operationType: 'Synchronization' },
+    { title: 'T-C', writer: 'HOLDER H', songwriters: 'W1, X', payable: '100', operationType: 'Mechanical' },
+    { title: 'T-D', writer: 'HOLDER H', songwriters: 'W3', payable: '100', operationType: 'Mechanical' },
+  ];
+  /** W1 50 (no type); W2 90 (no type) and 50 (Synchronization); W3 has no terms. All owners confirmed. */
+  async function world(which: string[]) {
+    const c = await Case.start();
+    const owner: Record<string, string> = {};
+    for (const w of ['W1', 'W2', 'W3']) {
+      const { owner: o } = await confirmedOwner(c.f, `Owner ${w}`, [`Pseud ${w}`]);
+      await c.f.modules.owners.addOwnerAlias(o.id, w);
+      owner[w] = o.id;
+    }
+    const pub = c.f.modules.publishing;
+    const doc = async (w: string) => (await approvedDoc(c.f, 'contract', owner[w] as string)).id;
+    await pub.setTerms({ ownerId: owner.W1 as string, percent: '50', validFrom: '2020-01-01', documentId: await doc('W1') });
+    await pub.setTerms({ ownerId: owner.W2 as string, percent: '90', validFrom: '2020-01-01', documentId: await doc('W2') });
+    await pub.setTerms({
+      ownerId: owner.W2 as string,
+      percent: '50',
+      validFrom: '2020-01-01',
+      documentId: await doc('W2'),
+      operationType: 'Synchronization',
+    });
+    await c.f.ingestB17(await writeB17('Q12026', lines.filter((l) => which.includes(l.title)).map((l) => ({ ...l, period: '1Q26' }))));
+    const calc = await calculate({ ...c.f.modules, db: c.f.db });
+    const pick = (title: string) =>
+      calc.publishing
+        .filter((p) => p.workTitle === title)
+        .map((p) => ({
+          writer: p.writerName,
+          payable: p.payable.toFixed(),
+          percent: p.percent.toFixed(),
+          author: p.authorAmount.toFixed(),
+          label: p.labelAmount.toFixed(),
+          category: p.category,
+          reason: p.reason,
+        }))
+        .sort((a, b) => a.writer.localeCompare(b.writer));
+    return { c, pick };
+  }
+
+  it('G26a: Mechanical, two writers: parts 50 / 50; W1 author 25, W2 author 45 (the untyped 90)', async () => {
+    const { pick } = await world(['T-A']);
+    expect(pick('T-A')).toEqual([
+      { writer: 'W1', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
+      { writer: 'W2', payable: '50', percent: '90', author: '45', label: '5', category: 'B', reason: null },
+    ]);
+  });
+  it('G26b: Synchronization: the typed 50 wins for W2', async () => {
+    const { pick } = await world(['T-B']);
+    expect(pick('T-B')).toEqual([
+      { writer: 'W1', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
+      { writer: 'W2', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
+    ]);
+  });
+  it('G26c: an external co-writer takes nothing: W1 gets the whole line', async () => {
+    const { pick } = await world(['T-C']);
+    expect(pick('T-C')).toEqual([
+      { writer: 'W1', payable: '100', percent: '50', author: '50', label: '50', category: 'B', reason: null },
+    ]);
+  });
+  it('G26d: a writer without terms: default 50, C publishing_terms_unconfirmed', async () => {
+    const { pick } = await world(['T-D']);
+    expect(pick('T-D')).toEqual([
+      {
+        writer: 'W3',
+        payable: '100',
+        percent: '50',
+        author: '50',
+        label: '50',
+        category: 'C',
+        reason: 'publishing_terms_unconfirmed',
+      },
+    ]);
+  });
+  it('G26e: the four lines together reconcile: A 400, B 170, C 50, ours 180, discrepancy 0', async () => {
+    const { c } = await world(['T-A', 'T-B', 'T-C', 'T-D']);
+    const r = (await c.f.reconciliation()).find((x) => x.source === 'b17' && x.account === 'b17');
+    expect(r).toBeDefined();
+    expect([r?.A_received, r?.B_notOurs, r?.C_waiting, r?.ourShare, r?.discrepancy].map((x) => x?.toFixed())).toEqual([
+      '400',
+      '170',
+      '50',
+      '180',
+      '0',
+    ]);
+  });
+});

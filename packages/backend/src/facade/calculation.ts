@@ -1,5 +1,5 @@
 import { Decimal, picoToDecimal, ZERO } from '../shared/money';
-import { inMonthRange } from '../shared/dates';
+import { inMonthRange, quarterEndMonth } from '../shared/dates';
 import type { OwnersService } from '../modules/owners';
 import type { LabelsService } from '../modules/labels';
 import type { SplitsService } from '../modules/splits';
@@ -8,6 +8,7 @@ import type { PublishingService } from '../modules/publishing';
 import type { Db } from '../shared/pg-db';
 import { timed, timedStep, timedSync } from '../shared/timing';
 import {
+  allocateLine,
   allocateUnit,
   MASTER_LAYERS,
   type Allocation,
@@ -16,6 +17,10 @@ import {
   type LabelShareCategory,
   type LayerContext,
   type NamedLayer,
+  type PublishingContext,
+  type PublishingLine,
+  type PublishingTerm,
+  type PublishingWriter,
   type Shortfall,
   type UnitAllocation,
   type UnitState,
@@ -103,45 +108,56 @@ export async function calculate(
   opts: CalculateOptions = {},
 ): Promise<Calculation> {
   const snapshot = await timed('sources.snapshot', () => m.sources.snapshot());
-  const { artistIndex, confirmedOwners, labelOwners, knownPairs, splitIndex, labelIndex, docs, accruals } =
-    await timed('pg snapshot: reference data', () =>
-      m.db.snapshot(async () => {
-        const artistIndex = await timed('owners.artistIndex', () => m.owners.artistIndex());
-        const confirmedOwners = await timed('owners.confirmedOwnerIds', () => m.owners.confirmedOwnerIds());
-        // Publishing is never accrued to a label (08, decision 7): a writer resolved to a label owner counts as unmapped.
-        const labelOwners = new Set(
-          (await timed('owners.listOwners', () => m.owners.listOwners()))
-            .filter((o) => o.kind === 'label')
-            .map((o) => o.id),
-        );
-        const knownPairs = await timed('owners.knownPairs', () => m.owners.knownPairs());
-        const splitIndex = await timed('splits.index', () => m.splits.index());
-        const labelIndex = await timed('labels.index', () => m.labels.index());
-        const terms = await timed('publishing.allTerms', () => m.publishing.allTerms());
-        const docIds = [
-          ...splitIndex.documentIds(),
-          ...labelIndex.documentIds(),
-          ...terms.map((t) => t.documentId).filter((x): x is string => !!x),
-          ...extraDocumentIds,
-        ];
-        const docs = await timed('owners.documentInfo', () => m.owners.documentInfo(docIds));
-        const accruals = await timed(
-          'publishing.accruals',
-          async () => m.publishing.accruals({}, await m.owners.ownerResolver()),
-          (r) => `${r.length} lines`,
-        );
-        return {
-          artistIndex,
-          confirmedOwners,
-          labelOwners,
-          knownPairs,
-          splitIndex,
-          labelIndex,
-          docs,
-          accruals,
-        };
-      }),
-    );
+  const {
+    artistIndex,
+    confirmedOwners,
+    labelOwners,
+    knownPairs,
+    splitIndex,
+    labelIndex,
+    docs,
+    pubData,
+    resolveOwner,
+  } = await timed('pg snapshot: reference data', () =>
+    m.db.snapshot(async () => {
+      const artistIndex = await timed('owners.artistIndex', () => m.owners.artistIndex());
+      const confirmedOwners = await timed('owners.confirmedOwnerIds', () => m.owners.confirmedOwnerIds());
+      // Publishing is never accrued to a label (08, decision 7): a writer resolved to a label owner counts as unmapped.
+      const labelOwners = new Set(
+        (await timed('owners.listOwners', () => m.owners.listOwners()))
+          .filter((o) => o.kind === 'label')
+          .map((o) => o.id),
+      );
+      const knownPairs = await timed('owners.knownPairs', () => m.owners.knownPairs());
+      const splitIndex = await timed('splits.index', () => m.splits.index());
+      const labelIndex = await timed('labels.index', () => m.labels.index());
+      const pubData = await timed(
+        'publishing.snapshotForCalculation',
+        () => m.publishing.snapshotForCalculation(),
+        (r) => `${r.lines.length} lines`,
+      );
+      const terms = pubData.terms;
+      const docIds = [
+        ...splitIndex.documentIds(),
+        ...labelIndex.documentIds(),
+        ...terms.map((t) => t.documentId).filter((x): x is string => !!x),
+        ...extraDocumentIds,
+      ];
+      const docs = await timed('owners.documentInfo', () => m.owners.documentInfo(docIds));
+      const resolveOwner = await m.owners.ownerResolver();
+      return {
+        artistIndex,
+        confirmedOwners,
+        labelOwners,
+        knownPairs,
+        splitIndex,
+        labelIndex,
+        docs,
+        pubData,
+        resolveOwner,
+      };
+    }),
+  );
   const documentStatus = (id: string | null | undefined) =>
     id ? (docs.get(id)?.status ?? 'missing') : 'missing';
   const documentKind = (id: string | null | undefined) => (id ? docs.get(id)?.kind : undefined);
@@ -191,27 +207,45 @@ export async function calculate(
   }
   endUnits(`${units.length} units`);
 
-  const publishing: PublishingResult[] = timedSync('publishing results (JS)', () =>
-    accruals.map((raw) => {
-      const a = { ...raw, ownerId: raw.ownerId && !labelOwners.has(raw.ownerId) ? raw.ownerId : null };
-      let reason: CReason | null = null;
-      if (!a.ownerId) reason = 'writer_unmapped';
-      else if (!confirmedOwners.has(a.ownerId)) reason = 'owner_unconfirmed';
-      else if (a.defaultTerms || documentStatus(a.termsDocumentId) !== 'approved')
-        reason = 'publishing_terms_unconfirmed';
-      return {
-        period: a.period,
-        reportMonth: a.reportMonth,
-        writerName: a.writerName,
-        ownerId: a.ownerId,
-        workTitle: a.workTitle,
-        payable: a.payable,
-        percent: a.percent,
-        authorAmount: a.ownerId ? a.authorAmount : ZERO,
-        labelAmount: a.ownerId ? a.payable.sub(a.authorAmount) : ZERO,
-        category: reason ? 'C' : 'B',
-        reason,
+  // The publishing layers (10 §4) over the B17 lines of the same snapshot. Owner resolution is memoised.
+  const memo = new Map<string, string>();
+  const pubCtx: PublishingContext = {
+    writers: new Map<string, PublishingWriter>(pubData.writers.map((w) => [w.writerNorm, w])),
+    terms: pubData.terms as PublishingTerm[],
+    resolveOwner: (id) => {
+      let r = memo.get(id);
+      if (r === undefined) memo.set(id, (r = resolveOwner(id)));
+      return r;
+    },
+    labelOwners,
+    confirmedOwners,
+    documentStatus,
+  };
+  const publishing: PublishingResult[] = timedSync('publishing results (layers, JS)', () =>
+    pubData.lines.flatMap((l) => {
+      const line: PublishingLine = {
+        period: l.period,
+        reportMonth: quarterEndMonth(l.period),
+        writerNorm: l.writerNorm,
+        writerName: l.writerName,
+        workTitle: l.workTitle,
+        songwriters: l.songwriters,
+        operationType: l.operationType,
+        payable: picoToDecimal(l.payablePico),
       };
+      return allocateLine(line, pubCtx).parts.map((p): PublishingResult => ({
+        period: line.period,
+        reportMonth: line.reportMonth,
+        writerName: p.writerName,
+        ownerId: p.ownerId,
+        workTitle: line.workTitle,
+        payable: p.payable,
+        percent: p.percent,
+        authorAmount: p.authorAmount,
+        labelAmount: p.labelAmount,
+        category: p.category,
+        reason: p.reason,
+      }));
     }),
   );
 

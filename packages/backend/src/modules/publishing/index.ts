@@ -2,7 +2,7 @@ import type { Db } from '../../shared/pg-db';
 import { createPublishingService } from './service';
 
 export * from './service';
-export { quartersFromFileName, parsePeriodCell } from './b17-format';
+export { quartersFromFileName, parsePeriodCell, parseSongwriters } from './b17-format';
 
 /**
  * Opens the publishing module (B17) on the shared PostgreSQL database (schema `publishing`,
