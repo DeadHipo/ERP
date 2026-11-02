@@ -183,6 +183,10 @@ export class Ctx {
   ownersByNorm = new Map<string, { id: string; kind: 'label' | 'person'; name: string }[]>();
   docs = new Map<string, string>(); // `${kind}|${title}|${ownerId}` -> id
   docStatus = new Map<string, { attached: boolean; approved: boolean }>();
+  /** owners whose contract document is approved (status confirmed) (to resolve ambiguous pseudonyms) */
+  contractOwners = new Set<string>();
+  /** ambiguous pseudonym -> chosen artist id, logged once per name */
+  resolvedByContract = new Map<string, string>();
   trackPairs = new Set<string>();
   tracksByIsrc = new Map<string, { id: string; upc: string | null; title: string; note: string | null }[]>();
   tracksByUpc = new Map<string, string[]>();
@@ -191,6 +195,7 @@ export class Ctx {
     id: string;
     isrc: string;
     artistId: string;
+    fromArtistId: string | null;
     fundedFrom: string;
     validFrom: string;
     validTo: string | null;
@@ -209,7 +214,20 @@ export class Ctx {
       payoutThresholdCents: 0,
       sources: this.stack.sources,
     });
+    // Performance only: the facade reads the whole artist index (~25k rows) several times per write; the loader keeps
+    // it for the run and drops it when it creates an artist or an owner itself (the facade write paths never use its status).
+    const owners = this.f.modules.owners;
+    const read = owners.artistIndex.bind(owners);
+    let cached: ReturnType<typeof read> | null = null;
+    owners.artistIndex = () => (cached ??= read().catch((e: unknown) => {
+      cached = null;
+      throw e;
+    }));
+    this.dropIndex = () => {
+      cached = null;
+    };
   }
+  dropIndex: () => void = () => undefined;
   get owners() {
     return this.f.modules.owners;
   }
@@ -251,7 +269,10 @@ export class Ctx {
       this.artistsById.set(a.id, { id: a.id, pseudonym: a.pseudonym, ownerId: a.ownerId });
       this.addArtistNorm(a.pseudonym, a.id);
     }
-    for (const o of owners) this.addOwner(o.id, o.name, o.kind, o.aliases);
+    for (const o of owners) {
+      this.addOwner(o.id, o.name, o.kind, o.aliases);
+      if (o.status === 'confirmed') this.contractOwners.add(o.id);
+    }
     for (const d of docs) {
       this.docs.set(`${d.kind}|${d.title}|${d.ownerId ?? ''}`, d.id);
       this.docStatus.set(d.id, { attached: d.fileRef !== null, approved: d.approvedAt !== null });
@@ -279,6 +300,7 @@ export class Ctx {
       id: p.id,
       isrc: p.isrc,
       artistId: p.artistId,
+      fromArtistId: p.fromArtistId ?? null,
       fundedFrom: p.fundedFrom,
       validFrom: p.validFrom,
       validTo: p.validTo,
@@ -326,12 +348,32 @@ export class Ctx {
     if (known) return { id: known.id, status: 'ok' };
     const found = this.findArtists(ref.pseudonym);
     if (found.length === 1) return { id: found[0] as string, status: 'ok' };
+    if (found.length > 1) {
+      // assumption: exactly one candidate whose owner has an approved contract is the artist meant
+      const withContract = found.filter((a) => {
+        const o = this.artistsById.get(a)?.ownerId;
+        return o && this.contractOwners.has(o);
+      });
+      if (withContract.length === 1) {
+        const id = withContract[0] as string;
+        const key = normalizeName(ref.pseudonym);
+        if (!this.resolvedByContract.has(key)) {
+          this.resolvedByContract.set(key, id);
+          this.log?.event(
+            'resolved_by_contract_assumption',
+            `"${ref.pseudonym}": ${found.length} candidate artists, one owner with an approved contract -> artist ${id}`,
+          );
+        }
+        return { id, status: 'ok' };
+      }
+    }
     return { status: found.length === 0 ? 'none' : 'ambiguous' };
   }
   async createArtist(pseudonym: string, origin: string, ownerId: string | null = null): Promise<string> {
     let id: string;
     if (this.apply) id = (await this.owners.createArtist({ pseudonym, ownerId, origin })).id;
     else id = this.fakeId('artist');
+    this.dropIndex();
     this.artistsById.set(id, { id, pseudonym, ownerId });
     this.canonArtist.set(id, id);
     this.addArtistNorm(pseudonym, id);
@@ -361,6 +403,7 @@ export class Ctx {
     let id: string;
     if (this.apply) id = (await this.owners.createOwner({ name, kind, origin })).id;
     else id = this.fakeId('owner');
+    this.dropIndex();
     this.addOwner(id, name, kind);
     this.log.count('owners_created');
     return id;

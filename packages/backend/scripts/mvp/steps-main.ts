@@ -33,7 +33,9 @@ export async function stepEcho8(ctx: Ctx) {
       log.count('skipped_split_exists');
       continue;
     }
-    const ambiguous = s.rows.filter((r) => !r.labelRow && !r.newArtist && !r.artistId);
+    const ambiguous = s.rows.filter(
+      (r) => !r.labelRow && !r.newArtist && !r.artistId && ctx.resolveArtist({ pseudonym: r.pseudonym }).status === 'ambiguous',
+    );
     if (ambiguous.length > 0) {
       log.event('skipped_ambiguous_artist', `${s.isrc}: ${ambiguous.map((r) => r.pseudonym).join(', ')}`, 60);
       continue;
@@ -145,7 +147,11 @@ export async function stepMain(ctx: Ctx) {
   // ---- holders: matched nicknames carry owner and artist; unmatched ones get a person owner with one pseudonym
   const holders = new Map<string, { ownerId: string; artistId: string } | null>();
   const holderOf = async (r: CashRow, create: boolean): Promise<{ ownerId: string; artistId: string } | null> => {
-    if (r.nicknameStatus === 'ambiguous') return null;
+    if (r.nicknameStatus === 'ambiguous') {
+      const x = ctx.resolveArtist({ pseudonym: r.nickname });
+      const a = x.status === 'ok' ? ctx.knownArtist(x.id) : undefined;
+      return a?.ownerId ? { ownerId: a.ownerId, artistId: a.id } : null;
+    }
     if (r.nicknameStatus === 'matched') {
       const a = ctx.knownArtist(r.artistId);
       if (!a) return null;

@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-130 by topic)
+# Decision index (D-001 … D-132 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -143,6 +143,10 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-079 Real July 2026 report loaded · in force
 - D-081 Reference check on the real July report · in force
 - D-089, D-092, D-097 Acceptance and end-to-end checks on real data · historical records
+
+## Data of the MVP goal
+- D-131 Reference data of the MVP loaded through the facade (`scripts/mvp/load.ts`, idempotent by `mvp:<step>:<key>` markers): labels dictionary and sublabel rules, 9k tracks, Annex 14 registered splits (211 created, 80 changed), legacy mid-month dates normalised, 108 participations, Duetti buy-out splits, Echo8 splits (9,772, 387 with an RSA document) · in force · open: XENO XID (Schedule A), 17 pp buy-outs, 22 empty Annex records, M51 (196 ISRC), 415 Echo8 ISRC with an ambiguous name
+- D-132 Payment history and advances of `0to8 Main.xlsx` loaded (2,555 payouts/advances out, 104 deductions/carves in, 30 documents only), cash reconciled to 8,045,246.75; publishing terms by type for the exclusive administration agreement (90 % general, 50 % Synchronization) · in force · open: 25 rows of three ambiguous nicknames, 3 held credit rows, 3 carve rows covered by a participation
 
 ## Review rounds (history; read when touching the reviewed area)
 - D-069, D-070 First reviews · D-071 verification (counts → D-078)

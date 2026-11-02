@@ -87,7 +87,7 @@ export async function stepLabels(ctx: Ctx) {
         });
       try {
         if (ctx.apply)
-          await ctx.labels.setRule({
+          await ctx.f.createLabelRule({
             labelId,
             percent: pct(r.percent),
             recipientArtistId: recipient.artistId,
@@ -478,7 +478,7 @@ export async function stepParticipations(ctx: Ctx) {
         }
         // overlap and double-participation checks of the module, mirrored for the dry run
         for (const o of ctx.participations)
-          if (o.isrc === p.isrc && o.artistId === recipient && o.fundedFrom === p.fundedFrom && o.validFrom < (to ?? '9999-12-31') && from < (o.validTo ?? '9999-12-31'))
+          if (o.isrc === p.isrc && o.artistId === recipient && o.fundedFrom === p.fundedFrom && (o.fromArtistId ?? null) === (fromArtist ?? null) && o.validFrom < (to ?? '9999-12-31') && from < (o.validTo ?? '9999-12-31'))
             throw new Error('participation_overlap');
         const input: ParticipationInput = {
           isrc: p.isrc,
@@ -494,7 +494,7 @@ export async function stepParticipations(ctx: Ctx) {
           note: marker,
         };
         const id = ctx.apply ? (await ctx.f.createParticipation(input)).id : ctx.fakeId('part');
-        ctx.participations.push({ id, isrc: p.isrc, artistId: recipient, fundedFrom: p.fundedFrom, validFrom: from, validTo: to, note: marker });
+        ctx.participations.push({ id, isrc: p.isrc, artistId: recipient, fromArtistId: fromArtist ?? null, fundedFrom: p.fundedFrom, validFrom: from, validTo: to, note: marker });
         log.event(
           'participation_created',
           `${p.isrc} ${p.recipient.pseudonym} ${pct(p.percent)} ${p.base}/${p.fundedFrom}${p.fromArtist ? ` from ${p.fromArtist.pseudonym}` : ''} ${from}..${to ?? 'open'} | ${kind} doc "${p.document?.title.slice(0, 60) ?? '-'}"${removed.length ? ` | split row removed from ${removed.join(',')}` : ''}`,
