@@ -43,6 +43,10 @@ export interface UnitResult {
   /** Our label of record (null for an unmapped label string). */
   ourLabelId: string | null;
   ourLabelName: string | null;
+  /** The sublabel of the label string and the rule in force at the report month (signals only, no amount). */
+  sublabelId: string | null;
+  sublabelName: string | null;
+  ruleId: string | null;
   /** What remains of the net after every allocation (the layer state, D-127). */
   labelShare: Decimal;
   labelShareCategory: LabelShareCategory;
@@ -197,6 +201,9 @@ export async function calculate(
       status: state.status,
       ourLabelId: state.ourLabelId,
       ourLabelName: state.ourLabelName,
+      sublabelId: state.sublabelId,
+      sublabelName: state.sublabelName,
+      ruleId: state.rule?.id ?? null,
       labelShare: state.labelShare,
       labelShareCategory: state.labelShareCategory,
       ours: state.labelShareCategory === 'ours' ? state.labelShare : ZERO,

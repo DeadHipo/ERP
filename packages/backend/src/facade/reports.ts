@@ -65,6 +65,16 @@ export function reportsApi(ctx: FacadeContext) {
         why: string;
       }[] = [];
       const byRule = new Map<string, Decimal>();
+      const noRule = new Map<string, { label: string; month: string; net: Decimal }>();
+      const recipientRows = new Map<
+        string,
+        { isrc: string; artistId: string; pseudonym: string; month: string }
+      >();
+      const twoRows = new Map<
+        string,
+        { isrc: string; ownerId: string; month: string; pseudonyms: string[] }
+      >();
+      const pseudonymOf = (id: string) => calc.artistIndex.get(id)?.pseudonym ?? '?';
       let noIsrc = ZERO;
       for (const u of calc.units) {
         if (!inMonthRange((f.basis ?? 'report') === 'sales' ? u.salesMonth : u.reportingMonth, f.from, f.to))
@@ -82,6 +92,39 @@ export function reportsApi(ctx: FacadeContext) {
         if (u.labelShareCategory === 'label_unmapped')
           unmapped.set(u.labelName, (unmapped.get(u.labelName) ?? ZERO).add(u.net));
         unfunded.push(...u.shortfalls);
+        if (u.sublabelId && !u.ruleId) {
+          const k = `${u.sublabelId}|${u.reportingMonth}`;
+          const r = noRule.get(k) ?? {
+            label: u.sublabelName ?? u.labelName,
+            month: u.reportingMonth,
+            net: ZERO,
+          };
+          r.net = r.net.add(u.net);
+          noRule.set(k, r);
+        }
+        const rows = u.allocations.filter((a) => a.layer === 'split' && a.kind === 'row');
+        if (u.ruleId) {
+          const rule = u.allocations.find((a) => a.layer === 'sublabel');
+          if (rule && rows.some((a) => a.artistId === rule.artistId))
+            recipientRows.set(`${u.isrc}|${rule.artistId}|${u.reportingMonth}`, {
+              isrc: u.isrc,
+              artistId: rule.artistId,
+              pseudonym: pseudonymOf(rule.artistId),
+              month: u.reportingMonth,
+            });
+        }
+        const byOwner = new Map<string, Set<string>>();
+        for (const a of rows)
+          if (a.ownerId)
+            byOwner.set(a.ownerId, (byOwner.get(a.ownerId) ?? new Set<string>()).add(a.artistId));
+        for (const [ownerId, ids] of byOwner)
+          if (ids.size > 1)
+            twoRows.set(`${u.isrc}|${ownerId}|${u.reportingMonth}`, {
+              isrc: u.isrc,
+              ownerId,
+              month: u.reportingMonth,
+              pseudonyms: [...ids].map(pseudonymOf).sort(),
+            });
         for (const a of u.allocations) {
           byRule.set(a.ruleId, (byRule.get(a.ruleId) ?? ZERO).add(a.amount));
           if (a.reason !== 'assumption') continue;
@@ -138,6 +181,15 @@ export function reportsApi(ctx: FacadeContext) {
             fundedFrom: p.fundedFrom,
             amount: byRule.get(p.id) ?? ZERO,
           })),
+        sublabelWithoutRule: [...noRule.values()].sort(
+          (a, b) => b.net.cmp(a.net) || a.month.localeCompare(b.month),
+        ),
+        ruleRecipientIsRow: [...recipientRows.values()].sort(
+          (a, b) => a.isrc.localeCompare(b.isrc) || a.month.localeCompare(b.month),
+        ),
+        twoRowsOneOwner: [...twoRows.values()].sort(
+          (a, b) => a.isrc.localeCompare(b.isrc) || a.month.localeCompare(b.month),
+        ),
         assumptions: [...assumptions.values()]
           .map((a) => ({
             documentId: a.documentId,

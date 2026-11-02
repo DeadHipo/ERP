@@ -298,6 +298,26 @@ Status: **later** (payout side); the history import records the payout on the ow
 - Essence: buyouts, assignments, sales and settlements carry a day; D-025 selects the split by the first day of the report month, so a split starting 2025-12-16 applies from 2026-01; Annex applies the new share in the month that contains the effective date (2025-12). Difference 458 unit-months, 13,363.21 net.
 - Status: **MVP data**, verdict in §4: D-025 stays; the entry rule sets `valid_from` = the first day of the month containing the effective date (so the ERP and Annex agree); stage 4 normalises the 1,043 legacy mid-month dates the same way and logs them.
 
+### M53 Non-economic documents (NDA, powers of attorney, DMCA, employment and reference letters, Grammy, indemnity, consulting)
+Status: **out**. They move no money; they are filed as documents of their kind (or not loaded) and create no split, participation or rule.
+
+### M54 Known ISRC under a second, unregistered UPC
+- Essence: Believe reports a known ISRC under a UPC that module 1 does not list, so the line is `unknown_pair` (C) although the ISRC has a split.
+- Status: **MVP data**, D-135: register every Believe pair of a known ISRC; a split by ISRC then applies to every UPC.
+
+### M55 Echo8 artist agreements as split documents
+- Essence: only four Echo8 RSAs exist in the folders; the Echo8 splits taken from the Backstage export have no document of their own.
+- Status: **data gap**. Those splits stay in C `split_unconfirmed` until their documents arrive.
+
+### M56 SoundOn-format statements and fixed revenue shares among people named on a line
+Status: **later** (MVP list item ◻26): a new source format and a fixed-share rule; nothing is calculated today.
+
+### M57 Accrual-basis royalty (Russian licence "received or accrued")
+Status: **later**. The ERP counts royalty on the report month of the received line; an accrual view needs an owner decision.
+
+### M58 Sublabel per-artist exceptions (an artist's lines excluded from a sublabel's imprint)
+Status: **open**, not expressible: the sublabel rule applies to the whole imprint's label share and has no per-ISRC or per-artist exclusion. The signals `sublabelWithoutRule` and `ruleRecipientIsRow` (D-136) show where such an exception would matter.
+
 ## 4. Contradictions and the verdicts (by precedence)
 
 | Topic | Sources disagree | Verdict | Basis |
@@ -318,6 +338,7 @@ Status: **later** (payout side); the history import records the payout on the ow
 | Cross-account duplicates | report-processor dedups by fingerprint | no duplicate lines exist; never dedup (D-032); the accounts are complementary per platform | ClickHouse check (QA re-verified) |
 | Splits of old months | report-processor uses the latest snapshot | by report date (D-025) with `valid_from` as the registry gives (M38) | D-025 in force |
 | B17 split | report-processor v3: 50 % label + writers' pool by ownership | equal parts of our writers (D-087 ⚠), label keeps the rest | D-087 in force, ⚠ |
+| +2 months payout lag of the Believe royalties files | Believe pays two months after the sales month; Main lists payments by payment month | the ERP keys on the line's report month; the lag matters only when matching Main payments (period = report month) | D-025, D-110 |
 
 ## 5. Open questions and the proposed answers (for the council and the D-entries of stage 2)
 

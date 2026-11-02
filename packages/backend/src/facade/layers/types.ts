@@ -72,6 +72,9 @@ export interface UnitState {
   /** The own label whose share this is (a sublabel's own label); null for an unmapped label string. */
   ourLabelId: string | null;
   ourLabelName: string | null;
+  /** The sublabel the label string maps to (null for an own label or an unmapped string), rule or not. */
+  sublabelId: string | null;
+  sublabelName: string | null;
   /** The sublabel rule in force at the report month (null for an own label or when none is in force). */
   rule: SublabelRule | null;
   status: UnitStatus;

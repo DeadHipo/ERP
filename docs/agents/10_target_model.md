@@ -150,6 +150,10 @@ allocations' units, `byLabel`); recouped and paid are one total, because operati
 - `signals()` adds: `unfunded` shortfalls, `labelUnmapped` strings with net, tracks with a note (M29), participations
   whose recipient has no owner, allocations under `assumption` documents grouped by document (M39 conflicts live
   there: the registered split stands, the conflicting rows carry the assumption document).
+- `signals()` adds (D-136): `sublabelWithoutRule` (units of a sublabel with no rule in force at the report month,
+  `{ label, month, net }` aggregated), `ruleRecipientIsRow` (the sublabel rule recipient also has a split row on the
+  same unit: the double-pay shape, `{ isrc, artistId, pseudonym, month }`) and `twoRowsOneOwner` (two split rows of an
+  ISRC-month belong to pseudonyms of one owner, information only). No amount changes.
 - `explainTrack()` returns per unit the state after each layer (allocations with layer and rule id) and asserts in
   its test that the last state sums to the unit net.
 - The payout snapshot is unchanged in shape (per artist); allocations of participations appear under their
@@ -192,3 +196,6 @@ third-party payees: payout side or new sources (map MVP ◻ items). An advance s
 is entered as its ISRC list (scope `isrcs`). M41 no-ISRC folding (D-035 ⚠), M42 no-split pools
 (D-029), M48 taxes, M49 period locks: consciously not done. Publishing writer shares from contracts (D-087 ⚠) and
 publishing buyouts by work (D-045 ⚠): wait for the owner.
+Also consciously out (D-136): SoundOn statements and fixed revenue shares among people named on a line (MVP ◻26),
+per-ISRC imprint exclusions of a sublabel (M58), legal interest on late payments (owner answer 7), release dates as a
+calculation input (owner answer 1), the 779 coverage list, and approvals / assets of documents (owner answer 8).

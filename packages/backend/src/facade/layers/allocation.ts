@@ -11,6 +11,8 @@ export function initialState(unit: MasterUnit): UnitState {
     unit,
     ourLabelId: null,
     ourLabelName: null,
+    sublabelId: null,
+    sublabelName: null,
     rule: null,
     status: 'allocated',
     scaledNet: unit.net,

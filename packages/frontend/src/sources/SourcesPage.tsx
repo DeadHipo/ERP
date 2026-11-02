@@ -177,6 +177,39 @@ function SignalLists({ s }: { s: Signals }) {
           { title: 'Net', render: (l) => <Money value={l.net} />, className: 'num' },
         ]}
       />
+      <h3>Sublabel without a rule in force ({s.sublabelWithoutRule.length})</h3>
+      <Table
+        rows={s.sublabelWithoutRule}
+        keyOf={(l) => l.label + l.month}
+        empty="None"
+        columns={[
+          { title: 'Sublabel', render: (l) => l.label },
+          { title: 'Month', render: (l) => l.month },
+          { title: 'Net', render: (l) => <Money value={l.net} />, className: 'num' },
+        ]}
+      />
+      <h3>Rule recipient is also a split row ({s.ruleRecipientIsRow.length})</h3>
+      <Table
+        rows={s.ruleRecipientIsRow}
+        keyOf={(r) => r.isrc + r.artistId + r.month}
+        empty="None"
+        columns={[
+          { title: 'ISRC', render: (r) => <code>{r.isrc}</code> },
+          { title: 'Recipient', render: (r) => r.pseudonym },
+          { title: 'Month', render: (r) => r.month },
+        ]}
+      />
+      <h3>Two rows, one owner ({s.twoRowsOneOwner.length})</h3>
+      <Table
+        rows={s.twoRowsOneOwner}
+        keyOf={(r) => r.isrc + r.ownerId + r.month}
+        empty="None"
+        columns={[
+          { title: 'ISRC', render: (r) => <code>{r.isrc}</code> },
+          { title: 'Month', render: (r) => r.month },
+          { title: 'Pseudonyms', render: (r) => r.pseudonyms.join(', ') },
+        ]}
+      />
       <h3>Tracks with a note ({s.tracksWithNote.length})</h3>
       <Table
         rows={s.tracksWithNote}
@@ -207,7 +240,10 @@ function SignalLists({ s }: { s: Signals }) {
         empty="None"
         columns={[
           { title: 'Basis', render: (a) => a.basis },
-          { title: 'Document', render: (a) => (a.documentId ? <code>{a.documentId.slice(0, 8)}</code> : '—') },
+          {
+            title: 'Document',
+            render: (a) => (a.documentId ? <code>{a.documentId.slice(0, 8)}</code> : '—'),
+          },
           { title: 'ISRCs', render: (a) => a.isrcs.length },
           { title: 'Amount', render: (a) => <Money value={a.amount} />, className: 'num' },
         ]}

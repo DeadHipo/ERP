@@ -73,6 +73,12 @@ class Case {
       this.register(n, (artists[0] as { id: string }).id, owner.id);
     }
   }
+  /** A second pseudonym of the same owner as `of`. */
+  async second(name: string, of: string) {
+    const ownerId = this.owners.get(of) as string;
+    const artist = await this.f.modules.owners.createArtist({ pseudonym: name, ownerId });
+    this.register(name, artist.id, ownerId);
+  }
   /** Confirmed persons whose artist ids are in the order of the names (the residue tie-break is by id). */
   async ordered(...names: string[]) {
     const made: { id: string; owner: string }[] = [];
@@ -717,6 +723,68 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G21b (D-136): signals for a sublabel without a rule in force and for a rule recipient that is a row', async () => {
+    const c = await Case.start();
+    await c.person('A', 'R');
+    await c.company('NG');
+    await c.track(I(1));
+    await c.track(I(2));
+    await c.split(I(1), [
+      ['A', '40'],
+      ['R', '10'],
+    ]);
+    await c.split(I(2), [['A', '50']]);
+    // rule starts 2026-06: March is a sublabel month without a rule; June on ISRC 1 pays R twice (row + rule)
+    const labels = c.f.modules.labels;
+    const l = await labels.createLabel({
+      name: 'NoGhost Records',
+      kind: 'sublabel',
+      ownLabelId: await c.labelId('0to8'),
+    });
+    await labels.addAlias(l.id, 'NoGhost Records');
+    await labels.setRule({
+      labelId: l.id,
+      percent: '50',
+      recipientArtistId: c.id('R'),
+      validFrom: '2026-06-01',
+      documentId: (await approvedDoc(c.f, 'contract')).id,
+    });
+    const rows = [
+      { isrc: I(1), net: '100', label: 'NoGhost Records' },
+      { isrc: I(2), net: '40', label: 'NoGhost Records' },
+    ];
+    await c.load('2026-03', rows);
+    await c.load('2026-06', rows);
+    const s = await c.f.signals();
+    expect(s.sublabelWithoutRule.map((x) => [x.label, x.month, x.net.toFixed()])).toEqual([
+      ['NoGhost Records', '2026-03', '140'],
+    ]);
+    expect(s.ruleRecipientIsRow.map((x) => [x.isrc, x.pseudonym, x.month])).toEqual([[I(1), 'R', '2026-06']]);
+    expect(s.twoRowsOneOwner).toEqual([]);
+    const only = await c.f.signals({ from: '2026-06', to: '2026-06' });
+    expect(only.sublabelWithoutRule).toEqual([]);
+    await c.verify();
+  });
+
+  it('G21c (D-136): two split rows of one ISRC belong to pseudonyms of one owner', async () => {
+    const c = await Case.start();
+    await c.person('A');
+    await c.second('A2', 'A');
+    await c.track(I(1));
+    await c.split(I(1), [
+      ['A', '30'],
+      ['A2', '20'],
+    ]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    const s = await c.f.signals();
+    expect(s.twoRowsOneOwner.map((x) => [x.isrc, x.month, x.pseudonyms])).toEqual([
+      [I(1), '2026-03', ['A', 'A2']],
+    ]);
+    expect(s.sublabelWithoutRule).toEqual([]);
+    expect(s.ruleRecipientIsRow).toEqual([]);
+    await c.verify();
+  });
+
   it('G22 (E3): the pool is smaller than the carve: shortfall 10', async () => {
     const c = await single(async (c) => {
       await c.person('A', 'P');
@@ -1178,9 +1246,9 @@ describe('signals of 10 §6 without a golden number (M29, D-130)', () => {
     expect(s.tracksWithNote).toEqual([
       { trackId: track.id, isrc: I(1), upc: UPC, title: I(1), note: 'derivative outside the authorisation' },
     ]);
-    expect(
-      s.participantsWithoutOwner.map((p) => ({ ...p, amount: p.amount.toFixed() })),
-    ).toMatchObject([{ isrc: I(1), artistId: orphan, pseudonym: 'Orphan D130', fundedFrom: 'label_share', amount: '5' }]);
+    expect(s.participantsWithoutOwner.map((p) => ({ ...p, amount: p.amount.toFixed() }))).toMatchObject([
+      { isrc: I(1), artistId: orphan, pseudonym: 'Orphan D130', fundedFrom: 'label_share', amount: '5' },
+    ]);
     // the note changes no amount
     expect(await c.amounts(I(1))).toEqual(before);
     expect(await c.row()).toEqual(rowBefore);
@@ -1220,7 +1288,13 @@ describe('a layer that loses money shows as a discrepancy (10 §6)', () => {
 describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', () => {
   const lines = [
     { title: 'T-A', writer: 'HOLDER H', songwriters: 'W1, W2', payable: '100', operationType: 'Mechanical' },
-    { title: 'T-B', writer: 'HOLDER H', songwriters: 'W1, W2', payable: '100', operationType: 'Synchronization' },
+    {
+      title: 'T-B',
+      writer: 'HOLDER H',
+      songwriters: 'W1, W2',
+      payable: '100',
+      operationType: 'Synchronization',
+    },
     { title: 'T-C', writer: 'HOLDER H', songwriters: 'W1, X', payable: '100', operationType: 'Mechanical' },
     { title: 'T-D', writer: 'HOLDER H', songwriters: 'W3', payable: '100', operationType: 'Mechanical' },
   ];
@@ -1235,8 +1309,18 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
     }
     const pub = c.f.modules.publishing;
     const doc = async (w: string) => (await approvedDoc(c.f, 'contract', owner[w] as string)).id;
-    await pub.setTerms({ ownerId: owner.W1 as string, percent: '50', validFrom: '2020-01-01', documentId: await doc('W1') });
-    await pub.setTerms({ ownerId: owner.W2 as string, percent: '90', validFrom: '2020-01-01', documentId: await doc('W2') });
+    await pub.setTerms({
+      ownerId: owner.W1 as string,
+      percent: '50',
+      validFrom: '2020-01-01',
+      documentId: await doc('W1'),
+    });
+    await pub.setTerms({
+      ownerId: owner.W2 as string,
+      percent: '90',
+      validFrom: '2020-01-01',
+      documentId: await doc('W2'),
+    });
     await pub.setTerms({
       ownerId: owner.W2 as string,
       percent: '50',
@@ -1244,7 +1328,12 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
       documentId: await doc('W2'),
       operationType: 'Synchronization',
     });
-    await c.f.ingestB17(await writeB17('Q12026', lines.filter((l) => which.includes(l.title)).map((l) => ({ ...l, period: '1Q26' }))));
+    await c.f.ingestB17(
+      await writeB17(
+        'Q12026',
+        lines.filter((l) => which.includes(l.title)).map((l) => ({ ...l, period: '1Q26' })),
+      ),
+    );
     const calc = await calculate({ ...c.f.modules, db: c.f.db });
     const pick = (title: string) =>
       calc.publishing
@@ -1300,12 +1389,8 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
     const { c } = await world(['T-A', 'T-B', 'T-C', 'T-D']);
     const r = (await c.f.reconciliation()).find((x) => x.source === 'b17' && x.account === 'b17');
     expect(r).toBeDefined();
-    expect([r?.A_received, r?.B_notOurs, r?.C_waiting, r?.ourShare, r?.discrepancy].map((x) => x?.toFixed())).toEqual([
-      '400',
-      '170',
-      '50',
-      '180',
-      '0',
-    ]);
+    expect(
+      [r?.A_received, r?.B_notOurs, r?.C_waiting, r?.ourShare, r?.discrepancy].map((x) => x?.toFixed()),
+    ).toEqual(['400', '170', '50', '180', '0']);
   });
 });

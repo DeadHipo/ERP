@@ -369,6 +369,15 @@ export const signalsSchema = z.object({
     )
     .describe('Carves larger than their bucket: the missing part is not money (10 §3)'),
   labelUnmapped: z.array(z.object({ labelName: z.string(), net: money })),
+  sublabelWithoutRule: z
+    .array(z.object({ label: z.string(), month, net: money }))
+    .describe('Units of a sublabel with no rule in force at the report month (the imprint has no deal yet)'),
+  ruleRecipientIsRow: z
+    .array(z.object({ isrc: z.string(), artistId: z.string(), pseudonym: z.string(), month }))
+    .describe('The sublabel rule recipient also has a split row on the same unit: the double-pay shape'),
+  twoRowsOneOwner: z
+    .array(z.object({ isrc: z.string(), ownerId: z.string(), month, pseudonyms: z.array(z.string()) }))
+    .describe('Two split rows of one ISRC-month belong to pseudonyms of the same owner (information only)'),
   tracksWithNote: z.array(
     z.object({
       trackId: z.string(),
