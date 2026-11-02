@@ -9,6 +9,28 @@ const date = z.string().describe('YYYY-MM-DD');
 const month = z.string().describe('YYYY-MM');
 const timestamp = z.string().describe('ISO 8601 timestamp');
 
+// ---- category C reasons ----
+
+/**
+ * Why money waits (category C), one list for the reconciliation, the balance and the pages (D-127). Master:
+ * split_unconfirmed, rule_unconfirmed, assumption, artist_without_owner, owner_unconfirmed, label_unmapped,
+ * unknown_pair, no_isrc; publishing: writer_unmapped, publishing_terms_unconfirmed (owner_unconfirmed too).
+ */
+export const C_REASONS = [
+  'split_unconfirmed',
+  'rule_unconfirmed',
+  'assumption',
+  'artist_without_owner',
+  'owner_unconfirmed',
+  'label_unmapped',
+  'unknown_pair',
+  'no_isrc',
+  'publishing_terms_unconfirmed',
+  'writer_unmapped',
+] as const;
+export const cReasonSchema = z.enum(C_REASONS);
+export type CReason = z.infer<typeof cReasonSchema>;
+
 // ---- errors ----
 
 export const errorBody = z.object({

@@ -4,7 +4,7 @@ import { assertDate, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
 import type { OperationRow } from './repository';
 import type { Db } from '../../shared/pg-db';
-import type { Scope, ScopeKind } from './recoup';
+import type { Scope, ScopeKind } from './recoup-types';
 
 export interface OperationView {
   id: string;

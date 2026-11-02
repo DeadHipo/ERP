@@ -1,6 +1,7 @@
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { inMonthRange, monthOf } from '../shared/dates';
-import { recoup, type IncomeItem, type OperationView, type Position } from '../modules/settlements';
+import type { IncomeItem, OperationView, Position } from '../modules/settlements';
+import { recoup } from './layers/recoup';
 import { pubInPeriod, unitInPeriod, type Calculation, type CReason, type PeriodFilter } from './calculation';
 
 export interface ArtistBalance {

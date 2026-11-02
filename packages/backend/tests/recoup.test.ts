@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Decimal } from '../src/shared/money';
-import { recoup, type IncomeItem, type Position } from '../src/modules/settlements';
+import type { IncomeItem, Position } from '../src/modules/settlements';
+import { recoup } from '../src/facade/layers/recoup';
 
 const D = (v: string | number) => new Decimal(v);
 const master = (
