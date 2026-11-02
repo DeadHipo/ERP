@@ -10,6 +10,8 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [03_decision_index.md](03_decision_index.md) | Before changing behaviour: which D-entries are in force, replaced or waiting for the owner |
 | [04_recipes.md](04_recipes.md) | Making a change: endpoint, schema, source, page, money rule; guard tests |
 | [05_doc_drift.md](05_doc_drift.md) | Two texts disagree, or a command from README/HANDOVER does not work |
+| [09_settlement_cases.md](09_settlement_cases.md) | The settlement cases catalogue (MVP goal, stage 1): every contract mechanic with base, payer, example, current behaviour and status; open questions and the edge cases golden tests must pin |
+| [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
 `packages/backend/src/modules/sources/`, `packages/backend/src/facade/`, `packages/backend/tests/`, `packages/frontend/`.
