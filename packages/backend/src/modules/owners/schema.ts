@@ -43,6 +43,7 @@ export const tracks = s.table('tracks', {
   isrc: text('isrc'),
   upc: text('upc'),
   title: text('title').notNull(),
+  note: text('note'),
   createdAt: isoTimestamp('created_at').notNull(),
 });
 

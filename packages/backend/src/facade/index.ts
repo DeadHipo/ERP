@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { openOwnersModule, type OwnersService } from '../modules/owners';
+import { openLabelsModule, type LabelsService } from '../modules/labels';
 import { openSplitsModule, type SplitsService } from '../modules/splits';
 import type { SourcesService } from '../modules/sources';
 import { openSettlementsModule, type SettlementsService } from '../modules/settlements';
@@ -23,17 +24,26 @@ export function openFacade(config: FacadeConfig) {
   const { db } = config;
   const owners: OwnersService = openOwnersModule(db).service;
   const splits: SplitsService = openSplitsModule(db).service;
+  const labels: LabelsService = openLabelsModule(db).service;
   const sources: SourcesService = config.sources;
   const settlements: SettlementsService = openSettlementsModule(db).service;
   const publishing: PublishingService = openPublishingModule(
     db,
     join(config.dataDir, 'files', 'publishing'),
   ).service;
-  const ctx = createFacadeContext(config, { db, owners, splits, sources, settlements, publishing });
+  const ctx = createFacadeContext(config, {
+    db,
+    owners,
+    splits,
+    labels,
+    sources,
+    settlements,
+    publishing,
+  });
 
   return {
     db,
-    modules: { owners, splits, sources, settlements, publishing },
+    modules: { owners, splits, labels, sources, settlements, publishing },
 
     ...splitsApi(ctx),
     ...sourcesApi(ctx),

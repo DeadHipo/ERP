@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BELIEVE_COLUMNS } from '../../src/modules/sources';
+import type { DocumentKind } from '../../src/modules/owners';
 import { openFacade } from '../../src/facade';
 import type { PaymentService } from '../../src/facade/payment-service';
 import { testSources, testStack } from './test-sources';
@@ -146,13 +147,21 @@ export async function newFacade(threshold = 0, opts: { paymentService?: PaymentS
   await stack.resetModules();
   const dataDir = join(TMP, `facade-${randomUUID()}`);
   mkdirSync(dataDir, { recursive: true });
-  return openFacade({
+  const facade = openFacade({
     db: stack.db,
     dataDir,
     payoutThresholdCents: threshold,
     sources: testSources(),
     ...opts,
   });
+  // The own labels every test starts with: the imprint of the synthetic Believe files is "Test Label".
+  const labels = facade.modules.labels;
+  const zero = await labels.createLabel({ name: '0to8', kind: 'own' });
+  await labels.addAlias(zero.id, 'Test Label');
+  await labels.addAlias(zero.id, '0to8');
+  const echo = await labels.createLabel({ name: 'Echo8', kind: 'own' });
+  await labels.addAlias(echo.id, 'Echo8');
+  return facade;
 }
 
 export type TestFacade = Awaited<ReturnType<typeof newFacade>>;
@@ -190,7 +199,7 @@ export async function approvedAppendix(f: TestFacade, ownerId: string | null = n
 
 export async function approvedDoc(
   f: TestFacade,
-  kind: 'buyout' | 'advance_basis' | 'adjustment_basis' | 'contract' | 'appendix',
+  kind: Exclude<DocumentKind, 'assumption'>,
   ownerId: string | null = null,
 ) {
   const o = f.modules.owners;
@@ -202,4 +211,32 @@ export async function approvedDoc(
     requiresApproval: false,
   });
   return d;
+}
+
+/** Owner of kind label with one pseudonym named like the owner (a company, sublabel or buyer). */
+export async function labelOwner(f: TestFacade, name: string) {
+  const o = f.modules.owners;
+  const owner = await o.createOwner({ name, kind: 'label' });
+  const artist = await o.createArtist({ pseudonym: name, ownerId: owner.id });
+  return { owner, artist };
+}
+
+/** Owner with pseudonyms and no contract: nothing of it is confirmed. */
+export async function unconfirmedOwner(f: TestFacade, name: string, pseudonyms: string[]) {
+  const o = f.modules.owners;
+  const owner = await o.createOwner({ name, kind: 'person' });
+  const artists = [];
+  for (const p of pseudonyms) artists.push(await o.createArtist({ pseudonym: p, ownerId: owner.id }));
+  return { owner, artists };
+}
+
+/** A council decision recorded as a document: the file is attached, it is never approved (status not_approved). */
+export async function assumptionDoc(f: TestFacade, ownerId: string | null, title: string) {
+  return f.modules.owners.createDocument({
+    kind: 'assumption',
+    title,
+    fileRef: 'dummy://assumption.pdf',
+    ownerId,
+    requiresApproval: true,
+  });
 }

@@ -1,6 +1,7 @@
 import { ValidationError } from '../shared/errors';
 import { type OwnersService } from '../modules/owners';
 import { type SplitsService } from '../modules/splits';
+import { type LabelsService } from '../modules/labels';
 import type { SourcesService } from '../modules/sources';
 import { type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
@@ -42,14 +43,15 @@ export function createFacadeContext(
     db: Db;
     owners: OwnersService;
     splits: SplitsService;
+    labels: LabelsService;
     sources: SourcesService;
     settlements: SettlementsService;
     publishing: PublishingService;
   },
 ) {
-  const { db, owners, splits, sources, settlements, publishing } = m;
+  const { db, owners, splits, labels, sources, settlements, publishing } = m;
   const payments = config.paymentService ?? stubPaymentService;
-  const modules = { db, owners, splits, sources, publishing };
+  const modules = { db, owners, splits, labels, sources, publishing };
 
   /**
    * Payouts of an owner that block new money going out: no payment proof, a deferred one, or a proof that is not
@@ -159,6 +161,7 @@ export function createFacadeContext(
     db,
     owners,
     splits,
+    labels,
     sources,
     settlements,
     publishing,

@@ -39,6 +39,7 @@ export const trackSchema = z.object({
   isrc: z.string().nullable(),
   upc: z.string().nullable(),
   title: z.string(),
+  note: z.string().nullable(),
 });
 export type Track = z.infer<typeof trackSchema>;
 

@@ -68,6 +68,9 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-029 ISRC without split → our share · in force
 - D-030 Base split templates not implemented · in force
 
+## Labels
+- D-125 Labels module (own labels, aliases, sublabel rules); tracks.note; document kind assumption · in force
+
 ## Sources (Believe)
 - D-031 File name, account, month, generation date · in force
 - D-032 Line key, summing, control check · in force; ⚠ which fields to store

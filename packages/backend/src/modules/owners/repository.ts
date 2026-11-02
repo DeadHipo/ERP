@@ -118,6 +118,9 @@ export function createOwnersRepository(db: Db) {
       await orm().update(tracks).set({ isrc, upc }).where(eq(tracks.id, id));
     },
 
+    setTrackNote: async (id: string, note: string | null) => {
+      await orm().update(tracks).set({ note }).where(eq(tracks.id, id));
+    },
     linkArtistTrack: async (artistId: string, trackId: string) => {
       await orm().insert(artistTracks).values({ artistId, trackId }).onConflictDoNothing();
     },
