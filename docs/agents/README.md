@@ -16,7 +16,7 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [12_golden_cases.md](12_golden_cases.md) | Synthetic scenarios with hand-computed answers; every one is a test |
 | [13_completeness_check.md](13_completeness_check.md) | The A = B + C + ours check on the loaded data, per source, account and month (stage 5/6) |
 | [14_verification.md](14_verification.md) | Stage 6 verification: what was checked against the workbooks and the old ERP, and the differences found |
-| [15_mvp_report.md](15_mvp_report.md) | The MVP report for the owner: what is done, what is open (written at the end of stage 7; may not exist yet) |
+| [15_mvp_report.md](15_mvp_report.md) | The MVP report: what is closed, what is open for the owner, which assumptions the money depends on |
 | [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
