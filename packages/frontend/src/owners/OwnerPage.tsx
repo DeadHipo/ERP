@@ -29,6 +29,22 @@ export function OwnerPage() {
     });
   };
 
+  const [terms, setTerms] = useState({ percent: '', validFrom: '', operationType: '', documentId: '' });
+  const addTerms = (e: FormEvent) => {
+    e.preventDefault();
+    void action.run(async () => {
+      await api.setPublishingTerms({
+        ownerId: id,
+        percent: terms.percent,
+        validFrom: terms.validFrom,
+        ...(terms.operationType.trim() ? { operationType: terms.operationType.trim() } : {}),
+        documentId: terms.documentId || null,
+      });
+      setTerms({ percent: '', validFrom: '', operationType: '', documentId: '' });
+      reload();
+    });
+  };
+
   const addContract = (e: FormEvent) => {
     e.preventDefault();
     void action.run(async () => {
@@ -136,12 +152,29 @@ export function OwnerPage() {
           keyOf={(t) => t.id}
           empty="No terms: the default 50% is used and the money waits for confirmation"
           columns={[
+            { title: 'Operation type', render: (t) => t.operationType ?? 'all types' },
             { title: 'Percent', render: (t) => `${t.percent}%` },
             { title: 'From', render: (t) => t.validFrom },
             { title: 'To', render: (t) => t.validTo ?? 'open' },
             { title: 'Document', render: (t) => (t.documentId ? <code>{t.documentId.slice(0, 8)}</code> : '—') },
           ]}
         />
+        <form className="row" onSubmit={addTerms}>
+          <input placeholder="%" value={terms.percent} onChange={(e) => setTerms({ ...terms, percent: e.target.value })} required />
+          <label>
+            from <input type="date" value={terms.validFrom} onChange={(e) => setTerms({ ...terms, validFrom: e.target.value })} required />
+          </label>
+          <input placeholder="operation type (empty = all types)" value={terms.operationType} onChange={(e) => setTerms({ ...terms, operationType: e.target.value })} />
+          <select value={terms.documentId} onChange={(e) => setTerms({ ...terms, documentId: e.target.value })}>
+            <option value="">no document</option>
+            {documents.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.kind}: {d.title} ({d.status})
+              </option>
+            ))}
+          </select>
+          <button>Set terms</button>
+        </form>
       </Card>
     </>
   );

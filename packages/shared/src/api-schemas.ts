@@ -39,7 +39,18 @@ export const createTrackBody = z.object({
   artistIds: z.array(z.string()).optional(),
 });
 
-export const updateTrackBody = z.object({ isrc: z.string().nullable(), upc: z.string().nullable() });
+/** Identifiers and/or the free note of a track; send what changes (a null/empty note clears it). */
+export const updateTrackBody = z
+  .object({
+    isrc: z.string().nullable().optional(),
+    upc: z.string().nullable().optional(),
+    note: z.string().nullable().optional(),
+  })
+  .refine(
+    (b) => b.isrc !== undefined || b.upc !== undefined || b.note !== undefined,
+    'isrc, upc or note is required',
+  )
+  .refine((b) => (b.isrc === undefined) === (b.upc === undefined), 'isrc and upc are sent together');
 
 export const documentKind = z.enum([
   'contract',
@@ -50,6 +61,7 @@ export const documentKind = z.enum([
   'payment_proof',
   'return_proof',
   'other',
+  'assumption',
 ]);
 
 export const createDocumentBody = z.object({
@@ -175,3 +187,38 @@ export type SourceLinesQuery = z.infer<typeof sourceLinesQuery>;
 export const sourceFacetsQuery = z.object({ fileId: z.string().optional() });
 
 export const mapWriterBody = z.object({ ownerId: z.string().nullish(), createNew: z.boolean().optional() });
+
+// ---- labels (D-125, D-129) ----
+
+export const createLabelBody = z.object({
+  name: z.string().min(1),
+  kind: z.enum(['own', 'sublabel']),
+  ownLabelId: z.string().nullish(),
+});
+export const addAliasBody = z.object({ alias: z.string().min(1) });
+export const createLabelRuleBody = z.object({
+  percent,
+  recipientArtistId: z.string().min(1),
+  validFrom: date,
+  validTo: date.nullish(),
+  documentId: z.string().nullish(),
+  note: z.string().nullish(),
+});
+export const closeValidToBody = z.object({ validTo: date });
+
+// ---- participations (D-126, D-129) ----
+
+export const participationBase = z.enum(['net', 'bucket']);
+export const fundedFrom = z.enum(['top', 'artist_pool', 'artist_share', 'label_share']);
+export const createParticipationBody = z.object({
+  isrc: z.string().min(1),
+  artistId: z.string().min(1),
+  percent,
+  base: participationBase,
+  fundedFrom,
+  fromArtistId: z.string().nullish(),
+  validFrom: date,
+  validTo: date.nullish(),
+  documentId: z.string().nullish(),
+  note: z.string().nullish(),
+});

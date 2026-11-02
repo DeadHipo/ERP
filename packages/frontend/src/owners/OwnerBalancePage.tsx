@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { Card, ErrorBox, Money, Stat, Status, Table, useAction, useApi } from '../components/ui';
+import { Card, ErrorBox, Money, Stat, Status, Table, reasonLabel, useAction, useApi } from '../components/ui';
 
 /** Facade view of an owner: period filter, report/sales date switch, A/B/C, payable, per-artist and per-track. */
 export function OwnerBalancePage() {
@@ -60,7 +60,7 @@ export function OwnerBalancePage() {
             Waiting:{' '}
             {Object.entries(b.period.waitingBreakdown).map(([k, v]) => (
               <span key={k}>
-                {k.replace(/_/g, ' ')} <Money value={v} />;{' '}
+                <span title={k}>{reasonLabel(k)}</span> <Money value={v} />;{' '}
               </span>
             ))}
           </p>

@@ -7,6 +7,7 @@ interface ShareRow {
   artistId: string;
   newArtistPseudonym: string;
   percent: string;
+  documentId: string;
 }
 
 /** Splits per ISRC with validity periods; our share is shown as the remainder; create or change with a document. */
@@ -19,14 +20,18 @@ export function SplitsPage() {
   const action = useAction();
   const [mode, setMode] = useState<'create' | 'change'>('create');
   const [form, setForm] = useState({ isrc: '', date: '', documentId: '' });
-  const [shares, setShares] = useState<ShareRow[]>([{ artistId: '', newArtistPseudonym: '', percent: '' }]);
+  const [shares, setShares] = useState<ShareRow[]>([{ artistId: '', newArtistPseudonym: '', percent: '', documentId: '' }]);
 
   const sum = shares.reduce((s, x) => s + (Number(x.percent) || 0), 0);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const spec = shares
       .filter((s) => s.percent !== '')
-      .map((s) => (s.artistId ? { artistId: s.artistId, percent: s.percent } : { newArtistPseudonym: s.newArtistPseudonym, percent: s.percent }));
+      .map((s) => ({
+        ...(s.artistId ? { artistId: s.artistId } : { newArtistPseudonym: s.newArtistPseudonym }),
+        percent: s.percent,
+        ...(s.documentId ? { documentId: s.documentId } : {}),
+      }));
     void action.run(async () => {
       if (mode === 'create') await api.createSplit({ isrc: form.isrc, validFrom: form.date, shares: spec, documentId: form.documentId || null });
       else await api.changeSplit({ isrc: form.isrc, from: form.date, shares: spec, documentId: form.documentId });
@@ -34,7 +39,7 @@ export function SplitsPage() {
       list.reload();
     });
   };
-  const splitDocs = (docs.data ?? []).filter((d) => ['appendix', 'contract', 'buyout'].includes(d.kind));
+  const splitDocs = (docs.data ?? []).filter((d) => ['appendix', 'contract', 'buyout', 'other', 'assumption'].includes(d.kind));
 
   return (
     <>
@@ -77,10 +82,18 @@ export function SplitsPage() {
                 <input placeholder="new pseudonym" value={s.newArtistPseudonym} onChange={(e) => setShares(shares.map((x, j) => (j === i ? { ...x, newArtistPseudonym: e.target.value } : x)))} />
               )}
               <input placeholder="%" value={s.percent} onChange={(e) => setShares(shares.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))} />
+              <select value={s.documentId} onChange={(e) => setShares(shares.map((x, j) => (j === i ? { ...x, documentId: e.target.value } : x)))}>
+                <option value="">row document: same as the split</option>
+                {splitDocs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.kind}: {d.title} ({d.status})
+                  </option>
+                ))}
+              </select>
             </div>
           ))}
           <div className="row">
-            <button type="button" onClick={() => setShares([...shares, { artistId: '', newArtistPseudonym: '', percent: '' }])}>
+            <button type="button" onClick={() => setShares([...shares, { artistId: '', newArtistPseudonym: '', percent: '', documentId: '' }])}>
               + share
             </button>
             <span className={sum > 100 ? 'warning' : 'muted'}>

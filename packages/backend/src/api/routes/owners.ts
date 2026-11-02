@@ -78,7 +78,11 @@ export function ownersRouter(facade: Facade) {
   );
   r.patch('/tracks/:id', async (req, res) => {
     const b = parse(S.updateTrackBody, req.body);
-    res.json(await owners.setTrackIdentifiers(param(req, 'id'), b.isrc, b.upc));
+    const id = param(req, 'id');
+    let track;
+    if (b.isrc !== undefined && b.upc !== undefined) track = await owners.setTrackIdentifiers(id, b.isrc, b.upc);
+    if (b.note !== undefined) track = await owners.setTrackNote(id, b.note);
+    res.json(track);
   });
   r.get('/tracks/:isrc/explain', async (req, res) => res.json(await facade.explainTrack(param(req, 'isrc'))));
 

@@ -46,6 +46,8 @@ export type Money = string;
 // Response types are inferred from the schemas of the contract (also used by the server's OpenAPI and its tests).
 export type {
   Balance,
+  LabelListItem,
+  ParticipationListItem,
   DocumentView,
   Operation,
   Owner,
@@ -56,6 +58,8 @@ export type {
 } from '@erp/shared/api-responses';
 import type {
   Balance,
+  LabelListItem,
+  ParticipationListItem,
   DocumentView,
   Operation,
   Owner,
@@ -170,6 +174,21 @@ export const api = {
     call<{ total: number; items: SplitView[] }>('GET', `/splits${qs(q)}`),
   createSplit: (b: z.input<typeof S.createSplitBody>) => call<SplitView>('POST', '/splits', b),
   changeSplit: (b: z.input<typeof S.changeSplitBody>) => call<SplitView>('POST', '/splits/change', b),
+  labels: () => call<LabelListItem[]>('GET', '/labels'),
+  createLabel: (b: z.input<typeof S.createLabelBody>) => call<unknown>('POST', '/labels', b),
+  addAlias: (id: string, alias: string) => call<unknown>('POST', `/labels/${id}/aliases`, { alias }),
+  createLabelRule: (id: string, b: z.input<typeof S.createLabelRuleBody>) =>
+    call<unknown>('POST', `/labels/${id}/rules`, b),
+  closeLabelRule: (id: string, validTo: string) =>
+    call<unknown>('POST', `/labels/rules/${id}/close`, { validTo }),
+  participations: (q: { isrc?: string }) =>
+    call<{ total: number; items: ParticipationListItem[] }>('GET', `/participations${qs(q)}`),
+  createParticipation: (b: z.input<typeof S.createParticipationBody>) =>
+    call<unknown>('POST', '/participations', b),
+  closeParticipation: (id: string, validTo: string) =>
+    call<unknown>('POST', `/participations/${id}/close`, { validTo }),
+  setPublishingTerms: (b: z.input<typeof S.publishingTermsBody>) => call<unknown>('POST', '/publishing/terms', b),
+  setTrackNote: (id: string, note: string | null) => call<Track>('PATCH', `/tracks/${id}`, { note }),
   files: () => call<{ believe: SourceFile[]; b17: SourceFile[] }>('GET', '/sources/files'),
   upload: (kind: 'believe' | 'b17', file: File) => {
     const fd = new FormData();

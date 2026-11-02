@@ -134,6 +134,63 @@ export const splitSchema = z.object({
   ourShare: z.string().describe('100 minus the sum of the shares; never stored'),
 });
 
+export const participationSchema = z.object({
+  id: z.string(),
+  isrc: z.string(),
+  artistId: z.string(),
+  percent: z.string(),
+  base: z.enum(['net', 'bucket']),
+  fundedFrom: z.enum(['top', 'artist_pool', 'artist_share', 'label_share']),
+  fromArtistId: z.string().nullable(),
+  validFrom: date,
+  validTo: date.nullable().describe('Exclusive; null = open-ended'),
+  documentId: z.string().nullable(),
+  origin: z.string(),
+  note: z.string().nullable(),
+});
+export const participationListSchema = z.object({
+  total: z.number().int(),
+  items: z.array(
+    participationSchema.extend({
+      documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
+      pseudonym: z.string(),
+      ownerId: z.string().nullable(),
+      fromPseudonym: z.string().nullable(),
+    }),
+  ),
+});
+export type ParticipationListItem = z.infer<typeof participationListSchema>['items'][number];
+
+// ---- labels ----
+
+export const labelRuleSchema = z.object({
+  id: z.string(),
+  labelId: z.string(),
+  percent: z.string(),
+  recipientArtistId: z.string(),
+  validFrom: date,
+  validTo: date.nullable().describe('Exclusive; null = open-ended'),
+  documentId: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export const labelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.enum(['own', 'sublabel']),
+  ownLabelId: z.string().nullable(),
+  aliases: z.array(z.string()),
+  rules: z.array(labelRuleSchema),
+});
+export const labelListItemSchema = labelSchema.extend({
+  rules: z.array(
+    labelRuleSchema.extend({
+      recipientPseudonym: z.string(),
+      documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
+    }),
+  ),
+});
+export type LabelListItem = z.infer<typeof labelListItemSchema>;
+
 export const splitListItemSchema = splitSchema.extend({
   documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
   shares: z.array(

@@ -108,4 +108,52 @@ describe('JSON API', () => {
     expect(blocked.status).toBe(422);
     expect(blocked.body.error.code).toBe('payout_blocked');
   });
+
+  it('labels, participations and assumption documents: business errors keep their codes', async () => {
+    const { app } = await setup();
+    const post = (url: string, body: object) => request(app).post(`/api/v1${url}`).send(body);
+    const own = (await post('/labels', { name: 'Own Synthetic', kind: 'own' }).expect(201)).body;
+    const sub = (await post('/labels', { name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: own.id }).expect(201))
+      .body;
+    await post(`/labels/${sub.id}/aliases`, { alias: 'Sub Imprint' }).expect(201);
+    const taken = await post(`/labels/${own.id}/aliases`, { alias: '  sub   IMPRINT ' });
+    expect(taken.status).toBe(409);
+    expect(taken.body.error.code).toBe('alias_taken');
+    const rule = await post(`/labels/${sub.id}/rules`, {
+      percent: '10',
+      recipientArtistId: 'no-such-artist',
+      validFrom: '2026-01-01',
+    });
+    expect(rule.status).toBe(404);
+
+    const art = (await post('/artists', { pseudonym: 'Synth One' }).expect(201)).body;
+    const bad = await post('/participations', {
+      isrc: I1,
+      artistId: art.id,
+      percent: '5',
+      base: 'bucket',
+      fundedFrom: 'top',
+      validFrom: '2026-01-01',
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe('validation_error');
+    const missingArtist = await post('/participations', {
+      isrc: I1,
+      artistId: 'no-such-artist',
+      percent: '5',
+      base: 'net',
+      fundedFrom: 'top',
+      validFrom: '2026-01-01',
+    });
+    expect(missingArtist.status).toBe(404);
+
+    const doc = (
+      await post('/documents', { kind: 'assumption', title: 'Decision', requiresApproval: false }).expect(201)
+    ).body;
+    const approve = await post(`/documents/${doc.id}/approve`, {});
+    expect(approve.status).toBe(422);
+    expect(approve.body.error.code).toBe('assumption_not_approvable');
+    const emptyPatch = await request(app).patch('/api/v1/tracks/x').send({});
+    expect(emptyPatch.status).toBe(400);
+  });
 });

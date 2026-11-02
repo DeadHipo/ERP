@@ -4,6 +4,8 @@ import { OwnerPage } from './owners/OwnerPage';
 import { OwnerBalancePage } from './owners/OwnerBalancePage';
 import { DocumentsPage } from './documents/DocumentsPage';
 import { SplitsPage } from './splits/SplitsPage';
+import { LabelsPage } from './labels/LabelsPage';
+import { ParticipationsPage } from './splits/ParticipationsPage';
 import { SourcesPage } from './sources/SourcesPage';
 import { SourceLinesPage } from './sources/SourceLinesPage';
 import { SettlementsPage } from './settlements/SettlementsPage';
@@ -16,6 +18,8 @@ export function App() {
         <NavLink to="/owners">Owners</NavLink>
         <NavLink to="/documents">Documents</NavLink>
         <NavLink to="/splits">Splits</NavLink>
+        <NavLink to="/participations">Participations</NavLink>
+        <NavLink to="/labels">Labels</NavLink>
         <NavLink to="/sources">Sources</NavLink>
         <NavLink to="/settlements">Settlements</NavLink>
       </nav>
@@ -27,6 +31,8 @@ export function App() {
           <Route path="/owners/:id/balance" element={<OwnerBalancePage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/splits" element={<SplitsPage />} />
+          <Route path="/participations" element={<ParticipationsPage />} />
+          <Route path="/labels" element={<LabelsPage />} />
           <Route path="/sources" element={<SourcesPage />} />
           <Route path="/sources/lines" element={<SourceLinesPage />} />
           <Route path="/settlements" element={<SettlementsPage />} />

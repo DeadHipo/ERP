@@ -90,6 +90,11 @@ describe('API contract', () => {
     await call('post', '/tracks', { body: { title: 'Track Three', isrc: I3, upc: UPC } });
     await call('patch', '/tracks/:id', { params: { id: t1.id }, body: { isrc: I1, upc: UPC } });
     await call('get', '/tracks');
+    const noted = await call('patch', '/tracks/:id', { params: { id: t1.id }, body: { note: 'check the rights' } });
+    expect(noted.note).toBe('check the rights');
+    const assumption = await call('post', '/documents', {
+      body: { kind: 'assumption', title: 'Council decision', requiresApproval: false },
+    });
 
     const contractDoc = await call('post', '/documents', {
       body: { kind: 'contract', title: 'Contract', ownerId: owner.id, requiresApproval: true },
@@ -138,6 +143,46 @@ describe('API contract', () => {
       body: { isrcs: [I2], sellerArtistId: a1.id, effectiveFrom: '2026-06-01', documentId: buyoutDoc.id },
     });
     await call('get', '/splits', { query: { isrc: I1 } });
+    await call('post', '/splits', {
+      body: {
+        isrc: I3,
+        validFrom: '2026-01-15',
+        shares: [{ artistId: a1.id, percent: '20', documentId: assumption.id }],
+      },
+    });
+
+    // labels
+    const own = await call('post', '/labels', { body: { name: 'Own Synthetic', kind: 'own' } });
+    const sub = await call('post', '/labels', {
+      body: { name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: own.id },
+    });
+    await call('post', '/labels/:id/aliases', { params: { id: sub.id }, body: { alias: 'Sub Imprint' } });
+    const rule = await call('post', '/labels/:id/rules', {
+      params: { id: sub.id },
+      body: { percent: '30', recipientArtistId: a2.id, validFrom: '2026-02-10', documentId: appendix.id },
+    });
+    expect(rule.validFrom).toBe('2026-02-01');
+    const labelList = await call('get', '/labels');
+    expect((labelList as unknown as { rules: { recipientPseudonym: string }[] }[]).flatMap((l) => l.rules)[0]
+      ?.recipientPseudonym).toBe('Synth Two');
+    await call('post', '/labels/rules/:id/close', { params: { id: rule.id }, body: { validTo: '2026-06-01' } });
+
+    // participations
+    const part = await call('post', '/participations', {
+      body: {
+        isrc: I1,
+        artistId: a2.id,
+        percent: '5',
+        base: 'net',
+        fundedFrom: 'top',
+        validFrom: '2026-03-20',
+        documentId: appendix.id,
+      },
+    });
+    expect(part.validFrom).toBe('2026-03-01');
+    const plist = await call('get', '/participations', { query: { isrc: I1 } });
+    expect(plist.total).toBe(1);
+    await call('post', '/participations/:id/close', { params: { id: part.id }, body: { validTo: '2026-09-01' } });
 
     // sources and publishing
     await call('post', '/sources/believe', {
@@ -161,6 +206,10 @@ describe('API contract', () => {
     await call('post', '/publishing/terms', {
       body: { ownerId: owner.id, percent: '50', validFrom: '2026-01-01' },
     });
+    const typed = await call('post', '/publishing/terms', {
+      body: { ownerId: owner.id, percent: '60', validFrom: '2026-02-01', operationType: 'Performance' },
+    });
+    expect(typed.operationType).toBe('Performance');
 
     // views
     await call('get', '/owners/:id', { params: { id: owner.id } });

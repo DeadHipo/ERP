@@ -8,7 +8,7 @@ import type { ShareSpec } from './context';
 const floorToMonth = (d: string) => monthStart(monthOf(assertDate(d)));
 
 export function splitsApi(ctx: FacadeContext) {
-  const { db, owners, splits, checkSplitDocument, resolveShares } = ctx;
+  const { db, owners, splits, labels, checkSplitDocument, resolveShares } = ctx;
   const api = {
     /** New artists of the shares and the split are written in one transaction (D-121). */
     createSplit(input: {
@@ -108,6 +108,46 @@ export function splitsApi(ctx: FacadeContext) {
             fromPseudonym: p.fromArtistId ? (idx.get(p.fromArtistId)?.pseudonym ?? '?') : null,
           })),
         };
+      });
+    },
+    /** Labels with aliases and rules; a rule carries the recipient pseudonym and the document status. */
+    listLabels() {
+      return db.snapshot(async () => {
+        const list = await labels.listLabels();
+        const idx = await owners.artistIndex();
+        const statuses = await owners.documentStatuses(
+          list.flatMap((l) => l.rules.map((r) => r.documentId)).filter((d): d is string => !!d),
+        );
+        return list.map((l) => ({
+          ...l,
+          rules: l.rules.map((r) => ({
+            ...r,
+            recipientPseudonym: idx.get(r.recipientArtistId)?.pseudonym ?? '?',
+            documentStatus: r.documentId ? (statuses.get(r.documentId) ?? 'missing') : 'missing',
+          })),
+        }));
+      });
+    },
+    /** A sublabel rule: the start is floored to the month start, the recipient must exist, the document kind is checked. */
+    createLabelRule(input: {
+      labelId: string;
+      percent: string;
+      recipientArtistId: string;
+      validFrom: string;
+      validTo?: string | null;
+      documentId?: string | null;
+      note?: string | null;
+    }) {
+      return db.transaction(async () => {
+        const validFrom = floorToMonth(input.validFrom);
+        await checkSplitDocument(input.documentId);
+        const idx = await owners.artistIndex();
+        await owners.getArtist(input.recipientArtistId);
+        return labels.setRule({
+          ...input,
+          recipientArtistId: idx.get(input.recipientArtistId)?.id ?? input.recipientArtistId,
+          validFrom,
+        });
       });
     },
     /** Splits with artist names and document status, for the splits page. */

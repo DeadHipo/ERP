@@ -46,6 +46,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-076 Payout button disabled when nothing is payable · in force
 - D-100 Flows shown in the UI on data/real · in force
 - D-113 Lines page `/sources/lines` · in force
+- D-129 API and pages for labels, participations, terms by type, track notes; shared `REASON_LABELS` · in force
 
 ## Module 1: owners, artists, tracks, documents
 - D-016 Document status · in force

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { api, type ReconciliationRow, type SourceFile } from '../api/client';
-import { Card, ErrorBox, Money, Table, useAction, useApi } from '../components/ui';
+import { api, type ReconciliationRow, type Signals, type SourceFile } from '../api/client';
+import { Card, ErrorBox, Money, Table, reasonLabel, useAction, useApi } from '../components/ui';
 import { SourcesTabs } from './SourcesTabs';
 
 /** Uploaded Believe and B17 files, upload, duplicate-period error, completeness check and unallocated amount. */
@@ -80,14 +80,22 @@ export function SourcesPage() {
         <ErrorBox error={recon.error} />
         <Table<ReconciliationRow>
           rows={recon.data ?? []}
-          keyOf={(r) => r.source + r.month}
+          keyOf={(r) => r.source + r.account + r.month}
           columns={[
             { title: 'Source', render: (r) => r.source },
+            { title: 'Account', render: (r) => r.account },
             { title: 'Month', render: (r) => r.month },
             { title: 'A received', render: (r) => <Money value={r.A_received} />, className: 'num' },
             { title: 'B not ours', render: (r) => <Money value={r.B_notOurs} />, className: 'num' },
             { title: 'C waiting', render: (r) => <Money value={r.C_waiting} />, className: 'num' },
             { title: 'Our share', render: (r) => <Money value={r.ourShare} />, className: 'num' },
+            {
+              title: 'Our share by label',
+              render: (r) =>
+                Object.entries(r.ourShareByLabel)
+                  .map(([name, v]) => `${name} ${Number(v).toFixed(2)}`)
+                  .join(' · ') || '—',
+            },
             {
               title: '…of it, no split',
               render: (r) => <Money value={r.ourShareNoSplit} />,
@@ -105,10 +113,10 @@ export function SourcesPage() {
           ]}
         />
         {(recon.data ?? []).map((r) => (
-          <p key={r.source + r.month} className="muted">
-            {r.source} {r.month} C:{' '}
+          <p key={r.source + r.account + r.month} className="muted">
+            {r.source} {r.account} {r.month} C:{' '}
             {Object.entries(r.C_breakdown)
-              .map(([k, v]) => `${k.replace(/_/g, ' ')} ${Number(v).toFixed(2)}`)
+              .map(([k, v]) => `${reasonLabel(k)} ${Number(v).toFixed(2)}`)
               .join(' · ')}
           </p>
         ))}
@@ -134,9 +142,76 @@ export function SourcesPage() {
                 { title: 'Net', render: (p) => <Money value={p.net} />, className: 'num' },
               ]}
             />
+            <SignalLists s={signals.data} />
           </>
         )}
       </Card>
+    </>
+  );
+}
+
+/** The signal lists of the layered calculation (D-127): shortfalls, unmapped labels, notes, participants, assumptions. */
+function SignalLists({ s }: { s: Signals }) {
+  return (
+    <>
+      <h3>Unfunded carves ({s.unfunded.length})</h3>
+      <Table
+        rows={s.unfunded}
+        keyOf={(u) => u.ruleId + u.isrc + u.month}
+        empty="None"
+        columns={[
+          { title: 'ISRC', render: (u) => <code>{u.isrc}</code> },
+          { title: 'Month', render: (u) => u.month },
+          { title: 'Rule', render: (u) => <code>{u.ruleId.slice(0, 8)}</code> },
+          { title: 'Why', render: (u) => u.why.replace(/_/g, ' ') },
+          { title: 'Missing', render: (u) => <Money value={u.missing} />, className: 'num' },
+        ]}
+      />
+      <h3>Label strings not mapped ({s.labelUnmapped.length})</h3>
+      <Table
+        rows={s.labelUnmapped}
+        keyOf={(l) => l.labelName}
+        empty="None"
+        columns={[
+          { title: 'Label string', render: (l) => l.labelName || '(empty)' },
+          { title: 'Net', render: (l) => <Money value={l.net} />, className: 'num' },
+        ]}
+      />
+      <h3>Tracks with a note ({s.tracksWithNote.length})</h3>
+      <Table
+        rows={s.tracksWithNote}
+        keyOf={(t) => t.trackId}
+        empty="None"
+        columns={[
+          { title: 'ISRC', render: (t) => <code>{t.isrc ?? '—'}</code> },
+          { title: 'Title', render: (t) => t.title },
+          { title: 'Note', render: (t) => t.note },
+        ]}
+      />
+      <h3>Participants without an owner ({s.participantsWithoutOwner.length})</h3>
+      <Table
+        rows={s.participantsWithoutOwner}
+        keyOf={(p) => p.participationId}
+        empty="None"
+        columns={[
+          { title: 'ISRC', render: (p) => <code>{p.isrc}</code> },
+          { title: 'Recipient', render: (p) => p.pseudonym },
+          { title: 'Funded from', render: (p) => p.fundedFrom.replace(/_/g, ' ') },
+          { title: 'Amount', render: (p) => <Money value={p.amount} />, className: 'num' },
+        ]}
+      />
+      <h3>Assumptions ({s.assumptions.length})</h3>
+      <Table
+        rows={s.assumptions}
+        keyOf={(a) => (a.documentId ?? '-') + a.basis}
+        empty="None"
+        columns={[
+          { title: 'Basis', render: (a) => a.basis },
+          { title: 'Document', render: (a) => (a.documentId ? <code>{a.documentId.slice(0, 8)}</code> : '—') },
+          { title: 'ISRCs', render: (a) => a.isrcs.length },
+          { title: 'Amount', render: (a) => <Money value={a.amount} />, className: 'num' },
+        ]}
+      />
     </>
   );
 }

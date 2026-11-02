@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { REASON_LABELS } from '@erp/shared/reasons';
 import { ApiError } from '../api/client';
 
 /** Loads data from the API; `reload` re-runs the request. */
@@ -121,3 +122,6 @@ export function Stat({ label, value, hint }: { label: string; value: string | nu
     </div>
   );
 }
+
+/** Label of a category C reason; an unknown key (a newer backend) is shown as it is. */
+export const reasonLabel = (k: string): string => (REASON_LABELS as Record<string, string>)[k] ?? k.replace(/_/g, ' ');
