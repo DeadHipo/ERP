@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-136 by topic)
+# Decision index (D-001 … D-137 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -151,6 +151,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-133 Contract registry loaded from the PandaDoc index (`load.ts contracts`: 440 contract documents with contracts rows, 61 appendices) and 3,504 legacy splits equal to the owner's Annex 14 registry confirmed by it · in force · open: B17 payees (legal-name owners) have no contract, 123 index documents without a stage-name match, 320,636.21 of account 1055956 without a split document
 - D-134 B17 statements 2024-Q4, 2025-Q1 (one file) and 2025-Q2 loaded through `facade.ingestB17` (`scripts/mvp/load-b17.ts`): 39,654 and 68,703 lines, b17 reconciliation 7 quarters at discrepancy 0 · in force · open: the Updated Q2 2026 file stays refused (D-041 ⚠)
 - D-135 Stage 6 data fixes (`load.ts pairs|label-fixes|lunar|b17-holders|carves`): 44 Believe pairs of known ISRC registered (unknown_pair 150k -> 0), rule of `lost` closed, LUNAR MEDIA 10 % as 34 assumption participations, 13 B17 holders confirmed by their own contracts, 336 carve participations (55 deductions deactivated) and 3 held payouts · in force · open: 24 carve groups without a stated percent, 19 B17 holders unmatched, D-083 ⚠
+- D-137 Stage 6 rework (`load.ts settlement-prestart|carves|assumption-rows|hygiene`): settlement share before 2026-02 to the paid artist (38 splits, participant −137,982.02, LDRR +137,982.02), Main carves as 141 pool participations of net from the first report month (336 D-135 participations deleted; carved 4,967.80 → 107,914.94), Q1/Q5 assumption row documents (68 splits, 19,439.80 B → C), 50 empty-period splits deleted and `normalise-dates` refuses them; splits service `deleteEmptySplits` / `deleteParticipations` (loader only); golden cases G45, G46 · in force · open: carve groups 7, 17, 41, the 24 groups without a percent, owner confirmation of the assumption documents
 
 ## Review rounds (history; read when touching the reviewed area)
 - D-069, D-070 First reviews · D-071 verification (counts → D-078)

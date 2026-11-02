@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { Decimal } from '../../shared/money';
 import { participations, splitShares, splits } from './schema';
@@ -75,6 +75,30 @@ export function createSplitsRepository(db: Db) {
           .where(eq(participations.artistId, artistId))
           .orderBy(asc(participations.isrc), asc(participations.validFrom), asc(participations.id))
       ).map(canonicalPart),
+    /**
+     * Data hygiene of the migration loader only (D-137, `scripts/mvp`): deletes splits whose period is empty
+     * (`valid_to = valid_from`, never in force, no money) with their shares. A split with a non-empty period is never
+     * deleted (the guard is in the WHERE). Returns the ids deleted.
+     */
+    deleteEmptySplits: async (ids: string[]): Promise<string[]> => {
+      if (ids.length === 0) return [];
+      const empty = and(inArray(splits.id, ids), sql`${splits.validTo} = ${splits.validFrom}`);
+      const victims = (await orm().select({ id: splits.id }).from(splits).where(empty)).map((r) => r.id);
+      if (victims.length === 0) return [];
+      await orm().delete(splitShares).where(inArray(splitShares.splitId, victims));
+      await orm().delete(splits).where(inArray(splits.id, victims));
+      return victims;
+    },
+    /** Migration loader only (D-137): deletes participations by id (rows the loader created, found by its marker). */
+    deleteParticipations: async (ids: string[]): Promise<number> => {
+      if (ids.length === 0) return 0;
+      return (
+        await orm()
+          .delete(participations)
+          .where(inArray(participations.id, ids))
+          .returning({ id: participations.id })
+      ).length;
+    },
     splitIdsOfArtist: async (artistId: string) =>
       (
         await orm()

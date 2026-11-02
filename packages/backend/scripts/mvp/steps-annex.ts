@@ -328,6 +328,13 @@ export async function stepNormalise(ctx: Ctx) {
       log.event('conflict_starts_and_ends_in_one_month', `${isrc}: split ${bad.s.from}..${bad.s.to} sits inside one month`, 200);
       continue;
     }
+    // D-137 (E4): the step never writes an empty period (`valid_to = valid_from`, refused by the facade as
+    // `empty_period`, D-130); an ISRC that still has one is left as it is until the `hygiene` step removes it
+    const empty = plan.find((p) => p.to !== null && p.to <= p.from);
+    if (empty) {
+      log.event('refused_empty_period', `${isrc}: split ${empty.s.from}..${empty.s.to} would be ${empty.from}..${empty.to} (run the hygiene step)`, 200);
+      continue;
+    }
     const live = plan.filter((p) => !(p.to !== null && p.to <= p.from)).sort((a, b) => a.from.localeCompare(b.from));
     let clash: string | null = null;
     for (let i = 1; i < live.length; i++) {

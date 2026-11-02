@@ -1176,6 +1176,73 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G45 (M35, M33, owner decision 6; D-137): the settlement share before its start goes to the paid artist', async () => {
+    const c = await Case.start();
+    await c.person('A', 'S');
+    await c.track(I(1));
+    // legacy registry rows before the settlement window, the window from 2026-02-01
+    await c.split(
+      I(1),
+      [
+        ['A', '35'],
+        ['S', '15'],
+      ],
+      { to: '2026-02-01' },
+    );
+    await c.split(I(1), [['A', '35']], { from: '2026-02-01' });
+    const settlement = (await approvedDoc(c.f, 'contract')).id;
+    await c.part(I(1), 'S', '15', 'net', 'label_share', { validFrom: '2026-02-01', doc: settlement });
+    // the loader step settlement-prestart: from the first report month, S's row removed and its 15 added to A
+    const decision = (await approvedDoc(c.f, 'other')).id;
+    await c.f.changeSplit({
+      isrc: I(1),
+      from: '2026-01-01',
+      shares: [{ artistId: c.id('A'), percent: '50' }],
+      documentId: decision,
+    });
+    await c.load('2026-01', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    expect((await c.amounts(I(1), '2026-01')).amounts).toEqual({ A: '50' });
+    expect(await c.row('2026-01')).toMatchObject({ A: '100', B: '50', C: '0', ours: '50' });
+    expect((await c.amounts(I(1), '2026-03')).amounts).toEqual({ A: '35', S: '15' });
+    expect(await c.row('2026-03')).toMatchObject({ A: '100', B: '50', C: '0', ours: '50' });
+    await c.verify();
+  });
+
+  describe('G46 (M13, M43; D-137): a Main carve "16.66 % (8.33 %/8.33 %)" from the first month', () => {
+    async function world(entry: 'per_source' | 'pool') {
+      const c = await Case.start();
+      await c.person('A', 'B', 'M1', 'M2');
+      await c.track(I(1));
+      await c.split(I(1), [
+        ['A', '25'],
+        ['B', '25'],
+      ]);
+      for (const m of ['M1', 'M2'])
+        if (entry === 'per_source')
+          for (const src of ['A', 'B'])
+            await c.part(I(1), m, '16.66', 'bucket', 'artist_share', { from: src, validFrom: '2026-01-01' });
+        else await c.part(I(1), m, '8.33', 'net', 'artist_pool', { validFrom: '2026-01-01' });
+      await c.load('2026-01', [{ isrc: I(1), net: '100' }]);
+      await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+      return c;
+    }
+    for (const entry of ['per_source', 'pool'] as const)
+      it(`entered ${entry === 'pool' ? 'as pool participations of net (the D-137 loader)' : 'per source artist (12 as stated)'}`, async () => {
+        const c = await world(entry);
+        for (const month of ['2026-01', '2026-03']) {
+          expect((await c.amounts(I(1), month)).amounts).toEqual({
+            A: '16.67',
+            B: '16.67',
+            M1: '8.33',
+            M2: '8.33',
+          });
+          expect(await c.row(month)).toMatchObject({ A: '100', B: '50', C: '0', ours: '50' });
+        }
+        await c.verify();
+      });
+  });
+
   describe('G43 (M19, M20): scopes of recoupment, each from payable 80', () => {
     async function base() {
       const c = await single(async (c) => {

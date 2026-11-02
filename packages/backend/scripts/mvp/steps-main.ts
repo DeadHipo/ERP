@@ -5,6 +5,7 @@ import { Decimal } from '../../src/shared/money';
 import { normalizeName, normalizeUpc } from '../../src/shared/identifiers';
 import { Ctx, LOAD_DIR, errText, hasFile, pct, readJson } from './lib';
 import { stepTracks } from './steps-annex';
+import { firstReportMonths } from './steps-stage6';
 import type { DocumentKind } from '../../src/modules/owners';
 
 // ================================================================= echo8 (4.4)
@@ -864,8 +865,11 @@ export async function stepCarves(ctx: Ctx) {
   };
 
   log.h('Carve groups');
+  // D-137 (E2): the comment's percent is a percent OF NET per participant ("16.66 % (8.33 %/8.33 %)": 8.33 each),
+  // entered once per participant and ISRC as `(net, artist_pool)` from the ISRC's first report month, open-ended;
+  // the payers' rows fund it pro rata (Main deducts it from the paying artists)
   const replacedRows = new Map<number, string>(); // rowNo -> first participation id
-    type Want = { participant: string; upc: string; source: string; percent: string; month: string; rows: Set<number> };
+  type Want = { participant: string; upc: string; percent: string; rows: Set<number>; group: number };
   const wants = new Map<string, Want>();
   for (const [gi, g] of groups.entries()) {
     const comment = cash.get(g.rows[0]?.rowNo ?? -1)?.comment ?? '';
@@ -880,101 +884,124 @@ export async function stepCarves(ctx: Ctx) {
     }
     if (g.percents.length === 1 && g.participants.length > 1) log.event('percent_split_equally', `group ${gi}`);
     if (g.participants.length === 2 && g.percents.length === 3) log.event('percent_pair_split', `group ${gi}: ${g.percents.join(' / ')} read as the total and the share of each participant`);
+    for (const row of g.rows) {
+      const cr = cash.get(row.rowNo);
+      const src = ctx.resolveArtist({ artistId: cr?.artistId ?? null, pseudonym: row.nickname });
+      if (src.status !== 'ok') log.event('source_artist_unresolved', `row ${row.rowNo} ${row.nickname}: ${src.status} (the pool form takes from every row; the row stays as it is)`);
+    }
     for (const [pi, participant] of g.participants.entries()) {
       for (const upc of new Set(g.upcs.map(normalizeUpc))) {
-        for (const row of g.rows) {
-          const cr = cash.get(row.rowNo);
-          const src = ctx.resolveArtist({ artistId: cr?.artistId ?? null, pseudonym: row.nickname });
-          if (src.status !== 'ok' || !src.id) {
-            log.event('source_artist_unresolved', `row ${row.rowNo} ${row.nickname}: ${src.status}`);
-            continue;
-          }
-          const key = `${normalizeName(participant)}|${upc}|${src.id}`;
-          const w = wants.get(key);
-          const month = g.reportMonth;
-          if (w) {
-            if (month < w.month) w.month = month;
-            w.rows.add(row.rowNo);
-          } else wants.set(key, { participant, upc, source: src.id, percent: pct(pcts[pi] as string), month, rows: new Set([row.rowNo]) });
-        }
+        const key = `${normalizeName(participant)}|${upc}`;
+        const percent = pct(pcts[pi] as string);
+        const w = wants.get(key);
+        if (w) {
+          if (!new Decimal(w.percent).eq(percent))
+            log.event('percent_conflict', `${participant} UPC ${upc}: group ${w.group} ${w.percent}, group ${gi} ${percent}; the first is kept`);
+          for (const r of g.rows) w.rows.add(r.rowNo);
+        } else wants.set(key, { participant, upc, percent, rows: new Set(g.rows.map((r) => r.rowNo)), group: gi });
       }
     }
   }
 
-  log.h('Participations');
+  log.h('D-135 carve participations replaced');
+  // the D-135 entry: `(bucket, artist_share of the source)` per participant and source, from 2026-07; loader-owned
+  // rows (origin mvp:carve, note mvp:carve:...), deleted by their marker through the splits repository
+  const old = ctx.participations.filter((p) => p.note?.startsWith('mvp:carve:') && p.fundedFrom === 'artist_share');
+  const first = await firstReportMonths(ctx);
   const docs = new Map<string, string>();
   let created = 0;
   const covered = new Map<number, Set<string>>(); // rowNo -> participants (normalised) covered
-  for (const w of wants.values()) {
-    const isrcs = ctx.tracksByUpc.get(w.upc) ?? [];
-    const pa = ctx.resolveArtist({ pseudonym: w.participant });
-    if (pa.status === 'ambiguous') {
-      log.event('participant_ambiguous', `${w.participant} UPC ${w.upc}`);
-      continue;
-    }
-    if (isrcs.length === 0) {
-      log.event('upc_without_track', `${w.upc} (${w.participant})`);
-      continue;
-    }
-    let artistId = pa.id;
-    if (!artistId) artistId = (await ctx.ownerWithPseudonym(w.participant, 'person', 'mvp:carve')).artistId;
-    else if (!ctx.ownerOfArtist(artistId)) {
-      log.event('participant_artist_without_owner', `${w.participant}: artist exists without owner; participation kept on the artist`);
-    }
-    const docKey = `${normalizeName(w.participant)}|${w.upc}`;
-    let docId = docs.get(docKey);
-    if (!docId) {
-      docId = await ctx.ensureDoc({
-        kind: 'assumption',
-        title: `Assumption M43: participation of ${ctx.knownArtist(artistId)?.pseudonym ?? w.participant} on UPC ${w.upc} from 0to8 Main.xlsx carve rows`,
-        approve: false,
-        ref: 'mvp-load:carve',
-      });
-      docs.set(docKey, docId);
-    }
-    const validFrom = `${w.month}-01`;
-    for (const isrc of [...new Set(isrcs)]) {
-      const marker = `mvp:carve:${normalizeName(w.participant)}:${w.upc}:${w.source}:${isrc}`;
-      const existing = ctx.participations.find((p) => p.isrc === isrc && p.artistId === artistId && (p.fromArtistId === w.source || p.note === marker));
-      let id: string | undefined = existing?.id;
-      if (existing && existing.note === marker) log.count('already_done');
-      else if (existing) log.count('participation_exists_other_source');
-      else {
-        try {
-          id = ctx.fakeId('participation');
-          if (ctx.apply)
-            id = (
-              await ctx.f.createParticipation({
-                isrc,
-                artistId,
-                percent: w.percent,
-                base: 'bucket',
-                fundedFrom: 'artist_share',
-                fromArtistId: w.source,
-                validFrom,
-                documentId: docId,
-                origin: 'mvp:carve',
-                note: marker,
-              })
-            ).id;
-          ctx.participations.push({ id, isrc, artistId, fromArtistId: w.source, fundedFrom: 'artist_share', validFrom, validTo: null, note: marker });
-          created++;
-          log.count('participations_created');
-        } catch (e) {
-          id = undefined;
-          log.event('participation_error', `${w.participant} ${isrc}: ${errText(e)}`, 100);
-        }
+  await ctx.tx(async () => {
+    if (old.length > 0) {
+      if (ctx.apply) {
+        const n = await ctx.splits.deleteParticipations(old.map((p) => p.id));
+        if (n !== old.length) throw new Error(`deleted ${n} of ${old.length} D-135 carve participations`);
       }
-      if (id) {
+      const gone = new Set(old.map((p) => p.id));
+      ctx.participations = ctx.participations.filter((p) => !gone.has(p.id));
+      log.count('d135_participations_deleted', old.length);
+      log.p(`${old.length} D-135 carve participations (origin mvp:carve, note mvp:carve:<participant>:<upc>:<source>:<isrc>) deleted through the splits module (repository delete by id); their assumption documents are reused.`);
+    } else log.count('d135_participations_none_left');
+
+    log.h('Participations (net, artist_pool) from the first report month');
+    for (const w of wants.values()) {
+      const isrcs = [...new Set(ctx.tracksByUpc.get(w.upc) ?? [])].sort();
+      const pa = ctx.resolveArtist({ pseudonym: w.participant });
+      if (pa.status === 'ambiguous') {
+        log.event('participant_ambiguous', `${w.participant} UPC ${w.upc}`);
+        continue;
+      }
+      if (isrcs.length === 0) {
+        log.event('upc_without_track', `${w.upc} (${w.participant})`);
+        continue;
+      }
+      let artistId = pa.id;
+      if (!artistId) artistId = (await ctx.ownerWithPseudonym(w.participant, 'person', 'mvp:carve')).artistId;
+      else if (!ctx.ownerOfArtist(artistId)) {
+        log.event('participant_artist_without_owner', `${w.participant}: artist exists without owner; participation kept on the artist`);
+      }
+      const docKey = `${normalizeName(w.participant)}|${w.upc}`;
+      let docId = docs.get(docKey);
+      if (!docId) {
+        docId = await ctx.ensureDoc({
+          kind: 'assumption',
+          title: `Assumption M43: participation of ${ctx.knownArtist(artistId)?.pseudonym ?? w.participant} on UPC ${w.upc} from 0to8 Main.xlsx carve rows`,
+          approve: false,
+          ref: 'mvp-load:carve',
+        });
+        docs.set(docKey, docId);
+      }
+      let all = true;
+      for (const isrc of isrcs) {
+        const fm = first.get(isrc);
+        if (!fm) {
+          log.event('no_report_month', `${isrc} (UPC ${w.upc}, ${w.participant}): not in the loaded reports, no participation`);
+          continue;
+        }
+        const marker = `mvp:carve2:${normalizeName(w.participant)}:${isrc}`;
+        const existing = ctx.participations.find(
+          (p) => p.isrc === isrc && p.artistId === artistId && p.fundedFrom === 'artist_pool' && p.validTo === null,
+        );
+        let id: string | undefined = existing?.id;
+        if (existing && existing.note === marker) log.count('already_done');
+        else if (existing) log.event('participation_exists_other', `${w.participant} ${isrc}: a pool participation ${existing.note ?? ''} exists; kept`);
+        else {
+          try {
+            id = ctx.fakeId('participation');
+            if (ctx.apply)
+              id = (
+                await ctx.f.createParticipation({
+                  isrc,
+                  artistId,
+                  percent: w.percent,
+                  base: 'net',
+                  fundedFrom: 'artist_pool',
+                  validFrom: fm,
+                  documentId: docId,
+                  origin: 'mvp:carve',
+                  note: marker,
+                })
+              ).id;
+            ctx.participations.push({ id, isrc, artistId, fromArtistId: null, fundedFrom: 'artist_pool', validFrom: fm, validTo: null, note: marker });
+            created++;
+            log.count('participations_created');
+            log.event('participation_created', `${isrc} UPC ${w.upc} ${w.participant} ${w.percent} net/artist_pool from ${fm}`, 400);
+          } catch (e) {
+            id = undefined;
+            all = false;
+            log.event('participation_error', `${w.participant} ${isrc}: ${errText(e)}`, 100);
+          }
+        }
+        if (id) for (const r of w.rows) if (!replacedRows.has(r)) replacedRows.set(r, id);
+      }
+      if (all)
         for (const r of w.rows) {
           const s = covered.get(r) ?? new Set<string>();
           s.add(normalizeName(w.participant));
           covered.set(r, s);
-          if (!replacedRows.has(r)) replacedRows.set(r, id);
         }
-      }
     }
-  }
+  });
   log.p(`${created} participations created.`);
 
   log.h('Carve deduction operations replaced by the participations');
@@ -983,7 +1010,11 @@ export async function stepCarves(ctx: Ctx) {
     for (const r of g.rows) {
       const need = new Set(g.participants.map(normalizeName));
       const got = covered.get(r.rowNo);
-      if (!got || ![...need].every((n) => got.has(n))) continue;
+      if (!got || ![...need].every((n) => got.has(n))) {
+        const op = opOfRow.get(r.rowNo);
+        if (op && !op.active) log.event('deactivated_but_not_covered', `row ${r.rowNo} ${r.amount}: the deduction is inactive but not every participant has a participation`);
+        continue;
+      }
       const op = opOfRow.get(r.rowNo);
       if (!op) {
         log.count('carve_row_without_operation');

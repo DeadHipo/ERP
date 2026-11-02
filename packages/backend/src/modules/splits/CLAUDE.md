@@ -10,3 +10,8 @@ is never stored.
 Storage: schema `splits`, `migrations/postgres/0002_splits.sql` and `0008_participations.sql` (tables `splits`,
 `split_shares` with `document_id`, `participations`), Drizzle tables in `schema.ts` (change both); all SQL in
 `repository.ts`. Dates are floored to the month start by the facade, not here (D-126).
+
+Two deletes exist for the migration loader only (`scripts/mvp`, D-137): `deleteEmptySplits(ids)` removes splits whose
+period is empty (`valid_to = valid_from`, left when a split is replaced from its first day; never in force) and
+`deleteParticipations(ids)` removes participations the loader created (found by its note marker). No route or facade
+method calls them.

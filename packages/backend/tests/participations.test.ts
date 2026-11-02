@@ -426,3 +426,21 @@ describe('participations (D-126)', () => {
     ).toBe('10');
   });
 });
+
+describe('loader hygiene (D-137): deleting empty-period splits and loader participations', () => {
+  it('deletes only splits with valid_to = valid_from, and participations by id', async () => {
+    const f = await newFacade();
+    const [a, b, p] = [await artist(f, 'A'), await artist(f, 'B'), await artist(f, 'P')];
+    const doc = (await approvedDoc(f, 'appendix')).id;
+    const first = await f.createSplit({ isrc: ISRC, validFrom: '2026-01-01', shares: [{ artistId: a, percent: '50' }], documentId: doc });
+    // replaced from its first day: the service keeps the old split as the empty period [2026-01-01, 2026-01-01)
+    await f.changeSplit({ isrc: ISRC, from: '2026-01-01', shares: [{ artistId: b, percent: '50' }], documentId: doc });
+    const splits = f.modules.splits;
+    const live = (await splits.listSplits({ isrc: ISRC })).filter((s) => s.validTo !== s.validFrom);
+    expect(await splits.deleteEmptySplits([first.id, ...live.map((s) => s.id)])).toEqual([first.id]);
+    expect((await splits.listSplits({ isrc: ISRC })).map((s) => s.id)).toEqual(live.map((s) => s.id));
+    const part = await f.createParticipation({ isrc: ISRC, artistId: p, percent: '5', base: 'net', fundedFrom: 'artist_pool', validFrom: '2026-01-01', documentId: doc });
+    expect(await splits.deleteParticipations([part.id])).toBe(1);
+    expect((await f.listParticipations({ isrc: ISRC })).total).toBe(0);
+  });
+});

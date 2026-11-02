@@ -68,6 +68,8 @@ sublabel) → categorise.
 | G42 | brand artist: pseudonym "0to8" owned by the label owner, linked to the track, no row; row A 50 | A 50 | 50 | 0 | 50 | MVP 16 |
 | G44 | rows A 10; three participations M1, M2, M3 each 13 `(net, artist_pool)` | targets 39 on a pool of 10: scaled down to 3.333333333334 / 3.333333333333 / 3.333333333333 (quantised, residue to the largest, here the first by id), A 0, shortfall 29 | 10 | 0 | 90 | scale-down exactness (QA RS2) |
 | G43 | three separate tests, each starting from owner A (pseudonym A) earning master 50 (row A 50) and publishing 30 (a B17 line, G26-style), payable 80: (i) advance 40 scope `publishing` → recouped 30, remaining 10, payable 50; (ii) advance 40 scope `isrcs` [another ISRC] → recouped 0, payable 80; (iii) a migration payout 20 without scope (non-recoupable one-off) → paid 20, payable 60 | | | | | M19, M20 |
+| G45 | settlement window: legacy registry rows A 35, S 15 valid 2000-01-01 … 2026-02-01; from 2026-02-01 row A 35 and participation S 15 `(net, label_share)` under the settlement document; the loader rewrites the legacy split for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-03 | 2026-01: A 50, S 0; 2026-03: A 35, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6 |
+| G46 | rows A 25, B 25; Main carve "16.66 % (8.33 %/8.33 %) M1 & M2": each of A and B pays 8.33 % of net, each of M1, M2 gets 8.33 % of net; entered as participations M1 16.66 `(bucket, artist_share of A)`, M1 16.66 `(bucket, artist_share of B)`, M2 the same two, valid from the release's first month, approved documents | A 25 − 4.165 − 4.165 = 16.67; B 16.67; M1 4.165 + 4.165 = 8.33; M2 8.33 | 50 | 0 | 50 | M13, M43 |
 
 ## Publishing cases
 
@@ -105,3 +107,14 @@ sublabel) → categorise.
   4.333333333333; A 12.266666666666, B 12.266666666667, C 12.266666666667, + 13 + 50.2 = 100.
 - G36: the settlement is 15 % of net (15), funded by the label (50 − 15 = 35); the artists keep 25 + 25.
 - G39: the retroactive rule changes earned from 50 to 42.5 (scaled net 85 × 50 %); the payout stays as paid.
+- G45 (stage 5, `14_verification.md` §6 E1; D-137): the loader step `settlement-prestart` changes the legacy split
+  from the ISRC's first report month (here 2026-01) to the rows without S, S's 15 added to A's row (35 + 15 = 50),
+  under an approved document of kind `other`; the window from 2026-02-01 is untouched: 15 % of net from the label
+  share 50 leaves ours 35, A keeps 35. Before the fix the 2026-01 unit gave A 35, S 15 (same B and ours, wrong
+  recipient).
+- G46 (stage 5, `14_verification.md` §6 E2; D-137): the D-135 entry (8.33 per source, from 2026-07) gave M1
+  2.0825 + 2.0825 = 4.165, A 20.835, and nothing before 2026-07. The loader (D-137) enters the same comment as pool
+  participations of a percent of net, M1 8.33 `(net, artist_pool)` and M2 8.33 `(net, artist_pool)` from the
+  release's first month: targets 16.66 from the pool 50 pro rata 25 : 25, 8.33 from each of A and B; the same
+  allocations as the per-source entry when A and B are the only rows (with a third row the pool form takes from it
+  too, pro rata). The test asserts both entry forms in 2026-01 and 2026-03.

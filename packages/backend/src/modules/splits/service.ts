@@ -501,6 +501,19 @@ export function createSplitsService(db: Db) {
       return rows.filter((r) => !filter.artistId || r.artistId === filter.artistId).map(partView);
     },
 
+    /**
+     * Migration loader only (D-137, `scripts/mvp` step `hygiene`): deletes splits whose period is empty
+     * (`valid_to = valid_from`: never in force, no money), with their shares; a non-empty split is never deleted.
+     */
+    async deleteEmptySplits(ids: string[]): Promise<string[]> {
+      return repo.transaction(() => repo.deleteEmptySplits(ids));
+    },
+
+    /** Migration loader only (D-137, step `carves`): deletes participations the loader created, by id. */
+    async deleteParticipations(ids: string[]): Promise<number> {
+      return repo.transaction(() => repo.deleteParticipations(ids));
+    },
+
     /** Attaches the confirming appendix document to an existing split. */
     async confirmSplit(splitId: string, documentId: string): Promise<SplitView> {
       const s = await repo.getSplit(splitId);

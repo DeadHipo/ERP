@@ -1,6 +1,6 @@
 # Documentation drift: what is out of date, and what wins
 
-Written 2026-11-01 (D-120) after reading all top-level docs against the code. The project changed fast on
+Written 2026-11-01 (D-120), extended 2026-11-03 (D-123…D-135) after reading all top-level docs against the code. The project changed fast on
 2026-10-31…11-01 (Believe → PostgreSQL + ClickHouse, monorepo, `/api/v1`), and several texts were written before.
 
 ## Precedence (when two texts disagree)
@@ -32,6 +32,16 @@ Written 2026-11-01 (D-120) after reading all top-level docs against the code. Th
 | `docs/02`, `04`, `07`, `08`, `09`, D-011, D-012 | SQLite files per module, "one synchronous stretch" | PostgreSQL schemas per module; one REPEATABLE READ snapshot; cross-module writes in one transaction (D-121) |
 | `HANDOVER.md`, data archive | `data/real/*.sqlite` is the data | It is the input of `scripts/migrate-sqlite-to-pg.ts`; the app reads PostgreSQL (D-121) |
 | D-entries before D-116 | `src/…`, `client/…`, `/api/…`, `../../data/…` | See the path note at the top of `03_decision_index.md` |
+| `README.md` §5 | "store artist and MC shares only; sum ≤ 100; one level only" | Still the rule for split **rows**, but participations (off the top, pool, artist share, label share) and label (sublabel) rules are the other levels (D-123, D-126); a row also may carry its own document |
+| `README.md` §5 | "our share is the remainder" | True per unit, now the remainder after off-the-top and the carves, obtained by subtraction (`labelShare` in `facade/layers/`), and per own label (D-127) |
+| `README.md` §5 | split dates as entered | Rule dates (from, to, close) are floored to the month start (M52, D-126, D-130); `empty_period` refuses a period that becomes empty |
+| `docs/04` (splits) | rows only, no participations, no per-row document | `participations` table, `split_shares.document_id`, the row-or-participation rule (D-126); design in `docs/agents/10_target_model.md` |
+| `docs/09_фасад.md` | `calculate()` as one function, recoup in settlements | Pure layers in `src/facade/layers/` in the order of `layers/index.ts`; recoup moved to `layers/recoup.ts` (D-127); reconciliation per account with `ourShareByLabel`; the C reasons `assumption`, `rule_unconfirmed`, `label_unmapped` |
+| `docs/08` (publishing) | the publishing module computes the author share | It returns lines (with `operation_type`), writers and terms; the facade layers compute the share and B/C (D-128) |
+| `docs/02`, `07` | no labels module; documents without `assumption` | Module `labels` (D-125); document kind `assumption`; `tracks.note` |
+| `docs/agents/01` (before 2026-11-03) | "one idea" diagram with `unknown_pair`/`no_isrc`/split in one function; `settlements` owns recoup; D-067 waits | Replaced by the layered pipeline; D-067 closed by D-123/D-127 |
+| `HANDOVER.md` demo sections | `npm run demo`, `data/demo` | Outdated (D-112); the working data set is the dev database loaded by `scripts/mvp/load.ts` (D-131…D-134) |
+| D-067 (⚠ in the old index) | sub-label rule waits for the owner | Owner decision 2 implemented as sublabel rules (`modules/labels`); other imprints use the half rule under an `assumption` document (D-123 Q12) |
 
 The architecture documents and `context_data/` are not edited (README §6); this table is the correction layer.
 

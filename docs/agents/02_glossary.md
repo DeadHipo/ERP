@@ -1,6 +1,6 @@
 # Glossary: Russian documents ↔ English code
 
-Written 2026-11-01 (D-120). The architecture documents are in Russian, the code and the decision log are in English.
+Written 2026-11-01 (D-120), extended 2026-11-03 (D-123…D-135). The architecture documents are in Russian, the code and the decision log are in English.
 Use this table to grep both sides. "Doc" is the file where the term is defined.
 
 ## People, catalogue, documents (module `owners`, doc 02)
@@ -25,7 +25,7 @@ Use this table to grep both sides. "Doc" is the file where the term is defined.
 | Russian | English | Where | Notes |
 |---|---|---|---|
 | сплит, доля | split, share (`percent`) | `modules/splits` | Artist and MC shares only, one level, per ISRC |
-| наша доля | our share | `facade/calculation.ts` | Remainder: 100 − Σ shares, never stored |
+| наша доля | our share (the label share) | `facade/layers/split.ts` | Remainder per unit: scaled net − Σ rows (by subtraction), after the carves; never stored |
 | период действия, дата отчёта | validity period, report date | `splitIndex.at(isrc, monthStart(reportingMonth))` | `valid_to` exclusive (D-025) |
 | выкуп | buyout | `facade/splits.ts` `buyout` | A split change to 0 for the seller; the payment is not in the balance (D-027) |
 | базовый сплит | base split template | — | Not implemented (D-030) |
@@ -41,7 +41,7 @@ Use this table to grep both sides. "Doc" is the file where the term is defined.
 | единица расчёта | unit (ISRC+UPC+report month+sales month, net) | `sources.snapshot()` | D-036 |
 | нераспределённое | unallocated (`unknown_pair`, `no_isrc`) | `calculation.ts` | Counted in C |
 | дубль периода / файла | `duplicate_period` / `duplicate_file` (409) | `loader.ts` | Same account+month, or same sha256 |
-| саб-лейбл | sub-label | — | Rule for NoGhost: D-067 (owner review) |
+| саб-лейбл | sub-label | `modules/labels` | Rule: see "Labels" below (D-067 closed by D-123/D-127) |
 
 ## Publishing (module `publishing`, doc 08)
 
@@ -83,3 +83,23 @@ Use this table to grep both sides. "Doc" is the file where the term is defined.
 | сигналы | signals | `facade/reports.ts` | Alarms: discrepancies, unknown pairs, etc. |
 | объяснение «за что» | track explanation | `explainTrack` | Platform/country breakdown from ClickHouse |
 | старая ERP | old ERP, `erp.db` | `scripts/reconcile-erp.ts` | Reference only, differences are expected |
+
+## Labels, participations and layers (docs 10, 09; D-123…D-130)
+
+| Russian | English | Where | Notes |
+|---|---|---|---|
+| лейбл записи (учётный лейбл) | label of record | `facade/layers/label-of-record.ts` | The own label (0to8, Echo8) a unit belongs to: Believe label string → alias → label; for a sublabel the `own_label_id` it belongs to. Unmapped string → C `label_unmapped` |
+| алиас (импринт) | imprint alias | `modules/labels` `label_aliases` | The string Believe prints, normalised (NFKC, lower case, spaces collapsed) |
+| правило саблейбла, «половина» | sublabel rule | `labels.label_rules`, `facade/layers/carve.ts` | A percent of the label share to a recipient pseudonym, for a period, by a document (half rule = 50) |
+| участие | participation | `modules/splits` `participations` | A percent of a base to a recipient pseudonym on an ISRC and period, with a document |
+| база (участия) | participation `base` | `net` \| `bucket` | `net` = the unit net; `bucket` = the thing it is taken from (the artist's amount, the label share) |
+| источник финансирования | `funded_from` | `top` \| `artist_pool` \| `artist_share` \| `label_share` | Where the money comes from; `artist_share` also needs `from_artist_id` |
+| вырезка | carve | `facade/layers/carve.ts` | A participation or sublabel rule taken from a bucket (pool, artist share, label share, sublabel), in a fixed order |
+| «с самого верха» | off the top | `facade/layers/off-the-top.ts` | Participations (`net`, `top`) taken from the net before the split (remixer): `scaledNet = net − Σ top` |
+| пул артистов | artist pool | `funded_from = artist_pool` | The sum of the artist rows; a third party reduces only the artists' share (P08 §6.7(a)) |
+| документ-допущение | assumption document (kind `assumption`) | `modules/owners` | A council decision recorded as a document; never approved, so its money waits in C `assumption` |
+| нехватка, непокрытая доля | shortfall / unfunded | signals `unfunded` | A carve larger than its bucket takes the bucket; the rest is a signal, not C money |
+| псевдоним получателя | pseudonym as recipient | `owners.artists` | Every payee of money (participant, sublabel, buyer, company) is a pseudonym under an owner |
+| правило начала месяца (M52) | month-start rule | `shared/dates.ts` `monthStart` | Rule dates (split, participation, label rule, also end dates and closes) are floored to the first day of the month |
+| строка или участие | row-or-participation rule | `modules/splits` | A pseudonym is a split row or a participation on an ISRC and date, never both |
+| точность (12 знаков) | exactness (12 decimals) | `facade/layers/exact.ts` | Quantise each allocation to pico-USD, remainders by subtraction, residue to the largest |

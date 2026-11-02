@@ -3,7 +3,8 @@
  *
  * Usage: npx tsx packages/backend/scripts/mvp/load.ts <step> [--apply]
  *   steps: labels, tracks, splits, normalise-dates, participations, exclusions, echo8, main, terms, contracts,
- *   pairs, label-fixes, lunar, b17-holders, carves (stage 6 fixes, D-135), all
+ *   pairs, label-fixes, lunar, b17-holders, carves (stage 6 fixes, D-135; carves reworked by D-137),
+ *   settlement-prestart, assumption-rows, hygiene (stage 6 rework, D-137), all
  * Without --apply it is a dry run: nothing is written to the database; the log is prefixed "DRY RUN".
  * `all` runs the steps in dependency order in one process (a dry run of `all` shows the combined effect):
  *   labels, tracks, normalise-dates, splits, participations, exclusions, echo8, main, terms.
@@ -29,6 +30,7 @@ import {
   stepPairs,
   stepTerms,
 } from './steps-main';
+import { stepAssumptionRows, stepHygiene, stepSettlementPrestart } from './steps-stage6';
 
 const STEPS: Record<string, (ctx: Ctx) => Promise<void>> = {
   labels: stepLabels,
@@ -46,8 +48,11 @@ const STEPS: Record<string, (ctx: Ctx) => Promise<void>> = {
   lunar: stepLunar,
   'b17-holders': stepB17Holders,
   carves: stepCarves,
+  'settlement-prestart': stepSettlementPrestart,
+  'assumption-rows': stepAssumptionRows,
+  hygiene: stepHygiene,
 };
-const ALL = ['labels', 'tracks', 'normalise-dates', 'splits', 'participations', 'exclusions', 'echo8', 'main', 'terms', 'contracts', 'pairs', 'label-fixes', 'lunar', 'b17-holders', 'carves'];
+const ALL = ['labels', 'tracks', 'normalise-dates', 'splits', 'participations', 'exclusions', 'echo8', 'main', 'terms', 'contracts', 'pairs', 'label-fixes', 'lunar', 'b17-holders', 'carves', 'settlement-prestart', 'assumption-rows', 'hygiene'];
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
