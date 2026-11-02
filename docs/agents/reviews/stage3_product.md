@@ -1,5 +1,23 @@
 Verdict: yes
 
+**Revision 2 (2026-11-03, after `ba3ecf8` "stage 3 council fixes (D-130)").** Both should-fixes are confirmed:
+- Finding 1 is fixed. `tests/golden.test.ts` "signals of 10 §6 without a golden number (M29, D-130)" asserts:
+  - `tracksWithNote` with its note, with the amounts and the reconciliation row unchanged;
+  - `participantsWithoutOwner` with amount 5, which is 10 % of the label share 50.
+- Finding 2 is fixed. The M18 data rule ("Believe = digital; a row's percent is the digital column; other channel rates are a document note") is recorded in D-130.
+
+For the record:
+- **Publishing amounts:** they are now quantised to 12 decimals (33.333333333334 / 33.333333333333 ×2).
+- **Balance per label:** the balance has `byLabel` with earned and waiting per label of record. Recouped and paid stay one total. This replaces finding 7's "per paying label".
+- **End dates:** they are floored to the month start. A split that ends on the 15th now ends on the 1st, and its successor from the 15th starts on the 1st.
+
+**No regression:**
+- No golden expectation in `tests/golden.test.ts` was removed or changed (the diff only adds lines), and 12 is unchanged.
+- `REQUIRE_STACK=1 npm test` passed with 354 tests in 3 of 4 runs.
+- One run failed at file level on `tests/splits.test.ts`. No test inside it failed, and the file passes alone and in the later full runs. The cause is likely other agents using the shared stack at the same time. QA should look at it if it happens again.
+
+Findings 3–6 stay notes for stage 4. Verdict stays yes.
+
 # Stage 3 review: product / money (layers, golden tests, API), 2026-11-03
 
 Reviewer: the product member of the council, read-only, on `feature/fable-001` at HEAD `ca23896`.

@@ -1,5 +1,78 @@
 Verdict: yes
 
+## Revision 2 (re-review at `ba3ecf8` "stage 3 council fixes (D-130)", 2026-11-03)
+
+The verdict stays **yes**. Nothing regressed, and both should-fix items are closed.
+
+**Baseline**
+- Two full runs of the definition of done: typecheck and lint (mvp ignored) are clean, and `REQUIRE_STACK=1 npm test`
+  gives 32 files, **354 / 354** (31.6 s and 31.3 s). No flakiness.
+- `npm run build:client` is green.
+- `.gitignore` now has `__pycache__/` and `*.pyc`. `git ls-files` lists 0 pyc files.
+
+**Finding 1 (sign at exactly 100): fixed.**
+- `capToBase` in `layers/exact.ts` is used by `split.ts` and `off-the-top.ts`.
+- `distributeCapped` in `layers/exact.ts` is used by the pool carve in `carve.ts`.
+- My harness (`qa3/harness.mts`) now also asserts the sign of `scaledNet` after every layer. It still has the exact-100
+  generators (random cut points and thirds, for rows and for tops), pico nets of 0–999 × 1e-12, zero and negative
+  nets, every carve kind, artist-share and label-share at 100 %, sublabel percents 50 / random / 100 / 0.000001, and
+  shuffled participations and split rows.
+- Results, seeds 4242, 99, 2026, 7 and 31337 × 20,000 units (100,000 units):
+
+  | Check | Failures |
+  |---|---|
+  | Σ ≠ net | **0** |
+  | Amount above 12 decimals | **0** |
+  | Allocation, label share or scaled net with the opposite sign of the unit | **0** |
+  | Non-zero amount on a zero net | **0** |
+  | Order dependence | **0** |
+
+  Each seed scales down about 17,000 units, so the shortfall paths really run.
+- The stage 3 harness gave about 1,640 wrong-sign failures per seed.
+- My five minimal cases now give:
+
+  | Case | Result |
+  |---|---|
+  | Rows 50/50, net `10.000000000001` | A `5`, B `5.000000000001` (the tie goes by artist id), label `0` |
+  | Same unit under NoGhost | NG `0`, label `0` |
+  | Thirds | C `3.3333334`, label `0` |
+  | Top 15 with rows 50/50 under NoGhost | NG `0` |
+  | Tops 50/50 and rows 50/50 | tops `5` / `5.000000000001`, rows `0` / `0`, label `0` |
+
+- `tests/layers/exactness.test.ts` now has "percents summing to exactly 100…" (with sign checks on the label share
+  and the scaled net) and "the minimal reproductions…".
+
+**Finding 2 (publishing decimals): fixed.**
+- `writer-parts.ts` cuts at `SCALE` (12, `ROUND_DOWN`), and the last writer takes the remainder.
+- `author-share.ts` uses `pct()`.
+- `tests/layers/publishing.test.ts` asserts ≤ 12 decimals on parts, author amounts and label amounts.
+- Every multiplication site in `src/` is now quantised: `q` / `pct` / `distribute*`, cents in `payouts.ts`, and
+  conversions in `money.ts`.
+
+**Finding 4 (signals): fixed.** `golden.test.ts` has "tracksWithNote lists a noted track without changing an
+amount; participantsWithoutOwner carries the amount". This also pins the E19 signal half. The M51 listing stays in
+stage 4.
+
+**Finding 8 (pyc): fixed.**
+
+**Migration 0010.** The overlap key now includes `coalesce(from_artist_id, '')`, and it is covered in
+`participations.test.ts`. I read it: the old key holds for every kind except `artist_share`.
+
+**Mutations, re-run** (`qa3/mutation.test.ts` on a private stack): `-15`, `-0.000000000001`, `19.125000000001` and
+`9.5625`. The correct chain gives `0`, and `explainTrack` sums to the unit after every layer.
+
+**Still open, all notes**
+- N2: `verify()` checks the last layer only.
+- N3: there is no end-to-end shuffle test.
+- E6: the Echo8 sublabel without a split is not pinned.
+- E10 / E22: the M39 signal is not tested.
+- E9: there is no advance scope by UPC.
+- Performance must be measured again after stage 4.1–4.3. Stage 4 runs the carve and sublabel paths; the dev data has
+  no labels or participations.
+
+None of these block the stage.
+
+
 # Stage 3 review: QA (steps 3.1–3.6, D-124…D-129), 2026-11-03
 
 Reviewed at HEAD `ca23896`. During the review `b0cac58` landed: stage 4 scripts under `packages/backend/scripts/mvp/`,

@@ -1,4 +1,106 @@
-Verdict: no
+Verdict: yes
+
+# Stage 3 review: architect, revision 2 (2026-11-03)
+
+Scope: commit `ba3ecf8` "stage 3 council fixes (D-130)". It is the HEAD of `feature/fable-001`; the coordinator
+named `a4690c7`, but `git log` shows `ba3ecf8`. I read it against revision 1 below. Read-only. Run at `ba3ecf8`:
+`npm run typecheck` clean; `npx eslint . --ignore-pattern 'packages/backend/scripts/mvp/**'` clean;
+`REQUIRE_STACK=1 npm test` 32 files, 354 tests, all green. The stage 4/5 scripts under `scripts/mvp/`
+(commit `b0cac58`) are outside this review.
+
+The blocker is closed, and every should-fix is fixed. What remains is notes; none of them blocks acceptance.
+
+## Revision 1 findings, now
+
+| Rev. 1 finding | Now | Evidence |
+|---|---|---|
+| 1 **blocker**: M52 floored only start dates | **closed** | See below |
+| 2 module `CLAUDE.md` | fixed | `modules/owners/CLAUDE.md` is new: the three sentences of 10 §1 plus a storage line. `publishing/CLAUDE.md` and `sources/CLAUDE.md` now open with their three sentences, with the old notes under "Notes". `facade/CLAUDE.md:4` names the five modules |
+| 3 publishing precision | fixed | `writer-parts.ts:126` cuts at `SCALE` (12, ROUND_DOWN), and the last writer takes the remainder. `author-share.ts:31` uses `pct`, and the label amount is still a subtraction. Changed expectations are listed in D-130: only `review-round3` and the pure three-writer test, at the 13th decimal and beyond. G26a–e are unchanged |
+| 4 decision index | fixed | See below |
+| 5 "paid per label" without storage | fixed | See below |
+| 6–10 notes | 6–9 as before; part of 10 addressed | The D-130 overlap key (below) also touches the participation side of note 10 |
+
+**Finding 1 (blocker) in detail.**
+- `facade/splits.ts:15-25` adds `floorEnd`. It floors to the month start and refuses `validTo ≤ validFrom` as a 400
+  with code `empty_period`. `ValidationError` now takes an optional code (`shared/errors.ts:15`).
+- `floorEnd` is applied to:
+  - `createSplit.validTo` (`:41`);
+  - `createParticipation.validTo` (`:95`);
+  - `closeParticipation`, which reads the participation's `validFrom` in the same transaction (`:111-115`);
+  - `createLabelRule.validTo` (`:170`);
+  - the new `closeLabelRule` (`:183-187`), which `POST /labels/rules/:id/close` now calls instead of the module
+    (`routes/labels.ts:17`).
+- `changeSplit` and `buyout` close the predecessor at the floored start, as before, so every path into a period is
+  now month-granular.
+- Tests:
+  - the P1/P2 hand-over (P1 closed 2026-06-15, P2 from 2026-06-15: June goes to P2 only) and the split hand-over,
+    `tests/participations.test.ts:43-61`;
+  - the empty period, `:137,141,251-252`;
+  - rule end, close and successor, `tests/labels.test.ts`;
+  - the HTTP close and the 400, `tests/api.test.ts`.
+- Docs: 10 §2 (lines 88-91) states the rule. Plan 4.2 now moves the predecessor's `valid_to` with the normalised
+  start.
+
+**Finding 4 in detail.**
+- The index header reads D-001 … D-130.
+- D-067 is closed at line 141, and the waiting list no longer names it.
+- D-125 gained its `- Status: accepted` line. That edits an old entry in place, which the append-only rule
+  forbids. It is one added status line, recorded in D-130, so I accept it; do not repeat it.
+
+**Finding 5 in detail.**
+- 10 §5 and §7, and plan 4.4, now promise only what exists: earned (B) and waiting (C) per label of record;
+  recouped and paid stay one total.
+- `balance.ts:61-66,150,163-166` builds `byLabel` from the allocations' units. Σ `byLabel` = the master part of earned
+  and waiting.
+- It is in `balanceSchema` (`api-responses.ts:431`) and asserted in `golden.test.ts:420`.
+- The model is now consistent with the storage. Stage 5's Main comparison is per owner, and plan and 10 §7 say so.
+
+## New in D-130, checked from the architecture angle
+
+- **`capToBase` / `distributeCapped`** (`exact.ts:53-121`). These are pure, live in `exact.ts`, and are used only by
+  `split.ts:29`, `off-the-top.ts:23` and `carve.ts:67`. This is one residue rule with a sign cap, not a second
+  implementation.
+  - `capToBase` acts only when the remainder would cross the sign of the base. That can happen only at Σ percent
+    = 100 with half-up rounding. It takes the excess off the largest amount, so Σ = base still holds by
+    construction.
+  - `distributeCapped` terminates: when no room is left, the whole overflow goes to one item in a single step, and
+    the sum stays exact.
+  - It is covered by the new exactness runs (Σ percent = 100, 6-decimal thirds, 1-pico nets, every kind; the
+    identity, ≤ 12 decimals and no wrong sign after every layer).
+  - Every multiplication site of revision 1 is still `pct` or `distribute`. The publishing sites are now too.
+- **Overlap key with the source artist.**
+  - It is migration `0010_participations_overlap_key.sql`, a new file, with 0008 untouched. It uses
+    `coalesce(from_artist_id, '')`, so the key of every other kind is unchanged.
+  - The service check at `splits/service.ts:412-418` matches the constraint.
+  - It is justified by G12 (one recipient carving from two different artists).
+  - It is validation, not money, so it stays in the module.
+- **M18 channel rule.** This is a data convention recorded in D-130. It adds no field, which fits "a case closed by
+  data gets no new field".
+- **Boundaries unchanged:** still no `.mul(`/`.div(` in `src/modules`; `boundaries.test.ts` passes.
+
+## Notes for stage 4/5 (not blocking)
+
+1. Notes 6–9 of revision 1 stand as written:
+   - the comment on `rules-coverage.test.ts:261`;
+   - a grep guard for money math in modules (suggested);
+   - stage 5 must read `GET /reconciliation`, not `reconcile()`, to get `fileDiscrepancy`;
+   - the publishing layers share one test file.
+2. `byLabel` is all-time and master only (D-130 known limit). That is fine for stage 5's per-owner comparison. If
+   the product later needs a period view, add it there, not in a module.
+3. The overlap check still compares stored ids (D-126 limit). Stage 4 should enter every participation through the
+   facade, which canonicalises merged ids (`facade/splits.ts:100-104`).
+4. The label string normalisation still collapses only white space (rev. 1 note 10). Plan 4.1 enters every distinct
+   string, so this is harmless. Align 10 §2 or the function in stage 7.
+5. `scripts/mvp/` (stage 4 loader, commit `b0cac58`) was not reviewed here. Plan 4.2 says "the loader already
+   does" the `valid_to` normalisation. The stage 4 review should check that the scripts go through the facade
+   methods above (`createSplit`, `createParticipation`, `createLabelRule`, `closeLabelRule`), not the module
+   services directly, or the M52 end-date rule is bypassed.
+
+---
+
+# Revision 1 (kept as written; its verdict was "no")
+
 
 # Stage 3 review: architect (2026-11-03)
 
