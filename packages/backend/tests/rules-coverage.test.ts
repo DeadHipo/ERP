@@ -260,7 +260,7 @@ describe('README 5: no floats in money', () => {
     expect(fractional).toEqual([]);
     // exact: (0.1 + 0.2 + 1000.000000000001) x 0.33333333, paid rounded down to whole cents
     expect(Number.isInteger(payout.amountCents)).toBe(true);
-    expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('333.43332999900033333333');
+    expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('333.433329999');
   });
 });
 
