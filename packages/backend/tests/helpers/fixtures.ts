@@ -190,7 +190,7 @@ export async function approvedAppendix(f: TestFacade, ownerId: string | null = n
 
 export async function approvedDoc(
   f: TestFacade,
-  kind: 'buyout' | 'advance_basis' | 'adjustment_basis' | 'contract' | 'appendix',
+  kind: 'buyout' | 'advance_basis' | 'adjustment_basis' | 'contract' | 'appendix' | 'other',
   ownerId: string | null = null,
 ) {
   const o = f.modules.owners;

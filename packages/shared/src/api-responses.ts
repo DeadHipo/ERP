@@ -105,7 +105,7 @@ export const splitSchema = z.object({
   documentId: z.string().nullable(),
   origin: z.string(),
   note: z.string().nullable(),
-  shares: z.array(z.object({ artistId: z.string(), percent: z.string() })),
+  shares: z.array(z.object({ artistId: z.string(), percent: z.string(), documentId: z.string().nullable() })),
   ourShare: z.string().describe('100 minus the sum of the shares; never stored'),
 });
 
@@ -115,6 +115,7 @@ export const splitListItemSchema = splitSchema.extend({
     z.object({
       artistId: z.string(),
       percent: z.string(),
+      documentId: z.string().nullable(),
       pseudonym: z.string(),
       ownerId: z.string().nullable(),
     }),

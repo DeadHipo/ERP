@@ -67,6 +67,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-028 Split confirmation, percent format · in force
 - D-029 ISRC without split → our share · in force
 - D-030 Base split templates not implemented · in force
+- D-126 Participations, per-row documents, month-start rule dates · in force
 
 ## Sources (Believe)
 - D-031 File name, account, month, generation date · in force

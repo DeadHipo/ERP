@@ -30,10 +30,15 @@ export interface ShareSpec {
   /** An artist not yet in module 1: created without owner ("waiting for documents"). */
   newArtistPseudonym?: string;
   percent: string;
+  /** The row's own document (overrides the split's document for this row, D-126). */
+  documentId?: string | null;
 }
 
-/** Document kinds that can confirm a split: an appendix to the contract, the contract itself, a buyout document. */
-const SPLIT_DOCUMENT_KINDS = ['appendix', 'contract', 'buyout'];
+/**
+ * Document kinds that can confirm a split row or a participation: an appendix, the contract itself, a buyout
+ * document, an assumption (a council decision, never approved) or another document.
+ */
+const SPLIT_DOCUMENT_KINDS = ['appendix', 'contract', 'buyout', 'other', 'assumption'];
 
 /** What every facade section works with: the modules and the checks shared between sections. */
 export function createFacadeContext(
@@ -78,7 +83,7 @@ export function createFacadeContext(
     const d = await owners.getDocument(documentId);
     if (!SPLIT_DOCUMENT_KINDS.includes(d.kind))
       throw new ValidationError(
-        `A split is confirmed by an appendix, contract or buyout document, not "${d.kind}"`,
+        `A split or participation is confirmed by an appendix, contract, buyout, assumption or other document, not "${d.kind}"`,
       );
   }
 
@@ -99,16 +104,17 @@ export function createFacadeContext(
     if (new Set(pseudonyms).size !== pseudonyms.length)
       throw new ValidationError('The same new artist appears twice in one split');
     for (const s of shares) {
+      await checkSplitDocument(s.documentId);
       if (s.artistId) await owners.getArtist(s.artistId);
       else if (!s.newArtistPseudonym)
         throw new ValidationError('Each share needs an artistId or a newArtistPseudonym');
     }
     return async () => {
-      const out: { artistId: string; percent: string }[] = [];
+      const out: { artistId: string; percent: string; documentId: string | null }[] = [];
       for (const s of shares) {
         out.push(
           s.artistId
-            ? { artistId: canon(s.artistId), percent: s.percent }
+            ? { artistId: canon(s.artistId), percent: s.percent, documentId: s.documentId ?? null }
             : {
                 artistId: (
                   await owners.createArtist({
@@ -118,6 +124,7 @@ export function createFacadeContext(
                   })
                 ).id,
                 percent: s.percent,
+                documentId: s.documentId ?? null,
               },
         );
       }
