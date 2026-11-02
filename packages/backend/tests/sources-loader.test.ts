@@ -123,7 +123,7 @@ describe.runIf(postgresUp && clickhouseUp)('Believe loader (PostgreSQL registry 
       { isrc: 'QZTST2600012', net: '-0.000000000001' },
     ]);
     expect(viaRows).toEqual(viaProjection);
-    const units = await iso.columnar.units([rec.id]);
+    const units = [...(await iso.columnar.units([rec.id]))].sort((a, b) => a.isrc.localeCompare(b.isrc));
     expect(units.map((u) => [u.isrc, u.reportingMonth, u.net])).toEqual([
       ['QZTST2600011', '2026-08', '3.75'],
       ['QZTST2600012', '2026-08', '-0.000000000001'],
