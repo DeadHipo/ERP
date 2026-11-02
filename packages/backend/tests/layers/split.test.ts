@@ -10,7 +10,13 @@ describe('layer 4: split (M1, M2, M3a, M6, M7, M9, M10, M28)', () => {
   });
   it('G02: 16.6 × 3 → ours 50.2', () => {
     const o = run({ splits: rows(['A', '16.6'], ['B', '16.6'], ['C', '16.6']) }, unit('100'));
-    expect([o.amount('A'), o.amount('B'), o.amount('C'), o.B, o.ours]).toEqual(['16.6', '16.6', '16.6', '49.8', '50.2']);
+    expect([o.amount('A'), o.amount('B'), o.amount('C'), o.B, o.ours]).toEqual([
+      '16.6',
+      '16.6',
+      '16.6',
+      '49.8',
+      '50.2',
+    ]);
   });
   it('G03a: floor title entered scaled 33.333333 / 16.666667', () => {
     const o = run({ splits: rows(['A', '33.333333'], ['B', '16.666667']) }, unit('100'));
@@ -81,7 +87,22 @@ describe('layer 4: split (M1, M2, M3a, M6, M7, M9, M10, M28)', () => {
     expect([o.state.status, o.ours]).toEqual(['no_split', '100']);
   });
   it('a row document overrides the split document for that row only', () => {
-    const o = run({ splits: { QZTST2600001: [{ doc: 'no', shares: [['A', '20', 'ok'], ['B', '30']] }] } }, unit('100'));
+    const o = run(
+      {
+        splits: {
+          QZTST2600001: [
+            {
+              doc: 'no',
+              shares: [
+                ['A', '20', 'ok'],
+                ['B', '30'],
+              ],
+            },
+          ],
+        },
+      },
+      unit('100'),
+    );
     expect([o.reason('A'), o.reason('B')]).toEqual([null, 'split_unconfirmed']);
   });
   it('G42: a brand pseudonym linked to the track without a row takes nothing', () => {

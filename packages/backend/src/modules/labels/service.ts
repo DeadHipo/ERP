@@ -84,7 +84,11 @@ export function createLabelsService(db: Db) {
 
   const service = {
     /** An own label stands alone; a sublabel belongs to an existing own label. */
-    async createLabel(input: { name: string; kind: LabelKind; ownLabelId?: string | null }): Promise<LabelView> {
+    async createLabel(input: {
+      name: string;
+      kind: LabelKind;
+      ownLabelId?: string | null;
+    }): Promise<LabelView> {
       const name = input.name.trim();
       if (!name) throw new ValidationError('Label name is empty');
       if (input.kind !== 'own' && input.kind !== 'sublabel')
@@ -92,7 +96,8 @@ export function createLabelsService(db: Db) {
       return repo.transaction(async () => {
         let ownLabelId: string | null = null;
         if (input.kind === 'sublabel') {
-          if (!input.ownLabelId) throw new ValidationError('A sublabel needs the own label its money belongs to');
+          if (!input.ownLabelId)
+            throw new ValidationError('A sublabel needs the own label its money belongs to');
           const own = await repo.getLabel(input.ownLabelId);
           if (!own) throw new NotFoundError('Label', input.ownLabelId);
           if (own.kind !== 'own') throw new ValidationError('ownLabelId must be a label of kind own');
@@ -210,6 +215,12 @@ export function createLabelsService(db: Db) {
       for (const r of rules) rulesOf.set(r.labelId, [...(rulesOf.get(r.labelId) ?? []), r]);
       return {
         normalize: normalizeLabelString,
+        /** The name of a label by id (the label of record of a sublabel is its own label). */
+        labelName: (id: string): string | undefined => byId.get(id)?.name,
+        /** Every document of a rule (the facade asks module 1 for their status). */
+        documentIds: (): string[] => [
+          ...new Set(rules.map((r) => r.documentId).filter((d): d is string => !!d)),
+        ],
         /** The label of a Believe string and its rule in force at a date; undefined for an unknown string. */
         labelOf(labelString: string, date: IsoDate): LabelOfRecord | undefined {
           const l = byId.get(byAlias.get(normalizeLabelString(labelString)) ?? '');

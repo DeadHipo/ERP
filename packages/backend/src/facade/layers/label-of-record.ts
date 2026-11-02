@@ -8,7 +8,8 @@ import type { Layer } from './types';
  */
 export const labelOfRecord: Layer = (s, ctx) => {
   const l = ctx.labelOf(s.unit.labelName, reportDate(s.unit));
-  if (!l) return { ...s, ourLabelId: null, ourLabelName: null, rule: null, labelShareCategory: 'label_unmapped' };
+  if (!l)
+    return { ...s, ourLabelId: null, ourLabelName: null, rule: null, labelShareCategory: 'label_unmapped' };
   const ourLabelId = l.kind === 'own' ? l.id : l.ownLabelId;
   return {
     ...s,

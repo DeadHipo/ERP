@@ -8,15 +8,23 @@
   `payouts.ts` (operations, payout button, payment proof, returns). Shared checks live in `context.ts`.
 - `calculation.ts` is the domain core: `calculate()` reads `sources.snapshot()` first, then every module inside one
   `db.snapshot()` (read-only REPEATABLE READ), so one request sees one version of the data (D-012, D-121). Keep new
-  reads inside that snapshot.
+  reads inside that snapshot. It builds the pure `LayerContext` and runs `allocateUnit` per unit; `reconcile()` is
+  per source, account and month, `ourShare` = Σ label share of the units where it is ours (D-127).
+- `layers/` holds the master money as pure functions (no storage, own tests in `tests/layers/`). The order is the list
+  `MASTER_LAYERS` in `layers/index.ts`: label of record → perimeter → off the top → split → carves (pool, artist share,
+  label share, sublabel, in `carve.ts`) → categorise (10 §3). Exactness: quantise every amount to 12 decimals right
+  after its multiplication (`layers/exact.ts`: `q`, `pct`), get every remainder by subtraction, distribute pro rata /
+  scale-downs with `distribute` (residue to the largest absolute amount, a tie: first by id). Σ allocations + label
+  share = net after every layer; `tests/layers/exactness.test.ts` and the golden cases (`tests/golden.test.ts`) check it.
 - A method that writes to two modules wraps them in `db.transaction()` (all or nothing, D-121); a method that reads
   two modules for one answer uses `db.snapshot()`. A write cannot start inside a snapshot (it throws).
 - Nothing is stored or cached: every method recalculates from scratch. Do not add accrual tables or caches
   without an owner decision (README §2: caches out of scope; 09 principle 7).
-- Category C reasons (`CReason` in `calculation.ts`) reach the API as free keys of `C_breakdown` /
-  `waitingBreakdown` (`z.record(z.string(), money)`), so a new reason passes the schemas silently: check the pages
-  that show them (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.
+- Category C reasons are one shared enum (`C_REASONS` / `CReason` in `packages/shared/src/api-responses.ts`), used by
+  `C_breakdown` and `waitingBreakdown`; a new reason goes there first, then check the pages that show them
+  (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.
 - Every method is async (the modules are PostgreSQL, D-121); await everything.
 - Payouts: `createPayout` is the only way to pay earned money (D-051). It records the payout (deferred, with the
   snapshot of the very calculation it used, D-053) before calling `payment-service.ts` (a stub, D-013).
-- Recoupment itself is in `modules/settlements/recoup.ts`; `balance.ts` feeds it income items and positions.
+- Recoupment itself is in `layers/recoup.ts` (moved from the settlements module, D-127; the shapes `Scope`, `IncomeItem`,
+  `Position` stay in `modules/settlements`); `balance.ts` feeds it income items and positions.

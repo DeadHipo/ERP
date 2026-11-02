@@ -28,17 +28,38 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     expect([b.amount('NG'), b.B, b.ours]).toEqual(['15', '85', '15']);
   });
   it('G11: (bucket, label_share) 15 of the label share 50', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ artist: 'P', percent: '15', funded: 'label_share', base: 'bucket' }] }, unit('100'));
+    const o = run(
+      {
+        splits: rows(['A', '50']),
+        parts: [{ artist: 'P', percent: '15', funded: 'label_share', base: 'bucket' }],
+      },
+      unit('100'),
+    );
     expect([o.amount('P'), o.B, o.ours]).toEqual(['7.5', '57.5', '42.5']);
   });
   it('G12: (bucket, artist_share of A) 10', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ artist: 'E', percent: '10', funded: 'artist_share', from: 'A' }] }, unit('100'));
+    const o = run(
+      {
+        splits: rows(['A', '50']),
+        parts: [{ artist: 'E', percent: '10', funded: 'artist_share', from: 'A' }],
+      },
+      unit('100'),
+    );
     expect([o.amount('E'), o.amount('A'), o.B, o.ours]).toEqual(['5', '45', '50', '50']);
   });
   it('G14: a participation valid 2026-01-01 … 2026-04-01', () => {
     const w: World = {
       splits: rows(['A', '50']),
-      parts: [{ artist: 'P', percent: '15', funded: 'label_share', base: 'bucket', validFrom: '2026-01-01', validTo: '2026-04-01' }],
+      parts: [
+        {
+          artist: 'P',
+          percent: '15',
+          funded: 'label_share',
+          base: 'bucket',
+          validFrom: '2026-01-01',
+          validTo: '2026-04-01',
+        },
+      ],
     };
     const mar = run(w, unit('100', { reportingMonth: '2026-03' }));
     const apr = run(w, unit('100', { reportingMonth: '2026-04' }));
@@ -66,9 +87,25 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     { artist: 'P', percent: '10', funded: 'label_share', base: 'bucket' },
   ];
   it('G18 (E18, Q11): every kind on one unit', () => {
-    const o = run({ splits: rows(['A', '25'], ['B', '25']), parts: g18 }, unit('100', { labelName: 'NoGhost Records' }));
-    expect(['R', 'A', 'B', 'M', 'P', 'NG'].map(o.amount)).toEqual(['15', '14.75', '14.75', '13', '4.25', '19.125']);
-    expect([o.reason('P'), o.reason('NG'), o.B, o.C, o.ours]).toEqual(['assumption', 'assumption', '57.5', '23.375', '19.125']);
+    const o = run(
+      { splits: rows(['A', '25'], ['B', '25']), parts: g18 },
+      unit('100', { labelName: 'NoGhost Records' }),
+    );
+    expect(['R', 'A', 'B', 'M', 'P', 'NG'].map(o.amount)).toEqual([
+      '15',
+      '14.75',
+      '14.75',
+      '13',
+      '4.25',
+      '19.125',
+    ]);
+    expect([o.reason('P'), o.reason('NG'), o.B, o.C, o.ours]).toEqual([
+      'assumption',
+      'assumption',
+      '57.5',
+      '23.375',
+      '19.125',
+    ]);
   });
   it('G18b: plus E 10 of A after the pool carve', () => {
     const o = run(
@@ -82,8 +119,17 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     expect([o.B, o.ours]).toEqual(['57.5', '19.125']);
   });
   it('G22 (E3): a pool smaller than the carve: P takes the pool, shortfall 10', () => {
-    const o = run({ splits: rows(['A', '10']), parts: [{ artist: 'P', percent: '20', funded: 'artist_pool' }] }, unit('100'));
-    expect([o.amount('P'), o.amount('A'), o.B, o.ours, totalMissing(o)]).toEqual(['10', '0', '10', '90', '10']);
+    const o = run(
+      { splits: rows(['A', '10']), parts: [{ artist: 'P', percent: '20', funded: 'artist_pool' }] },
+      unit('100'),
+    );
+    expect([o.amount('P'), o.amount('A'), o.B, o.ours, totalMissing(o)]).toEqual([
+      '10',
+      '0',
+      '10',
+      '90',
+      '10',
+    ]);
     expect(o.state.shortfalls[0]?.why).toBe('bucket_short');
   });
   it('G24 (E9): two UPCs of one ISRC are two units', () => {
@@ -115,7 +161,12 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
       },
       unit('100'),
     );
-    expect(['A', 'B', 'C', 'M'].map(o.amount)).toEqual(['12.266666666666', '12.266666666667', '12.266666666667', '13']);
+    expect(['A', 'B', 'C', 'M'].map(o.amount)).toEqual([
+      '12.266666666666',
+      '12.266666666667',
+      '12.266666666667',
+      '13',
+    ]);
     expect([o.B, o.ours]).toEqual(['49.8', '50.2']);
   });
   it('G35: two label-share carves share one base', () => {
@@ -127,13 +178,22 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
   });
   it('G36 (Q6): the settlement 15 of net paid from the label share', () => {
     const o = run(
-      { splits: rows(['A', '25'], ['B', '25']), parts: [{ artist: 'S', percent: '15', funded: 'label_share', base: 'net' }] },
+      {
+        splits: rows(['A', '25'], ['B', '25']),
+        parts: [{ artist: 'S', percent: '15', funded: 'label_share', base: 'net' }],
+      },
       unit('100'),
     );
     expect([o.amount('S'), o.amount('A'), o.B, o.ours]).toEqual(['15', '25', '65', '35']);
   });
   it('G37: a label-share carve above the label share takes it all, shortfall 20', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ artist: 'P', percent: '70', funded: 'label_share', base: 'net' }] }, unit('100'));
+    const o = run(
+      {
+        splits: rows(['A', '50']),
+        parts: [{ artist: 'P', percent: '70', funded: 'label_share', base: 'net' }],
+      },
+      unit('100'),
+    );
     expect([o.amount('P'), o.B, o.ours, totalMissing(o)]).toEqual(['50', '100', '0', '20']);
   });
   it('G44 (scale-down exactness): three pool carves of 13 on a pool of 10', () => {
@@ -144,7 +204,12 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
       },
       unit('100'),
     );
-    expect(['M1', 'M2', 'M3', 'A'].map(o.amount)).toEqual(['3.333333333334', '3.333333333333', '3.333333333333', '0']);
+    expect(['M1', 'M2', 'M3', 'A'].map(o.amount)).toEqual([
+      '3.333333333334',
+      '3.333333333333',
+      '3.333333333333',
+      '0',
+    ]);
     expect([o.B, o.ours, totalMissing(o)]).toEqual(['10', '90', '29']);
   });
   it('artist-share carves above 100 % of one row are scaled down to the row', () => {
@@ -163,11 +228,28 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     expect(o.state.shortfalls.every((s) => s.why === 'bucket_short')).toBe(true);
   });
   it('an artist-share carve without its source row: 0 and a shortfall', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ artist: 'E', percent: '10', funded: 'artist_share', from: 'X' }] }, unit('100'));
-    expect([o.amount('E'), o.amount('A'), o.ours, o.state.shortfalls[0]?.why]).toEqual(['0', '50', '50', 'no_source_row']);
+    const o = run(
+      {
+        splits: rows(['A', '50']),
+        parts: [{ artist: 'E', percent: '10', funded: 'artist_share', from: 'X' }],
+      },
+      unit('100'),
+    );
+    expect([o.amount('E'), o.amount('A'), o.ours, o.state.shortfalls[0]?.why]).toEqual([
+      '0',
+      '50',
+      '50',
+      'no_source_row',
+    ]);
   });
   it('a participation of another ISRC does not apply', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ isrc: I2, artist: 'P', percent: '10', funded: 'label_share', base: 'bucket' }] }, unit('100'));
+    const o = run(
+      {
+        splits: rows(['A', '50']),
+        parts: [{ isrc: I2, artist: 'P', percent: '10', funded: 'label_share', base: 'bucket' }],
+      },
+      unit('100'),
+    );
     expect([o.amount('P'), o.ours]).toEqual([undefined, '50']);
   });
   it('the sublabel never runs on an unmapped string', () => {

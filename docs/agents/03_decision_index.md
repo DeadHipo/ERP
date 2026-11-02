@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-126 by topic)
+# Decision index (D-001 … D-128 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -125,12 +125,13 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-094 Negative lines use up the income they cancel · in force
 
 ## Facade
-- D-057 Completeness check A/B/C and alarms · in force
+- D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)
 - D-058 Owner view figures · in force
 - D-059 Split artist without an owner → C · in force
 - D-060 API composes modules only through the facade · in force
 - D-061 Signals use the chosen date basis · in force
 - D-123 Layered calculation of the master money (MVP goal design: labels module, participations, layer order, C reasons `assumption` / `rule_unconfirmed` / `label_unmapped`, council decisions Q1…Q12) · in force (design); closes D-067 ⚠ by owner decision 2 of 2026-11-02
+- D-127 Master layers in `facade/layers/` (label of record → perimeter → off the top → split → carves → categorise; 12-decimal quantisation, remainders by subtraction, residue to the largest), reconciliation per account with `ourShare` from the layer state and `ourShareByLabel`, new C reasons as one shared enum, new signals, explain per layer, recoup moved to the facade · in force
 
 ## Data import, demo, reference checks
 - D-008 Reconstructed files for the demo · *refined by* D-079 (real reports exist), D-112 (no demo mode)

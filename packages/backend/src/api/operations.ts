@@ -141,8 +141,8 @@ export const API_OPERATIONS: ApiOperation[] = [
     method: 'get',
     path: '/tracks/:isrc/explain',
     tag: 'tracks',
-    summary: 'Explain the money of one ISRC: lines, split, categories',
-    response: free('Track explanation'),
+    summary: 'Explain the money of one ISRC: lines, split, participations, the state after every layer',
+    response: R.explainSchema,
   },
 
   // ---- documents and contracts ----

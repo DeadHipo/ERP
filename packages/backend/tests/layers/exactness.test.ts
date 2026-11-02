@@ -60,8 +60,9 @@ function generator(seed: number) {
       });
     return { splits: int(8) === 0 ? {} : { [I1]: [{ shares }] }, parts };
   };
-  const label = () => ['Test Label', 'NoGhost Records', 'Mystery Records', 'qaraqshy records', 'Echo8'][int(5)] as string;
-  const shuffle = <T,>(xs: T[]) => {
+  const label = () =>
+    ['Test Label', 'NoGhost Records', 'Mystery Records', 'qaraqshy records', 'Echo8'][int(5)] as string;
+  const shuffle = <T>(xs: T[]) => {
     const out = [...xs];
     for (let i = out.length - 1; i > 0; i--) {
       const j = int(i + 1);
@@ -90,7 +91,11 @@ describe('exactness of the layer chain (10 §3)', () => {
       }
       // every allocation has the sign of the unit (or is 0)
       for (const a of o.state.rows)
-        if (!a.amount.isZero() && !new Decimal(n).isZero() && a.amount.isNegative() !== new Decimal(n).isNegative()) {
+        if (
+          !a.amount.isZero() &&
+          !new Decimal(n).isZero() &&
+          a.amount.isNegative() !== new Decimal(n).isNegative()
+        ) {
           failures++;
           if (first.length < 3) first.push(`${n}: ${a.kind} ${a.amount.toFixed()} has the wrong sign`);
         }

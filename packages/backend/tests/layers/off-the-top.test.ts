@@ -10,11 +10,20 @@ describe('layer 3: off the top (M4, E24)', () => {
       { splits: rows(['A', '25'], ['B', '25']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] },
       unit('100'),
     );
-    expect([o.amount('R'), o.amount('A'), o.amount('B'), o.B, o.ours]).toEqual(['15', '21.25', '21.25', '57.5', '42.5']);
+    expect([o.amount('R'), o.amount('A'), o.amount('B'), o.B, o.ours]).toEqual([
+      '15',
+      '21.25',
+      '21.25',
+      '57.5',
+      '42.5',
+    ]);
     expect(o.state.scaledNet.toFixed()).toBe('85');
   });
   it('G32: A 100 after a top 15: A 85, label share 0', () => {
-    const o = run({ splits: rows(['A', '100']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] }, unit('100'));
+    const o = run(
+      { splits: rows(['A', '100']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] },
+      unit('100'),
+    );
     expect([o.amount('R'), o.amount('A'), o.B, o.ours]).toEqual(['15', '85', '100', '0']);
   });
   it('over-100 tops in data (G23 data-side twin): scaled down to net, scaled net 0, the excess a shortfall', () => {
@@ -51,7 +60,10 @@ describe('layer 3: off the top (M4, E24)', () => {
     expect(o.state.scaledNet.toFixed()).toBe('0');
   });
   it('a top on a negative unit is negative with the same ratio', () => {
-    const o = run({ splits: rows(['A', '50']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] }, unit('-100'));
+    const o = run(
+      { splits: rows(['A', '50']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] },
+      unit('-100'),
+    );
     expect([o.amount('R'), o.amount('A'), o.ours]).toEqual(['-15', '-42.5', '-42.5']);
   });
 });

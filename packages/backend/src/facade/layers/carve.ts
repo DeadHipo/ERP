@@ -64,7 +64,10 @@ function pool(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate[]): Un
   const taken = sumOf(amounts);
   const shares = distribute(
     taken,
-    rowIdx.map((i) => ({ key: (s.rows[i] as Allocation).artistId, weight: (s.rows[i] as Allocation).amount })),
+    rowIdx.map((i) => ({
+      key: (s.rows[i] as Allocation).artistId,
+      weight: (s.rows[i] as Allocation).amount,
+    })),
   );
   const rows = [...s.rows];
   rowIdx.forEach((i, k) => {
@@ -100,7 +103,13 @@ function artistShare(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate
           missing: ZERO,
           why: 'no_source_row',
         });
-      added.push(...carveAllocations(ctx, group, group.map(() => ZERO)));
+      added.push(
+        ...carveAllocations(
+          ctx,
+          group,
+          group.map(() => ZERO),
+        ),
+      );
       continue;
     }
     const row = rows[idx] as Allocation;
@@ -152,9 +161,7 @@ function sublabel(s: UnitState, ctx: LayerContext): UnitState {
  * after its multiplication and every remainder is obtained by subtraction (10 §3 "Exactness").
  */
 export function carve(s: UnitState, ctx: LayerContext): UnitState {
-  const parts = ctx
-    .participationsAt(s.unit.isrc, reportDate(s.unit))
-    .filter((p) => !p.percent.isZero());
+  const parts = ctx.participationsAt(s.unit.isrc, reportDate(s.unit)).filter((p) => !p.percent.isZero());
   const of = (k: ParticipationAtDate['fundedFrom']) => parts.filter((p) => p.fundedFrom === k);
   let out = pool(s, ctx, of('artist_pool'));
   out = artistShare(out, ctx, of('artist_share'));

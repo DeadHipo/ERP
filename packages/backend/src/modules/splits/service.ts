@@ -358,6 +358,8 @@ export function createSplitsService(db: Db) {
             const next = shares.map((x) => ({
               artistId: x.artistId,
               percent: sellerIds.has(x.artistId) ? '0' : x.percent,
+              // the other rows keep their own documents (an assumption row stays one, D-127)
+              documentId: x.documentId,
             }));
             changed.push(
               await service.changeSplit({

@@ -108,7 +108,13 @@ function toDocumentView(d: DocumentRow): DocumentView {
   };
 }
 
-const toTrackView = (t: TrackRow): TrackView => ({ id: t.id, isrc: t.isrc, upc: t.upc, title: t.title, note: t.note });
+const toTrackView = (t: TrackRow): TrackView => ({
+  id: t.id,
+  isrc: t.isrc,
+  upc: t.upc,
+  title: t.title,
+  note: t.note,
+});
 
 /** Owners whose contract document is approved. Payout is possible only for them. */
 function computeConfirmedOwners(contracts: ContractRow[], documents: DocumentRow[]): Set<string> {
@@ -625,6 +631,16 @@ export function createOwnersService(db: Db) {
 
     async documentStatuses(ids: string[]): Promise<Map<string, DocumentStatus>> {
       return new Map((await repo.documentsByIds([...new Set(ids)])).map((d) => [d.id, documentStatus(d)]));
+    },
+
+    /** Status and kind of each document (the facade's categorisation needs the kind `assumption`, D-127). */
+    async documentInfo(ids: string[]): Promise<Map<string, { status: DocumentStatus; kind: string }>> {
+      return new Map(
+        (await repo.documentsByIds([...new Set(ids)])).map((d) => [
+          d.id,
+          { status: documentStatus(d), kind: d.kind },
+        ]),
+      );
     },
 
     async attachFile(id: string, fileRef: string): Promise<DocumentView> {

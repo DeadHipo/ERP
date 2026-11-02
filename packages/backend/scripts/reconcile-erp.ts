@@ -33,8 +33,8 @@ const inScope = (u: { reportingMonth: string; account: string }) =>
 const stack = connectSources(join(dataDir, 'files', 'sources')); // PostgreSQL + ClickHouse (docker compose up -d)
 const { db } = stack;
 const f = openFacade({ db, dataDir, payoutThresholdCents: 0, sources: stack.sources });
-const { owners, splits, sources, publishing } = f.modules;
-const calc = await calculate({ db, owners, splits, sources, publishing });
+const { owners, splits, labels, sources, publishing } = f.modules;
+const calc = await calculate({ db, owners, splits, labels, sources, publishing });
 
 // party id of every new artist (stored in origin by the import)
 const partyOfArtist = new Map<string, number>();

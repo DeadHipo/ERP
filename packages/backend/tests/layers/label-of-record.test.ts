@@ -8,7 +8,12 @@ const A50 = { splits: { QZTST2600001: [{ shares: [['A', '50']] as [string, strin
 describe('layer 1: label of record (10 §3, M8, E13–E15)', () => {
   it('an alias of an own label: the label itself, no rule', () => {
     const s = labelOfRecord(initialState(unit('100', { labelName: 'Ahh Music' })), makeContext());
-    expect([s.ourLabelId, s.ourLabelName, s.rule, s.labelShareCategory]).toEqual(['L0', '0to8', null, 'ours']);
+    expect([s.ourLabelId, s.ourLabelName, s.rule, s.labelShareCategory]).toEqual([
+      'L0',
+      '0to8',
+      null,
+      'ours',
+    ]);
   });
   it('a sublabel string: its own label and its rule in force at the report month', () => {
     const s = labelOfRecord(initialState(unit('100', { labelName: ' noghost  RECORDS ' })), makeContext());

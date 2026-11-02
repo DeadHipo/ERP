@@ -30,6 +30,7 @@ export const C_REASONS = [
 ] as const;
 export const cReasonSchema = z.enum(C_REASONS);
 export type CReason = z.infer<typeof cReasonSchema>;
+const cBreakdown = z.partialRecord(cReasonSchema, money).describe('Category C by reason');
 
 // ---- errors ----
 
@@ -263,12 +264,14 @@ export const b17UploadSchema = z.object({ statement: statementSchema, writers: r
 
 export const reconciliationRowSchema = z.object({
   source: z.enum(['believe', 'b17']),
+  account: z.string().describe('Believe account of the files; "b17" for publishing'),
   month,
   A_received: money,
   B_notOurs: money,
   C_waiting: money,
-  C_breakdown: z.record(z.string(), money),
-  ourShare: money,
+  C_breakdown: cBreakdown,
+  ourShare: money.describe('Σ of the label shares that are ours (the layer state)'),
+  ourShareByLabel: z.record(z.string(), money).describe('ourShare per our label of record (name)'),
   ourShareNoSplit: money,
   discrepancy: money,
   fileTotal: money.nullable(),
@@ -296,6 +299,46 @@ export const signalsSchema = z.object({
     items: z.array(z.object({ isrc: z.string(), net: money })),
   }),
   ambiguousWriters: z.array(z.object({ writerNorm: z.string(), displayName: z.string() })),
+  unfunded: z
+    .array(
+      z.object({
+        isrc: z.string(),
+        upc: z.string(),
+        month,
+        ruleId: z.string(),
+        missing: money,
+        why: z.enum(['bucket_short', 'no_source_row', 'top_above_100']),
+      }),
+    )
+    .describe('Carves larger than their bucket: the missing part is not money (10 §3)'),
+  labelUnmapped: z.array(z.object({ labelName: z.string(), net: money })),
+  tracksWithNote: z.array(
+    z.object({
+      trackId: z.string(),
+      isrc: z.string().nullable(),
+      upc: z.string().nullable(),
+      title: z.string(),
+      note: z.string(),
+    }),
+  ),
+  participantsWithoutOwner: z.array(
+    z.object({
+      participationId: z.string(),
+      isrc: z.string(),
+      artistId: z.string(),
+      pseudonym: z.string(),
+      fundedFrom: z.string(),
+      amount: money,
+    }),
+  ),
+  assumptions: z.array(
+    z.object({
+      documentId: z.string().nullable(),
+      basis: z.enum(['document', 'q11', 'r1']),
+      amount: money,
+      isrcs: z.array(z.string()),
+    }),
+  ),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -309,7 +352,7 @@ export const balanceSchema = z.object({
     received: money,
     notOurs: money,
     waiting: money,
-    waitingBreakdown: z.record(z.string(), money),
+    waitingBreakdown: cBreakdown,
     otherParticipants: money,
     ourShare: money,
     earnedMaster: money,
@@ -365,6 +408,81 @@ export const balanceSchema = z.object({
   blockingPayouts: z.array(z.string()),
 });
 export type Balance = z.infer<typeof balanceSchema>;
+
+// ---- track explanation (the state after every master layer, D-127) ----
+
+export const allocationSchema = z.object({
+  artistId: z.string(),
+  ownerId: z.string().nullable(),
+  layer: z.enum(['split', 'top', 'carve', 'sublabel']),
+  kind: z.enum(['row', 'top', 'artist_pool', 'artist_share', 'label_share', 'sublabel']),
+  ruleId: z.string().describe('split id (row), participation id (top, carve), label rule id (sublabel)'),
+  documentId: z.string().nullable(),
+  percent: money,
+  amount: money,
+  category: z.enum(['B', 'C']),
+  reason: cReasonSchema.nullable(),
+  assumption: z.enum(['document', 'q11', 'r1']).nullable(),
+});
+
+const shortfallSchema = z.object({
+  isrc: z.string(),
+  upc: z.string(),
+  month,
+  ruleId: z.string(),
+  missing: money,
+  why: z.string(),
+});
+const unitStatus = z.enum(['allocated', 'no_split', 'unknown_pair', 'no_isrc']);
+const labelShareCategory = z.enum(['ours', 'label_unmapped', 'no_isrc', 'unknown_pair']);
+
+export const layerStateSchema = z.object({
+  layer: z.string(),
+  status: unitStatus,
+  ourLabelId: z.string().nullable(),
+  ourLabelName: z.string().nullable(),
+  rule: z
+    .object({
+      id: z.string(),
+      percent: money,
+      recipientArtistId: z.string(),
+      documentId: z.string().nullable(),
+    })
+    .nullable(),
+  scaledNet: money,
+  labelShare: money,
+  labelShareCategory,
+  allocations: z.array(allocationSchema),
+  shortfalls: z.array(shortfallSchema),
+});
+
+export const explainSchema = z.object({
+  isrc: z.string(),
+  splits: z.array(splitSchema),
+  participations: z.array(z.looseObject({ id: z.string(), artistId: z.string(), fundedFrom: z.string() })),
+  units: z.array(
+    z.object({
+      account: z.string(),
+      isrc: z.string(),
+      upc: z.string(),
+      reportingMonth: month,
+      salesMonth: month,
+      labelName: z.string(),
+      net: money,
+      status: unitStatus,
+      ourLabelId: z.string().nullable(),
+      ourLabelName: z.string().nullable(),
+      labelShare: money,
+      labelShareCategory,
+      ours: money,
+      allocations: z.array(allocationSchema),
+      shortfalls: z.array(shortfallSchema),
+      layers: z.array(layerStateSchema).describe('The state after every layer that ran, in order'),
+    }),
+  ),
+  breakdown: z.unknown(),
+});
+export type TrackExplanation = z.infer<typeof explainSchema>;
 
 // ---- settlements ----
 
