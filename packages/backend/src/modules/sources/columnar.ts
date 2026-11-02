@@ -101,7 +101,7 @@ function linesWhere(fileIds: string[], f: LinesFilter): { where: string; params:
 }
 
 /**
- * Everything the loader asks of ClickHouse (migrations/clickhouse/0001_believe.sql, 0002_units_projection.sql). A file is written to its own stage
+ * Everything the loader asks of ClickHouse (migrations/clickhouse/0001_believe.sql, 0002_units_projection.sql, 0003_units_by_label.sql). A file is written to its own stage
  * table and joins believe.rows in one step (ATTACH PARTITION), so a half-loaded file is never visible.
  * Table names are built only from a checked UUID, never from user text.
  */
@@ -198,7 +198,15 @@ export function createBelieveColumnar(
       fileIds: string[],
       filter: { from?: string; to?: string; basis?: 'report' | 'sales' } = {},
     ): Promise<
-      { fileId: string; isrc: string; upc: string; reportingMonth: string; salesMonth: string; net: string }[]
+      {
+        fileId: string;
+        isrc: string;
+        upc: string;
+        reportingMonth: string;
+        salesMonth: string;
+        labelName: string;
+        net: string;
+      }[]
     > {
       if (fileIds.length === 0) return [];
       const column = (filter.basis ?? 'report') === 'report' ? 'reporting_month' : 'sales_month';
@@ -213,22 +221,24 @@ export function createBelieveColumnar(
         params.to = `${filter.to}-01`;
       }
       // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
-      // The view is answered from the `units` projection of believe.rows (D-122). Hundreds of thousands of units:
+      // The view is answered from the `units_by_label` projection of believe.rows (D-122, D-124). Hundreds of thousands of units:
       // compact rows (arrays in the order of the SELECT).
       const rows = await compact<
-        [fid: string, isrc: string, upc: string, rm: string, sm: string, net: string]
+        [fid: string, isrc: string, upc: string, rm: string, sm: string, label: string, net: string]
       >(
         `SELECT toString(file_id) AS fid, isrc, upc, toString(reporting_month) AS rm,
-                toString(sales_month) AS sm, toString(net_revenue) AS net
-         FROM ${DB}.units WHERE ${where.join(' AND ')}`,
+                toString(sales_month) AS sm, label_name AS label, toString(net_revenue) AS net
+         FROM ${DB}.units WHERE ${where.join(' AND ')}
+         ORDER BY isrc, upc, reporting_month, sales_month, label_name, file_id`,
         params,
       );
-      return rows.map(([fid, isrc, upc, rm, sm, net]) => ({
+      return rows.map(([fid, isrc, upc, rm, sm, label, net]) => ({
         fileId: fid,
         isrc,
         upc,
         reportingMonth: rm.slice(0, 7),
         salesMonth: sm.slice(0, 7),
+        labelName: label,
         net,
       }));
     },
