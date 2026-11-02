@@ -52,7 +52,7 @@ export async function createIsolatedSources() {
   const moduleTables = (
     await pg.pool.query<{ t: string }>(
       `SELECT format('%I.%I', schemaname, tablename) AS t FROM pg_tables
-       WHERE schemaname IN ('owners', 'splits', 'settlements', 'publishing')`,
+       WHERE schemaname IN ('owners', 'splits', 'labels', 'settlements', 'publishing')`,
     )
   ).rows.map((r) => r.t);
 
@@ -79,7 +79,7 @@ export async function createIsolatedSources() {
       for (const t of stages) await ch.command({ query: `DROP TABLE IF EXISTS ${stageDatabase}.${t.name}` });
       await pg.pool.query('DELETE FROM source_files');
     },
-    /** Empties every table of the modules owners, splits, settlements and publishing. */
+    /** Empties every table of the modules owners, splits, labels, settlements and publishing. */
     async resetModules() {
       if (moduleTables.length > 0) await pg.pool.query(`TRUNCATE ${moduleTables.join(', ')}`);
     },

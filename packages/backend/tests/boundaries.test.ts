@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { testStack } from './helpers/test-sources';
 
 const SRC = join(process.cwd(), 'src');
-const MODULES = ['owners', 'splits', 'sources', 'settlements', 'publishing'];
+const MODULES = ['owners', 'splits', 'labels', 'sources', 'settlements', 'publishing'];
 
 function filesOf(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -37,7 +37,7 @@ describe('module boundaries (README 4)', () => {
     }
   });
 
-  it('the four PostgreSQL modules each have their own schema; no foreign key crosses modules (D-121)', async () => {
+  it('the PostgreSQL modules each have their own schema; no foreign key crosses modules (D-121)', async () => {
     const own = MODULES.filter((m) => m !== 'sources');
     for (const m of own) {
       const schema = readFileSync(join(SRC, 'modules', m, 'schema.ts'), 'utf8');

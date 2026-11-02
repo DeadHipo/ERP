@@ -22,6 +22,7 @@ export const DOCUMENT_KINDS = [
   'payment_proof',
   'return_proof',
   'other',
+  'assumption',
 ] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
@@ -68,6 +69,8 @@ export interface TrackView {
   isrc: string | null;
   upc: string | null;
   title: string;
+  /** Free flag shown by the signals page; it moves no money. */
+  note: string | null;
 }
 
 export interface SimilarRecord {
@@ -105,7 +108,7 @@ function toDocumentView(d: DocumentRow): DocumentView {
   };
 }
 
-const toTrackView = (t: TrackRow): TrackView => ({ id: t.id, isrc: t.isrc, upc: t.upc, title: t.title });
+const toTrackView = (t: TrackRow): TrackView => ({ id: t.id, isrc: t.isrc, upc: t.upc, title: t.title, note: t.note });
 
 /** Owners whose contract document is approved. Payout is possible only for them. */
 function computeConfirmedOwners(contracts: ContractRow[], documents: DocumentRow[]): Set<string> {
@@ -504,21 +507,23 @@ export function createOwnersService(db: Db) {
       isrc?: string | null;
       upc?: string | null;
       artistIds?: string[];
+      note?: string | null;
     }): Promise<TrackView> {
       const isrc = input.isrc ? assertIsrc(input.isrc) : null;
       const upc = input.upc ? normalizeUpc(input.upc) || null : null;
       const id = newId();
       const title = input.title.trim() || '(untitled)';
+      const note = input.note?.trim() || null;
       await repo.transaction(async () => {
         if (isrc && upc && (await repo.trackByPair(isrc, upc)))
           throw new ConflictError(`Track ${isrc} / ${upc} already exists`, 'duplicate_track');
-        await repo.insertTrack({ id, isrc, upc, title, createdAt: nowIso() });
+        await repo.insertTrack({ id, isrc, upc, title, note, createdAt: nowIso() });
         for (const artistId of input.artistIds ?? []) {
           if (!(await repo.getArtist(artistId))) throw new NotFoundError('Artist', artistId);
           await repo.linkArtistTrack(artistId, id);
         }
       });
-      return { id, isrc, upc, title };
+      return { id, isrc, upc, title, note };
     },
 
     async setTrackIdentifiers(
@@ -536,6 +541,17 @@ export function createOwnersService(db: Db) {
           throw new ConflictError(`Track ${isrc} / ${upc} already exists`, 'duplicate_track');
         await repo.setTrackIds(trackId, isrc, upc);
         return toTrackView({ ...t, isrc, upc });
+      });
+    },
+
+    /** Sets or clears the free note of a track (null or empty clears it). */
+    async setTrackNote(trackId: string, note: string | null): Promise<TrackView> {
+      return repo.transaction(async () => {
+        const t = await repo.getTrack(trackId);
+        if (!t) throw new NotFoundError('Track', trackId);
+        const clean = note?.trim() || null;
+        await repo.setTrackNote(trackId, clean);
+        return toTrackView({ ...t, note: clean });
       });
     },
 
@@ -625,6 +641,11 @@ export function createOwnersService(db: Db) {
     async approveDocument(id: string, by: string): Promise<DocumentView> {
       return repo.transaction(async () => {
         const d = await this.getDocument(id);
+        if (d.kind === 'assumption')
+          throw new RuleViolationError(
+            'A document of kind assumption is never approved',
+            'assumption_not_approvable',
+          );
         if (d.status === 'not_attached')
           throw new RuleViolationError(
             'Attach the file before approving the document',
