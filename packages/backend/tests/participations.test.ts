@@ -40,6 +40,81 @@ describe('participations (D-126)', () => {
     expect(byArtist.items.map((x) => x.pseudonym)).toEqual(['Q', 'Q']);
   });
 
+  it('D-130: end dates are floored to the month start; a mid-month hand-over gives the month to the successor', async () => {
+    const f = await newFacade();
+    const [a, b, p1, p2] = [await artist(f, 'A'), await artist(f, 'B'), await artist(f, 'P1'), await artist(f, 'P2')];
+    // a split with validTo on the 15th ends at the 1st, and its successor from the 15th starts at the 1st: no overlap
+    const s1 = await f.createSplit({
+      isrc: ISRC,
+      validFrom: '2026-01-10',
+      validTo: '2026-05-15',
+      shares: [{ artistId: a, percent: '50' }],
+    });
+    expect([s1.validFrom, s1.validTo]).toEqual(['2026-01-01', '2026-05-01']);
+    const s2 = await f.createSplit({ isrc: ISRC, validFrom: '2026-05-15', shares: [{ artistId: b, percent: '50' }] });
+    expect(s2.validFrom).toBe('2026-05-01');
+    expect((await f.modules.splits.index()).at(ISRC, '2026-05-01')?.splitId).toBe(s2.id);
+    // an empty period after flooring is refused
+    await expect(
+      f.createSplit({ isrc: 'QZTST2600009', validFrom: '2026-07-02', validTo: '2026-07-30', shares: [] }),
+    ).rejects.toMatchObject({ code: 'empty_period', statusCode: 400 });
+    // P1 (top 15) closed on 2026-06-15, P2 (top 15) from 2026-06-15: June is P2's only
+    const x1 = await f.createParticipation({
+      isrc: ISRC,
+      artistId: p1,
+      percent: '15',
+      base: 'net',
+      fundedFrom: 'top',
+      validFrom: '2026-01-01',
+    });
+    expect((await f.closeParticipation(x1.id, '2026-06-15')).validTo).toBe('2026-06-01');
+    const x2 = await f.createParticipation({
+      isrc: ISRC,
+      artistId: p2,
+      percent: '15',
+      base: 'net',
+      fundedFrom: 'top',
+      validFrom: '2026-06-15',
+    });
+    expect(x2.validFrom).toBe('2026-06-01');
+    const idx = await f.modules.splits.index();
+    expect(idx.participationsAt(ISRC, '2026-06-01').map((x) => x.artistId)).toEqual([p2]);
+    expect(idx.participationsAt(ISRC, '2026-05-01').map((x) => x.artistId)).toEqual([p1]);
+  });
+
+  it('D-130: the overlap key includes the source artist (two artist_share from two sources coexist)', async () => {
+    const f = await newFacade();
+    const [a, b, e] = [await artist(f, 'A'), await artist(f, 'B'), await artist(f, 'E')];
+    const share = (from: string) =>
+      f.createParticipation({
+        isrc: ISRC,
+        artistId: e,
+        percent: '10',
+        base: 'bucket',
+        fundedFrom: 'artist_share',
+        fromArtistId: from,
+        validFrom: '2026-01-01',
+      });
+    const fromA = await share(a);
+    const fromB = await share(b);
+    expect([fromA.fromArtistId, fromB.fromArtistId]).toEqual([a, b]);
+    await expect(share(a)).rejects.toMatchObject({ code: 'participation_overlap' });
+    // the same source in an overlapping later period is refused by the module too
+    await expect(
+      f.modules.splits.createParticipation({
+        isrc: ISRC,
+        artistId: e,
+        percent: '10',
+        base: 'bucket',
+        fundedFrom: 'artist_share',
+        fromArtistId: b,
+        validFrom: '2026-03-01',
+      }),
+    ).rejects.toMatchObject({ code: 'participation_overlap' });
+    const idx = await f.modules.splits.index();
+    expect(idx.participationsAt(ISRC, '2026-02-01').map((x) => x.fromArtistId).sort()).toEqual([a, b].sort());
+  });
+
   it('refuses invalid combinations', async () => {
     const f = await newFacade();
     const [a, p] = [await artist(f, 'A'), await artist(f, 'P')];
@@ -59,7 +134,11 @@ describe('participations (D-126)', () => {
     ).rejects.toThrow();
     await expect(
       f.createParticipation({ ...base, base: 'net', fundedFrom: 'top', validTo: '2026-01-01' }),
-    ).rejects.toThrow(/after valid_from/);
+    ).rejects.toMatchObject({ code: 'empty_period' });
+    // an end in the start month is floored onto the start: an empty period (D-130)
+    await expect(
+      f.createParticipation({ ...base, base: 'net', fundedFrom: 'top', validTo: '2026-01-20' }),
+    ).rejects.toMatchObject({ code: 'empty_period', statusCode: 400 });
     expect((await f.listParticipations()).total).toBe(0);
   });
 
@@ -169,12 +248,14 @@ describe('participations (D-126)', () => {
       validFrom: '2026-03-01',
       validTo: '2026-09-01',
     });
-    await expect(f.closeParticipation(x.id, '2026-03-01')).rejects.toThrow(/after valid_from/);
+    await expect(f.closeParticipation(x.id, '2026-03-01')).rejects.toMatchObject({ code: 'empty_period' });
+    await expect(f.closeParticipation(x.id, '2026-03-20')).rejects.toMatchObject({ code: 'empty_period' });
     await expect(f.closeParticipation(x.id, '2026-12-01')).rejects.toThrow(/earlier/);
-    expect((await f.closeParticipation(x.id, '2026-05-15')).validTo).toBe('2026-05-15');
-    const sp = (await f.modules.splits.index()).participationsAt(ISRC, '2026-05-14');
+    // closed on the 15th: it ends at the 1st, May goes to whoever follows (M52, D-130)
+    expect((await f.closeParticipation(x.id, '2026-05-15')).validTo).toBe('2026-05-01');
+    const sp = (await f.modules.splits.index()).participationsAt(ISRC, '2026-04-01');
     expect(sp).toHaveLength(1);
-    expect((await f.modules.splits.index()).participationsAt(ISRC, '2026-05-15')).toHaveLength(0);
+    expect((await f.modules.splits.index()).participationsAt(ISRC, '2026-05-01')).toHaveLength(0);
   });
 
   it('participationsAt orders by funded_from, then validFrom, then id; documentIds include row and participation documents', async () => {
@@ -295,7 +376,7 @@ describe('participations (D-126)', () => {
       validTo: '2026-08-20',
     });
     expect(part.validFrom).toBe('2026-03-01');
-    expect(part.validTo).toBe('2026-08-20'); // validTo is not floored
+    expect(part.validTo).toBe('2026-08-01'); // the end date is floored too (D-130)
     const s = await f.createSplit({
       isrc: 'QZTST2600002',
       validFrom: '2026-01-20',

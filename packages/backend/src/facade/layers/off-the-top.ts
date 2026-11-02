@@ -1,13 +1,14 @@
 import { Decimal } from '../../shared/money';
 import { allocation, canonical, reportDate } from './allocation';
-import { distribute, pct, sumOf } from './exact';
+import { capToBase, distribute, pct, sumOf } from './exact';
 import type { Layer, Shortfall } from './types';
 
 const HUNDRED = new Decimal(100);
 
 /**
  * Layer 3: participations (net, top) in force take `q(net × p / 100)` each before the split; the scaled net is the
- * rest by subtraction. If their percents sum above 100 (refused at entry, so only bad data), they are scaled down to
+ * rest by subtraction (never of the opposite sign of the unit: a rounding excess comes off the largest top, D-130). If
+ * their percents sum above 100 (refused at entry, so only bad data), they are scaled down to
  * the net (quantised, residue to the largest), the scaled net is 0 and the excess is a shortfall.
  */
 export const offTheTop: Layer = (s, ctx) => {
@@ -17,7 +18,13 @@ export const offTheTop: Layer = (s, ctx) => {
     .filter((p) => p.fundedFrom === 'top' && !p.percent.isZero());
   if (tops.length === 0) return s;
   const targets = tops.map((p) => pct(unit.net, p.percent));
-  let amounts = targets;
+  // Tops summing to exactly 100 can exceed the net by a few pico after rounding: the excess comes off the largest
+  // top, so the scaled net never has the opposite sign of the unit (D-130).
+  let amounts = capToBase(
+    unit.net,
+    targets,
+    tops.map((p) => canonical(ctx, p.artistId)),
+  );
   const shortfalls: Shortfall[] = [];
   if (sumOf(tops.map((p) => p.percent)).gt(HUNDRED)) {
     amounts = distribute(

@@ -7,6 +7,23 @@ import type { ShareSpec } from './context';
 /** Entry rule (M52): a rule date is the first day of its month, the whole month goes to the new holder. */
 const floorToMonth = (d: string) => monthStart(monthOf(assertDate(d)));
 
+/**
+ * The same entry rule for an end date (D-130): `valid_to` (exclusive) is floored to its month start too, so a
+ * part-month goes to the new holder and `[from, to)` of the predecessor and the successor never overlap. A period
+ * that becomes empty after flooring is refused (`empty_period`).
+ */
+function floorEnd(validFrom: string, validTo: string | null | undefined): string | null {
+  if (validTo === null || validTo === undefined || validTo === '') return null;
+  const to = floorToMonth(validTo);
+  if (to <= validFrom)
+    throw new ValidationError(
+      `The period ${validFrom} .. ${to} is empty after flooring the end date to the month start`,
+      { validFrom, validTo: to },
+      'empty_period',
+    );
+  return to;
+}
+
 export function splitsApi(ctx: FacadeContext) {
   const { db, owners, splits, labels, checkSplitDocument, resolveShares } = ctx;
   const api = {
@@ -21,15 +38,16 @@ export function splitsApi(ctx: FacadeContext) {
     }) {
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
+        const validTo = floorEnd(validFrom, input.validTo);
         await checkSplitDocument(input.documentId);
         const build = await resolveShares(input.shares);
         await splits.checkCreate({
           isrc: input.isrc,
           validFrom,
-          validTo: input.validTo ?? null,
+          validTo,
           percents: input.shares.map((s) => s.percent),
         });
-        return splits.createSplit({ ...input, validFrom, shares: await build() });
+        return splits.createSplit({ ...input, validFrom, validTo, shares: await build() });
       });
     },
     changeSplit(input: {
@@ -70,10 +88,11 @@ export function splitsApi(ctx: FacadeContext) {
         return splits.buyout({ ...input, effectiveFrom: floorToMonth(input.effectiveFrom), sellerArtistIds });
       });
     },
-    /** Creates a participation; its start is floored to the month start (M52). */
+    /** Creates a participation; its start and end are floored to the month start (M52, D-130). */
     createParticipation(input: ParticipationInput) {
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
+        const validTo = floorEnd(validFrom, input.validTo);
         await checkSplitDocument(input.documentId);
         const idx = await owners.artistIndex();
         const canon = (id: string) => idx.get(id)?.id ?? id;
@@ -84,11 +103,16 @@ export function splitsApi(ctx: FacadeContext) {
           artistId: canon(input.artistId),
           fromArtistId: input.fromArtistId ? canon(input.fromArtistId) : null,
           validFrom,
+          validTo,
         });
       });
     },
+    /** Ends a participation; the end date is floored to the month start (D-130). */
     closeParticipation(id: string, validTo: string) {
-      return splits.closeParticipation(id, validTo);
+      return db.transaction(async () => {
+        const p = await splits.getParticipation(id);
+        return splits.closeParticipation(id, floorEnd(p.validFrom, validTo) ?? validTo);
+      });
     },
     /** Participations with pseudonyms, owner ids and document status. */
     listParticipations(filter: { isrc?: string; artistId?: string } = {}) {
@@ -128,7 +152,10 @@ export function splitsApi(ctx: FacadeContext) {
         }));
       });
     },
-    /** A sublabel rule: the start is floored to the month start, the recipient must exist, the document kind is checked. */
+    /**
+     * A sublabel rule: the start and the end are floored to the month start (M52, D-130), the recipient must exist,
+     * the document kind is checked.
+     */
     createLabelRule(input: {
       labelId: string;
       percent: string;
@@ -140,6 +167,7 @@ export function splitsApi(ctx: FacadeContext) {
     }) {
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
+        const validTo = floorEnd(validFrom, input.validTo);
         await checkSplitDocument(input.documentId);
         const idx = await owners.artistIndex();
         await owners.getArtist(input.recipientArtistId);
@@ -147,7 +175,15 @@ export function splitsApi(ctx: FacadeContext) {
           ...input,
           recipientArtistId: idx.get(input.recipientArtistId)?.id ?? input.recipientArtistId,
           validFrom,
+          validTo,
         });
+      });
+    },
+    /** Ends a sublabel rule; the end date is floored to the month start (D-130). */
+    closeLabelRule(id: string, validTo: string) {
+      return db.transaction(async () => {
+        const r = await labels.getRule(id);
+        return labels.closeRule(id, floorEnd(r.validFrom, validTo) ?? validTo);
       });
     },
     /** Splits with artist names and document status, for the splits page. */

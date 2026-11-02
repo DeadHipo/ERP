@@ -14,7 +14,7 @@ export function labelsRouter(facade: Facade) {
   );
   // Before `/labels/:id/...` so that `rules` is never read as an id.
   r.post('/labels/rules/:id/close', async (req, res) =>
-    res.json(await labels.closeRule(param(req, 'id'), parse(S.closeValidToBody, req.body).validTo)),
+    res.json(await facade.closeLabelRule(param(req, 'id'), parse(S.closeValidToBody, req.body).validTo)),
   );
   r.post('/labels/:id/aliases', async (req, res) =>
     res.status(201).json(await labels.addAlias(param(req, 'id'), parse(S.addAliasBody, req.body).alias)),

@@ -59,7 +59,7 @@ Schema `splits` (migration `0008_participations.sql`):
 | Table | Columns | Notes |
 |---|---|---|
 | `splits.split_shares` | + `document_id text NULL` | a row's own document overrides the split's document for that row only (an `assumption` document on a disputed row, Q1/Q5; the delta-only variant is two rows for two pseudonyms of the same owner, no mechanism) |
-| `splits.participations` | `id`, `isrc`, `artist_id` (recipient pseudonym), `percent` numeric(9,6), `base` (`net` \| `bucket`), `funded_from` (`top` \| `artist_pool` \| `artist_share` \| `label_share`), `from_artist_id` (only for `artist_share`), `valid_from`, `valid_to`, `document_id`, `origin`, `note`, `created_at` | no overlap for one (isrc, artist_id, funded_from): exclusion constraint; `top` and `artist_pool` require `base = net`; `artist_share` requires `base = bucket` and `from_artist_id ≠ artist_id`; `label_share` allows both |
+| `splits.participations` | `id`, `isrc`, `artist_id` (recipient pseudonym), `percent` numeric(9,6), `base` (`net` \| `bucket`), `funded_from` (`top` \| `artist_pool` \| `artist_share` \| `label_share`), `from_artist_id` (only for `artist_share`), `valid_from`, `valid_to`, `document_id`, `origin`, `note`, `created_at` | no overlap for one (isrc, artist_id, funded_from, from_artist_id): exclusion constraint (the source artist in the key since D-130); `top` and `artist_pool` require `base = net`; `artist_share` requires `base = bucket` and `from_artist_id ≠ artist_id`; `label_share` allows both |
 
 Meaning: `percent` of `base`, where `net` is the unit net and `bucket` is the thing the money is taken from (the
 artist's amount, the label share). Taken from `funded_from`. Used combinations: remixer = (`net`, `top`);
@@ -85,7 +85,9 @@ gains `labelName`. In the loaded data no unit key carries more than one label st
 
 Entry rule for dates (M52, a convention about month granularity): the facade floors every `valid_from` / `from` /
 `effectiveFrom` of a split, participation or label rule to the first day of its month (`monthStart`); the whole
-month goes to the new holder (as in Annex; 13,363.21 net on the legacy data). Stage 4 normalises the 1,043 legacy
+month goes to the new holder (as in Annex; 13,363.21 net on the legacy data). End dates too: every `valid_to` of a
+split, participation or label rule and the date of a close are floored the same way, and a period that becomes empty
+is refused (`empty_period`, D-130). Stage 4 normalises the 1,043 legacy
 mid-month split dates the same way.
 
 ## 3. The master layers (order fixed in `layers/index.ts`)
@@ -134,7 +136,8 @@ party reduces only the artist's share).
 (recoup.ts), so an advance on a participation or a sublabel is entered on that pseudonym; because every
 participation and sublabel has its own pseudonym, its income is its own income item (M19 participation-only,
 NoGhost's advance). One balance per owner across both our labels (an assumption recorded in the D-entry: the two
-labels are separate legal entities; the balance shows B, recouped and paid per paying label inside the one total).
+labels are separate legal entities). The balance shows earned (B) and waiting (C) per label of record (from the
+allocations' units, `byLabel`); recouped and paid are one total, because operations carry no label (D-130).
 
 ## 6. Reconciliation, balance, signals, explain
 
@@ -142,7 +145,8 @@ labels are separate legal entities; the balance shows B, recouped and paid per p
   too); `ourShare` from the units' `labelShare` state (not from A − B − C: a layer that loses money must show as a
   non-zero `discrepancy`, and a test with a deliberately broken layer proves it); `ourShareByLabel` per our label;
   `C_breakdown` gains `assumption`, `rule_unconfirmed`, `label_unmapped`.
-- `ownerBalance()` unchanged: it reads allocations by owner and artist; new layers only add allocations.
+- `ownerBalance()` reads allocations by owner and artist; new layers only add allocations. It adds `byLabel`: earned
+  and waiting per label of record (D-130).
 - `signals()` adds: `unfunded` shortfalls, `labelUnmapped` strings with net, tracks with a note (M29), participations
   whose recipient has no owner, allocations under `assumption` documents grouped by document (M39 conflicts live
   there: the registered split stands, the conflicting rows carry the assumption document).
@@ -166,6 +170,7 @@ labels are separate legal entities; the balance shows B, recouped and paid per p
 | M52 | the facade floors rule dates to the month start; the part-month goes to the new holder (as in Annex) | convention on month granularity; D-025 kept |
 | M33 | before a participation's `valid_from` there is no participation; the unit follows the split. A lump that is the consideration for past uses (the settlement's USD 100,000) is a document only; a lump that is accrued royalty paid at signing (MC Denny 10,774.41) is a payout operation | contract wording; owner decision 6 |
 | M29 | derivative outside authorisation = a note on the track, listed by the signals page | flag, no money |
+| Balance per label | one balance per owner; the balance shows earned (B) and waiting (C) per label of record (from the allocations' units); paid is one total (operations carry no label) | D-130; the Main comparison of stage 5 is per owner |
 | Sublabel start | a label rule starts at its document's effective month (NoGhost 2026-06); earlier months of that imprint get a rule under an `assumption` document (C) | contract date; goal rule |
 | Shortfall | a carve larger than its bucket takes the bucket; the rest is a signal, not C | P08 §6.7(a) for the artist pool; for the label share (G37) and for over-100 tops the same cap is an assumption: the allocations of that kind are scaled down to the bucket so the sums keep matching |
 

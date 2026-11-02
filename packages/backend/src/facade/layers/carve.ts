@@ -1,7 +1,7 @@
 import { ZERO, type Decimal } from '../../shared/money';
 import type { ParticipationAtDate } from '../../modules/splits';
 import { allocation, canonical, reportDate } from './allocation';
-import { distribute, fits, pct, sumOf, usable } from './exact';
+import { distribute, distributeCapped, fits, pct, sumOf, usable } from './exact';
 import type { Allocation, LayerContext, Shortfall, UnitState } from './types';
 
 /**
@@ -62,12 +62,15 @@ function pool(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate[]): Un
   const poolAmount = sumOf(rowIdx.map((i) => (s.rows[i] as Allocation).amount));
   const amounts = fund(s, ctx, parts, targets, poolAmount, shortfalls);
   const taken = sumOf(amounts);
-  const shares = distribute(
+  // No row gives more than it has: a residue above a row goes to the row with the most left, so no row crosses
+  // zero (D-130). The artist share and label share remainders are already sign-safe (`fund` scales to the bucket).
+  const shares = distributeCapped(
     taken,
     rowIdx.map((i) => ({
       key: (s.rows[i] as Allocation).artistId,
       weight: (s.rows[i] as Allocation).amount,
     })),
+    rowIdx.map((i) => (s.rows[i] as Allocation).amount),
   );
   const rows = [...s.rows];
   rowIdx.forEach((i, k) => {

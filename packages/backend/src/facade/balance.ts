@@ -58,6 +58,12 @@ export interface OwnerBalance {
     /** Negative payable is kept as is; the owner sees 0. */
     payableShown: Decimal;
   };
+  /**
+   * All-time master earned (B) and waiting (C) per label of record (the units' `ourLabelName`, '?' for an unmapped
+   * label string), D-130. One balance per owner: recouped and paid stay one total (operations carry no label), and
+   * publishing has no label of record, so Σ byLabel = the master part of `total.earned` / `total.waiting`.
+   */
+  byLabel: Record<string, { earned: Decimal; waiting: Decimal }>;
   artists: ArtistBalance[];
   publishing: {
     period: string;
@@ -141,6 +147,7 @@ export function ownerBalance(
   let tEarned = ZERO;
   let tWaiting = ZERO;
   const trackAgg = new Map<string, { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }>();
+  const byLabel: OwnerBalance['byLabel'] = {};
 
   for (const u of calc.units) {
     const mine = u.allocations.filter((a) => a.ownerId === ownerId);
@@ -153,7 +160,10 @@ export function ownerBalance(
         u.allocations.filter((a) => a.ownerId !== ownerId).reduce((s, a) => s.add(a.amount), ZERO),
       );
     }
+    const lb = (byLabel[u.ourLabelName ?? '?'] ??= { earned: ZERO, waiting: ZERO });
     for (const a of mine) {
+      if (a.category === 'B') lb.earned = lb.earned.add(a.amount);
+      else lb.waiting = lb.waiting.add(a.amount);
       const artist = artistsOfOwner.get(a.artistId);
       const tk = `${a.artistId}|${u.isrc}`;
       const t = trackAgg.get(tk) ?? { isrc: u.isrc, net: ZERO, amount: ZERO, waiting: ZERO };
@@ -353,6 +363,7 @@ export function ownerBalance(
       payable,
       payableShown: Decimal.max(payable, 0),
     },
+    byLabel,
     artists: [...artistsOfOwner.values()],
     publishingRecouped,
     publishing,

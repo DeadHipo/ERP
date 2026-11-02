@@ -1,5 +1,11 @@
 # publishing module (B17)
 
+Loads statements and keeps lines, the writer → owner map and the terms (percent per owner, period, optional operation
+type, document). It returns the aggregated lines with `operation_type`, the writers and the terms. It no longer
+computes the author share: that moved to the facade layers.
+
+## Notes
+
 - Holds the B17 publisher statements (quarterly xlsx, one per quarter), their lines, the writer to owner mapping and the author terms (percent of our share, by period and optionally by operation type, D-128).
 - A line goes to the writers of the `songwriters` cell that are ours, in equal parts, otherwise to the rights-holder (D-087); the money is accrued to the owner, never to an artist or a label.
 - Terms: a term with an operation type wins for a line of that type, the term without a type covers the rest; overlap and closing are per (owner, operation type) and checked in the service (no database constraint).

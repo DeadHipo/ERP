@@ -86,6 +86,20 @@ export function OwnerBalancePage() {
         {done && <p className="ok">{done}</p>}
         <ErrorBox error={action.error} />
       </Card>
+      {Object.keys(b.byLabel).length > 0 && (
+        <Card title="Per label of record (master, all time)">
+          <Table
+            rows={Object.entries(b.byLabel).map(([label, v]) => ({ label, ...v }))}
+            keyOf={(l) => l.label}
+            columns={[
+              { title: 'Label', render: (l) => (l.label === '?' ? 'unmapped label string' : l.label) },
+              { title: 'Earned (B)', render: (l) => <Money value={l.earned} />, className: 'num' },
+              { title: 'Waiting (C)', render: (l) => <Money value={l.waiting} />, className: 'num' },
+            ]}
+          />
+          <p className="muted">One balance per owner: recouped and paid are one total (operations carry no label).</p>
+        </Card>
+      )}
       <Card title="Per artist">
         <Table
           rows={b.artists}

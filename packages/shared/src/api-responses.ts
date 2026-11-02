@@ -428,6 +428,11 @@ export const balanceSchema = z.object({
     payable: money,
     payableShown: money,
   }),
+  byLabel: z
+    .record(z.string(), z.object({ earned: money, waiting: money }))
+    .describe(
+      "All-time master earned (B) and waiting (C) per label of record ('?' = unmapped); recouped and paid are one total (D-130)",
+    ),
   artists: z.array(
     z.object({
       artistId: z.string(),

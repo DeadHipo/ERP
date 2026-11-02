@@ -123,15 +123,37 @@ describe('publishing layers', () => {
     ]);
   });
 
-  it('three writers: parts cut at 20 decimals, the last takes the remainder, the parts add up', () => {
+  it('three writers: parts cut at 12 decimals, the last takes the remainder, the parts add up (D-130)', () => {
     const c = ctx({ writers: [writer('w1', 'o1'), writer('w2', 'o2'), writer('w3', 'o3')] });
     const parts = allocateLine(line('w1, w2, w3', '100'), c).parts;
     expect(parts.map((p) => p.payable.toFixed())).toEqual([
-      '33.33333333333333333333',
-      '33.33333333333333333333',
-      '33.33333333333333333334',
+      '33.333333333333',
+      '33.333333333333',
+      '33.333333333334',
     ]);
     expect(parts.reduce((s, p) => s.add(p.payable), new Decimal(0)).toFixed()).toBe('100');
+  });
+
+  it('12 decimals in every publishing amount: parts, author q(part × percent / 100), label by subtraction (D-130)', () => {
+    const c = ctx({ terms: [term('o1', '33.333333'), term('o2', '66.666667'), term('o3', '12.345678')] });
+    for (const payable of ['100.000000000001', '-7.123456789013', '0.000000000002', '1']) {
+      const parts = allocateLine(line('w1, w2, w3', payable), c).parts;
+      for (const p of parts) {
+        for (const d of [p.payable, p.authorAmount, p.labelAmount])
+          expect(d.decimalPlaces()).toBeLessThanOrEqual(12);
+        expect(p.authorAmount.add(p.labelAmount).eq(p.payable)).toBe(true);
+      }
+      expect(parts.reduce((s, p) => s.add(p.payable), new Decimal(0)).toFixed()).toBe(
+        new Decimal(payable).toFixed(),
+      );
+    }
+    // 100 / 3 = 33.333333333333 (cut), × 33.333333 % = 11.111110999999888889 → 11.111111 at 12 decimals, half up
+    const [first] = allocateLine(line('w1, w2, w3', '100'), c).parts;
+    expect([first?.payable.toFixed(), first?.authorAmount.toFixed(), first?.labelAmount.toFixed()]).toEqual([
+      '33.333333333333',
+      '11.111111',
+      '22.222222333333',
+    ]);
   });
 
   it('an ambiguous writer keeps a part with owner null (C writer_unmapped, nothing accrued)', () => {

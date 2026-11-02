@@ -59,6 +59,44 @@ describe('labels module (D-125)', () => {
     expect(closed.validTo).toBe('2026-03-01');
   });
 
+  it('D-130: the facade floors rule end dates; a rule closed on the 15th ends at the 1st; an empty period is refused', async () => {
+    const f = await newFacade();
+    const { artist } = await labelOwner(f, 'Sub Owner D130');
+    const echo = (await f.modules.labels.listLabels()).find((x) => x.name === 'Echo8')!;
+    const sub = await f.modules.labels.createLabel({ name: 'Sub D130', kind: 'sublabel', ownLabelId: echo.id });
+    await f.modules.labels.addAlias(sub.id, 'Sub D130 Records');
+    const r1 = await f.createLabelRule({
+      labelId: sub.id,
+      percent: '50',
+      recipientArtistId: artist.id,
+      validFrom: '2026-01-10',
+      validTo: '2026-06-15',
+    });
+    expect([r1.validFrom, r1.validTo]).toEqual(['2026-01-01', '2026-06-01']);
+    // the successor from the same mid-month date starts at the 1st and does not overlap
+    const r2 = await f.createLabelRule({
+      labelId: sub.id,
+      percent: '40',
+      recipientArtistId: artist.id,
+      validFrom: '2026-06-15',
+    });
+    expect(r2.validFrom).toBe('2026-06-01');
+    expect((await f.closeLabelRule(r2.id, '2026-09-15')).validTo).toBe('2026-09-01');
+    await expect(f.closeLabelRule(r2.id, '2026-06-20')).rejects.toMatchObject({ code: 'empty_period' });
+    await expect(
+      f.createLabelRule({
+        labelId: sub.id,
+        percent: '40',
+        recipientArtistId: artist.id,
+        validFrom: '2027-02-02',
+        validTo: '2027-02-27',
+      }),
+    ).rejects.toMatchObject({ code: 'empty_period', statusCode: 400 });
+    const idx = await f.modules.labels.index();
+    expect(idx.labelOf('Sub D130 Records', '2026-06-01')?.rule?.id).toBe(r2.id);
+    expect(idx.labelOf('Sub D130 Records', '2026-05-01')?.rule?.id).toBe(r1.id);
+  });
+
   it('labelOf resolves a string at a date with the rule in force', async () => {
     const f = await newFacade();
     const l = f.modules.labels;

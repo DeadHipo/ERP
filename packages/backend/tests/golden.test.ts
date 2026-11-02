@@ -403,6 +403,27 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G08b (D-130): one owner, an Echo8 unit and a 0to8 unit: the balance shows B and C per label of record', async () => {
+    const c = await Case.start();
+    await c.person('A');
+    for (const n of [1, 2, 3]) await c.track(I(n));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['A', '50']], { doc: null }); // no document: C split_unconfirmed
+    await c.split(I(3), [['A', '50']]);
+    await c.load('2026-03', [
+      { isrc: I(1), net: '100', label: 'Echo8' },
+      { isrc: I(2), net: '60', label: 'Test Label' },
+      { isrc: I(3), net: '40', label: 'Mystery Records' },
+    ]);
+    const b = await c.balance('A');
+    const byLabel = Object.fromEntries(
+      Object.entries(b.byLabel).map(([k, v]) => [k, [v.earned.toFixed(), v.waiting.toFixed()]]),
+    );
+    expect(byLabel).toEqual({ Echo8: ['50', '0'], '0to8': ['0', '30'], '?': ['20', '0'] });
+    expect([b.total.earned.toFixed(), b.total.waiting.toFixed()]).toEqual(['70', '30']);
+    await c.verify();
+  });
+
   it('G08c (E15): an unmapped label string', async () => {
     const c = await single(
       async (c) => {
@@ -1129,6 +1150,42 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['20', '60']);
       await c.verify({ skipOwners: ['A'] });
     });
+  });
+});
+
+describe('signals of 10 §6 without a golden number (M29, D-130)', () => {
+  it('tracksWithNote lists a noted track without changing an amount; participantsWithoutOwner carries the amount', async () => {
+    let orphan = '';
+    const c = await single(async (c) => {
+      await c.person('A');
+      await c.split(I(1), [['A', '50']]);
+      orphan = (await c.f.modules.owners.createArtist({ pseudonym: 'Orphan D130', ownerId: null })).id;
+      await c.f.createParticipation({
+        isrc: I(1),
+        artistId: orphan,
+        percent: '10',
+        base: 'bucket',
+        fundedFrom: 'label_share',
+        validFrom: '2020-01-01',
+        documentId: c.appendix,
+      });
+    });
+    const before = await c.amounts(I(1));
+    const rowBefore = await c.row();
+    const track = (await c.f.modules.owners.listTracks()).find((t) => t.isrc === I(1))!;
+    await c.f.modules.owners.setTrackNote(track.id, 'derivative outside the authorisation');
+    const s = await c.f.signals();
+    expect(s.tracksWithNote).toEqual([
+      { trackId: track.id, isrc: I(1), upc: UPC, title: I(1), note: 'derivative outside the authorisation' },
+    ]);
+    expect(
+      s.participantsWithoutOwner.map((p) => ({ ...p, amount: p.amount.toFixed() })),
+    ).toMatchObject([{ isrc: I(1), artistId: orphan, pseudonym: 'Orphan D130', fundedFrom: 'label_share', amount: '5' }]);
+    // the note changes no amount
+    expect(await c.amounts(I(1))).toEqual(before);
+    expect(await c.row()).toEqual(rowBefore);
+    expect(before.amounts).toEqual({ A: '50', [orphan]: '5' });
+    await c.verify();
   });
 });
 

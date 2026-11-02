@@ -1,6 +1,7 @@
 import { Decimal } from '../../shared/money';
 import { normalizeName } from '../../shared/identifiers';
 import { parseSongwriters } from '../../modules/publishing';
+import { SCALE } from './exact';
 import type { CReason } from './types';
 
 // The pure publishing layers (10 §4): writer parts → author share → categorise. Same style as the master layers:
@@ -86,7 +87,8 @@ export const DEFAULT_AUTHOR_PERCENT = '50';
  * Layer 1: the line belongs to our writers listed in "songwriters" (registered by us), in equal parts (D-087).
  * External co-writers are not ours. Without any of our writers the line goes to its rights-holder. An ambiguous
  * writer keeps a part with owner null (it stays unmapped, never goes to the others). Equal parts are cut at
- * 20 decimals (ROUND_DOWN); the last writer takes the remainder so the parts add up to the line exactly.
+ * 12 decimals (the exactness rule of 10 §3, ROUND_DOWN so no part exceeds its equal share, D-130); the last writer
+ * takes the remainder so the parts add up to the line exactly.
  */
 export const writerParts: PublishingLayer = (s, ctx) => {
   const r = s.line;
@@ -121,7 +123,7 @@ export const writerParts: PublishingLayer = (s, ctx) => {
       parts: [make(r.writerNorm, r.writerName, h?.ownerId ? ctx.resolveOwner(h.ownerId) : null, r.payable)],
     };
   }
-  const part = r.payable.div(ours.size).toDecimalPlaces(20, Decimal.ROUND_DOWN);
+  const part = r.payable.div(ours.size).toDecimalPlaces(SCALE, Decimal.ROUND_DOWN);
   let left = r.payable;
   let i = 0;
   const parts: PublishingPart[] = [];

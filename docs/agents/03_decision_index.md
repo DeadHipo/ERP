@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-128 by topic)
+# Decision index (D-001 … D-130 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -68,7 +68,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-028 Split confirmation, percent format · in force
 - D-029 ISRC without split → our share · in force
 - D-030 Base split templates not implemented · in force
-- D-126 Participations, per-row documents, month-start rule dates · in force
+- D-126 Participations, per-row documents, month-start rule dates · *refined by* D-130 (end dates floored too, `empty_period`; overlap key with the source artist)
 
 ## Labels
 - D-125 Labels module (own labels, aliases, sublabel rules); tracks.note; document kind assumption · in force
@@ -102,7 +102,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - ⚠ D-043 Author percent (default 50 %) and its confirmation
 - D-044 Publishing dates · in force
 - ⚠ D-045 Publishing buyouts
-- D-128 Publishing terms by operation type (part 1: module; migration 0009, `setTerms({ operationType })`, typed term wins; part 2: writer parts, author share and B/C as pure facade layers `PUBLISHING_LAYERS`, the module only returns `snapshotForCalculation()`, G26a–e) · in force
+- D-128 Publishing terms by operation type (part 1: module; migration 0009, `setTerms({ operationType })`, typed term wins; part 2: writer parts, author share and B/C as pure facade layers `PUBLISHING_LAYERS`, the module only returns `snapshotForCalculation()`, G26a–e) · in force · *refined by* D-130 (12 decimals in the publishing layers)
 - D-046 Merge and publishing · in force
 - ~~D-082 Real B17 not loaded~~ → D-083
 - D-083 Real B17 loaded into data/real · in force; ⚠ merge of writers into confirmed owners
@@ -133,11 +133,12 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-061 Signals use the chosen date basis · in force
 - D-123 Layered calculation of the master money (MVP goal design: labels module, participations, layer order, C reasons `assumption` / `rule_unconfirmed` / `label_unmapped`, council decisions Q1…Q12) · in force (design); closes D-067 ⚠ by owner decision 2 of 2026-11-02
 - D-127 Master layers in `facade/layers/` (label of record → perimeter → off the top → split → carves → categorise; 12-decimal quantisation, remainders by subtraction, residue to the largest), reconciliation per account with `ourShare` from the layer state and `ourShareByLabel`, new C reasons as one shared enum, new signals, explain per layer, recoup moved to the facade · in force
+- D-130 Stage 3 council fixes: end dates floored to the month start (`empty_period`, facade `closeLabelRule`), sign-safe rounding at exactly 100 (`capToBase`, `distributeCapped`), 12 decimals in the publishing layers, participation overlap key with the source artist (migration 0010), `ownerBalance().byLabel` (B and C per label of record; paid is one total), the M18 channel rule · in force
 
 ## Data import, demo, reference checks
 - D-008 Reconstructed files for the demo · *refined by* D-079 (real reports exist), D-112 (no demo mode)
 - D-063, D-064, D-065, D-066 Legacy import (owners, tracks/splits, buyouts, reconstructed B17) · in force for the import script
-- D-067 Reference check master July 2026 · *refined by* D-081; ⚠ sub-label (NoGhost) rule
+- D-067 Reference check master July 2026 · *refined by* D-081; closed by D-123/D-127: sublabel rule (owner decision 2)
 - D-068 Reference check B17 2026-Q2 · in force; ⚠ publishing buyout/override modelling
 - D-079 Real July 2026 report loaded · in force
 - D-081 Reference check on the real July report · in force
@@ -150,6 +151,6 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-098 README §5 coverage: every rule has a test · D-099, D-100, D-101 Pages and last review items
 
 ## Waiting for the product owner (do not change silently)
-D-018, D-032 (stored fields), D-035, D-041, D-043, D-045, D-049 ("largest"), D-067 (sub-label), D-068 (override),
+D-018, D-032 (stored fields), D-035, D-041, D-043, D-045, D-049 ("largest"), D-068 (override),
 D-083 (writer merge), D-087 (equal parts), D-096 (company payee). Cross-module open questions: `docs/98_*.md`
 (M2, M5, M7, M8, M10…M13); module 1: `docs/99_*.md`.

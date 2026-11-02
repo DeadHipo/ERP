@@ -1,7 +1,7 @@
 # facade: notes for agents
 
 - The only place that composes modules (D-009, D-060). Modules never import it; routes call only `Facade` methods.
-- `index.ts` opens the 4 PostgreSQL modules on `config.db` (`src/shared/pg-db.ts`; the sources service is passed in
+- `index.ts` opens the 5 PostgreSQL modules (owners, labels, splits, settlements, publishing) on `config.db` (`src/shared/pg-db.ts`; the sources service is passed in
   by the caller, `src/connect-sources.ts`)
   and spreads the method groups: `splits.ts`, `sources.ts` (B17 upload, writers, terms), `reports.ts`
   (reconciliation, owner balance, signals, track explanation), `owner-view.ts` (owner detail, merges),
@@ -14,7 +14,10 @@
   `MASTER_LAYERS` in `layers/index.ts`: label of record → perimeter → off the top → split → carves (pool, artist share,
   label share, sublabel, in `carve.ts`) → categorise (10 §3). Exactness: quantise every amount to 12 decimals right
   after its multiplication (`layers/exact.ts`: `q`, `pct`), get every remainder by subtraction, distribute pro rata /
-  scale-downs with `distribute` (residue to the largest absolute amount, a tie: first by id). Σ allocations + label
+  scale-downs with `distribute` (residue to the largest absolute amount, a tie: first by id). When percents sum to
+  exactly 100 the rounded amounts may exceed their base by a few pico: `capToBase` / `distributeCapped` take the excess
+  off the largest, so no remainder or allocation has the opposite sign of the unit (D-130). The publishing layers
+  follow the same 12 decimals (equal writer parts cut at 12, author `q(part × percent / 100)`). Σ allocations + label
   share = net after every layer; `tests/layers/exactness.test.ts` and the golden cases (`tests/golden.test.ts`) check it.
 - A method that writes to two modules wraps them in `db.transaction()` (all or nothing, D-121); a method that reads
   two modules for one answer uses `db.snapshot()`. A write cannot start inside a snapshot (it throws).

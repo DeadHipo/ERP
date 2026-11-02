@@ -539,8 +539,8 @@ describe('B17 songwriters: final review fixes', () => {
       ]),
     );
     const r = (await f.reconciliation()).find((x) => x.source === 'b17');
-    expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('33.33333333333333333334');
-    expect(r?.B_notOurs.toFixed()).toBe('66.66666666666666666666');
+    expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('33.333333333334');
+    expect(r?.B_notOurs.toFixed()).toBe('66.666666666666');
     expect(r?.discrepancy.toFixed()).toBe('0');
   });
 });

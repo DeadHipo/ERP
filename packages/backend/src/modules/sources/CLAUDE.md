@@ -1,4 +1,10 @@
-# sources module (Believe): notes for agents
+# sources module (Believe)
+
+Keeps the file registry and the raw report lines; the unit of calculation is ISRC + UPC + report month + sales month +
+the label string (`label_name`), with net. Equal keys are summed by the view; nothing is deduplicated across accounts.
+The account comes from the registry per file.
+
+## Notes for agents
 
 - Storage: file registry in PostgreSQL (`registry.ts`, table `source_files`), report lines in ClickHouse
   (`columnar.ts`, table `believe.rows` plus views `lines`, `units`, `breakdown`, `file_totals`, `pairs`, …).

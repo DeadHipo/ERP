@@ -127,6 +127,26 @@ describe('JSON API', () => {
     expect(rule.status).toBe(404);
 
     const art = (await post('/artists', { pseudonym: 'Synth One' }).expect(201)).body;
+    // D-130: the rule close goes through the facade and floors the end date; an empty period is a 400
+    const okRule = (
+      await post(`/labels/${sub.id}/rules`, { percent: '50', recipientArtistId: art.id, validFrom: '2026-01-10' }).expect(
+        201,
+      )
+    ).body;
+    expect(okRule.validFrom).toBe('2026-01-01');
+    const closed = await post(`/labels/rules/${okRule.id}/close`, { validTo: '2026-04-15' }).expect(200);
+    expect(closed.body.validTo).toBe('2026-04-01');
+    const empty = await post(`/labels/rules/${okRule.id}/close`, { validTo: '2026-01-20' });
+    expect(empty.status).toBe(400);
+    expect(empty.body.error.code).toBe('empty_period');
+    const emptyRule = await post(`/labels/${sub.id}/rules`, {
+      percent: '50',
+      recipientArtistId: art.id,
+      validFrom: '2027-03-03',
+      validTo: '2027-03-30',
+    });
+    expect(emptyRule.status).toBe(400);
+    expect(emptyRule.body.error.code).toBe('empty_period');
     const bad = await post('/participations', {
       isrc: I1,
       artistId: art.id,

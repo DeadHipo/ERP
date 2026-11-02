@@ -378,7 +378,7 @@ export function createSplitsService(db: Db) {
 
     /**
      * Creates a participation: `percent` of `base` paid to the recipient pseudonym, funded from `fundedFrom`.
-     * Refused: an overlap for the same (ISRC, recipient, funded_from) `participation_overlap`; a recipient that is a
+     * Refused: an overlap for the same (ISRC, recipient, funded_from, source artist) `participation_overlap`; a recipient that is a
      * split row on the ISRC in the period `double_participation`; Σ `top` above 100 `top_above_100`.
      */
     async createParticipation(input: ParticipationInput): Promise<ParticipationView> {
@@ -409,7 +409,12 @@ export function createSplitsService(db: Db) {
         const existing = await repo.participationsOfIsrc(isrc);
         const period = { validFrom, validTo };
         for (const o of existing) {
-          if (o.artistId === input.artistId && o.fundedFrom === input.fundedFrom && overlaps(o, period)) {
+          if (
+            o.artistId === input.artistId &&
+            o.fundedFrom === input.fundedFrom &&
+            (o.fromArtistId ?? '') === (fromArtistId ?? '') &&
+            overlaps(o, period)
+          ) {
             throw new ConflictError(
               `Participation period overlaps an existing one of ${input.artistId} on ${isrc} from ${o.validFrom}`,
               'participation_overlap',
