@@ -84,6 +84,7 @@ export const publishingTermsSchema = z.object({
   validFrom: date,
   validTo: date.nullable(),
   documentId: z.string().nullable(),
+  operationType: z.string().nullable(),
   createdAt: timestamp,
 });
 

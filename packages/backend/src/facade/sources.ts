@@ -96,6 +96,7 @@ export function sourcesApi(ctx: FacadeContext) {
       percent: string;
       validFrom: string;
       documentId?: string | null;
+      operationType?: string | null;
     }) {
       return db.transaction(async () => {
         const id = await owners.resolveOwnerId(input.ownerId);

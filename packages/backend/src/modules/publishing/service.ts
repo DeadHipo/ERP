@@ -42,6 +42,8 @@ export interface PublishingAccrual {
   writerName: string;
   ownerId: string | null;
   workTitle: string;
+  /** The operation type of the B17 line (null when the line has none). */
+  operationType: string | null;
   payable: Decimal;
   percent: Decimal;
   authorAmount: Decimal;
@@ -285,13 +287,18 @@ export function createPublishingService(db: Db, storageDir: string) {
       percent: string;
       validFrom: string;
       documentId?: string | null;
+      /** Terms for one operation type; omitted = for any type. */
+      operationType?: string | null;
     }): Promise<TermsRow | undefined> {
       if (!/^\d+(\.\d+)?$/.test(input.percent) || new Decimal(input.percent).gt(100)) {
         throw new ValidationError(`Invalid author percent "${input.percent}"`);
       }
       const validFrom = assertDate(input.validFrom);
+      const operationType = input.operationType ?? null;
+      if (operationType !== null && operationType.trim() === '')
+        throw new ValidationError('Operation type must not be empty');
       return tx(async () => {
-        const existing = await repo.termsOfOwner(input.ownerId);
+        const existing = (await repo.termsOfOwner(input.ownerId)).filter((t) => t.operationType === operationType);
         if (existing.some((t) => t.validFrom >= validFrom)) {
           throw new ConflictError('Publishing terms already start on or after this date', 'terms_overlap');
         }
@@ -312,6 +319,7 @@ export function createPublishingService(db: Db, storageDir: string) {
           validFrom,
           validTo: null,
           documentId: input.documentId ?? null,
+          operationType,
           createdAt: nowIso(),
         });
         return repo.getTerms(id);
@@ -349,7 +357,7 @@ export function createPublishingService(db: Db, storageDir: string) {
       };
       const result: PublishingAccrual[] = [];
       const push = (
-        r: { period: string; workTitle: string },
+        r: { period: string; workTitle: string; operationType: string | null },
         reportMonth: string,
         writerNorm: string,
         writerName: string,
@@ -359,10 +367,16 @@ export function createPublishingService(db: Db, storageDir: string) {
         const date = monthStart(reportMonth);
         const valid = (x: (typeof terms)[number]) =>
           x.validFrom <= date && (x.validTo === null || date < x.validTo);
-        const t = ownerId
-          ? (terms.find((x) => x.ownerId === ownerId && valid(x)) ??
-            terms.find((x) => resolveOwner(x.ownerId) === ownerId && valid(x)))
-          : undefined;
+        // A term of the line's operation type first, then the one without a type (D-128).
+        const pick = (typed: boolean) => {
+          const fits = (x: (typeof terms)[number]) =>
+            valid(x) && (typed ? r.operationType !== null && x.operationType === r.operationType : x.operationType === null);
+          return (
+            terms.find((x) => x.ownerId === ownerId && fits(x)) ??
+            terms.find((x) => resolveOwner(x.ownerId) === ownerId && fits(x))
+          );
+        };
+        const t = ownerId ? (pick(true) ?? pick(false)) : undefined;
         const percent = new Decimal(t?.percent ?? DEFAULT_AUTHOR_PERCENT);
         result.push({
           source: 'b17',
@@ -372,6 +386,7 @@ export function createPublishingService(db: Db, storageDir: string) {
           writerName,
           ownerId,
           workTitle: r.workTitle,
+          operationType: r.operationType,
           payable,
           percent,
           authorAmount: payable.mul(percent).div(100),

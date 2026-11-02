@@ -3,7 +3,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 
 // Publishing (B17 now): statements, their lines, writer -> owner mapping and the author's contract percentage.
 // Money is accrued to the owner (a person), never to an artist or a label.
-// The DDL is migrations/postgres/0005_publishing.sql (schema `publishing`); change both.
+// The DDL is migrations/postgres/0005_publishing.sql and 0009_pub_terms_operation_type.sql (schema `publishing`); change both.
 
 const s = pgSchema('publishing');
 
@@ -72,5 +72,7 @@ export const pubTerms = s.table('pub_terms', {
   validFrom: date('valid_from', { mode: 'string' }).notNull(),
   validTo: date('valid_to', { mode: 'string' }),
   documentId: text('document_id'),
+  /** NULL = terms for any operation type; a typed term wins for a line of that type (D-128). */
+  operationType: text('operation_type'),
   createdAt: isoTimestamp('created_at').notNull(),
 });

@@ -111,6 +111,7 @@ export const publishingTermsBody = z.object({
   percent,
   validFrom: date,
   documentId: z.string().nullish(),
+  operationType: z.string().min(1).optional(),
 });
 
 export const scopeSchema = z.object({

@@ -99,6 +99,8 @@ export interface B17RowSpec {
   period?: string;
   /** comma-separated writers of the work (B17 "songwriters"); empty by default */
   songwriters?: string;
+  /** B17 "operation type" column; 'Performance' by default */
+  operationType?: string;
 }
 
 export async function writeB17(
@@ -130,7 +132,7 @@ export async function writeB17(
       r.writer,
       'W-' + r.title.length,
       r.songwriters ?? '',
-      'Performance',
+      r.operationType ?? 'Performance',
       'Spotify',
       'US',
       payable,

@@ -28,6 +28,7 @@ export interface AggregatedLine {
   writerName: string;
   workTitle: string;
   songwriters: string | null;
+  operationType: string | null;
   payablePico: bigint;
 }
 
@@ -123,15 +124,16 @@ export function createPublishingRepository(db: Db) {
         writer_name: string;
         work_title: string;
         songwriters: string | null;
+        operation_type: string | null;
         payable: string;
       }>(
         `SELECT l.period, l.writer_norm, MIN(l.writer_name COLLATE "C") AS writer_name, l.work_title, l.songwriters,
-                SUM(l.payable_pico)::text AS payable
+                l.operation_type, SUM(l.payable_pico)::text AS payable
          FROM publishing.pub_lines l JOIN publishing.pub_statements s ON s.id = l.statement_id
          WHERE s.status = 'loaded'
-         GROUP BY l.period, l.writer_norm, l.songwriters, l.work_title
+         GROUP BY l.period, l.writer_norm, l.songwriters, l.work_title, l.operation_type
          ORDER BY l.period COLLATE "C", l.writer_norm COLLATE "C", l.songwriters COLLATE "C" NULLS FIRST,
-                  l.work_title COLLATE "C"`,
+                  l.work_title COLLATE "C", l.operation_type COLLATE "C" NULLS FIRST`,
       );
       return r.rows.map((x) => ({
         period: x.period,
@@ -139,6 +141,7 @@ export function createPublishingRepository(db: Db) {
         writerName: x.writer_name,
         workTitle: x.work_title,
         songwriters: x.songwriters,
+        operationType: x.operation_type,
         payablePico: BigInt(x.payable),
       }));
     },
