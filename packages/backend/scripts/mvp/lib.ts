@@ -246,6 +246,11 @@ export class Ctx {
   fakeId(kind: string) {
     return `dry:${kind}:${++this.fake}`;
   }
+  private unitsCache?: Awaited<ReturnType<Ctx['stack']['sources']['units']>>;
+  /** The units of the loaded Believe files (read once per run). */
+  async believeUnits() {
+    return (this.unitsCache ??= await this.stack.sources.units());
+  }
   async close() {
     await this.stack.close();
   }

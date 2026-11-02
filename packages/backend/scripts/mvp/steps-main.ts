@@ -574,3 +574,458 @@ export async function stepContracts(ctx: Ctx) {
     }
   }
 }
+
+// ================================================================= stage 6 fixes (D-135)
+
+const stripDiacritics = (s: string) => normalizeName(s.normalize('NFD').replace(/\p{M}+/gu, ''));
+const MONTHS: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+/** "29 April, 2026" / "13 JAN 2026" -> the first day of that month, or null. */
+function effectiveMonth(raw: string | null | undefined): string | null {
+  const m = /(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/.exec(raw ?? '');
+  const mm = m ? MONTHS[(m[2] as string).toLowerCase()] : undefined;
+  return m && mm ? `${m[3]}-${mm}-01` : null;
+}
+
+// ---- 1. pairs: the second UPC of a known ISRC
+
+export async function stepPairs(ctx: Ctx) {
+  const { log } = ctx;
+  log.h('(ISRC, UPC) pairs of the loaded Believe files whose ISRC is a track but the pair is not');
+  const [units, attrs] = await Promise.all([ctx.believeUnits(), ctx.stack.sources.pairAttributes()]);
+  const net = new Map<string, bigint>();
+  for (const u of units) {
+    if (!u.isrc || !u.upc) continue;
+    const k = `${u.isrc}|${u.upc}`;
+    net.set(k, (net.get(k) ?? 0n) + u.netPico);
+  }
+  let total = D0();
+  for (const [k, pico] of [...net.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const [isrc, upc] = k.split('|') as [string, string];
+    if (ctx.trackPairs.has(k)) continue;
+    if (!ctx.tracksByIsrc.has(isrc)) {
+      log.count('pair_isrc_not_a_track_left');
+      continue;
+    }
+    const title = attrs.get(k)?.trackTitle?.trim() || isrc;
+    const usd = new Decimal(pico.toString()).div('1e12');
+    if (!ctx.apply && ctx.trackPairs.has(k)) continue;
+    const created = await ensureTrackPair(ctx, isrc, upc, title);
+    if (created) {
+      total = total.add(usd);
+      log.event('pair_registered', `${isrc} / ${upc} "${title}" net ${usd.toFixed(2)}`);
+    }
+  }
+  log.count('net_of_registered_pairs_cents', total.mul(100).round().toNumber());
+  log.p(`Net of the registered pairs: ${total.toFixed(2)}`);
+}
+
+async function ensureTrackPair(ctx: Ctx, isrc: string, upc: string, title: string): Promise<boolean> {
+  const { ensureTrack } = await import('./steps-annex');
+  const ok = await ensureTrack(ctx, { isrc, upc, title }, 'pairs');
+  return ok;
+}
+
+// ---- 2. label-fixes: 0to8/lost
+
+export async function stepLabelFixes(ctx: Ctx) {
+  const { log } = ctx;
+  log.h('0to8/lost: a representative paid by split rows (M7), not a sublabel');
+  const lost = (await ctx.labels.listLabels()).find((l) => l.name.toLowerCase() === 'lost');
+  if (!lost) {
+    log.count('label_lost_absent');
+    return;
+  }
+  const open = lost.rules.filter((r) => r.validTo === null);
+  if (open.length === 0) {
+    log.count('already_done');
+    return;
+  }
+  for (const r of open) {
+    const to = new Date(`${r.validFrom}T00:00:00Z`);
+    to.setUTCMonth(to.getUTCMonth() + 1);
+    const validTo = to.toISOString().slice(0, 10);
+    if (ctx.apply) await ctx.f.closeLabelRule(r.id, validTo);
+    log.event(
+      'rule_closed',
+      `lost rule ${r.percent}% from ${r.validFrom} closed at ${validTo}: that one month stays an assumption; later months of "0to8/lost" have no sublabel rule, so the whole label share stays with 0to8`,
+    );
+  }
+  log.p('The labels service has no call to re-point an alias to another label (alias "0to8/lost" stays an alias of label "lost"); closing the rule gives the same money result from the second month.');
+}
+
+// ---- 3. lunar: LUNAR MEDIA 10 % vocal licence
+
+export async function stepLunar(ctx: Ctx) {
+  const { log } = ctx;
+  log.h('LUNAR MEDIA 10 % vocal licence (Annex Sch3A row 4)');
+  const family = 'tem que tirar o chapeu';
+  // the licence covers the recordings of the Annex (Sch3A row 4: 34 recordings); same-title tracks of other catalogues
+  // (Echo8 releases, fan-made versions) are listed and left out
+  const annexIsrc = new Set(
+    readJson<{ records: { isrc: string; title: string }[] }>('annex/splits_diff.json')
+      .records.filter((r) => stripDiacritics(r.title).includes(family))
+      .map((r) => r.isrc),
+  );
+  const isrcs = new Map<string, string>();
+  for (const [isrc, list] of ctx.tracksByIsrc)
+    for (const t of list)
+      if (stripDiacritics(t.title).includes(family)) {
+        if (annexIsrc.has(isrc)) isrcs.set(isrc, t.title);
+        else log.event('title_match_not_in_annex_schedule', `${isrc} "${t.title}"`);
+      }
+  const first = new Map<string, string>();
+  for (const u of await ctx.believeUnits()) {
+    if (!isrcs.has(u.isrc)) continue;
+    const cur = first.get(u.isrc);
+    if (!cur || u.reportingMonth < cur) first.set(u.isrc, u.reportingMonth);
+  }
+  log.count('isrc_in_title_family', isrcs.size);
+  const { ownerId, artistId } = await ctx.ownerWithPseudonym('LUNAR MEDIA', 'label', 'mvp:lunar');
+  void ownerId;
+  const docId = await ctx.ensureDoc({
+    kind: 'assumption',
+    title: 'Assumption Q1: LUNAR MEDIA 10 % vocal licence (cash base read as net; pool funding per owner decision 4)',
+    approve: false,
+    ref: 'mvp-load:lunar',
+  });
+  const validTo = '2026-05-01';
+  for (const [isrc, title] of [...isrcs.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const m = first.get(isrc);
+    if (!m) {
+      log.event('no_report_month', `${isrc} "${title}": not in the loaded reports, no participation`);
+      continue;
+    }
+    const validFrom = `${m}-01`;
+    if (validFrom >= validTo) {
+      log.event('after_sale', `${isrc} "${title}": first report month ${m} is not before the sale month`);
+      continue;
+    }
+    const marker = `mvp:lunar:${isrc}`;
+    if (ctx.hasParticipationNote(marker)) {
+      log.count('already_done');
+      continue;
+    }
+    try {
+      let id = ctx.fakeId('participation');
+      if (ctx.apply)
+        id = (
+          await ctx.f.createParticipation({
+            isrc,
+            artistId,
+            percent: '10',
+            base: 'net',
+            fundedFrom: 'artist_pool',
+            validFrom,
+            validTo,
+            documentId: docId,
+            origin: 'mvp:lunar',
+            note: marker,
+          })
+        ).id;
+      ctx.participations.push({ id, isrc, artistId, fromArtistId: null, fundedFrom: 'artist_pool', validFrom, validTo, note: marker });
+      log.event('participation_created', `${isrc} "${title}" from ${validFrom} to ${validTo}`);
+    } catch (e) {
+      log.event('participation_error', `${isrc}: ${errText(e)}`);
+    }
+  }
+}
+
+// ---- 4. b17-holders
+
+interface HolderDoc {
+  sha256: string;
+  files: { name: string }[];
+  kind: string;
+  party: { legal_name: string | null };
+  meta: { number: string | null; effective_date: string | null; signed_on: string | null };
+}
+
+export async function stepB17Holders(ctx: Ctx) {
+  const { log } = ctx;
+  log.h('B17 holders confirmed by their own contracts (names are matched in memory, never printed)');
+  const indexPath = join(LOAD_DIR, '..', '..', 'context_data', 'contract_index', 'documents.json');
+  const docs = (JSON.parse(readFileSync(indexPath, 'utf8')) as HolderDoc[]).filter((d) => d.party.legal_name);
+  const kindOf = (d: HolderDoc): 'co_pub' | 'admin' | 'recording' | null =>
+    d.kind === 'co_pub' ? 'co_pub' : d.kind === 'recording' ? 'recording' : d.kind === 'other' && /administration/i.test(d.files[0]?.name ?? '') ? 'admin' : null;
+  const byName = new Map<string, HolderDoc[]>();
+  for (const d of docs) {
+    if (!kindOf(d)) continue;
+    const k = normalizeName(d.party.legal_name as string);
+    byName.set(k, [...(byName.get(k) ?? []), d]);
+  }
+  const owners = await ctx.owners.listOwners();
+  const holders = owners.filter((o) => o.origin === 'publishing');
+  log.count('holders', holders.length);
+  const terms = await ctx.publishing.allTerms();
+  const LABEL = { co_pub: 'Co-publishing agreement', admin: 'Publishing administration agreement', recording: 'Recording agreement' } as const;
+  let termsSet = 0;
+  for (const o of holders) {
+    const names = new Set([o.name, ...o.aliases].map(normalizeName));
+    const hits = [...names].flatMap((n) => byName.get(n) ?? []);
+    // the administration agreement prints all its parties in one string: the owner is a party when its whole name occurs in it
+    for (const d of docs)
+      if (kindOf(d) === 'admin' && [...names].some((n) => n.includes(' ') && ` ${normalizeName(d.party.legal_name as string)} `.includes(` ${n} `))) hits.push(d);
+    // information only: unmatched holders that would match with the words of the name in another order
+    const tokens = (x: string) => x.split(' ').sort().join(' ');
+    if (hits.length === 0 && docs.some((d) => kindOf(d) && [...names].some((n) => n.includes(' ') && tokens(n) === tokens(normalizeName(d.party.legal_name as string)))))
+      log.count('holders_unmatched_but_same_words_in_other_order');
+    const uniq = [...new Map(hits.map((d) => [d.sha256, d])).values()];
+    const id8 = o.id.slice(0, 8);
+    if (uniq.length === 0) {
+      log.count('holders_unmatched');
+      log.event('holder_unmatched', id8);
+      continue;
+    }
+    log.count('holders_matched');
+    let confirmed = false;
+    const termsDone = new Set<string>();
+    for (const d of uniq) {
+      const k = kindOf(d) as 'co_pub' | 'admin' | 'recording';
+      const num = d.meta.number ? ` ${d.meta.number}` : '';
+      const title = `${LABEL[k]}${num} [${d.sha256.slice(0, 8)}]`;
+      const existed = ctx.docs.has(`contract|${title}|${o.id}`);
+      const docId = await ctx.ensureDoc({ kind: 'contract', title, ownerId: o.id, approve: true, ref: `pandadoc:${d.sha256}` });
+      let hasRow = false;
+      if (existed && !docId.startsWith('dry:')) hasRow = (await ctx.owners.contractsOfOwner(o.id)).some((c) => c.documentId === docId);
+      if (!hasRow) {
+        try {
+          if (ctx.apply) await ctx.owners.createContract({ ownerId: o.id, documentId: docId, number: d.meta.number ?? null, artistIds: [] });
+          log.count(`holder_contracts_created_${k}`);
+        } catch (e) {
+          log.event('holder_contract_error', `${id8} ${k}: ${errText(e)}`);
+          continue;
+        }
+      } else log.count('already_done');
+      confirmed = true;
+      if (k === 'recording') continue;
+      const from = effectiveMonth(d.meta.effective_date) ?? effectiveMonth(d.meta.signed_on);
+      if (!from) {
+        log.event('holder_no_effective_date', `${id8} ${k}: no date in the index, no terms`);
+        continue;
+      }
+      const wanted: { type: string | null; percent: string }[] = k === 'co_pub' ? [{ type: null, percent: '50' }] : [{ type: null, percent: '90' }, { type: 'Synchronization', percent: '50' }];
+      for (const w of wanted) {
+        const key = `${w.type ?? ''}`;
+        if (termsDone.has(key)) continue;
+        if (terms.some((t) => t.ownerId === o.id && (t.operationType ?? null) === w.type)) {
+          log.count('holder_terms_already_there');
+          termsDone.add(key);
+          continue;
+        }
+        try {
+          if (ctx.apply) await ctx.f.setPublishingTerms({ ownerId: o.id, percent: w.percent, validFrom: from, documentId: docId, operationType: w.type });
+          terms.push({ ownerId: o.id, operationType: w.type, validFrom: from } as (typeof terms)[number]);
+          termsDone.add(key);
+          termsSet++;
+          log.event('holder_terms_set', `${id8} ${w.percent}% ${w.type ?? 'any type'} from ${from} (${k})`);
+        } catch (e) {
+          log.event('holder_terms_error', `${id8}: ${errText(e)}`);
+        }
+      }
+    }
+    if (confirmed) log.count('holders_confirmed');
+  }
+  log.count('holder_terms_set', termsSet);
+}
+
+// ---- 5. carves
+
+interface CarveGroup {
+  participants: string[];
+  upcs: string[];
+  title: string;
+  reportMonth: string;
+  percents: string[];
+  rows: { rowNo: number; nickname: string; amount: string }[];
+}
+
+export async function stepCarves(ctx: Ctx) {
+  const { log } = ctx;
+  const groups = readJson<CarveGroup[]>('main/carve_pairs.json');
+  const cash = new Map(readJson<CashRow[]>('main/cash_rows.json').map((r) => [r.rowNo, r]));
+  const ops = await ctx.settlements.allOperations();
+  const opOfRow = new Map<number, (typeof ops)[number]>();
+  for (const o of ops) {
+    const m = /^mvp:main:(\d+)(?:\s|$)/.exec(o.comment);
+    if (m && o.direction === 'in') opOfRow.set(Number(m[1]), o);
+  }
+
+  // per participant: percent for each group
+  const percentsOf = (g: CarveGroup, comment: string): string[] | null => {
+    const n = g.participants.length;
+    const two = /\((\d+(?:\.\d+)?)%\s*\/\s*(\d+(?:\.\d+)?)%\)/.exec(comment);
+    if (two && n === 2) return [two[1] as string, two[2] as string];
+    const each = /по\s+(\d+(?:[.,]\d+)?)%\s+каждому/.exec(comment);
+    if (each) return Array(n).fill((each[1] as string).replace(',', '.'));
+    if (g.percents.length === n) return g.percents;
+    return null;
+  };
+
+  log.h('Carve groups');
+  const replacedRows = new Map<number, string>(); // rowNo -> first participation id
+    type Want = { participant: string; upc: string; source: string; percent: string; month: string; rows: Set<number> };
+  const wants = new Map<string, Want>();
+  for (const [gi, g] of groups.entries()) {
+    const comment = cash.get(g.rows[0]?.rowNo ?? -1)?.comment ?? '';
+    const pcts = g.percents.length === 0 ? null : percentsOf(g, comment);
+    if (!pcts) {
+      log.event('group_skipped_no_percent', `group ${gi} (${g.participants.length} participant(s), ${g.upcs.length} UPC, ${g.rows.length} rows, ${g.rows.reduce((t, r) => t.add(r.amount), D0()).toFixed(2)}): the percent is not stated; the carve operations stay`);
+      continue;
+    }
+    if (g.upcs.length === 0) {
+      log.event('group_skipped_no_upc', `group ${gi}: no UPC in the comment; the carve operations stay`);
+      continue;
+    }
+    if (g.percents.length === 1 && g.participants.length > 1) log.event('percent_split_equally', `group ${gi}`);
+    if (g.participants.length === 2 && g.percents.length === 3) log.event('percent_pair_split', `group ${gi}: ${g.percents.join(' / ')} read as the total and the share of each participant`);
+    for (const [pi, participant] of g.participants.entries()) {
+      for (const upc of new Set(g.upcs.map(normalizeUpc))) {
+        for (const row of g.rows) {
+          const cr = cash.get(row.rowNo);
+          const src = ctx.resolveArtist({ artistId: cr?.artistId ?? null, pseudonym: row.nickname });
+          if (src.status !== 'ok' || !src.id) {
+            log.event('source_artist_unresolved', `row ${row.rowNo} ${row.nickname}: ${src.status}`);
+            continue;
+          }
+          const key = `${normalizeName(participant)}|${upc}|${src.id}`;
+          const w = wants.get(key);
+          const month = g.reportMonth;
+          if (w) {
+            if (month < w.month) w.month = month;
+            w.rows.add(row.rowNo);
+          } else wants.set(key, { participant, upc, source: src.id, percent: pct(pcts[pi] as string), month, rows: new Set([row.rowNo]) });
+        }
+      }
+    }
+  }
+
+  log.h('Participations');
+  const docs = new Map<string, string>();
+  let created = 0;
+  const covered = new Map<number, Set<string>>(); // rowNo -> participants (normalised) covered
+  for (const w of wants.values()) {
+    const isrcs = ctx.tracksByUpc.get(w.upc) ?? [];
+    const pa = ctx.resolveArtist({ pseudonym: w.participant });
+    if (pa.status === 'ambiguous') {
+      log.event('participant_ambiguous', `${w.participant} UPC ${w.upc}`);
+      continue;
+    }
+    if (isrcs.length === 0) {
+      log.event('upc_without_track', `${w.upc} (${w.participant})`);
+      continue;
+    }
+    let artistId = pa.id;
+    if (!artistId) artistId = (await ctx.ownerWithPseudonym(w.participant, 'person', 'mvp:carve')).artistId;
+    else if (!ctx.ownerOfArtist(artistId)) {
+      log.event('participant_artist_without_owner', `${w.participant}: artist exists without owner; participation kept on the artist`);
+    }
+    const docKey = `${normalizeName(w.participant)}|${w.upc}`;
+    let docId = docs.get(docKey);
+    if (!docId) {
+      docId = await ctx.ensureDoc({
+        kind: 'assumption',
+        title: `Assumption M43: participation of ${ctx.knownArtist(artistId)?.pseudonym ?? w.participant} on UPC ${w.upc} from 0to8 Main.xlsx carve rows`,
+        approve: false,
+        ref: 'mvp-load:carve',
+      });
+      docs.set(docKey, docId);
+    }
+    const validFrom = `${w.month}-01`;
+    for (const isrc of [...new Set(isrcs)]) {
+      const marker = `mvp:carve:${normalizeName(w.participant)}:${w.upc}:${w.source}:${isrc}`;
+      const existing = ctx.participations.find((p) => p.isrc === isrc && p.artistId === artistId && (p.fromArtistId === w.source || p.note === marker));
+      let id: string | undefined = existing?.id;
+      if (existing && existing.note === marker) log.count('already_done');
+      else if (existing) log.count('participation_exists_other_source');
+      else {
+        try {
+          id = ctx.fakeId('participation');
+          if (ctx.apply)
+            id = (
+              await ctx.f.createParticipation({
+                isrc,
+                artistId,
+                percent: w.percent,
+                base: 'bucket',
+                fundedFrom: 'artist_share',
+                fromArtistId: w.source,
+                validFrom,
+                documentId: docId,
+                origin: 'mvp:carve',
+                note: marker,
+              })
+            ).id;
+          ctx.participations.push({ id, isrc, artistId, fromArtistId: w.source, fundedFrom: 'artist_share', validFrom, validTo: null, note: marker });
+          created++;
+          log.count('participations_created');
+        } catch (e) {
+          id = undefined;
+          log.event('participation_error', `${w.participant} ${isrc}: ${errText(e)}`, 100);
+        }
+      }
+      if (id) {
+        for (const r of w.rows) {
+          const s = covered.get(r) ?? new Set<string>();
+          s.add(normalizeName(w.participant));
+          covered.set(r, s);
+          if (!replacedRows.has(r)) replacedRows.set(r, id);
+        }
+      }
+    }
+  }
+  log.p(`${created} participations created.`);
+
+  log.h('Carve deduction operations replaced by the participations');
+  let moved = D0();
+  for (const g of groups) {
+    for (const r of g.rows) {
+      const need = new Set(g.participants.map(normalizeName));
+      const got = covered.get(r.rowNo);
+      if (!got || ![...need].every((n) => got.has(n))) continue;
+      const op = opOfRow.get(r.rowNo);
+      if (!op) {
+        log.count('carve_row_without_operation');
+        continue;
+      }
+      if (!op.active) {
+        log.count('already_done');
+        continue;
+      }
+      const pid = replacedRows.get(r.rowNo) as string;
+      if (ctx.apply) await ctx.settlements.deactivate(op.id, `replaced by participation ${pid}`);
+      op.active = false;
+      moved = moved.add(op.amountCents);
+      log.count('operations_deactivated');
+      log.event('operation_deactivated', `row ${r.rowNo} ${r.amount}: replaced by participation ${pid}`, 300);
+    }
+  }
+  const movedUsd = moved.div(100);
+  log.count('operations_deactivated_sum_cents', moved.toNumber());
+  log.p(`Σ deductions moved to participations: ${movedUsd.toFixed(2)}`);
+
+  log.h('Held participant payouts');
+  for (const r of cash.values()) {
+    if (r.side !== 'expense' || r.requiresCredit === undefined || r.load !== 'payout') continue;
+    const marker = `mvp:main:${r.rowNo}`;
+    if (ctx.opMarkers.has(marker)) {
+      log.count('already_done');
+      continue;
+    }
+    let ownerId: string, artistId: string;
+    const known = r.nicknameStatus === 'matched' ? ctx.knownArtist(r.artistId) : undefined;
+    if (known?.ownerId) ({ ownerId, artistId } = { ownerId: known.ownerId, artistId: known.id });
+    else ({ ownerId, artistId } = await ctx.ownerWithPseudonym(r.nickname, 'person', 'mvp:main'));
+    try {
+      const comment = `${marker} ${r.comment}`.trim();
+      if (ctx.apply)
+        await ctx.f.createOperation({ date: r.date, period: r.reportMonth, migration: true, comment, direction: 'out', amount: r.amount, ownerId, artistId });
+      ctx.opMarkers.add(marker);
+      log.count('held_payouts_loaded');
+      log.event('held_payout', `row ${r.rowNo} ${r.nickname} ${r.amount}`);
+    } catch (e) {
+      log.event('held_payout_error', `row ${r.rowNo}: ${errText(e)}`);
+    }
+  }
+}
