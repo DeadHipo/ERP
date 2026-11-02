@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-122 by topic)
+# Decision index (D-001 … D-124 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -87,6 +87,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-112 Scope and accepted limits of the move (no demo mode, no replace/delete API, manual recovery of `loading`) · in force
 - D-114 Move closed; publishing is next · in force
 - D-122 Aggregate projection `units` in `believe.rows` (the `units` view reads it; not a MV: ATTACH does not trigger one); step timings with `LOG_TIMINGS=1` · in force
+- D-124 Believe unit carries the label string: projection `units_by_label` replaces `units` (migration 0003), `SourceUnit.labelName`, deterministic `ORDER BY` in `columnar.units()` · in force
 
 ## Publishing (B17)
 - D-039 B17 format · *refined by* D-087

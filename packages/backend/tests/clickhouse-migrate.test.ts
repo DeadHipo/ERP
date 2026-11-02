@@ -71,3 +71,24 @@ describe('listMigrations and planMigrations', () => {
     ).toThrow(/lower version/);
   });
 });
+
+describe('the shipped ClickHouse migrations', () => {
+  const real = listMigrations(join(__dirname, '..', 'migrations', 'clickhouse'));
+  it('are numbered without gaps', () => {
+    expect(real.map((m) => m.version)).toEqual(real.map((_, i) => i + 1));
+  });
+  it('0003 replaces the units projection by units_by_label and recreates the view with label_name', () => {
+    const m = real.find((x) => x.version === 3);
+    expect(m?.name).toBe('units_by_label');
+    const statements = splitStatements(m?.sql ?? '').map((s) => s.replace(/\s+/g, ' '));
+    expect(statements).toHaveLength(4);
+    expect(statements[0]).toBe('ALTER TABLE believe.rows DROP PROJECTION IF EXISTS units');
+    expect(statements[1]).toMatch(/^ALTER TABLE believe\.rows ADD PROJECTION IF NOT EXISTS units_by_label/);
+    expect(statements[1]).toContain('GROUP BY file_id, isrc, upc, reporting_month, sales_month, label_name');
+    expect(statements[2]).toBe(
+      'ALTER TABLE believe.rows MATERIALIZE PROJECTION units_by_label SETTINGS mutations_sync = 1',
+    );
+    expect(statements[3]).toMatch(/^CREATE OR REPLACE VIEW believe\.units AS/);
+    expect(statements[3]).toContain('GROUP BY file_id, isrc, upc, reporting_month, sales_month, label_name');
+  });
+});

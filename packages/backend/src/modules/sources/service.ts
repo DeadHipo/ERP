@@ -16,6 +16,8 @@ export interface SourceUnit {
   upc: string;
   reportingMonth: string;
   salesMonth: string;
+  /** Label string of the report line (`Label Name`); part of the unit key (D-124). */
+  labelName: string;
   netPico: bigint;
 }
 
@@ -171,6 +173,7 @@ export function createSourcesService(deps: SourcesDeps) {
           upc: r.upc,
           reportingMonth: r.reportingMonth,
           salesMonth: r.salesMonth,
+          labelName: r.labelName,
           netPico: parsePico(r.net),
         })),
       }));

@@ -20,6 +20,7 @@ export interface Spec {
   unitPrice?: string;
   gross?: string;
   net?: string;
+  labelName?: string;
 }
 
 /** The report text. `reportingMonth` of every row defaults to 2026/07/01: pass `month` ('YYYY-MM') to set them all. */
@@ -36,7 +37,7 @@ export function believeReport(
       'Sales Month': r.salesMonth ?? '2026/06/01',
       Platform: r.platform ?? 'Spotify',
       'Country / Region': r.country ?? 'Latvia',
-      'Label Name': 'Test Label',
+      'Label Name': r.labelName ?? 'Test Label',
       'Artist Name': r.artist ?? 'Test Artist',
       'Release title': 'Test Release',
       'Track title': r.track ?? 'Test Track',

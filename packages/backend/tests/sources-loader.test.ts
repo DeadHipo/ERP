@@ -95,7 +95,7 @@ describe.runIf(postgresUp && clickhouseUp)('Believe loader (PostgreSQL registry 
     expect(await stageTables()).toBe('0'); // the stage table is gone
   });
 
-  it('keeps the units projection in every attached part and answers the units view from it (D-122)', async () => {
+  it('keeps the units_by_label projection in every attached part and answers the units view from it (D-122, D-124)', async () => {
     const rows: Spec[] = [
       { isrc: 'QZTST2600011', net: '1.5' },
       { isrc: 'QZTST2600011', net: '2.25', platform: 'Other' },
@@ -108,16 +108,21 @@ describe.runIf(postgresUp && clickhouseUp)('Believe loader (PostgreSQL registry 
       { db: iso.database, id: rec.id },
     );
     expect(parts.length).toBeGreaterThan(0);
-    for (const p of parts) expect(p.projections).toContain('units');
+    for (const p of parts) expect(p.projections).toContain('units_by_label');
 
-    const query = `SELECT isrc, toString(net_revenue) AS net FROM ${iso.database}.units WHERE file_id IN {ids:Array(UUID)} ORDER BY isrc`;
+    const query = `SELECT isrc, toString(net_revenue) AS net FROM ${iso.database}.units WHERE file_id IN {ids:Array(UUID)} `;
     const plan = (await rowsOf<{ explain: string }>(`EXPLAIN ${query}`, { ids: [rec.id] }))
       .map((r) => r.explain)
       .join('\n');
-    expect(plan).toContain('ReadFromMergeTree (units)');
+    expect(plan).toContain('ReadFromMergeTree (units_by_label)');
     // the projection gives exactly what the raw lines give
-    const viaProjection = await rowsOf(query, { ids: [rec.id] });
-    const viaRows = await rowsOf(`${query} SETTINGS optimize_use_projections = 0`, { ids: [rec.id] });
+    const byIsrc = (a: { isrc: string }, b: { isrc: string }) => a.isrc.localeCompare(b.isrc);
+    const viaProjection = (await rowsOf<{ isrc: string; net: string }>(query, { ids: [rec.id] })).sort(byIsrc);
+    const viaRows = (
+      await rowsOf<{ isrc: string; net: string }>(`${query} SETTINGS optimize_use_projections = 0`, {
+        ids: [rec.id],
+      })
+    ).sort(byIsrc);
     expect(viaProjection).toEqual([
       { isrc: 'QZTST2600011', net: '3.75' },
       { isrc: 'QZTST2600012', net: '-0.000000000001' },
@@ -127,6 +132,20 @@ describe.runIf(postgresUp && clickhouseUp)('Believe loader (PostgreSQL registry 
     expect(units.map((u) => [u.isrc, u.reportingMonth, u.net])).toEqual([
       ['QZTST2600011', '2026-08', '3.75'],
       ['QZTST2600012', '2026-08', '-0.000000000001'],
+    ]);
+  });
+
+  it('gives two units for one ISRC/UPC/month with different label strings (D-124)', async () => {
+    const rows: Spec[] = [
+      { isrc: 'QZTST2600021', net: '1', labelName: 'Label One' },
+      { isrc: 'QZTST2600021', net: '2', labelName: 'Label Two' },
+      { isrc: 'QZTST2600021', net: '4', labelName: 'Label Two', platform: 'Other' },
+    ];
+    const rec = await loader.ingestBelieve(file('9999004', '2026-09', report(rows, '2026-09')));
+    const units = await iso.columnar.units([rec.id]);
+    expect(units.map((u) => [u.isrc, u.labelName, u.net])).toEqual([
+      ['QZTST2600021', 'Label One', '1'],
+      ['QZTST2600021', 'Label Two', '6'],
     ]);
   });
 

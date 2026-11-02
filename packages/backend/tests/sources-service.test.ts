@@ -90,6 +90,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           upc: '3617380000001',
           reportingMonth: '2026-07',
           salesMonth: '2026-06',
+          labelName: 'Test Label',
           netPico: pico('0.3'),
         },
         {
@@ -99,6 +100,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           upc: '3617380000001',
           reportingMonth: '2026-07',
           salesMonth: '2026-05',
+          labelName: 'Test Label',
           netPico: pico('0.5'),
         },
         {
@@ -108,6 +110,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           upc: '3617380000002',
           reportingMonth: '2026-07',
           salesMonth: '2026-07',
+          labelName: 'Test Label',
           netPico: pico('1'),
         },
         {
@@ -117,6 +120,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           upc: '3617380000001',
           reportingMonth: '2026-08',
           salesMonth: '2026-07',
+          labelName: 'Test Label',
           netPico: pico('0.3'),
         },
         {
@@ -126,6 +130,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           upc: '3617380000003',
           reportingMonth: '2026-08',
           salesMonth: '2026-06',
+          labelName: 'Test Label',
           netPico: pico('2'),
         },
       ]),

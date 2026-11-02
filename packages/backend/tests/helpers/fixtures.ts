@@ -34,6 +34,8 @@ export interface BelieveRowSpec {
   subscription?: string;
   salesType?: string;
   releaseType?: string;
+  /** `Label Name` column; default 'Test Label' */
+  labelName?: string;
 }
 
 const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -48,7 +50,7 @@ export function believeCsv(month: string, rows: BelieveRowSpec[]): string {
       'Sales Month': sm,
       Platform: r.platform ?? 'Spotify',
       'Country / Region': r.country ?? 'Brazil',
-      'Label Name': 'Test Label',
+      'Label Name': r.labelName ?? 'Test Label',
       'Artist Name': r.artistName ?? 'Synthetic Artist',
       'Release title': 'Synthetic Release',
       'Track title': r.trackTitle ?? 'Synthetic Track',
@@ -71,7 +73,10 @@ export function believeCsv(month: string, rows: BelieveRowSpec[]): string {
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
 
-export function believeFileName(month: string, account = '1052428', reportId = '9000001'): string {
+let reportSeq = 0;
+/** Without `reportId` every call gets its own report id, so two files of one test never share one. */
+export function believeFileName(month: string, account = '1052428', reportId?: string): string {
+  reportId ??= String(9_500_000 + ++reportSeq);
   return `${reportId}_${account}_${month}-01_${month}-01.csv`;
 }
 

@@ -38,6 +38,7 @@ export interface UnitResult {
   upc: string;
   reportingMonth: string;
   salesMonth: string;
+  labelName: string;
   net: Decimal;
   status: 'allocated' | 'no_split' | 'unknown_pair' | 'no_isrc';
   ours: Decimal;
@@ -126,6 +127,7 @@ export async function calculate(m: Modules, extraDocumentIds: string[] = []): Pr
       upc: u.upc,
       reportingMonth: u.reportingMonth,
       salesMonth: u.salesMonth,
+      labelName: u.labelName,
       net,
     };
     if (!u.isrc) {

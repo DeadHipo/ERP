@@ -26,6 +26,30 @@ describe('streaming CSV parser', () => {
   });
 });
 
+describe('label string of the unit (D-124)', () => {
+  it('reaches SourceUnit.labelName; the fixture default is Test Label', async () => {
+    const f = await newFacade();
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
+    const units = await f.modules.sources.units();
+    expect(units.map((u) => u.labelName)).toEqual(['Test Label']);
+  });
+  it('keeps units of one ISRC/UPC/month with different label strings apart', async () => {
+    const f = await newFacade();
+    await f.ingestBelieve(
+      writeBelieve('2026-07', [
+        { isrc: ISRC, upc: UPC, net: '1', labelName: 'Label A' },
+        { isrc: ISRC, upc: UPC, net: '2', labelName: 'Label B' },
+        { isrc: ISRC, upc: UPC, net: '3', labelName: 'Label B', country: 'France' },
+      ]),
+    );
+    const units = await f.modules.sources.units();
+    expect(units.map((u) => [u.labelName, u.netPico])).toEqual([
+      ['Label A', 1_000_000_000_000n],
+      ['Label B', 5_000_000_000_000n],
+    ]);
+  });
+});
+
 describe('Believe file name', () => {
   it('takes account and reporting month from the name; tolerates browser copies', async () => {
     expect(parseBelieveFileName('2102409_1052428_2026-07-01_2026-07-01.csv.zip')).toEqual({
