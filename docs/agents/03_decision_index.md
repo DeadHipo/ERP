@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-122 by topic)
+# Decision index (D-001 … D-123 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -124,6 +124,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-059 Split artist without an owner → C · in force
 - D-060 API composes modules only through the facade · in force
 - D-061 Signals use the chosen date basis · in force
+- D-123 Layered calculation of the master money (MVP goal design: labels module, participations, layer order, C reasons `assumption` / `rule_unconfirmed` / `label_unmapped`, council decisions Q1…Q12) · in force (design); closes D-067 ⚠ by owner decision 2 of 2026-11-02
 
 ## Data import, demo, reference checks
 - D-008 Reconstructed files for the demo · *refined by* D-079 (real reports exist), D-112 (no demo mode)

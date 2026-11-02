@@ -11,6 +11,9 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [04_recipes.md](04_recipes.md) | Making a change: endpoint, schema, source, page, money rule; guard tests |
 | [05_doc_drift.md](05_doc_drift.md) | Two texts disagree, or a command from README/HANDOVER does not work |
 | [09_settlement_cases.md](09_settlement_cases.md) | The settlement cases catalogue (MVP goal, stage 1): every contract mechanic with base, payer, example, current behaviour and status; open questions and the edge cases golden tests must pin |
+| [10_target_model.md](10_target_model.md) | The layered calculation design of the MVP goal (stage 2): modules in three sentences, storage, layer order, settled questions |
+| [11_plan.md](11_plan.md) | Steps of stages 3–7 with their D-entries, data load and verification plans |
+| [12_golden_cases.md](12_golden_cases.md) | Synthetic scenarios with hand-computed answers; every one is a test |
 | [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
