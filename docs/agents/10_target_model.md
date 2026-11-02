@@ -54,7 +54,7 @@ Schema `labels` (migration `0006_labels.sql`, Drizzle `modules/labels/schema.ts`
 | `labels.label_aliases` | `alias_norm` PK, `label_id`, `alias` (as printed) | normalisation: NFKC, lower case, spaces and separators collapsed; `0to8` → 0to8, `Ahh Music` → 0to8, `0to8/Echo8` → 0to8, `NoGhost Records / 0to8` → NoGhost, `qaraqshy records` → qaraqshy (sublabel of Echo8) |
 | `labels.label_rules` | `id`, `label_id`, `percent` (of the label share, numeric(9,6)), `recipient_artist_id` (pseudonym of the sublabel owner), `valid_from` (month start), `valid_to` (exclusive, month start or null), `document_id`, `note`, `created_at` | one rule in force per label and date (exclusion constraint); the half rule is `percent = 50` |
 
-Schema `splits` (migration `0007_participations.sql`):
+Schema `splits` (migration `0008_participations.sql`):
 
 | Table | Columns | Notes |
 |---|---|---|
@@ -67,11 +67,11 @@ licensed MC / sample from the pool = (`net`, `artist_pool`); settlement 15 % of 
 `label_share`); A&R 15 % of the label's net master royalties = (`bucket`, `label_share`); beat 10 % of the artist's
 share = (`bucket`, `artist_share`).
 
-`publishing.pub_terms` gains `operation_type text NULL` (migration `0008_pub_terms_operation_type.sql`): null = all
+`publishing.pub_terms` gains `operation_type text NULL` (migration `0009_pub_terms_operation_type.sql`): null = all
 types; a term with a matching type wins over a null one for the same owner and date. Overlap and closing of terms
 are checked per (owner, operation type); a typed term and a null-typed term may coexist.
 
-`owners.tracks` gains `note text NULL` (migration `0006`): a free flag shown by the signals page ("derivative outside
+`owners.tracks` gains `note text NULL` (migration `0007_owners_track_note_assumption.sql`): a free flag shown by the signals page ("derivative outside
 authorisation", "withdrawn", "stream cap"); it moves no money (M29).
 
 `owners.documents.kind` accepts `assumption` (CHECK constraint widened; `requires_approval` true; nothing approves
