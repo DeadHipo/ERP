@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "import:legacy": "tsx scripts/import-legacy.ts",
+    "mvp:load": "tsx scripts/mvp/load.ts",
     "migrate:ch": "node --env-file=../../.env scripts/migrate-clickhouse.ts"
   },
   "dependencies": {
