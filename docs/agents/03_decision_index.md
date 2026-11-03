@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-154 by topic)
+# Decision index (D-001 … D-155 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -138,6 +138,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-072 Recoupment capped by net income in scope · in force
 - D-073 Operations follow merged artists; document kinds; deferral checks · in force
 - D-094 Negative lines use up the income they cancel · in force
+- D-155 Advertising expenses: the owner's model (ISRC, recovery percent 0–100, artist shares, scope like an advance, no documents); design only, not implemented · accepted
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)
