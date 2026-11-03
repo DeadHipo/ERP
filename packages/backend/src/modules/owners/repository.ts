@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import {
   artistTracks,
@@ -25,6 +25,10 @@ const anyOf = (col: AnyColumn, ids: string[]): SQL => sql`${col} = any(${sql.par
 
 /** Byte order, as SQLite sorted text (the database collation would sort case- and accent-insensitively). */
 const byBytes = (col: AnyColumn): SQL => sql`${col} collate "C"`;
+
+/** `lower(col) LIKE '%q%'` with the LIKE wildcards of `q` escaped; served by the pg_trgm indexes of 0011. */
+const containsText = (col: AnyColumn, q: string): SQL =>
+  sql`lower(${col}) like ${`%${q.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`} escape '\\'`;
 
 /** All SQL of module 1 lives here (schema `owners`). */
 export function createOwnersRepository(db: Db) {
@@ -152,10 +156,36 @@ export function createOwnersRepository(db: Db) {
     documentsByIds: async (ids: string[]) =>
       ids.length === 0 ? [] : orm().select().from(documents).where(anyOf(documents.id, ids)),
     allDocuments: () => orm().select().from(documents),
-    listDocuments: (ownerId?: string) =>
-      ownerId === undefined
-        ? orm().select().from(documents).orderBy(documents.createdAt)
-        : orm().select().from(documents).where(eq(documents.ownerId, ownerId)).orderBy(documents.createdAt),
+    listDocuments: (
+      f: {
+        ownerId?: string;
+        status?: 'not_attached' | 'not_approved' | 'approved';
+        kind?: string;
+        q?: string;
+        limit?: number;
+      } = {},
+    ) => {
+      const noFile = sql`(${documents.fileRef} is null or ${documents.fileRef} = '')`;
+      const waiting = sql`(${documents.requiresApproval} and ${documents.approvedAt} is null)`;
+      const conds: (SQL | undefined)[] = [
+        f.ownerId === undefined ? undefined : eq(documents.ownerId, f.ownerId),
+        f.kind === undefined ? undefined : eq(documents.kind, f.kind),
+        f.q ? containsText(documents.title, f.q) : undefined,
+        f.status === 'not_attached'
+          ? noFile
+          : f.status === 'not_approved'
+            ? sql`(not ${noFile} and ${waiting})`
+            : f.status === 'approved'
+              ? sql`(not ${noFile} and not ${waiting})`
+              : undefined,
+      ];
+      const q = orm()
+        .select()
+        .from(documents)
+        .where(and(...conds))
+        .orderBy(documents.createdAt, documents.id);
+      return f.limit === undefined ? q : q.limit(f.limit);
+    },
     updateDocument: async (id: string, patch: Partial<typeof documents.$inferInsert>) => {
       await orm().update(documents).set(patch).where(eq(documents.id, id));
     },
@@ -196,6 +226,49 @@ export function createOwnersRepository(db: Db) {
     listMerges: () => orm().select().from(merges),
 
     /** Fast bulk lookup used by the facade: every (isrc, upc) pair known in module 1. */
+    /** Substring search for the global search (N10); live owners and artists only, at most `limit` rows per kind. */
+    searchOwners: (q: string, limit: number) =>
+      orm()
+        .select()
+        .from(owners)
+        .where(
+          and(
+            isNull(owners.mergedInto),
+            or(
+              containsText(owners.name, q),
+              sql`${owners.id} in (select ${ownerAliases.ownerId} from ${ownerAliases} where ${containsText(ownerAliases.alias, q)})`,
+            ),
+          ),
+        )
+        .orderBy(byBytes(owners.name))
+        .limit(limit),
+    searchArtists: (q: string, limit: number) =>
+      orm()
+        .select()
+        .from(artists)
+        .where(and(isNull(artists.mergedInto), containsText(artists.pseudonym, q)))
+        .orderBy(byBytes(artists.pseudonym))
+        .limit(limit),
+    /** An exact ISRC / UPC match comes first. */
+    searchTracks: (q: string, exactIsrc: string, exactUpc: string, limit: number) =>
+      orm()
+        .select()
+        .from(tracks)
+        .where(or(containsText(tracks.isrc, q), containsText(tracks.upc, q), containsText(tracks.title, q)))
+        .orderBy(
+          sql`(${tracks.isrc} = ${exactIsrc} or (${exactUpc} <> '' and ${tracks.upc} = ${exactUpc})) desc`,
+          byBytes(tracks.title),
+          tracks.id,
+        )
+        .limit(limit),
+    searchDocuments: (q: string, limit: number) =>
+      orm()
+        .select()
+        .from(documents)
+        .where(containsText(documents.title, q))
+        .orderBy(documents.createdAt)
+        .limit(limit),
+
     knownPairs: () =>
       orm()
         .select({ isrc: tracks.isrc, upc: tracks.upc })

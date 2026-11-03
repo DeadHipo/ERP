@@ -279,6 +279,16 @@ export function createSourcesService(deps: SourcesDeps) {
       return new Map(rows.map((r) => [r.upc, picoToString(parsePico(r.net))]));
     },
 
+    /** Net per (ISRC, UPC) of the given ISRCs over the loaded files (exact decimal text). */
+    async netByIsrc(isrcs: string[]): Promise<{ isrc: string; upc: string; net: string }[]> {
+      const files = await registry.loaded();
+      const rows = await columnar.netByIsrc(
+        files.map((f) => f.id),
+        isrcs,
+      );
+      return rows.map((r) => ({ isrc: r.isrc, upc: r.upc, net: picoToString(parsePico(r.net)) }));
+    },
+
     /** Names from the report per (ISRC, UPC): metadata only, never used to decide who gets paid. */
     async pairAttributes(): Promise<
       Map<string, { artistName: string; trackTitle: string; releaseTitle: string; labelName: string }>

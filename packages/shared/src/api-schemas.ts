@@ -172,6 +172,39 @@ export const listQuery = z.object({
   isrc: z.string().optional(),
   artistId: z.string().optional(),
   ownerId: z.string().optional(),
+  /** Paging of `/splits` and `/participations` (N18). */
+  offset: z.coerce.number().int().min(0).optional(),
+  /** `/splits` only: `unconfirmed` = the document is missing or not approved. */
+  status: z.enum(['unconfirmed']).optional(),
+});
+
+/** `GET /documents` (N12): all filters optional; `q` is a case-insensitive substring of the title. */
+export const documentsQuery = z.object({
+  ownerId: z.string().optional(),
+  status: z.enum(['not_attached', 'not_approved', 'approved']).optional(),
+  kind: documentKind.optional(),
+  q: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
+});
+
+const flag = z.enum(['true', 'false']);
+
+/** `GET /settlements/operations` (N14): filters; `from` / `to` are inclusive operation dates. */
+export const operationsQuery = z.object({
+  ownerId: z.string().optional(),
+  artistId: z.string().optional(),
+  meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']).optional(),
+  direction: z.enum(['in', 'out']).optional(),
+  needsProof: flag.optional().describe('true: payouts (out) that are active and have no payment proof'),
+  active: flag.optional(),
+  from: date.optional(),
+  to: date.optional(),
+});
+
+/** `GET /search` (N10): `kinds` is a comma list of owners, artists, tracks, documents, labels. */
+export const searchQuery = z.object({
+  q: z.string().trim().min(1),
+  kinds: z.string().optional(),
 });
 
 /** Lines of the Believe report files (the `lines` view). `fileId` is a comma-separated list of file ids. */

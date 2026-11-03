@@ -1,8 +1,22 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { operations, payoutSnapshots } from './schema';
 
 export type OperationRow = typeof operations.$inferSelect;
+
+export interface OperationFilter {
+  ownerId?: string;
+  artistId?: string;
+  direction?: 'in' | 'out';
+  /** Derived in SQL from direction, sign, scope and operation_ref, exactly as `meaningOf`. */
+  meaning?: 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
+  /** A payout (out) still active without a payment proof. */
+  needsProof?: boolean;
+  active?: boolean;
+  /** Inclusive dates YYYY-MM-DD. */
+  from?: string;
+  to?: string;
+}
 
 /** All SQL of the settlements module lives here (schema `settlements`). */
 export function createSettlementsRepository(db: Db) {
@@ -16,8 +30,52 @@ export function createSettlementsRepository(db: Db) {
     getOperation: async (id: string): Promise<OperationRow | undefined> =>
       (await orm().select().from(operations).where(eq(operations.id, id)))[0],
     /** Newest first. */
-    listOperations: () =>
-      orm().select().from(operations).orderBy(desc(operations.date), desc(operations.createdAt)),
+    listOperations: (f: OperationFilter = {}) => {
+      const meaning = (m: NonNullable<OperationFilter['meaning']>): SQL =>
+        m === 'payout'
+          ? (and(eq(operations.direction, 'out'), isNull(operations.scope)) as SQL)
+          : m === 'recoupable_payout'
+            ? (and(eq(operations.direction, 'out'), isNotNull(operations.scope)) as SQL)
+            : m === 'return'
+              ? (and(
+                  eq(operations.direction, 'in'),
+                  lt(operations.amountCents, 0),
+                  isNotNull(operations.operationRef),
+                ) as SQL)
+              : m === 'credit'
+                ? (and(
+                    eq(operations.direction, 'in'),
+                    lt(operations.amountCents, 0),
+                    isNull(operations.operationRef),
+                  ) as SQL)
+                : (and(eq(operations.direction, 'in'), gte(operations.amountCents, 0)) as SQL);
+      return orm()
+        .select()
+        .from(operations)
+        .where(
+          and(
+            f.ownerId ? eq(operations.ownerId, f.ownerId) : undefined,
+            f.artistId ? eq(operations.artistId, f.artistId) : undefined,
+            f.direction ? eq(operations.direction, f.direction) : undefined,
+            f.meaning ? meaning(f.meaning) : undefined,
+            f.active === undefined
+              ? undefined
+              : f.active
+                ? isNull(operations.deactivatedAt)
+                : sql`${operations.deactivatedAt} is not null`,
+            f.needsProof
+              ? and(
+                  eq(operations.direction, 'out'),
+                  isNull(operations.paymentProofId),
+                  isNull(operations.deactivatedAt),
+                )
+              : undefined,
+            f.from ? gte(operations.date, f.from) : undefined,
+            f.to ? lte(operations.date, f.to) : undefined,
+          ),
+        )
+        .orderBy(desc(operations.date), desc(operations.createdAt));
+    },
     allOperations: () => orm().select().from(operations),
     /** Operations that refer to the given payout (returns), active or not. */
     operationsReferring: (operationRef: string) =>

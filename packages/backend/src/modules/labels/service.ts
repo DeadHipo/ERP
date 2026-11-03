@@ -197,6 +197,15 @@ export function createLabelsService(db: Db) {
       return view(l, aliases, rules);
     },
 
+    async search(
+      q: string,
+      limit: number,
+    ): Promise<{ id: string; name: string; kind: 'own' | 'sublabel' }[]> {
+      const needle = q.trim();
+      if (!needle) return [];
+      return (await repo.searchLabels(needle, limit)).map((l) => ({ id: l.id, name: l.name, kind: l.kind }));
+    },
+
     async listLabels(): Promise<LabelView[]> {
       const [rows, aliases, rules] = await db.snapshot(() =>
         Promise.all([repo.allLabels(), repo.allAliases(), repo.allRules()]),

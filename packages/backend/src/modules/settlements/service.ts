@@ -2,7 +2,8 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
-import type { OperationRow } from './repository';
+import type { OperationFilter, OperationRow } from './repository';
+export type { OperationFilter };
 import type { Db } from '../../shared/pg-db';
 import type { Scope, ScopeKind } from './recoup-types';
 
@@ -177,11 +178,8 @@ export function createSettlementsService(db: Db) {
 
     getOperation: async (id: string): Promise<OperationView> => view(await get(id)),
 
-    async listOperations(filter: { ownerId?: string; artistId?: string } = {}): Promise<OperationView[]> {
-      let rows = await repo.listOperations();
-      if (filter.ownerId) rows = rows.filter((r) => r.ownerId === filter.ownerId);
-      if (filter.artistId) rows = rows.filter((r) => r.artistId === filter.artistId);
-      return rows.map(view);
+    async listOperations(filter: OperationFilter = {}): Promise<OperationView[]> {
+      return (await repo.listOperations(filter)).map(view);
     },
 
     allOperations: async (): Promise<OperationView[]> => (await repo.allOperations()).map(view),

@@ -115,16 +115,23 @@ export function splitsApi(ctx: FacadeContext) {
       });
     },
     /** Participations with pseudonyms, owner ids and document status. */
-    listParticipations(filter: { isrc?: string; artistId?: string } = {}) {
+    listParticipations(filter: { isrc?: string; artistId?: string; limit?: number; offset?: number } = {}) {
       return db.snapshot(async () => {
-        const list = await splits.listParticipations(filter);
+        const list = await splits.listParticipations({
+          ...(filter.isrc ? { isrc: filter.isrc } : {}),
+          ...(filter.artistId ? { artistId: filter.artistId } : {}),
+        });
         const idx = await owners.artistIndex();
+        const page =
+          filter.limit === undefined && filter.offset === undefined
+            ? list
+            : list.slice(filter.offset ?? 0, (filter.offset ?? 0) + (filter.limit ?? list.length));
         const statuses = await owners.documentStatuses(
-          list.map((p) => p.documentId).filter((d): d is string => !!d),
+          page.map((p) => p.documentId).filter((d): d is string => !!d),
         );
         return {
           total: list.length,
-          items: list.map((p) => ({
+          items: page.map((p) => ({
             ...p,
             documentStatus: p.documentId ? (statuses.get(p.documentId) ?? 'missing') : 'missing',
             pseudonym: idx.get(p.artistId)?.pseudonym ?? '?',
@@ -187,7 +194,14 @@ export function splitsApi(ctx: FacadeContext) {
       });
     },
     /** Splits with artist names and document status, for the splits page. */
-    listSplits(filter: { isrc?: string; artistId?: string; limit?: number }) {
+    listSplits(filter: {
+      isrc?: string;
+      artistId?: string;
+      limit?: number;
+      offset?: number;
+      /** `unconfirmed`: the document is missing or not approved. */
+      status?: 'unconfirmed';
+    }) {
       return db.snapshot(async () => {
         const list = await splits.listSplits({
           ...(filter.isrc ? { isrc: filter.isrc } : {}),
@@ -197,11 +211,20 @@ export function splitsApi(ctx: FacadeContext) {
         const statuses = await owners.documentStatuses(
           list.map((s) => s.documentId).filter((d): d is string => !!d),
         );
+        const withStatus = list.map((s) => ({
+          s,
+          documentStatus: s.documentId ? (statuses.get(s.documentId) ?? 'missing') : 'missing',
+        }));
+        const kept =
+          filter.status === 'unconfirmed'
+            ? withStatus.filter((x) => x.documentStatus !== 'approved')
+            : withStatus;
+        const from = filter.offset ?? 0;
         return {
-          total: list.length,
-          items: list.slice(0, filter.limit ?? 200).map((s) => ({
+          total: kept.length,
+          items: kept.slice(from, from + (filter.limit ?? 200)).map(({ s, documentStatus }) => ({
             ...s,
-            documentStatus: s.documentId ? (statuses.get(s.documentId) ?? 'missing') : 'missing',
+            documentStatus,
             shares: s.shares.map((x) => ({
               ...x,
               pseudonym: idx.get(x.artistId)?.pseudonym ?? '?',

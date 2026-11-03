@@ -10,6 +10,10 @@ export function ownersRouter(facade: Facade) {
   const { owners } = facade.modules;
   const r = Router();
 
+  r.get('/search', async (req, res) => {
+    const q = parse(S.searchQuery, req.query);
+    res.json(await facade.search(q.q, q.kinds));
+  });
   r.get('/owners', async (_req, res) => res.json(await owners.listOwners()));
   r.post('/owners', async (req, res) => {
     const b = parse(S.createOwnerBody, req.body);
@@ -66,6 +70,7 @@ export function ownersRouter(facade: Facade) {
     }
     res.status(201).json(await owners.createArtist({ pseudonym: b.pseudonym, ownerId: b.ownerId ?? null }));
   });
+  r.get('/artists/duplicates', async (_req, res) => res.json(await facade.artistDuplicates()));
   r.get('/artists/:id', async (req, res) => res.json(await owners.getArtist(param(req, 'id'))));
   r.post('/artists/:id/owner', async (req, res) => {
     await owners.assignArtistOwner(param(req, 'id'), parse(S.assignOwnerBody, req.body).ownerId);
@@ -80,14 +85,15 @@ export function ownersRouter(facade: Facade) {
     const b = parse(S.updateTrackBody, req.body);
     const id = param(req, 'id');
     let track;
-    if (b.isrc !== undefined && b.upc !== undefined) track = await owners.setTrackIdentifiers(id, b.isrc, b.upc);
+    if (b.isrc !== undefined && b.upc !== undefined)
+      track = await owners.setTrackIdentifiers(id, b.isrc, b.upc);
     if (b.note !== undefined) track = await owners.setTrackNote(id, b.note);
     res.json(track);
   });
   r.get('/tracks/:isrc/explain', async (req, res) => res.json(await facade.explainTrack(param(req, 'isrc'))));
 
   r.get('/documents', async (req, res) =>
-    res.json(await owners.listDocuments(parse(S.listQuery, req.query).ownerId)),
+    res.json(await owners.listDocuments(parse(S.documentsQuery, req.query))),
   );
   r.post('/documents', async (req, res) =>
     res.status(201).json(await owners.createDocument(parse(S.createDocumentBody, req.body))),
@@ -96,10 +102,12 @@ export function ownersRouter(facade: Facade) {
     res.json(await owners.attachFile(param(req, 'id'), parse(S.attachFileBody, req.body).fileRef)),
   );
   r.post('/documents/:id/approve', async (req, res) =>
-    res.json(await owners.approveDocument(
+    res.json(
+      await owners.approveDocument(
         param(req, 'id'),
         (res.locals.operator as string | undefined) ?? parse(S.approveBody, req.body ?? {}).by,
-      )),
+      ),
+    ),
   );
   r.post('/contracts', async (req, res) =>
     res.status(201).json(await owners.createContract(parse(S.createContractBody, req.body))),

@@ -464,7 +464,10 @@ export const overviewSchema = z.object({
 export const payoutGateSchema = z.object({
   allowed: z.boolean(),
   reason: z.enum(['owner_not_confirmed', 'payout_blocked', 'nothing_to_pay', 'below_threshold']).nullable(),
-  amountCents: z.number().int().describe('Payable floored to whole cents, 0 when negative: what the button pays'),
+  amountCents: z
+    .number()
+    .int()
+    .describe('Payable floored to whole cents, 0 when negative: what the button pays'),
 });
 export type PayoutGate = z.infer<typeof payoutGateSchema>;
 
@@ -644,6 +647,16 @@ export const operationSchema = z.object({
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
   meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']),
+  ownerName: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Present on GET /settlements/operations (N14); null when the operation has no owner'),
+  pseudonym: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Present on GET /settlements/operations (N14); null when the operation has no artist'),
 });
 export type Operation = z.infer<typeof operationSchema>;
 
@@ -843,3 +856,64 @@ export const payoutSnapshotSchema = z.object({
   }),
 });
 export type PayoutSnapshot = z.infer<typeof payoutSnapshotSchema>;
+
+// ---- search and duplicate pseudonyms (D-143, 17 N10, N11) ----
+
+export const SEARCH_KINDS = ['owners', 'artists', 'tracks', 'documents', 'labels'] as const;
+
+export const searchResultSchema = z.object({
+  owners: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      status: ownerSchema.shape.status,
+      kind: ownerSchema.shape.kind,
+    }),
+  ),
+  artists: z.array(
+    z.object({
+      id: z.string(),
+      pseudonym: z.string(),
+      ownerId: z.string().nullable(),
+      status: artistSchema.shape.status,
+    }),
+  ),
+  tracks: z.array(z.object({ isrc: z.string().nullable(), upc: z.string().nullable(), title: z.string() })),
+  documents: z.array(
+    z.object({ id: z.string(), title: z.string(), kind: z.string(), status: documentSchema.shape.status }),
+  ),
+  labels: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['own', 'sublabel']) })),
+});
+export type SearchResult = z.infer<typeof searchResultSchema>;
+
+export const duplicatesSchema = z.object({
+  groups: z.array(
+    z.object({
+      normalized: z
+        .string()
+        .describe('The pseudonym as compared: NFKC, lower case, punctuation and spaces collapsed'),
+      artists: z.array(
+        z.object({
+          id: z.string(),
+          pseudonym: z.string(),
+          ownerId: z.string().nullable(),
+          ownerName: z.string().nullable(),
+          status: artistSchema.shape.status,
+          splitRows: z.number().int().describe('Split shares that name this artist'),
+          participations: z.number().int(),
+        }),
+      ),
+      candidateIsrcs: z
+        .array(
+          z.object({
+            isrc: z.string(),
+            upc: z.string(),
+            trackTitle: z.string(),
+            net: money,
+          }),
+        )
+        .describe('ISRCs without any split whose Believe artist name equals the pseudonym'),
+    }),
+  ),
+});
+export type DuplicateGroups = z.infer<typeof duplicatesSchema>;

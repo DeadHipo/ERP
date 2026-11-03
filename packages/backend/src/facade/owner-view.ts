@@ -1,4 +1,5 @@
 import { RuleViolationError } from '../shared/errors';
+import type { OperationFilter } from '../modules/settlements';
 import type { FacadeContext } from './context';
 
 export function ownerViewApi(ctx: FacadeContext) {
@@ -19,6 +20,26 @@ export function ownerViewApi(ctx: FacadeContext) {
           contracts: await owners.contractsOfOwner(owner.id),
           publishingTerms: await publishing.termsOf([owner.id]),
         };
+      });
+    },
+
+    /**
+     * Operations with the owner name and the pseudonym (N14). The filters run in SQL (`needsProof` = an active payout
+     * without a payment proof); the names come from module 1 in the same snapshot.
+     */
+    listOperations(filter: OperationFilter = {}) {
+      return db.snapshot(async () => {
+        const [ops, ownerList, idx] = await Promise.all([
+          settlements.listOperations(filter),
+          owners.listOwners(),
+          owners.artistIndex(),
+        ]);
+        const ownerName = new Map(ownerList.map((o) => [o.id, o.name]));
+        return ops.map((o) => ({
+          ...o,
+          ownerName: o.ownerId ? (ownerName.get(o.ownerId) ?? null) : null,
+          pseudonym: o.artistId ? (idx.get(o.artistId)?.pseudonym ?? null) : null,
+        }));
       });
     },
 

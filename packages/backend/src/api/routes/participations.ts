@@ -13,6 +13,8 @@ export function participationsRouter(facade: Facade) {
       await facade.listParticipations({
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
+        ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        ...(q.offset !== undefined ? { offset: q.offset } : {}),
       }),
     );
   });

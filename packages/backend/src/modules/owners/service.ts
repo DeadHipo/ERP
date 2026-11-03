@@ -1,5 +1,5 @@
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
-import { assertIsrc, newId, normalizeName, normalizeUpc } from '../../shared/identifiers';
+import { assertIsrc, newId, normalizeIsrc, normalizeName, normalizeUpc } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
 import type {
@@ -625,8 +625,56 @@ export function createOwnersService(db: Db) {
       return toDocumentView(d);
     },
 
-    async listDocuments(ownerId?: string): Promise<DocumentView[]> {
-      return (await repo.listDocuments(ownerId)).map(toDocumentView);
+    async listDocuments(
+      filter:
+        | string
+        | { ownerId?: string; status?: DocumentStatus; kind?: string; q?: string; limit?: number } = {},
+    ): Promise<DocumentView[]> {
+      const f = typeof filter === 'string' ? { ownerId: filter } : filter;
+      return (await repo.listDocuments(f)).map(toDocumentView);
+    },
+
+    /**
+     * The global search (N10): live owners (name or alias), pseudonyms, tracks (an exact ISRC / UPC first), documents
+     * (title). `kinds` restricts what is read; at most `limit` per kind. Statuses are those of the lists.
+     */
+    async search(q: string, limit: number, kinds: ReadonlySet<string>) {
+      const needle = q.trim();
+      const none = needle === '';
+      const [ownerRows, artistRows, trackRows, docRows, confirmedOwners, confirmedArtists] =
+        await db.snapshot(() =>
+          Promise.all([
+            kinds.has('owners') && !none ? repo.searchOwners(needle, limit) : [],
+            kinds.has('artists') && !none ? repo.searchArtists(needle, limit) : [],
+            kinds.has('tracks') && !none
+              ? repo.searchTracks(needle, normalizeIsrc(needle), normalizeUpc(needle), limit)
+              : [],
+            kinds.has('documents') && !none ? repo.searchDocuments(needle, limit) : [],
+            kinds.has('owners') && !none ? confirmedOwnerIds() : new Set<string>(),
+            kinds.has('artists') && !none ? confirmedArtistIds() : new Set<string>(),
+          ]),
+        );
+      return {
+        owners: ownerRows.map((o) => ({
+          id: o.id,
+          name: o.name,
+          status: (confirmedOwners.has(o.id) ? 'confirmed' : 'waiting_documents') as OwnerView['status'],
+          kind: o.kind,
+        })),
+        artists: artistRows.map((a) => ({
+          id: a.id,
+          pseudonym: a.pseudonym,
+          ownerId: a.ownerId,
+          status: artistStatus(a.ownerId, a.id, confirmedArtists),
+        })),
+        tracks: trackRows.map((t) => ({ isrc: t.isrc, upc: t.upc, title: t.title })),
+        documents: docRows.map((d) => ({
+          id: d.id,
+          title: d.title,
+          kind: d.kind,
+          status: documentStatus(d),
+        })),
+      };
     },
 
     async documentStatuses(ids: string[]): Promise<Map<string, DocumentStatus>> {

@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { Decimal } from '../../shared/money';
 import { labelAliases, labelRules, labels } from './schema';
@@ -9,6 +9,9 @@ export type RuleRow = typeof labelRules.$inferSelect;
 
 /** PostgreSQL pads numeric(9,6) with zeros; the application keeps percents as they were entered. */
 const canonicalRule = (r: RuleRow): RuleRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
+
+const containsText = (col: AnyColumn, q: string): SQL =>
+  sql`lower(${col}) like ${`%${q.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`} escape '\\'`;
 
 /** All SQL of the labels module lives here (schema `labels`). */
 export function createLabelsRepository(db: Db) {
@@ -25,6 +28,19 @@ export function createLabelsRepository(db: Db) {
     insertAlias: async (row: typeof labelAliases.$inferInsert) => {
       await orm().insert(labelAliases).values(row);
     },
+    /** Substring search (N10): the name or any alias of the label. */
+    searchLabels: (q: string, limit: number) =>
+      orm()
+        .select()
+        .from(labels)
+        .where(
+          or(
+            containsText(labels.name, q),
+            sql`${labels.id} in (select ${labelAliases.labelId} from ${labelAliases} where ${containsText(labelAliases.alias, q)})`,
+          ),
+        )
+        .orderBy(asc(labels.name), asc(labels.id))
+        .limit(limit),
     allAliases: () => orm().select().from(labelAliases).orderBy(asc(labelAliases.aliasNorm)),
     insertRule: async (row: typeof labelRules.$inferInsert) => {
       await orm().insert(labelRules).values(row);

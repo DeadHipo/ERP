@@ -103,6 +103,8 @@ describe('API contract', () => {
     const a2 = await call('post', '/artists', { body: { pseudonym: 'Synth Two' } });
     await call('post', '/artists/:id/owner', { params: { id: a2.id }, body: { ownerId: other.id } });
     await call('get', '/artists');
+    await call('get', '/artists/duplicates');
+    await call('get', '/search', { query: { q: 'synth', kinds: 'owners,artists' } });
     await call('get', '/artists/:id', { params: { id: a1.id } });
     const t1 = await call('post', '/tracks', { body: { title: 'Track One', isrc: I1, upc: UPC } });
     await call('post', '/tracks', { body: { title: 'Track Two', isrc: I2, upc: UPC } });
@@ -136,6 +138,10 @@ describe('API contract', () => {
       body: { kind: 'buyout', title: 'Buyout', fileRef: 'dummy://b.pdf', requiresApproval: false },
     });
     await call('get', '/documents', { query: { ownerId: owner.id } });
+    const filtered = await call('get', '/documents', {
+      query: { status: 'not_attached', kind: 'buyout', q: 'buy', limit: '5' },
+    });
+    expect(filtered).toEqual([]);
 
     // splits
     await call('post', '/splits', {
@@ -165,6 +171,7 @@ describe('API contract', () => {
       body: { isrcs: [I2], sellerArtistId: a1.id, effectiveFrom: '2026-06-01', documentId: buyoutDoc.id },
     });
     await call('get', '/splits', { query: { isrc: I1 } });
+    await call('get', '/splits', { query: { status: 'unconfirmed', limit: '1', offset: '0' } });
     await call('post', '/splits', {
       body: {
         isrc: I3,
@@ -209,6 +216,8 @@ describe('API contract', () => {
     expect(part.validFrom).toBe('2026-03-01');
     const plist = await call('get', '/participations', { query: { isrc: I1 } });
     expect(plist.total).toBe(1);
+    const ppage = await call('get', '/participations', { query: { limit: '1', offset: '1' } });
+    expect(ppage.items).toEqual([]);
     await call('post', '/participations/:id/close', {
       params: { id: part.id },
       body: { validTo: '2026-09-01' },
@@ -287,6 +296,10 @@ describe('API contract', () => {
       body: { fileRef: 'dummy://r.pdf', date: '2099-12-31', comment: 'bounced' },
     });
     await call('get', '/settlements/operations');
+    const needing = await call('get', '/settlements/operations', {
+      query: { ownerId: owner.id, meaning: 'payout', direction: 'out', needsProof: 'true', active: 'true', from: '2000-01-01', to: '2100-01-01' },
+    });
+    expect(Array.isArray(needing)).toBe(true);
 
     await call('post', '/owners/merge', {
       body: { fromId: other.id, intoId: owner.id, reason: 'same person' },

@@ -9,8 +9,19 @@ export function settlementsRouter(facade: Facade) {
   const r = Router();
 
   r.get('/settlements/operations', async (req, res) => {
-    const ownerId = parse(S.listQuery, req.query).ownerId;
-    res.json(await settlements.listOperations(ownerId ? { ownerId } : {}));
+    const q = parse(S.operationsQuery, req.query);
+    res.json(
+      await facade.listOperations({
+        ...(q.ownerId ? { ownerId: q.ownerId } : {}),
+        ...(q.artistId ? { artistId: q.artistId } : {}),
+        ...(q.meaning ? { meaning: q.meaning } : {}),
+        ...(q.direction ? { direction: q.direction } : {}),
+        ...(q.needsProof ? { needsProof: q.needsProof === 'true' } : {}),
+        ...(q.active ? { active: q.active === 'true' } : {}),
+        ...(q.from ? { from: q.from } : {}),
+        ...(q.to ? { to: q.to } : {}),
+      }),
+    );
   });
   r.post('/settlements/operations', async (req, res) =>
     res.status(201).json(await facade.createOperation(parse(S.createOperationBody, req.body))),

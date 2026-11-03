@@ -308,6 +308,19 @@ export function createBelieveColumnar(
       ).then((rows) => rows.map((r) => ({ upc: r.upc, net: r.total })));
     },
 
+    /** Net per (ISRC, UPC) of the given ISRCs over the given files, from the `units` view; exact decimal text. */
+    async netByIsrc(
+      fileIds: string[],
+      isrcs: string[],
+    ): Promise<{ isrc: string; upc: string; net: string }[]> {
+      if (fileIds.length === 0 || isrcs.length === 0) return [];
+      return json<{ isrc: string; upc: string; total: string }>(
+        `SELECT isrc, upc, toString(sum(net_revenue)) AS total FROM ${DB}.units
+         WHERE file_id IN {ids:Array(UUID)} AND isrc IN {isrcs:Array(String)} GROUP BY isrc, upc ORDER BY isrc, upc`,
+        { ids: fileIds, isrcs },
+      ).then((rows) => rows.map((r) => ({ isrc: r.isrc, upc: r.upc, net: r.total })));
+    },
+
     /** Names per (ISRC, UPC) from the latest report month in which the pair appears (metadata only). */
     async pairNames(fileIds: string[]): Promise<
       {

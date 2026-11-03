@@ -14,6 +14,8 @@ export function splitsRouter(facade: Facade) {
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
         limit: q.limit ?? 200,
+        ...(q.offset !== undefined ? { offset: q.offset } : {}),
+        ...(q.status ? { status: q.status } : {}),
       }),
     );
   });

@@ -14,6 +14,7 @@ import { ownerViewApi } from './owner-view';
 import { payoutsApi } from './payouts';
 import { auditApi } from './audit';
 import { aggregatesApi } from './aggregates';
+import { searchApi } from './search';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -58,6 +59,7 @@ export function openFacade(config: FacadeConfig) {
     ...ownerViewApi(ctx),
     ...payoutsApi(ctx),
     ...auditApi(ctx),
+    ...searchApi(ctx),
   };
 }
 

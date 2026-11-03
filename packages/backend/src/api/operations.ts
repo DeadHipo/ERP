@@ -47,6 +47,17 @@ const operations: ApiOperation[] = [
     response: z.object({ ok: z.boolean() }),
   },
 
+  {
+    method: 'get',
+    path: '/search',
+    tag: 'system',
+    summary:
+      'Global search: owners (name, aliases), pseudonyms, tracks, documents, labels; at most 10 per kind (17 N10)',
+    query: S.searchQuery,
+    response: R.searchResultSchema,
+    errors: ['400 validation_error: q is empty or kinds has an unknown kind'],
+  },
+
   // ---- owners ----
   {
     method: 'get',
@@ -77,7 +88,8 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners/payables',
     tag: 'owners',
-    summary: 'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4)',
+    summary:
+      'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4)',
     query: S.payablesQuery,
     response: R.payablesSchema,
   },
@@ -114,6 +126,14 @@ const operations: ApiOperation[] = [
     tag: 'artists',
     summary: 'Artists (merged ones are folded into the survivor)',
     response: list(R.artistListItemSchema),
+  },
+  {
+    method: 'get',
+    path: '/artists/duplicates',
+    tag: 'artists',
+    summary:
+      'Groups of artists with the same normalised pseudonym, with usage and ISRCs without a split (17 N11)',
+    response: R.duplicatesSchema,
   },
   {
     method: 'post',
@@ -158,7 +178,8 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/summary',
     tag: 'tracks',
-    summary: 'Every track with B, C, ours and net from one calculation, optionally for one account and report month (17 N5)',
+    summary:
+      'Every track with B, C, ours and net from one calculation, optionally for one account and report month (17 N5)',
     query: S.trackSummaryQuery,
     response: R.trackSummarySchema,
   },
@@ -180,7 +201,8 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/releases',
     tag: 'releases',
-    summary: 'Releases (UPC) with track count and net of the loaded files; q filters UPC, title, artist (17 N8)',
+    summary:
+      'Releases (UPC) with track count and net of the loaded files; q filters UPC, title, artist (17 N8)',
     query: S.releasesQuery,
     response: R.releasesSchema,
   },
@@ -211,8 +233,8 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/documents',
     tag: 'documents',
-    summary: 'Documents, optionally of one owner',
-    query: S.listQuery,
+    summary: 'Documents, filtered by owner, status, kind and a title substring (17 N12)',
+    query: S.documentsQuery,
     response: list(R.documentSchema),
   },
   {
@@ -485,8 +507,8 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/settlements/operations',
     tag: 'settlements',
-    summary: 'Operations, optionally of one owner',
-    query: S.listQuery,
+    summary: 'Operations with the owner name and pseudonym, filtered (17 N14)',
+    query: S.operationsQuery,
     response: list(R.operationSchema),
   },
   {
