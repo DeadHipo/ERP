@@ -149,7 +149,7 @@ interface OwnerLine {
   mainAds: Decimal; mainBalance: Decimal; erpEarnedB: Decimal; erpWaiting: Decimal; erpPaid: Decimal; erpRecouped: Decimal;
   erpPayable: Decimal; diff: Decimal; monthsOff: number; monthsOffAbs: Decimal; worst: string; guess: string;
   waitingByReason: string; noRecap: number; overpayment: Decimal;
-  mainAdsCharged: Decimal; erpAdsRecouped: Decimal; erpAdsRemaining: Decimal;
+  mainAdsCharged: Decimal; erpAdsCharged: Decimal;
 }
 // Ads charged in Main (the "expense posted" column, D-156): they lower the Main balance like the ERP ad debts lower payable.
 const adsCharged = new Map<string, Decimal>();
@@ -214,7 +214,7 @@ for (const ownerId of matchedOwners) {
     erpWaiting: bal.total.waiting, erpPaid, erpRecouped: bal.total.recouped, erpPayable: bal.total.payable, diff,
     monthsOff: mdiff.n + pdiff.n, monthsOffAbs: mdiff.abs.add(pdiff.abs), worst: mdiff.worst || pdiff.worst,
     guess: tags.join(' + '), waitingByReason, noRecap: main.noRecapRows, overpayment: main.overpayment,
-    mainAdsCharged, erpAdsRecouped: bal.total.adsRecouped, erpAdsRemaining: sum(bal.ads.map((a) => a.remaining)),
+    mainAdsCharged, erpAdsCharged: bal.total.adsCharged,
   });
 }
 
@@ -256,12 +256,7 @@ md.table(
     ['Owners with |payable − Main balance| > 1.00', `${bad.length} of ${lines.length}`],
     ['Σ|diff| over those owners', money(sum(bad.map((l) => l.diff.abs())))],
     ['Σ Main ads charged (posted ads, D-156)', money(sum(lines.map((l) => l.mainAdsCharged)))],
-    ['Σ ERP ads recouped (from ERP income)', money(sum(lines.map((l) => l.erpAdsRecouped)))],
-    ['Σ ERP ad debt not yet recouped (waits for income)', money(sum(lines.map((l) => l.erpAdsRemaining)))],
-    [
-      'Owners with |payable − ad debt left − Main balance| > 1.00 (as if the debt were taken at once, like Main)',
-      `${lines.filter((l) => l.diff.sub(l.erpAdsRemaining).abs().gt(T)).length} of ${lines.length}; Σ|diff| ${money(sum(lines.map((l) => l.diff.sub(l.erpAdsRemaining).abs()).filter((d) => d.gt(T))))}`,
-    ],
+    ['Σ ERP ads charged (taken off payable at once, D-157)', money(sum(lines.map((l) => l.erpAdsCharged)))],
   ],
 );
 

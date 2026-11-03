@@ -190,30 +190,33 @@ describe('ads: the owner balance (stack)', () => {
     const { created } = await f.createAds([{ isrc: I1, month: '2026-07', amount: '40' }]);
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.payable.toFixed()).toBe('20');
-    expect(b.total.adsRecouped.toFixed()).toBe('40');
-    expect(b.ads.map((x) => [x.isrc, x.amount.toFixed(), x.recouped.toFixed(), x.role])).toEqual([[I1, '40', '40', 'artist']]);
+    expect(b.total.adsCharged.toFixed()).toBe('40');
+    expect(b.total.recouped.toFixed()).toBe('0'); // not recouped: taken off at once (D-157)
+    expect(b.ads.map((x) => [x.isrc, x.amount.toFixed(), x.role])).toEqual([[I1, '40', 'artist']]);
     const id = created[0]?.id as string;
     await f.updateAd(id, { recoveryPercent: '0' });
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('60');
-    // an expense dated after the income still recoups it (no date limit): largest first, capped by the income
+    // D-157: charged at once and in full, above the income too: payable goes negative (shown as 0)
     await f.updateAd(id, { recoveryPercent: '100' });
     await f.createAds([{ isrc: I1, month: '2026-12', amount: '100' }]);
     const more = await f.ownerBalance(a.owner.id);
-    expect(more.total.payable.toFixed()).toBe('0');
-    expect(more.ads.map((x) => [x.amount.toFixed(), x.remaining.toFixed()])).toEqual([
-      ['100', '40'],
-      ['40', '40'],
+    expect(more.total.adsCharged.toFixed()).toBe('140');
+    expect(more.total.payable.toFixed()).toBe('-80');
+    expect(more.total.payableShown.toFixed()).toBe('0');
+    expect(more.total.payableNegative).toBe(true);
+    expect(more.ads.map((x) => [x.month, x.amount.toFixed()])).toEqual([
+      ['2026-12', '100'],
+      ['2026-07', '40'],
     ]);
   });
 
-  it('scope isrc recoups only the income of that ISRC; deactivation removes the debt', async () => {
+  it('the whole amount is charged whatever the income of the ISRC; deactivation removes it', async () => {
     const f = await newFacade();
     const { a } = await stackWorld(f);
     const { created } = await f.createAds([{ isrc: I2, month: '2026-07', amount: '30', scope: 'isrc' }]);
     const b = await f.ownerBalance(a.owner.id);
-    expect(b.total.adsRecouped.toFixed()).toBe('10'); // I2 gives the artist 10 only
-    expect(b.ads[0]?.remaining.toFixed()).toBe('20');
-    expect(b.total.payable.toFixed()).toBe('50');
+    expect(b.total.adsCharged.toFixed()).toBe('30'); // I2 gives the artist 10 only, the 30 is charged anyway
+    expect(b.total.payable.toFixed()).toBe('30');
     await f.deactivateAd(created[0]?.id as string, 'entered twice');
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('60');
     expect((await f.listAds()).count).toBe(0);
@@ -252,8 +255,9 @@ describe('ads: the owner balance (stack)', () => {
     expect(list.items[0]?.allocation?.borneBy).toMatchObject({ kind: 'sublabel', artistId: subOwner.artist.id });
     expect(list.items[0]?.allocation?.parts.map((p) => [p.pseudonym, p.recovered.toFixed()])).toEqual([['A1', '3']]);
     const subBalance = await f.ownerBalance(subOwner.owner.id);
-    expect(subBalance.total.adsRecouped.toFixed()).toBe('7'); // its sublabel share of I2 in August is 10
-    expect((await f.ownerBalance(a.owner.id)).total.adsRecouped.toFixed()).toBe('3');
+    expect(subBalance.total.adsCharged.toFixed()).toBe('7');
+    expect(subBalance.total.payable.toFixed()).toBe('3'); // its sublabel share of I2 in August is 10
+    expect((await f.ownerBalance(a.owner.id)).total.adsCharged.toFixed()).toBe('3');
     const summary = await f.adsSummary();
     expect(summary.rows.map((r) => [r.month, r.label, r.borneBySublabels.toFixed(), r.recoveredFromArtists.toFixed()])).toEqual([
       ['2026-08', '0to8', '7', '3'],

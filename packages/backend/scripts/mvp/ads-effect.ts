@@ -27,6 +27,8 @@ try {
     owners: items.length,
     positive: { count: pos.length, payable: sum(pos) },
     negative: { count: neg.length, payable: sum(neg) },
+    negativeBelow10: { count: neg.filter((i) => i.payable.lt(-10)).length, payable: sum(neg.filter((i) => i.payable.lt(-10))) },
+    negativeBelow1000: { count: neg.filter((i) => i.payable.lt(-1000)).length, payable: sum(neg.filter((i) => i.payable.lt(-1000))) },
     ads: {
       records: s.rows.reduce((a, r) => a + r.count, 0),
       amount: tot('amount'),

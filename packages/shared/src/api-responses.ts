@@ -507,7 +507,7 @@ export const balanceSchema = z.object({
     earned: money,
     waiting: money,
     recouped: money,
-    adsRecouped: money.describe('The part of recouped taken by advertising expenses (D-156)'),
+    adsCharged: money.describe('Advertising charged to the owner, taken off payable at once (D-157)'),
     paid: money,
     returns: money,
     credits: money,
@@ -562,12 +562,9 @@ export const balanceSchema = z.object({
         artistId: z.string(),
         role: z.enum(['artist', 'sublabel']),
         amount: money,
-        recouped: money,
-        remaining: money,
-        scope: z.object({ kind: z.string() }),
       }),
     )
-    .describe('Advertising debts of the owner (D-156), recouped with the operations, largest first'),
+    .describe('Advertising charged to the owner (D-157): taken off payable at once, newest month first'),
   pendingOperations: z.array(z.object({ operationId: z.string(), why: z.string() })),
   blockingPayouts: z.array(z.string()),
 });
@@ -856,7 +853,7 @@ export const payoutSnapshotSchema = z.object({
   ownerId: z.string(),
   amountCents: z.number().int(),
   payableExact: money,
-  total: balanceSchema.shape.total.extend({ adsRecouped: money.optional() }),
+  total: balanceSchema.shape.total.extend({ adsCharged: money.optional() }),
   payoutByArtist: z.array(z.object({ key: z.string(), label: z.string(), net: money, shareOfPayout: money })),
   perArtist: z.array(
     z.object({
@@ -871,7 +868,7 @@ export const payoutSnapshotSchema = z.object({
   ),
   publishing: balanceSchema.shape.publishing,
   positions: balanceSchema.shape.positions,
-  ads: balanceSchema.shape.ads.optional().describe('Advertising debts at the payout (absent in snapshots before D-156)'),
+  ads: balanceSchema.shape.ads.optional().describe('Advertising charged at the payout (absent in snapshots before D-156)'),
   files: z.object({
     believe: z.array(
       z.object({ id: z.string(), sha256: z.string(), reportingMonth: month, fileName: z.string() }),

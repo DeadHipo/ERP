@@ -135,7 +135,10 @@ export function scopeOf(r: Pick<AdResult, 'scope' | 'isrc'>, bearer: 'artist' | 
   return { kind: 'any' };
 }
 
-/** A debt position of an owner made by an expense, with what it is for (the balance shows it). */
+/**
+ * An amount an expense charges to an owner, with what it is for. The balance takes it off payable at once (D-157); the
+ * scope is kept on the record but no longer decides anything about money.
+ */
 export interface AdPosition extends Position {
   adId: string;
   isrc: string | null;
@@ -143,7 +146,7 @@ export interface AdPosition extends Position {
   role: 'artist' | 'sublabel';
 }
 
-/** Every debt position of every owner, by owner (the balance reads its own; no date limit, D-155). */
+/** Every charge of every owner, by owner (the balance reads its own). */
 export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[]> {
   const out = new Map<string, AdPosition[]>();
   const add = (p: AdPosition) => {
