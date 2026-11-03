@@ -3,6 +3,7 @@
  * ClickHouse `believe_<name>` / `believe_<name>_stage`. Used by the Playwright global teardown (unless E2E_KEEP=1).
  * Never touches the development databases: the name must be a-z, 0-9, _ and not empty.
  */
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { clickHouseConfigFromEnv, createClickHouse } from '../../src/shared/clickhouse';
 import { createPostgres, postgresConfigFromEnv } from '../../src/shared/postgres';
@@ -25,6 +26,12 @@ try {
   await admin.pool.query(`DROP DATABASE IF EXISTS erp_${name} WITH (FORCE)`);
   await ch.command({ query: `DROP DATABASE IF EXISTS believe_${name} SYNC` });
   await ch.command({ query: `DROP DATABASE IF EXISTS believe_${name}_stage SYNC` });
+  if (name !== 'e2e') {
+    // a named check run (seed.ts <name>) also leaves its originals and keys file under data/test-tmp
+    const tmp = join(import.meta.dirname, '..', '..', '..', '..', 'data', 'test-tmp');
+    rmSync(join(tmp, `e2e-data-${name}`), { recursive: true, force: true });
+    rmSync(join(tmp, `e2e-keys-${name}.json`), { force: true });
+  }
   console.log(`dropped erp_${name}, believe_${name}, believe_${name}_stage`);
 } finally {
   await admin.close();

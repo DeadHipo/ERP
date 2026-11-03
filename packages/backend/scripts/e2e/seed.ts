@@ -1,14 +1,18 @@
 /**
  * Seeds the private stores of the e2e run (D-140): `tsx scripts/e2e/seed.ts <name>` drops and creates PostgreSQL
  * `erp_<name>` and ClickHouse `believe_<name>` (+ `_stage`) with all migrations, opens a facade on them and runs the
- * scenarios of `./scenarios`. Prints the store names; the API is then started with `DB_DATABASE=erp_<name>
- * CLICKHOUSE_DATABASE=believe_<name>`. Synthetic data only.
+ * scenarios of `./scenarios` (S00 shared, S01..S37), then loads the one B17 statement they collected. The originals
+ * are written under the API data directory (`data/test-tmp/e2e-data` for the name `e2e`, `e2e-data-<name>` otherwise),
+ * the ids per scenario to `data/test-tmp/e2e-keys[-<name>].json` and, for `e2e`, to `packages/frontend/e2e/.seed-keys.json`.
+ * Prints the store names and a summary table. Synthetic data only.
  */
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openFacade } from '../../src/facade';
 import { createBelieveColumnar, createSourceFilesRegistry, createSourcesService } from '../../src/modules/sources';
 import { createPrivateStores } from '../../src/shared/private-stores';
+import { B17_FILE_NAME, type SeedKeys } from './keys';
+import { Seed } from './lib';
 import { scenarios } from './scenarios';
 
 try {
@@ -24,7 +28,12 @@ if (!name || !/^[a-z0-9_]+$/.test(name)) {
 }
 
 const repoRoot = join(import.meta.dirname, '..', '..', '..', '..');
-const dataDir = join(repoRoot, 'data', 'test-tmp', `e2e-${name}`);
+const testTmp = join(repoRoot, 'data', 'test-tmp');
+const dataDir = join(testTmp, name === 'e2e' ? 'e2e-data' : `e2e-data-${name}`);
+const tmpDir = join(dataDir, 'seed-tmp');
+// a fresh run starts from empty originals (the stores are dropped below)
+rmSync(join(dataDir, 'files'), { recursive: true, force: true });
+rmSync(tmpDir, { recursive: true, force: true });
 mkdirSync(dataDir, { recursive: true });
 
 const stores = await createPrivateStores(name, { dropFirst: true });
@@ -35,13 +44,45 @@ try {
       database: stores.names.ch,
       stageDatabase: stores.names.chStage,
     }),
-    storageDir: join(dataDir, 'sources'),
+    // the same place the API (main.ts <dataDir>) keeps the originals
+    storageDir: join(dataDir, 'files', 'sources'),
   });
   const facade = openFacade({ db: stores.db, dataDir, payoutThresholdCents: 0, sources });
+  const seed = new Seed(facade, dataDir, tmpDir);
   for (const s of scenarios) {
     console.log(`scenario ${s.id}`);
-    await s.run(facade, { names: stores.names, dataDir });
+    await s.run(facade, { names: stores.names, dataDir, seed });
   }
+  console.log('loading the B17 statement');
+  const b17 = await seed.loadB17();
+
+  const keys: SeedKeys = {
+    scenarios: seed.keys,
+    shared: seed.shared,
+    stores: stores.names,
+    dataDir,
+    b17FileName: B17_FILE_NAME,
+  };
+  const keysPath = join(testTmp, name === 'e2e' ? 'e2e-keys.json' : `e2e-keys-${name}.json`);
+  writeFileSync(keysPath, JSON.stringify(keys, null, 2));
+  if (name === 'e2e') {
+    const frontendCopy = join(repoRoot, 'packages', 'frontend', 'e2e', '.seed-keys.json');
+    mkdirSync(join(repoRoot, 'packages', 'frontend', 'e2e'), { recursive: true });
+    copyFileSync(keysPath, frontendCopy);
+  }
+  rmSync(tmpDir, { recursive: true, force: true });
+
+  console.log('\nscenario  cases  files  units');
+  let files = 0;
+  let units = 0;
+  for (const [id, st] of [...seed.stats].sort(([a], [b]) => a.localeCompare(b))) {
+    const cases = Object.keys(seed.keys[id] ?? {}).length;
+    console.log(`${id.padEnd(8)}  ${String(cases).padStart(5)}  ${String(st.files).padStart(5)}  ${String(st.units).padStart(5)}`);
+    files += st.files;
+    units += st.units;
+  }
+  console.log(`total            ${String(files).padStart(5)}  ${String(units).padStart(5)}   + B17: ${b17.lines} lines`);
+  console.log(`keys: ${keysPath}`);
   console.log(`seeded: DB_DATABASE=${stores.names.pg} CLICKHOUSE_DATABASE=${stores.names.ch} (stage ${stores.names.chStage})`);
 } finally {
   await stores.close();

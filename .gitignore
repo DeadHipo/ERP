@@ -24,3 +24,5 @@ __pycache__/
 packages/frontend/test-results/
 packages/frontend/playwright-report/
 packages/frontend/e2e/.auth/
+
+packages/frontend/e2e/.seed-keys.json
