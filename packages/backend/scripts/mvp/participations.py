@@ -1,6 +1,9 @@
 #!/usr/bin/env python3 -I
 """Stage 4.3: participations and split rewrites as API-ready records (read-only sources)."""
 import json, re, sys, csv, collections, datetime
+
+# The settlement participant's pseudonym contains a person's name: it is read from a git-ignored file, never written here.
+SETTLEMENT_PARTICIPANT = __import__('json').load(open('data/mvp-load/private_names.json', encoding='utf-8'))['settlement_participant']
 sys.path.insert(0, '/Users/nearlydeadhipo/Desktop/0to8/ERP/packages/backend/scripts/mvp')
 from common import *
 
@@ -119,19 +122,19 @@ for isrc in SCF:
 R = json.load(open(SP + '/v7_Sch3AРоялти.json'))[2:]
 sett = collections.OrderedDict()
 for r in R:
-    if str(r[0]).startswith('LAS CANCIONES') and str(r[5]) == '15.0' and str(r[14]).startswith('2026-02'):
+    if str(r[0]).startswith(SETTLEMENT_PARTICIPANT[:13]) and str(r[5]) == '15.0' and str(r[14]).startswith('2026-02'):
         sett[r[2]] = r
-allsett = {r[2] for r in R if str(r[0]).startswith('LAS CANCIONES')}
+allsett = {r[2] for r in R if str(r[0]).startswith(SETTLEMENT_PARTICIPANT[:13])}
 DOC_SET = {'title': 'Confidential settlement and mutual release, 27 February 2026 (the file name carries the counterparty legal name, not reproduced)', 'path': 'context_data/для_разработчика_37_документов_2026-11-02/3.11 Disputes/<settlement, 27.02.2026>.pdf', 'pack': 'P14 / 3.11 Disputes'}
 for isrc in sett:
-    rec('settlement_15', isrc, who('LAS CANCIONES DE ALFREDO LARIN'), 15, 'net', 'label_share', None, '2026-02-01', None, DOC_SET, 'owner_decision_6 + contract',
+    rec('settlement_15', isrc, who(SETTLEMENT_PARTICIPANT), 15, 'net', 'label_share', None, '2026-02-01', None, DOC_SET, 'owner_decision_6 + contract',
         'from 2026-02-01 (owner decision 6: 15%% from 2026-02-27, floored to the month start by M52); before that the share was settled by the lump (USD 100,000) which is a document only; the label pays from its share (on 50/50: participant 15, artists 50, label 35)',
         v7Period=sett[isrc][14], inV7Registry=True)
 settlement_extra = {'isrcCount': len(sett), 'isrcInAnyV7Row': len(allsett), 'isrcOnlyBeforeFeb2026': sorted(allsett - set(sett)),
     'source': 'registry v7 sheet "Sch3A Роялти" rows of the recipient with rate 15 and period starting 2026-02 (the Annex Sch3A row 3 lists no ISRC; v7 Sch3A "Участия вне сплита" says 30 recordings)',
     'lump': 'USD 100,000 is the consideration for past uses: a document only, no money row (M33, 11 plan 4.5)'}
 rows_now = {isrc: erp_now(isrc) for isrc in sett}
-settlement_extra['isrcWithRecipientAsSplitRowNow'] = sorted(i for i, n in rows_now.items() if n and any(x['pseudonym'] == 'LAS CANCIONES DE ALFREDO LARIN' for x in n['rows']))
+settlement_extra['isrcWithRecipientAsSplitRowNow'] = sorted(i for i, n in rows_now.items() if n and any(x['pseudonym'] == SETTLEMENT_PARTICIPANT for x in n['rows']))
 
 # ---------- 4. Maximum Madness (3y from release), Matra (5y from agreement), XENO XID
 T = json.load(open(SP + '/part_texts.json'))
