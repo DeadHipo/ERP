@@ -10,6 +10,7 @@ import { signals } from './ru/signals';
 import { status } from './ru/status';
 import { catalog } from './ru/catalog';
 import { money } from './ru/money';
+import { reference } from './ru/reference';
 import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
 /** The one Russian dictionary of the interface, split by domain. A "t" is just importing `ru`. */
@@ -32,6 +33,7 @@ export const ru = {
   actions,
   catalog,
   money,
+  reference,
 } as const;
 
 /** Russian plural form: `plural(21, ['файл', 'файла', 'файлов'])` gives `файл`. */
