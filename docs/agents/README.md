@@ -17,7 +17,8 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [13_completeness_check.md](13_completeness_check.md) | The A = B + C + ours check on the loaded data, per source, account and month (stage 5/6) |
 | [14_verification.md](14_verification.md) | Stage 6 verification: what was checked against the workbooks and the old ERP, and the differences found |
 | [15_mvp_report.md](15_mvp_report.md) | The MVP report: what is closed, what is open for the owner, which assumptions the money depends on |
-| [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) |
+| [16_frontend_jobs.md](16_frontend_jobs.md) | The frontend goal, stage 1: the operator's jobs by cadence, where the answer comes from today, every C reason and signal with its action, what the API and pages answer, the endpoint gaps, what to take from zero-erp |
+| [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) and of the frontend goal (`frontend_stageN_*.md`) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
 `packages/backend/src/modules/*/` (six modules), `packages/backend/src/facade/`, `packages/backend/tests/`, `packages/frontend/`.
