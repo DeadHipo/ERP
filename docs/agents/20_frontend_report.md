@@ -91,8 +91,9 @@ allocation to 12 decimals equal to the API.
 | 3fecfb7a | DJ MH | −48,664.84 | 0,00 / nothing_to_pay | −48,464.68 | −200.16 (E2 carve, D-137) |
 | 9272ef5f | qaraqshy | 26,768.63 | 26 768,63 / allowed | 26,768.63 | 0 |
 
-`14` §4.2 was measured before D-137 / D-138; the three changed figures reconcile to the cent with the documented
-changes. A negative payable shows 0,00 with the red banner and the exact value in `title`.
+`14` §4.2 was measured before D-137 / D-138; `14` §11 (added with this report) re-measures the same ten owners and ten
+tracks after those changes from the API, so the screen, the API and `14` carry one figure. A negative payable shows
+0,00 with the red banner and the exact value in `title`.
 
 **The queue and the signals** (screen = `GET /overview` and `GET /signals`): owner_unconfirmed 1,114,884.25 (545
 groups), split_unconfirmed 454,219.20, publishing_terms_unconfirmed 325,405.99, assumption 144,195.41,
@@ -218,13 +219,13 @@ because the dev database is read-only for agents.
 | 4 imprint list (Q12) | queue `assumption` (rule documents), Лейблы, P3 15.3.4 | replace the rule's document (close + re-create) or alias (S16, S17) |
 | 5 Main carve pairs | queue `assumption` (participation documents), P3 15.3.5 | replace (close + re-create the participation with the document) |
 | 6 sublabel money in C | queue `owner_unconfirmed` (sublabel owners), `assumption`, P3 15.3.6 | contract for the sublabel owner (S14 pattern), replace |
-| 7 buy-outs (M51 …) | P3 15.3.7, the rules tab of the tracks | an owner's decision: entered as a split change / buy-out when it comes (S25) |
-| 8 Updated Q2 statement, D-087, D-045, D-096 | P3 15.3.8 (⚠) | the owner's decisions; no screen action by design |
-| 9 77 Records exception (M58) | P3 15.3.9 (⚠) | not expressible; no screen action by design |
+| 7 buy-outs (M51 …) | P3 15.3.7 → Сплиты (unconfirmed), the rules tab of the tracks | «Выкуп» / «Изменить сплит с месяца» on the track card (`28-rules` S25) once the instrument says the percent |
+| 8 Updated Q2 statement, D-087, D-045, D-096 | P3 15.3.8 → Паблишинг; Отчёты | upload the statement on Отчёты (the backend answers `duplicate_period` while D-041 stands: `30-sources` S34 shows the refusal); set the terms by owner and operation type (`15-publishing`, `20-queue` S18); map a writer (S19) |
+| 9 77 Records exception (M58) | P3 15.3.9 → Лейблы | close the sublabel rule (`29-labels` S37) and enter the per-ISRC rows as splits or participations on the track cards (`28-rules` S25–S28): the exception is expressible per track, not as one rule |
 | 10 unexplained owner balances | Владельцы with payable, the negative-payable banner, P3 15.3.10 | operations (deduction / credit / return, S31) when the owner decides |
 | 11 no-split money (C11) | signal `isrcsWithoutSplit`, P3 15.3.11 | create the split (S30) or a "fully ours" decision ⚠ |
 | 12 administration terms from 2026-01 | queue `publishing_terms_unconfirmed`, P3 15.3.12 | set the terms (S18) |
 | 13 licensor terms (MC ROBA CENA row) | queue `assumption` (that row's document), P3 15.3.13 | replace (S13) |
-| 14 the 165.80 after the buy-out | P3 15.3.14 | the owner's check; no screen action by design |
+| 14 the 165.80 after the buy-out | P3 15.3.14 → Операции | if the head decides for the artist: a credit operation with its basis document (`27-operations` S31) or a split change from the month (`28-rules` S25) |
 
-Items 7, 8, 9 and 14 wait for the owner's decision and show their decision id; every other item has its action.
+Items 7, 8, 9 and 14 wait for the head's decision; each shows its decision id and opens the page whose action closes it once the decision is taken.

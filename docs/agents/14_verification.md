@@ -754,3 +754,42 @@ them as Main practice against the owner's registry (Main paid the MC shares to t
 DJ MH, UdieNnx, DJ ZENITE, DJ Raulipues, DJ SILVER ZN, the MC Fera owner, MC Denny), Zachz Winner as Main's
 underpayment of UPC 3617396033894 in 2025-05…12 (21,225.40, §4.3) and DJ DYLANFK as a single Main credit without a
 report (16,325.00): reference differences, no ERP error.
+
+## 11. The ten tracks and ten owners after D-137 / D-138, as the screens show them (2026-11-03)
+
+Measured from the API of the dev database `erp` at HEAD of the frontend goal (D-154) with a Playwright read of the
+pages (`title` of every money cell = the API string; the run is in the session that wrote `20_frontend_report.md`).
+§3.2 and §4.2 above are run 2 (before D-137 / D-138); these are the figures the operator sees today. Stage names and
+id prefixes only. Amounts are rounded to the cent here; the API and the `title` attribute carry 12 decimals.
+
+| ISRC (§3.2 row) | net (B + C + ours) | B | C | ours | §3.2 "ERP net" (= B + ours) |
+|---|---:|---:|---:|---:|---:|
+| FRX282403913 (1) | 101,759.08 | 48,827.60 | −1.64 | 52,933.12 | 101,760.72 |
+| FR96X2414092 (2) | 53,147.01 | 24,518.34 | −2.45 | 28,631.12 | 53,149.46 |
+| DGA052458596 (3) | 54,033.35 | 26,004.11 | −2.70 | 28,031.94 | 54,036.05 |
+| DGA052458597 (4) | 35,709.52 | 17,201.07 | −0.56 | 18,509.01 | 35,710.08 |
+| FRX282403914 (5) | 32,255.75 | 15,239.09 | −81.81 | 17,098.47 | 32,337.56 |
+| FRX452444855 (6) | 27,356.06 | 13,200.08 | −0.65 | 14,156.64 | 27,356.71 |
+| FR2X42478250 (7) | 36,693.69 | 18,346.85 | 0.00 | 18,346.85 | 36,693.69 |
+| FRX872563577 (8) | 17,094.40 | 5,673.84 | −128.10 | 11,548.66 | 17,222.50 |
+| FRX452444856 (9) | 20,826.63 | 9,710.69 | −2.48 | 11,118.41 | 20,829.11 |
+| FRX872449088 (10) | 20,429.25 | 9,619.71 | −1.09 | 10,810.64 | 20,430.34 |
+
+The §3.2 "ERP net" is B + ours (the label-share comparison with Annex); the screen's net is the raw net of the lines,
+B + C + ours; the C is the Duetti buyer's 100 % of the negative lines after the sale (`owner_unconfirmed`).
+
+| Owner (§4.2 row) | Stage name | earned | recouped | paid | payable | §4.2 "ERP payable" (run 2) | change and its entry |
+|---|---|---:|---:|---:|---:|---:|---|
+| 68583cad (1) | LDRR | 479,857.45 | 1,000.00 | 675,846.46 | −196,989.01 | −326,645.18 | +129,656.17 = E1 137,982.02 removed (D-137) − 8,325.86 pro rata (D-138) |
+| 7c6a567e (2) | settlement participant | 8,123.30 | 0.00 | 6,257.83 | 1,865.47 | 139,847.50 | −137,982.03: E1 (D-137) |
+| 9670a62d (3) | RD12 | 203,685.17 | 100.00 | 308,021.75 | −104,436.58 | −104,573.15 | +136.57: D-138 (§10) |
+| 14b5366d (4) | UdieNnx | 728,788.60 | 13,000.00 | 781,200.27 | −65,411.67 | −63,726.49 | −1,685.18: the D-137 carve participations (§9.3) |
+| 0637477b (5) | DJ DYLANFK | 225,652.97 | 47,900.00 | 319,181.93 | −141,428.96 | −110,784.68 | −30,644.28: the carve take named in §9.2 |
+| aba9837e (6) | MC CODE (+7) | 33,223.64 | 0.00 | 124,582.45 | −91,358.81 | −88,183.86 | −3,174.95: D-137 carve participations now C `assumption` |
+| 6d814d51 (7) | DJ-JY12 | 0.00 | 0.00 | 80,174.52 | −80,174.52 | −80,174.52 | unchanged |
+| bcf3c25f (8) | Lxzt | 62,004.31 | 0.00 | 49,410.65 | 12,593.66 | 12,593.66 | unchanged |
+| 3fecfb7a (9) | DJ MH | 56,686.37 | 12,315.81 | 93,035.40 | −48,664.84 | −48,464.68 | −200.16: E2 carve (D-137) |
+| 9272ef5f (10) | qaraqshy | 54,207.92 | 23,257.21 | 4,182.08 | 26,768.63 | 26,768.63 | unchanged |
+
+A negative payable is shown as 0,00 on the screen with the exact value in the title (D-050). The gate of the three
+positive owners is "allowed"; of the others `nothing_to_pay` (`owner_not_confirmed` for row 7).

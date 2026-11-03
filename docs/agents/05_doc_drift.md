@@ -62,3 +62,5 @@ The architecture documents and `context_data/` are not edited (README §6); this
   tests (the 2026-11-03 MVP state); after D-152 the suites are 406 backend + 65 frontend (vitest) and 132 Playwright specs.
 - **`unfunded` rows have a sales month since D-152.** `18_frontend_plan.md`, `19_golden_screens.md` and D-145/D-151 describe the
   hook `signal-row-unfunded-<isrc>|<month>|<ruleId>`; it is now `...|<ruleId>|<salesMonth>` (the last segment).
+- **`14_verification.md` §3.2 and §4.2 are run 2 (before D-137 / D-138).** The figures the screens show today are in
+  `14` §11 (re-measured from the API at the end of the frontend goal, D-154); the change per owner is named there.
