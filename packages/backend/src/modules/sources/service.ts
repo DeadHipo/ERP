@@ -187,11 +187,12 @@ export function createSourcesService(deps: SourcesDeps) {
     },
 
     /** Explanation of one ISRC: platforms, countries, subscription and sales types per month. */
-    async breakdown(isrc: string) {
+    async breakdown(isrc: string, reportingMonth?: string) {
       const files = await registry.loaded();
       const rows = await columnar.breakdown(
         files.map((f) => f.id),
         isrc,
+        reportingMonth ? assertMonth(reportingMonth) : undefined,
       );
       // net as canonical decimal text (no padding zeros), quantity as a plain number
       return rows.map((b) => ({ ...b, net: picoToString(parsePico(b.net)), quantity: Number(b.quantity) }));
@@ -269,6 +270,13 @@ export function createSourcesService(deps: SourcesDeps) {
         ...facets,
         subscriptionTypes: facets.subscriptionTypes.map((t) => t || NO_VALUE),
       };
+    },
+
+    /** Net per UPC over the loaded files (exact decimal text), one ClickHouse GROUP BY. */
+    async netByUpc(): Promise<Map<string, string>> {
+      const files = await registry.loaded();
+      const rows = await columnar.netByUpc(files.map((f) => f.id));
+      return new Map(rows.map((r) => [r.upc, picoToString(parsePico(r.net))]));
     },
 
     /** Names from the report per (ISRC, UPC): metadata only, never used to decide who gets paid. */

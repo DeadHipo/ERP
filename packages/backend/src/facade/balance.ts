@@ -2,7 +2,15 @@ import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { inMonthRange, monthOf } from '../shared/dates';
 import type { IncomeItem, OperationView, Position } from '../modules/settlements';
 import { recoup } from './layers/recoup';
-import { pubInPeriod, unitInPeriod, type Calculation, type CReason, type PeriodFilter } from './calculation';
+import {
+  pubInPeriod,
+  unitInPeriod,
+  type Calculation,
+  type CReason,
+  type PeriodFilter,
+  type PublishingResult,
+  type UnitResult,
+} from './calculation';
 
 export interface ArtistBalance {
   artistId: string;
@@ -114,6 +122,11 @@ export function ownerBalance(
   ownerId: string,
   ops: OperationView[],
   f: PeriodFilter,
+  /**
+   * A prebuilt per-owner index (`ownerIndex`): only the units / publishing lines where the owner has an allocation, in
+   * calculation order. The same loops run over it, so the result equals the one from the whole calculation.
+   */
+  index: { units?: UnitResult[]; publishing?: PublishingResult[] } = {},
 ): OwnerBalance {
   const basis = f.basis ?? 'report';
   const confirmed = calc.confirmedOwners.has(ownerId);
@@ -149,7 +162,7 @@ export function ownerBalance(
   const trackAgg = new Map<string, { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }>();
   const byLabel: OwnerBalance['byLabel'] = {};
 
-  for (const u of calc.units) {
+  for (const u of index.units ?? calc.units) {
     const mine = u.allocations.filter((a) => a.ownerId === ownerId);
     if (mine.length === 0) continue;
     const inP = unitInPeriod(u, f);
@@ -215,7 +228,7 @@ export function ownerBalance(
     a.tracks.sort((x, y) => y.amount.add(y.waiting).cmp(x.amount.add(x.waiting)));
 
   const publishing: OwnerBalance['publishing'] = [];
-  calc.publishing.forEach((p, i) => {
+  (index.publishing ?? calc.publishing).forEach((p) => {
     if (p.ownerId !== ownerId) return;
     const inP = pubInPeriod(p, f);
     if (p.category === 'B') {
@@ -236,7 +249,6 @@ export function ownerBalance(
         incomeById.set(id, item);
         income.push(item);
       }
-      void i;
       if (inP) {
         itemInPeriod.add(id);
         pNotOurs = pNotOurs.add(p.authorAmount);
@@ -379,4 +391,27 @@ export function ownerBalance(
       )
       .map((o) => o.id),
   };
+}
+
+/**
+ * Per owner, the units where it has at least one allocation and its publishing lines, both in calculation order
+ * (recoupment depends on the order). Built in one pass for the payables list (17 N4).
+ */
+export function ownerIndex(calc: Calculation): Map<string, { units: UnitResult[]; publishing: PublishingResult[] }> {
+  const index = new Map<string, { units: UnitResult[]; publishing: PublishingResult[] }>();
+  const of = (id: string) => {
+    let e = index.get(id);
+    if (!e) index.set(id, (e = { units: [], publishing: [] }));
+    return e;
+  };
+  for (const u of calc.units) {
+    const seen = new Set<string>();
+    for (const a of u.allocations) {
+      if (!a.ownerId || seen.has(a.ownerId)) continue;
+      seen.add(a.ownerId);
+      of(a.ownerId).units.push(u);
+    }
+  }
+  for (const p of calc.publishing) if (p.ownerId) of(p.ownerId).publishing.push(p);
+  return index;
 }

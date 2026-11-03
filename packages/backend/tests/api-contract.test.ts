@@ -256,6 +256,13 @@ describe('API contract', () => {
       query: { month: '2026-07' },
     });
     await call('get', '/tracks/:isrc/explain', { params: { isrc: I1 } });
+    await call('get', '/owners/payables', { query: { from: '2026-07', to: '2026-07' } });
+    await call('get', '/tracks/summary', { query: { month: '2026-07' } });
+    await call('get', '/tracks/:isrc/money', { params: { isrc: I1 } });
+    await call('get', '/tracks/:isrc/breakdown/:month', { params: { isrc: I1, month: '2026-07' } });
+    await call('get', '/releases', { query: { q: UPC } });
+    await call('get', '/releases/:upc', { params: { upc: UPC } });
+    await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
     // settlements
     const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: {} });

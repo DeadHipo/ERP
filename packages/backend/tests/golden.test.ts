@@ -1077,6 +1077,140 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       await c.verify({ skipOwners: ['A'] });
     });
   });
+
+  describe('G48 (S31 k4, 10 §5): a deduction is a position, a credit adds to the balance', () => {
+    async function base() {
+      const c = await single(async (c) => {
+        await c.person('A');
+        await c.split(I(1), [['A', '50']]);
+      });
+      expect((await c.balance('A')).total.payable.toFixed()).toBe('50');
+      return c;
+    }
+    const deduction = async (c: Case, amount: string, basis: { id: string }) =>
+      c.f.createOperation({
+        direction: 'in',
+        amount,
+        artistId: c.id('A'),
+        date: '2026-03-01',
+        documentId: basis.id,
+        comment: 'deduction',
+      });
+    it('a deduction 10 on an unapproved basis waits; approved it recoups 10 and payable is 40', async () => {
+      const c = await base();
+      const o = c.f.modules.owners;
+      const draft = await o.createDocument({
+        kind: 'adjustment_basis',
+        title: 'Adjustment',
+        fileRef: 'dummy://a.pdf',
+        ownerId: c.owners.get('A') as string,
+        requiresApproval: true,
+      });
+      await deduction(c, '10', draft);
+      let b = await c.balance('A');
+      expect([b.total.recouped, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '50']);
+      expect(b.pendingOperations).toHaveLength(1);
+      await o.approveDocument(draft.id, 'manager');
+      b = await c.balance('A');
+      expect([b.total.recouped, b.total.payable].map((x) => x.toFixed())).toEqual(['10', '40']);
+      expect(b.pendingOperations).toHaveLength(0);
+      expect(b.positions.map((p) => [p.amount, p.recouped, p.remaining].map((x) => x.toFixed()))).toEqual([
+        ['10', '10', '0'],
+      ]);
+      await c.verify({ skipOwners: ['A'] });
+    });
+    it('a credit -5 adds 5: credits 5, payable 45', async () => {
+      const c = await base();
+      const basis = await approvedDoc(c.f, 'adjustment_basis', c.owners.get('A'));
+      await deduction(c, '10', basis);
+      await deduction(c, '-5', basis);
+      const b = await c.balance('A');
+      expect([b.total.recouped, b.total.credits, b.total.payable].map((x) => x.toFixed())).toEqual([
+        '10',
+        '5',
+        '45',
+      ]);
+      await c.verify({ skipOwners: ['A'] });
+    });
+    it('a deduction 70 above the income 50: recouped 50, remaining 20, payable 0', async () => {
+      const c = await base();
+      await deduction(c, '70', await approvedDoc(c.f, 'adjustment_basis', c.owners.get('A')));
+      const b = await c.balance('A');
+      expect(
+        [b.total.recouped, b.positions[0]?.remaining, b.total.payable].map((x) => x?.toFixed()),
+      ).toEqual(['50', '20', '0']);
+      await c.verify({ skipOwners: ['A'] });
+    });
+  });
+
+  describe('G49 (S31 k4, S22): deactivate and return of a payout', () => {
+    async function base() {
+      const c = await single(async (c) => {
+        await c.person('A');
+        await c.split(I(1), [['A', '50']]);
+      });
+      return c;
+    }
+    it('a migration payout 30 then deactivated: payable 20, then 50 again', async () => {
+      const c = await base();
+      const op = await migrationPayout(c, 'A', '30');
+      expect((await c.balance('A')).total.payable.toFixed()).toBe('20');
+      const off = await c.f.modules.settlements.deactivate(op.id, 'entered twice');
+      expect(off.active).toBe(false);
+      const b = await c.balance('A');
+      expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '50']);
+      await c.verify({ skipOwners: ['A'] });
+    });
+    it('a button payout without proof does not count; deactivated (transfer failed) it unblocks', async () => {
+      const c = await base();
+      const op = await c.f.createPayout(c.owners.get('A') as string);
+      expect(op.amountCents).toBe(5000);
+      let b = await c.balance('A');
+      expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '50']);
+      expect(b.blockingPayouts).toEqual([op.id]);
+      await c.f.modules.settlements.deactivate(op.id, 'transfer failed', { transferFailed: true });
+      b = await c.balance('A');
+      expect([b.total.payable.toFixed(), b.blockingPayouts.length, b.payout.allowed]).toEqual(['50', 0, true]);
+    });
+    it('deduction 10, credit -5, deactivated deduction: 40, 45, 55; payout 55 with proof: 0; return: 55', async () => {
+      const c = await base();
+      const basis = await approvedDoc(c.f, 'adjustment_basis', c.owners.get('A'));
+      const make = (amount: string) =>
+        c.f.createOperation({
+          direction: 'in',
+          amount,
+          artistId: c.id('A'),
+          date: '2026-03-01',
+          documentId: basis.id,
+          comment: 'adjustment',
+        });
+      const ded = await make('10');
+      const payable = async () => (await c.balance('A')).total.payable.toFixed();
+      expect(await payable()).toBe('40');
+      await make('-5');
+      expect(await payable()).toBe('45');
+      await c.f.modules.settlements.deactivate(ded.id, 'entered by mistake');
+      expect(await payable()).toBe('55');
+      const payout = await c.f.createPayout(c.owners.get('A') as string);
+      expect(payout.amountCents).toBe(5500);
+      await c.f.attachPaymentProof(payout.id, { fileRef: 'dummy://proof.pdf' });
+      let b = await c.balance('A');
+      expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['55', '0']);
+      const ret = await c.f.returnPayout(payout.id, {
+        fileRef: 'dummy://return.pdf',
+        date: payout.date,
+        comment: 'bounced',
+      });
+      expect([ret.meaning, ret.amountCents]).toEqual(['return', -5500]);
+      b = await c.balance('A');
+      expect([b.total.paid, b.total.returns, b.total.payable].map((x) => x.toFixed())).toEqual([
+        '55',
+        '55',
+        '55',
+      ]);
+      await c.verify({ skipOwners: ['A'] });
+    });
+  });
 });
 
 describe('signals of 10 §6 without a golden number (M29, D-130)', () => {

@@ -29,6 +29,12 @@ import { cItems } from './queue';
 
 export type { CReason, Category };
 
+/**
+ * The allocation loop is synchronous (seconds on the real data); every this many units it lets the event loop run
+ * (`setImmediate`) so a cheap request is not stuck behind a recalculation. 0 = never (D-142 measurement).
+ */
+export const YIELD_EVERY_UNITS = 50_000;
+
 /** One allocation of a unit (10 §3): recipient pseudonym, layer, rule, document, amount, category. */
 export type MasterAllocation = Allocation;
 
@@ -183,7 +189,10 @@ export async function calculate(
 
   const units: UnitResult[] = [];
   const endUnits = timedStep('allocate units (layers, JS)');
+  let done = 0;
   for (const u of snapshot.units) {
+    if (YIELD_EVERY_UNITS > 0 && ++done % YIELD_EVERY_UNITS === 0)
+      await new Promise<void>((resolve) => setImmediate(resolve));
     const { state, states } = allocateUnit(
       {
         account: u.account,

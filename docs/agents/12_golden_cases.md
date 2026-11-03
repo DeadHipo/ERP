@@ -71,6 +71,8 @@ sublabel) → categorise.
 | G45 | settlement window: legacy registry rows A 35, S 15 valid 2000-01-01 … 2026-02-01; from 2026-02-01 row A 35 and participation S 15 `(net, label_share)` under the settlement document; the loader rewrites the legacy split for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-03 | 2026-01: A 50, S 0; 2026-03: A 35, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6 |
 | G46 | rows A 25, B 25; Main carve "16.66 % (8.33 %/8.33 %) M1 & M2": each of A and B pays 8.33 % of net, each of M1, M2 gets 8.33 % of net; entered as participations M1 16.66 `(bucket, artist_share of A)`, M1 16.66 `(bucket, artist_share of B)`, M2 the same two, valid from the release's first month, approved documents | A 25 − 4.165 − 4.165 = 16.67; B 16.67; M1 4.165 + 4.165 = 8.33; M2 8.33 | 50 | 0 | 50 | M13, M43 |
 | G47 | settlement window with co-artists: legacy rows A 17.5, B 17.5, S 15 under one appendix, valid 2000-01-01 … 2026-02-01; from 2026-02-01 rows A 17.5, B 17.5 and participation S 15 `(net, label_share)` under the settlement document; the loader spreads S's 15 over A and B pro rata to 17.5 : 17.5 for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-02 | 2026-01: A 25, B 25, S 0; 2026-02: A 17.5, B 17.5, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6, D-138 |
+| G48 | owner A (row A 50, unit 100) earns 50; operations of the balance rule (10 §5), three tests: (i) a deduction `in` 10 (artist A, scope `any`, 2026-03-01) on a basis document that is not approved waits (payable 50, pending 1), approved it is a position recouped from the income: recouped 10, remaining 0, payable 40; (ii) the same deduction plus a credit `in` −5 (approved basis): recouped 10, credits 5, payable 45; (iii) a deduction 70 above the income: recouped 50, remaining 20, payable 0 | (i) 50 → 40; (ii) 45; (iii) 0 | 50 | 0 | 50 | S31 k4, 10 §5 |
+| G49 | owner A as in G48; three tests: (i) a migration payout 30 → payable 20; deactivated → paid 0, payable 50; (ii) a button payout 50 without proof does not count (payable 50, blocking 1); deactivated with `transferFailed` → blocking 0, gate allowed; (iii) deduction 10 → 40; credit −5 → 45; deduction deactivated → 55; the button pays 5500, proof attached → paid 55, payable 0; return of the payout (date = payout date) → operation `return` −5500, returns 55, payable 55 | (i) 20 → 50; (ii) 50; (iii) 40, 45, 55, 0, 55 | 50 | 0 | 50 | S31 k4, S22, 10 §5 |
 
 ## Publishing cases
 
@@ -127,3 +129,11 @@ sublabel) → categorise.
   co-artist (G45) the pro rata gives it the whole 15. A row that is 0 in a later split before the window (a buy-out)
   takes nothing; its part stays with the label (after the 2025-12 buy-out of DJ Ikeraus: rows DJ Ikeraus 0, LDRR 25,
   ours 75, where the D-137 form gave LDRR 32.5, ours 67.5).
+- G48 (D-142; S31/k4): payable = earned − recouped − paid + returns + credits. A deduction is a position of scope
+  `any` whose income is the owner's B: 50 − 10 = 40. A credit `in` −5 is stored as −500 cents and counts as +5:
+  40 + 5 = 45. Waiting on an unapproved basis document leaves it out of both sides (payable 50) and lists it as
+  pending. A deduction 70 takes the whole income: recouped min(70, 50) = 50, remaining 20, payable 50 − 50 = 0.
+- G49 (D-142; S31/k4, S22): a migration payout counts without proof (paid 30, payable 20) and its deactivation
+  removes it (50). A button payout is deferred and uncounted until the proof; it has an external reference, so its
+  deactivation needs `transferFailed`. S31/k4: 50 − 10 = 40; + credit 5 = 45; deduction deactivated → 50 + 5 = 55; the
+  payout 55 with proof → 55 − 55 = 0; the return +55 → 55 (earned 50 + credit 5 − paid 55 + returned 55).

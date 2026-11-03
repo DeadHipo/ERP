@@ -1,5 +1,5 @@
 import { RuleViolationError, ValidationError } from '../shared/errors';
-import { floorToCents, centsToDecimal, Decimal, ZERO } from '../shared/money';
+import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { todayIso } from '../shared/dates';
 import { type Scope } from '../modules/settlements';
 import type { FacadeContext } from './context';
@@ -106,30 +106,33 @@ export function payoutsApi(ctx: FacadeContext) {
     async createPayout(ownerId: string, input: { comment?: string } = {}) {
       const { op, id, cents } = await db.transaction(async () => {
         const id = await owners.resolveOwnerId(ownerId);
-        if (!(await owners.isOwnerConfirmed(id))) {
-          throw new RuleViolationError(
-            'The owner has no approved contract: payout is not possible',
-            'owner_not_confirmed',
-          );
-        }
-        const blocking = await blockingPayoutsOf(id);
-        if (blocking.length > 0) {
-          throw new RuleViolationError(
-            'A previous payout has no payment proof yet: new payouts are blocked',
-            'payout_blocked',
-            {
-              operationIds: blocking.map((b) => b.id),
-            },
-          );
-        }
         const { balance, files: believeFiles } = await balanceWithFiles(id);
-        const cents = floorToCents(balance.total.payable);
-        if (cents <= 0) throw new RuleViolationError('Nothing to pay', 'nothing_to_pay');
-        if (cents < config.payoutThresholdCents) {
-          throw new RuleViolationError(
-            `Payable ${centsToDecimal(cents).toFixed(2)} is below the payout threshold ${centsToDecimal(config.payoutThresholdCents).toFixed(2)}`,
-            'below_threshold',
-          );
+        // One decision for the button and the screen (N19): the order owner_not_confirmed, payout_blocked,
+        // nothing_to_pay, below_threshold is the order of payoutGate().
+        const gate = balance.payout;
+        const cents = gate.amountCents;
+        if (!gate.allowed) {
+          const threshold = centsToDecimal(config.payoutThresholdCents).toFixed(2);
+          switch (gate.reason) {
+            case 'owner_not_confirmed':
+              throw new RuleViolationError(
+                'The owner has no approved contract: payout is not possible',
+                'owner_not_confirmed',
+              );
+            case 'payout_blocked':
+              throw new RuleViolationError(
+                'A previous payout has no payment proof yet: new payouts are blocked',
+                'payout_blocked',
+                { operationIds: balance.blockingPayouts },
+              );
+            case 'below_threshold':
+              throw new RuleViolationError(
+                `Payable ${centsToDecimal(cents).toFixed(2)} is below the payout threshold ${threshold}`,
+                'below_threshold',
+              );
+            default:
+              throw new RuleViolationError('Nothing to pay', 'nothing_to_pay');
+          }
         }
         // "Which artist this payout is for": the payout split pro rata over the positive per-artist net
         // (earned minus recouped) and the owner's publishing net; the exact all-time figures are kept as well.

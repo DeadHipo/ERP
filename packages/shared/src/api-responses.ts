@@ -460,9 +460,18 @@ export const overviewSchema = z.object({
   files: z.object({ believe: z.number().int(), b17: z.number().int() }),
 });
 
+/** Whether the payout button works for the owner now, and why not (17 N19); the client shows it, never recomputes it. */
+export const payoutGateSchema = z.object({
+  allowed: z.boolean(),
+  reason: z.enum(['owner_not_confirmed', 'payout_blocked', 'nothing_to_pay', 'below_threshold']).nullable(),
+  amountCents: z.number().int().describe('Payable floored to whole cents, 0 when negative: what the button pays'),
+});
+export type PayoutGate = z.infer<typeof payoutGateSchema>;
+
 export const balanceSchema = z.object({
   owner: ownerSchema,
   confirmed: z.boolean(),
+  payout: payoutGateSchema,
   period: z.object({
     from: z.string().nullable(),
     to: z.string().nullable(),
@@ -654,3 +663,183 @@ export const auditActionSchema = z.object({
 export const auditListSchema = z.object({ items: z.array(auditActionSchema) });
 export type AuditAction = z.infer<typeof auditActionSchema>;
 export type AuditList = z.infer<typeof auditListSchema>;
+
+// ---- money aggregates for the screens (D-142, 17 N4..N15) ----
+
+/** One owner of the payables list: the very fields of `GET /owners/:id/balance`, from one calculation (N4). */
+export const payableItemSchema = z.object({
+  ownerId: z.string(),
+  name: z.string(),
+  kind: z.enum(['label', 'person']),
+  status: z.enum(['confirmed', 'waiting_documents']),
+  confirmed: z.boolean(),
+  earned: money,
+  waiting: money,
+  waitingBreakdown: cBreakdown.describe('Category C of the requested period by reason'),
+  recouped: money,
+  paid: money,
+  returns: money,
+  credits: money,
+  payable: money,
+  payableShown: money,
+  payout: payoutGateSchema,
+  blockingPayouts: z.number().int(),
+  pendingOperations: z.number().int(),
+  lastPayoutDate: date.nullable().describe('Date of the newest active payout (any kind of proof)'),
+});
+export const payablesSchema = z.object({ calculatedAt: timestamp, items: z.array(payableItemSchema) });
+export type PayableItem = z.infer<typeof payableItemSchema>;
+
+/** Money of a set of units: net received, B (owners), C (waiting) with reasons, ours. */
+const moneySums = {
+  net: money,
+  B: money,
+  C: money,
+  ours: money,
+  cByReason: cBreakdown,
+};
+
+export const trackSummaryItemSchema = z.object({
+  isrc: z.string(),
+  upcs: z.array(z.string()),
+  title: z.string(),
+  artistName: z.string(),
+  ...moneySums,
+  months: z.object({ from: month.nullable(), to: month.nullable(), count: z.number().int() }),
+  hasSplit: z.boolean(),
+  hasParticipations: z.boolean(),
+});
+export const trackSummarySchema = z.object({
+  calculatedAt: timestamp,
+  items: z.array(trackSummaryItemSchema),
+});
+export type TrackSummaryItem = z.infer<typeof trackSummaryItemSchema>;
+
+const documentStatusOfAllocation = z.enum(['approved', 'not_approved', 'not_attached', 'missing']);
+
+export const trackMoneyMonthSchema = z.object({
+  account: z.string(),
+  upc: z.string(),
+  reportingMonth: month,
+  salesMonth: month,
+  labelName: z.string(),
+  ourLabelName: z.string().nullable(),
+  sublabelName: z.string().nullable(),
+  rule: z.string().nullable().describe('Id of the sublabel rule in force at the report month'),
+  net: money,
+  labelShare: money,
+  labelShareCategory,
+  ours: money,
+  status: unitStatus,
+  allocations: z.array(
+    allocationSchema.extend({
+      pseudonym: z.string(),
+      ownerName: z.string().nullable(),
+      documentStatus: documentStatusOfAllocation,
+    }),
+  ),
+  shortfalls: z.array(shortfallSchema),
+  layers: z.array(layerStateSchema).describe('The state after every layer that ran, in order'),
+});
+export const trackMoneySchema = z.object({
+  isrc: z.string(),
+  tracks: z.array(trackSchema),
+  title: z.string(),
+  artistName: z.string(),
+  splits: z.array(splitListItemSchema),
+  participations: participationListSchema.shape.items,
+  totals: z.object(moneySums),
+  months: z.array(trackMoneyMonthSchema),
+});
+export type TrackMoney = z.infer<typeof trackMoneySchema>;
+
+export const breakdownRowSchema = z.object({
+  reportingMonth: month,
+  salesMonth: month,
+  platform: z.string(),
+  country: z.string(),
+  subscriptionType: z.string(),
+  salesType: z.string(),
+  upc: z.string(),
+  net: money,
+  quantity: z.number().int(),
+});
+export const trackBreakdownSchema = z.object({
+  isrc: z.string(),
+  month,
+  rows: z.array(breakdownRowSchema),
+});
+
+export const releasesSchema = z.object({
+  items: z.array(
+    z.object({
+      upc: z.string(),
+      title: z.string(),
+      artistName: z.string(),
+      trackCount: z.number().int(),
+      net: money.describe('Net of the loaded Believe files, all months'),
+    }),
+  ),
+});
+export const releaseSchema = z.object({
+  upc: z.string(),
+  title: z.string(),
+  artistName: z.string(),
+  tracks: z.array(z.object({ isrc: z.string(), title: z.string(), ...moneySums })),
+  months: z.array(z.object({ reportingMonth: month, ...moneySums })),
+});
+
+export const documentUsesSchema = z.object({
+  document: documentSchema,
+  splits: z.array(splitListItemSchema),
+  rowsOnly: z
+    .array(z.object({ splitId: z.string(), isrc: z.string(), artistId: z.string() }))
+    .describe('Split rows confirmed by this document alone (the split itself has another or none)'),
+  participations: participationListSchema.shape.items,
+  labelRules: labelListItemSchema.shape.rules,
+  contracts: z.array(contractSchema),
+  operations: z.array(operationSchema),
+  waiting: z
+    .object({ amount: money, cByReason: cBreakdown })
+    .describe(
+      'Category C that waits for this document: allocations that cite it, plus owner_unconfirmed money of the owners its contracts confirm',
+    ),
+});
+
+// ---- the payout snapshot (N15): what createPayout stores, with the Decimal fields as text ----
+
+export const payoutSnapshotSchema = z.object({
+  computedAt: timestamp,
+  ownerId: z.string(),
+  amountCents: z.number().int(),
+  payableExact: money,
+  total: balanceSchema.shape.total,
+  payoutByArtist: z.array(z.object({ key: z.string(), label: z.string(), net: money, shareOfPayout: money })),
+  perArtist: z.array(
+    z.object({
+      artistId: z.string(),
+      pseudonym: z.string(),
+      earned: money,
+      recouped: money,
+      unrecouped: money,
+      waiting: money,
+      tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
+    }),
+  ),
+  publishing: balanceSchema.shape.publishing,
+  positions: balanceSchema.shape.positions,
+  files: z.object({
+    believe: z.array(
+      z.object({ id: z.string(), sha256: z.string(), reportingMonth: month, fileName: z.string() }),
+    ),
+    b17: z.array(
+      z.object({
+        id: z.string(),
+        sha256: z.string(),
+        periods: z.array(z.string()),
+        fileName: z.string(),
+      }),
+    ),
+  }),
+});
+export type PayoutSnapshot = z.infer<typeof payoutSnapshotSchema>;

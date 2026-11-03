@@ -8,6 +8,8 @@ import { type PublishingService } from '../modules/publishing';
 import { type AuditService } from '../modules/audit';
 import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
+import { payoutGate } from './payout-gate';
+import { floorToCents } from '../shared/money';
 import { stubPaymentService, type PaymentService } from './payment-service';
 import type { Db } from '../shared/pg-db';
 import { timed, timedSync } from '../shared/timing';
@@ -159,10 +161,18 @@ export function createFacadeContext(
         })),
       (r) => `${r.operations.length} operations`,
     );
-    return {
-      files: calc.believeFiles,
-      balance: { owner, ...timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f)) },
-    };
+    const balance = timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f));
+    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf(balance) } };
+  }
+
+  /** The payout gate of a balance (N19): the very decision the payout button takes. */
+  function gateOf(b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'blockingPayouts' | 'total'>) {
+    return payoutGate({
+      confirmed: b.confirmed,
+      blocking: b.blockingPayouts,
+      payableCents: floorToCents(b.total.payable),
+      thresholdCents: config.payoutThresholdCents,
+    });
   }
 
   return {
@@ -182,6 +192,7 @@ export function createFacadeContext(
     checkSplitDocument,
     resolveShares,
     balanceWithFiles,
+    gateOf,
   };
 }
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import swaggerUi from 'swagger-ui-express';
 import type { Facade } from '../../facade';
 import { buildOpenApiDocument } from '../openapi';
+import { aggregatesRouter } from './aggregates';
 import { ownersRouter } from './owners';
 import { splitsRouter } from './splits';
 import { sourcesRouter } from './sources';
@@ -19,6 +20,7 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.get('/openapi.json', (_req, res) => res.json(openapi));
   r.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
   r.get('/health', (_req, res) => res.json({ ok: true }));
+  r.use(aggregatesRouter(facade)); // before ownersRouter: /owners/payables is not /owners/:id
   r.use(ownersRouter(facade));
   r.use(splitsRouter(facade));
   r.use(sourcesRouter(facade, opts));

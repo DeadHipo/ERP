@@ -250,6 +250,8 @@ export function createBelieveColumnar(
     async breakdown(
       fileIds: string[],
       isrc: string,
+      /** 'YYYY-MM': only this report month. */
+      reportingMonth?: string,
     ): Promise<
       {
         reportingMonth: string;
@@ -278,10 +280,10 @@ export function createBelieveColumnar(
         `SELECT toString(reporting_month) AS rm, toString(sales_month) AS sm, platform,
                 country_region AS country, streaming_subscription_type AS subscription, sales_type, upc,
                 toString(sum(net_revenue)) AS net, toString(sum(quantity)) AS qty
-         FROM ${DB}.rows WHERE isrc = {isrc:String} AND file_id IN {ids:Array(UUID)}
+         FROM ${DB}.rows WHERE isrc = {isrc:String} AND file_id IN {ids:Array(UUID)}${reportingMonth ? ' AND reporting_month = {month:Date}' : ''}
          GROUP BY reporting_month, sales_month, platform, country_region, streaming_subscription_type, sales_type, upc
          ORDER BY reporting_month, sales_month, sum(net_revenue) DESC`,
-        { isrc, ids: fileIds },
+        { isrc, ids: fileIds, ...(reportingMonth ? { month: `${reportingMonth}-01` } : {}) },
       );
       return rows.map((r) => ({
         reportingMonth: r.rm.slice(0, 7),
@@ -294,6 +296,16 @@ export function createBelieveColumnar(
         net: r.net,
         quantity: r.qty,
       }));
+    },
+
+    /** Net per UPC over the given (loaded) files, from the `units` view (equal keys summed); exact decimal text. */
+    async netByUpc(fileIds: string[]): Promise<{ upc: string; net: string }[]> {
+      if (fileIds.length === 0) return [];
+      return json<{ upc: string; total: string }>(
+        `SELECT upc, toString(sum(net_revenue)) AS total FROM ${DB}.units
+         WHERE file_id IN {ids:Array(UUID)} GROUP BY upc`,
+        { ids: fileIds },
+      ).then((rows) => rows.map((r) => ({ upc: r.upc, net: r.total })));
     },
 
     /** Names per (ISRC, UPC) from the latest report month in which the pair appears (metadata only). */

@@ -240,3 +240,16 @@ export const auditQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 export type AuditQuery = z.infer<typeof auditQuery>;
+
+// ---- money aggregates (D-142) ----
+
+/** `GET /owners/payables`: the period only shapes `waitingBreakdown`; the totals are all-time like the balance. */
+export const payablesQuery = periodQuery;
+
+/** `GET /tracks/summary`: only the units of one Believe account and/or one report month. */
+export const trackSummaryQuery = z.object({
+  account: z.string().optional(),
+  month: month.optional(),
+});
+
+export const releasesQuery = z.object({ q: z.string().optional() });

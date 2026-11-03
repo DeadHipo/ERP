@@ -13,6 +13,7 @@ import { reportsApi } from './reports';
 import { ownerViewApi } from './owner-view';
 import { payoutsApi } from './payouts';
 import { auditApi } from './audit';
+import { aggregatesApi } from './aggregates';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -45,11 +46,13 @@ export function openFacade(config: FacadeConfig) {
     audit,
   });
 
+  const splitsPart = splitsApi(ctx);
   return {
     db,
     modules: { owners, splits, labels, sources, settlements, publishing, audit },
 
-    ...splitsApi(ctx),
+    ...splitsPart,
+    ...aggregatesApi(ctx, splitsPart),
     ...sourcesApi(ctx),
     ...reportsApi(ctx),
     ...ownerViewApi(ctx),
