@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-151 by topic)
+# Decision index (D-001 … D-152 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -57,6 +57,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-149 Operation coverage guard (`coverage.ts`, `paths.ts`), the reason and signal action table, legacy pages removed, guides refreshed · in force
 - D-150 Stage 5 backend rework: audit summary without free text, `X-Audit: failed` instead of 500 after a committed write, schemas for every operation, duplicate details schema, unfunded signals with the recipient, `/releases` 15 s to 1.2 s, `payableNegative` · in force; changes D-140 (audit failure)
 - D-151 Stage 5 rework: the month row key with the sales month, money sorted as decimal text, one dialog per action, Russian labels and API errors, readable grids, ordered spec files with 0 skipped, money-request counts, the widened R1 lint · in force; refines D-144, D-146, D-147, D-148
+- D-152 Stage 6 clean-up: `unfunded` signal rows carry `salesMonth` (hook gets it as the last segment), unit tests of `compareDecimal` / `monthRowId` / audit route labels / resolution labels, the P10 page title, guides checked · in force; refines D-145, D-150, D-151
 - D-139 Frontend goal design: rules R1–R8 with machine checks, the stack pinned, operator trace, payout gate as a field, e2e on private stores; the event loop and the money text as допущения · in force; changes D-119 (the client parses responses), corrects D-121 (ClickHouse database name, N20)
 
 ## Module 1: owners, artists, tracks, documents

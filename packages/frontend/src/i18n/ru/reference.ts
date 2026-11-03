@@ -1,4 +1,4 @@
-/** Справочники (step 3.8): pseudonyms, documents, splits, participations, labels, publishing, sources. */
+/** Справочники: pseudonyms, documents, splits, participations, labels, publishing, sources. */
 const same = {
   all: 'все',
   yes: 'да',

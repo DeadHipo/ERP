@@ -8,7 +8,7 @@ import { ArtistsPage } from '../pages/reference/artists/ArtistsPage';
 import { DuplicatesPage } from '../pages/reference/artists/DuplicatesPage';
 import { ArtistPage } from '../pages/reference/artists/ArtistPage';
 
-/** Каталог: tracks and releases (step 3.6), pseudonyms (step 3.8); owners live in routes/owners.tsx. */
+/** Каталог: tracks and releases, pseudonyms; owners live in routes/owners.tsx. */
 export const catalogRoutes = [
   <Route key="tracks" path={ROUTE_PATHS.tracks} element={<TracksPage />} />,
   <Route key="track" path={ROUTE_PATHS.track} element={<TrackPage />} />,

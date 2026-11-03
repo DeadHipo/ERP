@@ -55,6 +55,8 @@ export interface Shortfall {
   isrc: string;
   upc: string;
   month: string;
+  /** The sales month of the unit (the shortfall is per unit: one ISRC-month has one per sales month). */
+  salesMonth: string;
   ruleId: string;
   missing: Decimal;
   why: 'bucket_short' | 'no_source_row' | 'top_above_100';

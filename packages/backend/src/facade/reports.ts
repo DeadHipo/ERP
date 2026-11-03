@@ -62,6 +62,7 @@ export async function signalsFrom(
     isrc: string;
     upc: string;
     month: string;
+    salesMonth: string;
     ruleId: string;
     missing: Decimal;
     why: string;

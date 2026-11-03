@@ -36,6 +36,7 @@ export const offTheTop: Layer = (s, ctx) => {
         isrc: unit.isrc,
         upc: unit.upc,
         month: unit.reportingMonth,
+        salesMonth: unit.salesMonth,
         ruleId: p.id,
         missing: (targets[i] as Decimal).sub(amounts[i] as Decimal),
         why: 'top_above_100',

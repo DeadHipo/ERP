@@ -1,4 +1,4 @@
-// Client functions of the reference pages (step 3.8). Uses `call` of client.ts.
+// Client functions of the reference pages. Uses `call` of client.ts.
 import type { z } from 'zod';
 import type * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';

@@ -21,7 +21,8 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [17_frontend_model.md](17_frontend_model.md) | The frontend goal, stage 2: the rules, the shell, every page in one sentence, drill-down, components, actions with confirmations, the new endpoints, page states, the e2e harness |
 | [18_frontend_plan.md](18_frontend_plan.md) | The frontend goal, stage 2: libraries with their D-entry, the steps of stage 3 with D-entries and golden screens, stages 4–6 |
 | [19_golden_screens.md](19_golden_screens.md) | The frontend goal, stage 2: what the operator sees and does on the golden-case data, with the exact numbers before and after each action (the Playwright specs) |
-| [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) and of the frontend goal (`frontend_stageN_*.md`) |
+| [20_frontend_report.md](20_frontend_report.md) | The frontend goal report: closed, open, assumptions, the real-data table, the e2e list, performance |
+| [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) and of the frontend goal (`frontend_stage{1,2,3}_{architect,product,qa}.md`, the stage 4 walk on the real data `frontend_stage4_walk.md`, later stages as they are written) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
 `packages/backend/src/modules/*/` (six modules), `packages/backend/src/facade/`, `packages/backend/tests/`, `packages/frontend/`.

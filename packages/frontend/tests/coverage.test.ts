@@ -3,7 +3,7 @@ import { API_OPERATIONS, operationKey } from '../../backend/src/api/operations';
 import { OPERATION_COVERAGE, PAGES_WITHOUT_OPERATIONS } from '../src/api/coverage';
 import { ROUTES } from '../src/routes/paths';
 
-// The completeness guard (step 3.9): every operation of the API has a screen or a documented refusal.
+// The completeness guard: every operation of the API has a screen or a documented refusal.
 const keys = API_OPERATIONS.map(operationKey);
 const entries = Object.entries(OPERATION_COVERAGE);
 const withPage = entries.flatMap(([key, e]) => ('page' in e ? [{ key, ...e }] : []));

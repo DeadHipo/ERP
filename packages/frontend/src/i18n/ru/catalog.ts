@@ -1,4 +1,4 @@
-/** Каталог pages (step 3.6): tracks, the track card, releases. */
+/** Каталог pages: tracks, the track card, releases. */
 export const catalog = {
   money: { net: 'Получено', B: 'B: чужие', C: 'C: ждут', ours: 'Наше', labelShare: 'Доля лейбла' },
   tracks: {

@@ -8,7 +8,7 @@ import { PublishingPage } from '../pages/reference/publishing/PublishingPage';
 import { ParticipationsPage } from '../pages/reference/splits/ParticipationsPage';
 import { SplitsPage } from '../pages/reference/splits/SplitsPage';
 
-/** Правила: splits, participations, labels, publishing, documents (step 3.8). */
+/** Правила: splits, participations, labels, publishing, documents. */
 export const rulesRoutes = [
   <Route key="splits" path={ROUTE_PATHS.splits} element={<SplitsPage />} />,
   <Route key="participations" path={ROUTE_PATHS.participations} element={<ParticipationsPage />} />,

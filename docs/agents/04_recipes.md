@@ -7,7 +7,7 @@ start with `packages/`.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # PostgreSQL + ClickHouse (+ migrations)
-npm run typecheck && npm run lint && REQUIRE_STACK=1 npm test          # 361 tests on 2026-11-03
+npm run typecheck && npm run lint && REQUIRE_STACK=1 npm test          # 406 backend + 65 frontend tests on 2026-11-03
 ```
 Without the stack the facade/sources tests are **skipped**, not failed: always use `REQUIRE_STACK=1` before saying
 "tests pass". Then append a D-entry to `docs/97_принятые_решения.md` and a line to `docs/agents/03_decision_index.md`.

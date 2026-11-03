@@ -1,6 +1,6 @@
 import type { CReason } from '@erp/shared/api-responses';
 
-/** The work pages of step 3.5: Обзор (P1), Очередь ожидания (P2), Сигналы (P21), Решения руководителя (P3). */
+/** The work pages: Обзор (P1), Очередь ожидания (P2), Сигналы (P21), Решения руководителя (P3). */
 export const overview = {
   title: 'Обзор',
   subtitle: 'Каждый ли доллар каждого счёта и месяца попал в B, C или нашу долю, и что ждёт по каким причинам?',
@@ -101,6 +101,7 @@ export const signalsPage = {
     net: 'Нетто',
     months: 'Месяцы',
     month: 'Месяц',
+    salesMonth: 'Месяц продаж',
     title: 'Название в отчёте',
     writer: 'Автор',
     norm: 'Ключ автора',

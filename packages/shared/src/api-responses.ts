@@ -372,6 +372,7 @@ export const signalsSchema = z.object({
         isrc: z.string(),
         upc: z.string(),
         month,
+        salesMonth: month.describe('The sales month of the unit (a shortfall is per unit)'),
         ruleId: z.string(),
         artistId: z.string().describe('The participation recipient (the rule id is a participation id)'),
         pseudonym: z.string(),

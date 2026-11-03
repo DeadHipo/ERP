@@ -83,7 +83,7 @@ test('S20 unallocated: the pair with ISRC → register the track; the pair witho
 test('S21 unfunded → close the participation at 2026-03 and re-create it at 10 %', async ({ page, request }) => {
   const k = sc(21);
   const p = k.participations.P ?? '';
-  const key = `${isrc(21, 1, 1)}|${M}|${p}`;
+  const key = `${isrc(21, 1, 1)}|${M}|${p}|${M}`;
   await openList(page, 'unfunded');
   await expect(money(page, 'unfunded', key, 'missing')).toHaveAttribute('title', '10');
   await expect(row(page, 'unfunded', key)).toContainText('корзины не хватает');

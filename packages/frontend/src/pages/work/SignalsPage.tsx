@@ -84,7 +84,7 @@ function Grid<T>(props: {
   columns: ColDef<T>[];
   /** The key of the test hook `signal-row-<name>-<key>` (D-145). */
   rowKey: (r: T) => string;
-  /** The grid's row id when the key is not unique (unfunded: one row per sales month, which the API does not send). */
+  /** The grid's row id when the key is not unique (unfunded: one row per sales month). */
   rowId?: (r: T) => string;
   count: number;
 }) {
@@ -238,19 +238,20 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
       );
     }
     case 'unfunded': {
-      // `isrc|month|ruleId` repeats on real data (a row per unit: UPC and sales month), so the grid id adds the position.
+      // `isrc|month|ruleId|salesMonth` can still repeat on real data (a row per UPC), so the grid id adds the position.
       type R = Signals['unfunded'][number] & { at: number };
       return (
         <Grid<R>
           name={name}
           count={count}
           rows={data.unfunded.map((r, at) => ({ ...r, at }))}
-          rowKey={(r) => `${r.isrc}|${r.month}|${r.ruleId}`}
-          rowId={(r) => `${r.isrc}|${r.month}|${r.ruleId}|${r.at}`}
+          rowKey={(r) => `${r.isrc}|${r.month}|${r.ruleId}|${r.salesMonth}`}
+          rowId={(r) => `${r.isrc}|${r.month}|${r.ruleId}|${r.salesMonth}|${r.at}`}
           columns={[
             isrcCol((r) => r.isrc),
             textCol('upc', c.upc, (r) => r.upc),
             textCol('month', c.month, (r) => r.month),
+            textCol('salesMonth', c.salesMonth, (r) => r.salesMonth),
             pseudonymCol<R>(),
             textCol('fundedFrom', c.fundedFrom, (r) => fundedText(r.fundedFrom)),
             moneyCol('missing', c.missing, (r) => r.missing),

@@ -44,6 +44,14 @@ export function OwnerPage() {
                   {t.merged} <EntityLink kind="owner" id={d.owner.id} label={d.owner.name} />. {t.mergedHint}
                 </div>
               ) : null}
+              <div>
+                <h1 className="text-2xl font-semibold" data-testid="owner-page-title">
+                  {d.owner.name}
+                </h1>
+                <p className="text-sm text-muted" data-testid="owner-page-subtitle">
+                  {t.pseudonyms}: {d.artists.length === 0 ? '—' : d.artists.map((a) => a.pseudonym).join(', ')}
+                </p>
+              </div>
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <p className="text-sm text-muted">{t.subtitle}</p>
                 <PeriodBar period={period} onApply={setPeriod} />

@@ -3,7 +3,7 @@ import type * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
 import { call } from './client';
 
-// Client functions of the catalogue pages (step 3.6): the track summary and money, the breakdown of a month,
+// Client functions of the catalogue pages: the track summary and money, the breakdown of a month,
 // releases, and the audit trail of an entity. One function per operation of packages/backend/src/api/operations.ts.
 
 const id = encodeURIComponent;

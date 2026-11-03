@@ -20,8 +20,8 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 - `npm ci`
 - `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` first: PostgreSQL, ClickHouse and the one-shot migrations (`npm run migrate:ch`, `npm run migrate:pg` by hand)
 - `npm run typecheck` (all workspaces: backend, frontend, shared). The repo is an npm workspaces monorepo: `packages/{backend,frontend,shared}` (D-116); install only from the root
-- `REQUIRE_STACK=1 npm test` (vitest, 361 tests on 2026-11-03; the ones that need the stack create their own private databases and drop them; without `REQUIRE_STACK=1` they are silently skipped when the stack is down)
-- `npm run e2e` (Playwright on private stores `erp_e2e` / `believe_e2e`; needs the stack and, once, `npx playwright install chromium`)
+- `REQUIRE_STACK=1 npm test` (vitest, 406 backend + 65 frontend tests on 2026-11-03; the ones that need the stack create their own private databases and drop them; without `REQUIRE_STACK=1` they are silently skipped when the stack is down)
+- `npm run e2e` (Playwright on private stores `erp_e2e` / `believe_e2e`; needs the stack and, once, `npx playwright install chromium`; take the lock `mkdir data/test-tmp/e2e.lock` first and `rmdir` it after, see `packages/frontend/CLAUDE.md`)
 - `npm run lint` (eslint over the whole repo)
 - `npm run build:client` (vite build)
 - `LOG_TIMINGS=1` before `npm run dev` (or `main.ts`) prints a tree of step timings per request: balance, `calculate()`, every ClickHouse read (D-122)

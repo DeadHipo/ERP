@@ -3,7 +3,7 @@ import type * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
 import { call } from './client';
 
-// Client functions of the money pages (step 3.7): payables, operations with filters, the payout snapshot, the audit
+// Client functions of the money pages: payables, operations with filters, the payout snapshot, the audit
 // trail. One function per operation of packages/backend/src/api/operations.ts; every response parsed by its schema.
 
 const id = encodeURIComponent;

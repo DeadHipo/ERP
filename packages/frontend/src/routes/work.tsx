@@ -5,7 +5,7 @@ import { QueuePage } from '../pages/work/QueuePage';
 import { SignalsPage } from '../pages/work/SignalsPage';
 import { QuestionsPage } from '../pages/work/QuestionsPage';
 
-/** Работа: overview, the C queue, signals, the open questions (step 3.5). The payouts view is `/owners?view=payouts`. */
+/** Работа: overview, the C queue, signals, the open questions. The payouts view is `/owners?view=payouts`. */
 export const workRoutes = [
   <Route key="overview" index element={<OverviewPage />} />,
   <Route key="queue" path={ROUTE_PATHS.queue} element={<QueuePage />} />,

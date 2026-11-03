@@ -119,9 +119,10 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
 - **Open for the product owner:** the list of items (negative payables before stage 5 analysis, B17 payees without a
   contract, ambiguous Echo8 names, XENO XID, a second statement for a loaded quarter, …) is in `15_mvp_report.md`
   (the stage 7 report) and `13_completeness_check.md`.
-- **The frontend goal (D-139 ... D-149):** the operator's workplace on HeroUI + Tailwind, AG Grid and TanStack Query; 21 pages
+- **The frontend goal (D-139 ... D-152):** the operator's workplace on HeroUI + Tailwind, AG Grid and TanStack Query; 21 pages
   (`17_frontend_model.md`), e2e on private stores (`npm run e2e`); the old pages removed. Every API operation has a page or a
   documented refusal in `packages/frontend/src/api/coverage.ts` (guard test); notes: `packages/frontend/CLAUDE.md`.
+  Stage 5 reworked the backend (D-150) and the screens (D-151: month row key, decimal sorting, one dialog per action, Russian errors); stage 6 clean-up is D-152; the result is `20_frontend_report.md`.
 - **Out of scope until asked:** ASCAP, authentication and roles, a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,
@@ -139,4 +140,5 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   `13_completeness_check.md`, `14_verification.md`, `15_mvp_report.md`.
 - The frontend goal, in order: `16_frontend_jobs.md` (the operator's jobs, every reason and signal with its action),
   `17_frontend_model.md` (rules R1-R8, pages P1-P21, components, actions), `18_frontend_plan.md` (libraries, steps, D-entries),
-  `19_golden_screens.md` (expected numbers = the Playwright specs in `packages/frontend/e2e/golden/`).
+  `19_golden_screens.md` (expected numbers = the Playwright specs in `packages/frontend/e2e/golden/`),
+  `20_frontend_report.md` (what is closed and open, the assumptions, the real-data walk, performance).

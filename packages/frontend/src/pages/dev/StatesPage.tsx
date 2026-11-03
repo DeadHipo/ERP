@@ -17,8 +17,7 @@ import { sourceQueries } from '../../api/queries/sources';
 import { trackQueries } from '../../api/queries/tracks';
 import { useAction } from '../../api/queries/core';
 
-// The states fixture page: `/dev/states?case=<ss1..ss7|action>`. The pages of the app do not exist yet in step 3.4, so
-// the checks SS1..SS7 of 19_golden_screens.md run here against `page.route` mocks (e2e/states.spec.ts). Each case
+// The states fixture page: `/dev/states?case=<ss1..ss7|action>`. The checks SS1..SS7 of 19_golden_screens.md run here against `page.route` mocks (e2e/states.spec.ts). Each case
 // uses one real client function, so the mocks exercise the real client, schema parse and components.
 
 const CASES = ['ss1', 'ss2', 'ss3', 'ss4', 'ss5', 'ss6', 'ss7', 'action'] as const;
