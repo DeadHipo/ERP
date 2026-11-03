@@ -1,22 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { z } from 'zod';
 import * as api from '../../../api/client';
-import { ApiError } from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { ActionButton } from '../../../components/ActionButton';
+import { DuplicateDialog, similarOf, type Similar } from '../../../components/DuplicateDialog';
 import { FormDialog } from '../../../components/FormDialog';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 
 const t = ru.reference.artists;
-
-/** `details` of 409 `possible_duplicate` (`POST /artists`): the similar live pseudonyms. */
-const duplicateDetails = z.object({
-  similar: z.array(z.object({ id: z.string(), name: z.string(), matchedBy: z.array(z.string()) })),
-});
-type Similar = z.output<typeof duplicateDetails>['similar'];
 
 /** «Создать псевдоним»: `POST /artists`; a 409 `possible_duplicate` opens the duplicate dialog («тот же» / «новый» with force). */
 export function CreateArtistDialog(props: { onClose: () => void }) {
@@ -35,47 +28,28 @@ export function CreateArtistDialog(props: { onClose: () => void }) {
         void navigate(`/artists/${encodeURIComponent(a.id)}`);
       },
       onError: (e) => {
-        if (e instanceof ApiError && e.code === 'possible_duplicate') {
-          const d = duplicateDetails.safeParse(e.details);
-          if (d.success) setSimilar(d.data.similar);
-        }
+        const found = similarOf(e);
+        if (found) setSimilar(found);
       },
     });
 
   if (similar) {
     return (
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
+      <DuplicateDialog
         title={t.duplicateTitle}
-        subtitle={t.duplicateText}
-        footer={
-          <ActionButton name="duplicate-new" isPending={run.isPending} onPress={() => submit(true)}>
-            {t.fresh}
-          </ActionButton>
-        }
-      >
-        <ul className="flex flex-col gap-2" data-testid="duplicate-dialog">
-          {similar.map((s) => (
-            <li key={s.id} data-testid={`duplicate-${s.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-sm">
-              <span>
-                <b>{s.name}</b> <span className="text-muted">({t.matchedBy}: {s.matchedBy.join(', ')})</span>
-              </span>
-              <ActionButton
-                name="duplicate-same"
-                write={false}
-                variant="secondary"
-                onPress={() => {
-                  props.onClose();
-                  void navigate(`/artists/${encodeURIComponent(s.id)}`);
-                }}
-              >
-                {t.same}
-              </ActionButton>
-            </li>
-          ))}
-        </ul>
-      </FormDialog>
+        text={t.duplicateText}
+        matchedBy={t.matchedBy}
+        same={t.same}
+        fresh={t.fresh}
+        similar={similar}
+        pending={run.isPending}
+        onFresh={() => submit(true)}
+        onClose={props.onClose}
+        onSame={(id) => {
+          props.onClose();
+          void navigate(`/artists/${encodeURIComponent(id)}`);
+        }}
+      />
     );
   }
   return (

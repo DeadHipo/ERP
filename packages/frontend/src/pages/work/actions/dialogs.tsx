@@ -7,7 +7,6 @@ import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { documentQueries } from '../../../api/queries/documents';
 import { labelQueries } from '../../../api/queries/labels';
-import { ownerQueries } from '../../../api/queries/owners';
 import { publishingQueries } from '../../../api/queries/publishing';
 import { splitQueries } from '../../../api/queries/splits';
 import { trackQueries } from '../../../api/queries/tracks';
@@ -24,7 +23,12 @@ import { DocumentStep, type ReadyDocument } from './DocumentStep';
 import { useApproveLines } from './approve-lines';
 
 // The dialogs of the queue and signal actions (16 §2.6, §2.7; 17 §6). Each is opened by the page for one row and
-// closed by `onClose` after its final write succeeded. Irreversible final steps go through `ConfirmDialog`.
+// closed by `onClose` after its final write succeeded. Irreversible final steps go through `ConfirmDialog`. The owner
+// actions live in `owner-dialogs.tsx` and the label rule close in `rule-dialogs.tsx`; this file re-exports them so the
+// action table (`action-table.ts`) names every dialog from one module.
+
+export { AssignOwnerDialog, CreateContractDialog, MergeOwnerDialog } from './owner-dialogs';
+export { CloseRuleDialog } from './rule-dialogs';
 
 const a = ru.actions;
 const f = a.fields;
@@ -35,6 +39,9 @@ const SPLIT_DOC_KINDS = ['appendix', 'contract', 'other'] as const;
 /** `YYYY-MM` -> the first day of that month (the backend floors every rule date to it anyway, M52). */
 const monthStart = (month: string) => (month.length === 7 ? `${month}-01` : month);
 const period = (from: string, to: string | null) => `${from} → ${to ?? 'бессрочно'}`;
+/** «от нетто, из доли артиста» of a participation, in Russian. */
+const participationText = (p: { base: Base; fundedFrom: Funded }) =>
+  `${ru.catalog.rules.bases[p.base]}, ${ru.signalsPage.funded[p.fundedFrom]}`;
 
 function Submit(props: { name?: string; label: string; disabled: boolean; pending: boolean; onPress: () => void; reason?: string }) {
   return (
@@ -50,108 +57,9 @@ function Submit(props: { name?: string; label: string; disabled: boolean; pendin
   );
 }
 
-// ---- owner_unconfirmed ----
-
-export function CreateContractDialog(props: { ownerId: string; ownerLabel: string; waiting?: string; onClose: () => void }) {
-  const owner = useQuery(ownerQueries.detail(props.ownerId));
-  const [doc, setDoc] = useState<ReadyDocument | null>(null);
-  const [confirm, setConfirm] = useState(false);
-  const artists = owner.data?.artists ?? [];
-  const run = useAction(
-    (documentId: string) =>
-      api.documents.createContract({ ownerId: props.ownerId, documentId, artistIds: artists.map((x) => x.id) }),
-    { invalidate: 'all', success: () => a.toast.contract },
-  );
-  return (
-    <>
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
-        title={a.createContract}
-        subtitle={ru.reasonActions.owner_unconfirmed}
-        footer={
-          <Submit label={a.createContract} reason={a.hints.pickFirst} disabled={!doc || !owner.data} pending={run.isPending} onPress={() => setConfirm(true)} />
-        }
-      >
-        <div className="text-sm">
-          {f.owner}: <b>{props.ownerLabel}</b> · {artists.map((x) => x.pseudonym).join(', ')}
-        </div>
-        <DocumentStep
-          kinds={['contract']}
-          newOnly
-          ownerId={props.ownerId}
-          defaultTitle={`Договор ${props.ownerLabel}`}
-          waiting={props.waiting}
-          ready={doc}
-          onReady={setDoc}
-        />
-      </FormDialog>
-      <ConfirmDialog
-        isOpen={confirm}
-        onOpenChange={setConfirm}
-        title={a.confirm.contractTitle}
-        lines={[...a.confirm.contractLines(props.ownerLabel, artists.map((x) => x.pseudonym).join(', '), doc?.title ?? '')]}
-        isPending={run.isPending}
-        onConfirm={() =>
-          doc && run.mutate(doc.id, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })
-        }
-      />
-    </>
-  );
-}
-
-export function MergeOwnerDialog(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
-  const [into, setInto] = useState<{ id: string; label: string } | null>(null);
-  const [reason, setReason] = useState('');
-  const [confirm, setConfirm] = useState(false);
-  const run = useAction(
-    (intoId: string) => api.owners.merge({ fromId: props.ownerId, intoId, reason: reason.trim() }),
-    { invalidate: 'all', success: (o) => fmt(a.toast.merged, { name: o.name }) },
-  );
-  return (
-    <>
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
-        title={a.mergeOwner}
-        footer={
-          <Submit
-            name="merge-submit"
-            label={a.mergeOwner}
-            disabled={!into || reason.trim() === ''}
-            pending={run.isPending}
-            onPress={() => setConfirm(true)}
-          />
-        }
-      >
-        <div className="text-sm">
-          {f.owner}: <b>{props.ownerLabel}</b>
-        </div>
-        <EntityPicker
-          name="merge-into"
-          label={f.into}
-          kind="owners"
-          value={into?.id ?? null}
-          accept={(i) => i.id !== props.ownerId}
-          onChange={(id, label) => setInto(id ? { id, label } : null)}
-        />
-        <TextField name="merge-reason" label={f.reason} value={reason} onChange={setReason} isRequired />
-      </FormDialog>
-      <ConfirmDialog
-        isOpen={confirm}
-        onOpenChange={setConfirm}
-        title={a.confirm.mergeTitle}
-        lines={[...a.confirm.mergeLines(props.ownerLabel, into?.label ?? '')]}
-        isPending={run.isPending}
-        onConfirm={() => into && run.mutate(into.id, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
-      />
-    </>
-  );
-}
-
 // ---- split_unconfirmed ----
 
-export function ConfirmSplitDialog(props: { splitId: string; isrc: string; waiting?: string; onClose: () => void }) {
+export function ConfirmSplitDialog(props: { splitId: string; isrc: string; onClose: () => void }) {
   const list = useQuery(splitQueries.list(props.isrc));
   const split = list.data?.items.find((s) => s.id === props.splitId);
   const [doc, setDoc] = useState<ReadyDocument | null>(null);
@@ -173,7 +81,7 @@ export function ConfirmSplitDialog(props: { splitId: string; isrc: string; waiti
         <div className="text-sm">
           ISRC <b>{props.isrc}</b> · {rows} {split ? `· ${period(split.validFrom, split.validTo)}` : ''}
         </div>
-        <DocumentStep kinds={SPLIT_DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} waiting={props.waiting} ready={doc} onReady={setDoc} />
+        <DocumentStep kinds={SPLIT_DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
       </FormDialog>
       <ConfirmDialog
         isOpen={confirm}
@@ -197,7 +105,6 @@ export function ReplaceDocumentDialog(props: {
   /** The document being replaced (the assumption or the unapproved one). */
   oldDocumentId: string | null;
   fromMonth: string;
-  waiting?: string;
   title: string;
   onClose: () => void;
 }) {
@@ -214,11 +121,16 @@ export function ReplaceDocumentDialog(props: {
   const found = props.kind === 'split' ? !!split : props.kind === 'participation' ? !!part : !!rule;
   const from = monthStart(month);
 
+  // The new rows of a split change end where the next split of the ISRC starts (19 §4): read from the splits list.
+  const next = (splits.data?.items ?? [])
+    .filter((s) => s.validFrom > from)
+    .map((s) => s.validFrom)
+    .sort()[0];
   const what =
     props.kind === 'split' && split
       ? split.shares.map((s) => `${s.pseudonym} ${s.percent} %${s.documentId === props.oldDocumentId ? ' [допущение]' : ''}`).join(', ')
       : props.kind === 'participation' && part
-        ? `${part.pseudonym} ${part.percent} % (${part.base}, ${part.fundedFrom}) · ${part.isrc}`
+        ? `${part.pseudonym} ${part.percent} % (${participationText(part)}) · ${part.isrc}`
         : rule && label
           ? `${label.name} → ${rule.recipientPseudonym} ${rule.percent} %`
           : '';
@@ -292,7 +204,6 @@ export function ReplaceDocumentDialog(props: {
         <DocumentStep
           kinds={SPLIT_DOC_KINDS}
           defaultTitle={`Документ ${props.isrc ?? ''}`.trim()}
-          waiting={props.waiting}
           ready={doc}
           onReady={setDoc}
         />
@@ -303,7 +214,10 @@ export function ReplaceDocumentDialog(props: {
         title={props.kind === 'split' ? a.confirm.changeTitle : a.confirm.closeRecreateTitle}
         lines={
           props.kind === 'split'
-            ? [...a.confirm.changeLines(props.isrc ?? '', from, what.replace(/ \[допущение\]/g, ''), doc?.title ?? '')]
+            ? [
+                ...a.confirm.changeLines(props.isrc ?? '', from, what.replace(/ \[допущение\]/g, ''), doc?.title ?? ''),
+                next ? fmt(a.confirm.changeUntil, { to: next }) : a.confirm.changeOpen,
+              ]
             : [...a.confirm.closeRecreateLines(what, from, doc?.title ?? '')]
         }
         isPending={run.isPending}
@@ -313,12 +227,20 @@ export function ReplaceDocumentDialog(props: {
   );
 }
 
-/** rule_unconfirmed with a document that only waits for its approval: the confirmation alone. */
-export function ApproveDocumentDialog(props: { documentId: string; waiting?: string; onClose: () => void }) {
+/**
+ * «Утвердить документ» (rule_unconfirmed, P13, P14, P10 Документы): the confirmation alone. Its lines come from
+ * `GET /documents/:id/uses` (`useApproveLines`); OK stays disabled until that answers. `doc` saves the documents list
+ * when the caller already has the document.
+ */
+export function ApproveDocumentDialog(props: {
+  documentId: string;
+  doc?: { id: string; title: string; kind: string };
+  onClose: () => void;
+}) {
   const { operator } = useOperator();
-  const docs = useQuery(documentQueries.list());
-  const doc = docs.data?.find((d) => d.id === props.documentId);
-  const lines = useApproveLines(doc ?? { id: props.documentId, title: props.documentId, kind: '' }, props.waiting, true);
+  const docs = useQuery({ ...documentQueries.list(), enabled: props.doc === undefined });
+  const doc = props.doc ?? docs.data?.find((d) => d.id === props.documentId);
+  const approve = useApproveLines(doc ?? null, true);
   const run = useAction(() => api.documents.approve(props.documentId, { by: operator }), {
     invalidate: 'all',
     success: (d) => fmt(a.toast.approved, { title: d.title }),
@@ -328,70 +250,11 @@ export function ApproveDocumentDialog(props: { documentId: string; waiting?: str
       isOpen
       onOpenChange={(o) => (o ? null : props.onClose())}
       title={a.confirm.approveTitle}
-      lines={lines}
+      lines={approve.lines}
+      isLoading={approve.loading || doc === undefined}
       isPending={run.isPending}
       onConfirm={() => run.mutate(undefined, { onSettled: props.onClose })}
     />
-  );
-}
-
-// ---- artist_without_owner, participantsWithoutOwner ----
-
-export function AssignOwnerDialog(props: { artistId: string; pseudonym: string; onClose: () => void }) {
-  const [mode, setMode] = useState<'pick' | 'create'>('pick');
-  const [owner, setOwner] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<'person' | 'label'>('person');
-  const run = useAction(
-    async () => {
-      const ownerId = mode === 'create' ? (await api.owners.create({ name: name.trim(), kind })).id : owner;
-      if (!ownerId) throw new api.ApiError(a.hints.fillFields, 0, 'validation_error');
-      return api.artists.assignOwner(props.artistId, { ownerId });
-    },
-    { invalidate: 'all', success: (x) => fmt(a.toast.ownerAssigned, { pseudonym: x.pseudonym }) },
-  );
-  const ready = mode === 'pick' ? owner !== null : name.trim() !== '';
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={a.assignOwner}
-      subtitle={ru.reasonActions.artist_without_owner}
-      footer={
-        <Submit name="assign-submit" label={a.assignOwner} disabled={!ready} pending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })} />
-      }
-    >
-      <div className="text-sm">
-        {f.artist}: <b>{props.pseudonym}</b>
-      </div>
-      <SelectField
-        name="assign-mode"
-        label={f.owner}
-        value={mode}
-        onChange={(v) => setMode(v === 'create' ? 'create' : 'pick')}
-        options={[
-          { id: 'pick', label: 'выбрать существующего' },
-          { id: 'create', label: a.steps.createOwner },
-        ]}
-      />
-      {mode === 'pick' ? (
-        <EntityPicker name="assign-owner" label={f.owner} kind="owners" value={owner} onChange={(id) => setOwner(id)} />
-      ) : (
-        <>
-          <TextField name="owner-name" label={f.ownerName} value={name} onChange={setName} isRequired />
-          <SelectField
-            name="owner-kind"
-            label={f.ownerKind}
-            value={kind}
-            onChange={(v) => setKind(v === 'label' ? 'label' : 'person')}
-            options={[
-              { id: 'person', label: f.person },
-              { id: 'label', label: f.label },
-            ]}
-          />
-        </>
-      )}
-    </FormDialog>
   );
 }
 
@@ -537,52 +400,6 @@ export function SetRuleDialog(props: { labelString: string; month: string; onClo
       </div>
       <RuleFields {...{ percent, setPercent, recipient, setRecipient, month, setMonth, document, setDocument }} />
     </FormDialog>
-  );
-}
-
-/** ruleRecipientIsRow: close the label rule whose recipient is also a split row (D-126). */
-export function CloseRuleDialog(props: { artistId: string; pseudonym: string; month: string; onClose: () => void }) {
-  const labels = useQuery(labelQueries.list());
-  const found = (labels.data ?? []).flatMap((l) =>
-    l.rules.filter((r) => r.recipientArtistId === props.artistId && r.validTo === null).map((r) => ({ label: l, rule: r })),
-  )[0];
-  const [month, setMonth] = useState(props.month);
-  const [confirm, setConfirm] = useState(false);
-  const run = useAction((ruleId: string) => api.labels.closeRule(ruleId, { validTo: monthStart(month) }), {
-    invalidate: 'all',
-    success: (r) => fmt(a.toast.ruleClosed, { to: r.validTo ?? '' }),
-  });
-  const what = found ? `${found.label.name} → ${found.rule.recipientPseudonym} ${found.rule.percent} % (${period(found.rule.validFrom, found.rule.validTo)})` : '';
-  return (
-    <>
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
-        title={a.closeRule}
-        subtitle={a.hints.monthRule}
-        footer={
-          <Submit
-            name="close-rule-submit"
-            label={a.closeRule}
-            disabled={!found || month === ''}
-            reason={!found ? a.hints.noRule : undefined}
-            pending={run.isPending}
-            onPress={() => setConfirm(true)}
-          />
-        }
-      >
-        <div className="text-sm">{what || a.hints.noRule}</div>
-        <DateField name="close-at" label={f.closeAt} value={month} onChange={setMonth} month isRequired />
-      </FormDialog>
-      <ConfirmDialog
-        isOpen={confirm}
-        onOpenChange={setConfirm}
-        title={a.confirm.closeRuleTitle}
-        lines={[...a.confirm.closeRuleLines(what, monthStart(month))]}
-        isPending={run.isPending}
-        onConfirm={() => found && run.mutate(found.rule.id, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
-      />
-    </>
   );
 }
 
@@ -825,7 +642,10 @@ function RecreateParticipationForm(props: {
     },
     { invalidate: 'all', success: (t) => t },
   );
-  const what = `${p.pseudonym} ${p.percent} % (${p.base}, ${p.fundedFrom}) · ${p.isrc} · ${period(p.validFrom, p.validTo)}`;
+  const what = `${p.pseudonym} ${p.percent} % (${participationText(p)}) · ${p.isrc} · ${period(p.validFrom, p.validTo)}`;
+  // The document is named by its title (the cached documents list), never by its id.
+  const docs = useQuery({ ...documentQueries.list(), enabled: p.documentId !== null });
+  const docTitle = p.documentId === null ? '—' : (docs.data?.find((d) => d.id === p.documentId)?.title ?? ru.common.loading);
   return (
     <>
       <FormDialog
@@ -839,7 +659,7 @@ function RecreateParticipationForm(props: {
       >
         <div className="text-sm">{what}</div>
         <TextField name="participation-percent" label={f.percent} value={percent} onChange={setPercent} isRequired />
-        <SelectField name="participation-base" label={f.base} value={base} onChange={(v) => setBase(BASES.find((b) => b === v) ?? base)} options={BASES.map((b) => ({ id: b, label: b }))} />
+        <SelectField name="participation-base" label={f.base} value={base} onChange={(v) => setBase(BASES.find((b) => b === v) ?? base)} options={BASES.map((b) => ({ id: b, label: ru.catalog.rules.bases[b] }))} />
         <SelectField
           name="participation-funded"
           label={f.fundedFrom}
@@ -853,7 +673,8 @@ function RecreateParticipationForm(props: {
         isOpen={confirm}
         onOpenChange={setConfirm}
         title={a.confirm.closeRecreateTitle}
-        lines={[...a.confirm.closeRecreateLines(what, from, p.documentId ?? '—')]}
+        lines={[...a.confirm.closeRecreateLines(what, from, docTitle)]}
+        isLoading={p.documentId !== null && !docs.data}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { TrackSummaryItem } from '@erp/shared/api-responses';
@@ -15,6 +15,7 @@ import { QueryView } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
+import { compareDecimal } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { useUrlParam } from './components/url';
 import { FlagChip } from './components/FlagChip';
@@ -31,6 +32,11 @@ export function TracksPage() {
   const [creating, setCreating] = useState(false);
   const query = useQuery(trackQueries.summary(account || undefined, month || undefined));
   const columns = useMemo(() => trackColumns(), []);
+  // The P1 drill-down (B or ours of an account and month) opens the list sorted by that column, largest first; the
+  // column travels in the router state, so the link itself stays `/tracks?account&month`.
+  const location = useLocation();
+  const sortBy = (location.state as { sortBy?: unknown } | null)?.sortBy;
+  const defaultSort = sortBy === 'B' || sortBy === 'ours' ? ([sortBy, 'desc'] as const) : undefined;
   const filter = (items: readonly TrackSummaryItem[]) => {
     const needle = q.trim().toLocaleLowerCase('ru');
     // With an account or month scope the API still lists every track (zeros outside the scope): show those with units in it.
@@ -74,7 +80,7 @@ export function TracksPage() {
         <div className="w-72">
           <TextField name="tracks-q" label={t.q} value={q} onChange={setQ} type="search" />
         </div>
-        <div className="w-44">
+        <div className="w-72">
           <SelectField
             name="tracks-has-split"
             label={t.hasSplit}
@@ -111,6 +117,7 @@ export function TracksPage() {
                 columnDefs={columns}
                 getRowId={(r) => r.isrc}
                 rowTestId={(r) => `track-${r.isrc}`}
+                defaultSort={defaultSort}
                 gridStateKey="grid"
               />
             </div>
@@ -156,11 +163,11 @@ function trackColumns(): ColDef<TrackSummaryItem>[] {
           </span>
         ) : null,
     },
-    // Sorting money columns compares the decimal strings as text; the API order (by ISRC) is the default.
-    { colId: 'net', headerName: m.net, valueGetter: (p) => p.data?.net, cellRenderer: money('net'), filter: false },
-    { colId: 'B', headerName: m.B, valueGetter: (p) => p.data?.B, cellRenderer: money('B'), filter: false },
-    { colId: 'C', headerName: m.C, valueGetter: (p) => p.data?.C, cellRenderer: money('C'), filter: false },
-    { colId: 'ours', headerName: m.ours, valueGetter: (p) => p.data?.ours, cellRenderer: money('ours'), filter: false },
+    // Money columns sort by `compareDecimal` (sign, integer length, digits; no number is made); the API order (by ISRC) is the default.
+    { colId: 'net', headerName: m.net, minWidth: 130, valueGetter: (p) => p.data?.net, cellRenderer: money('net'), comparator: compareDecimal, filter: false },
+    { colId: 'B', headerName: m.B, minWidth: 130, valueGetter: (p) => p.data?.B, cellRenderer: money('B'), comparator: compareDecimal, filter: false },
+    { colId: 'C', headerName: m.C, minWidth: 130, valueGetter: (p) => p.data?.C, cellRenderer: money('C'), comparator: compareDecimal, filter: false },
+    { colId: 'ours', headerName: m.ours, minWidth: 130, valueGetter: (p) => p.data?.ours, cellRenderer: money('ours'), comparator: compareDecimal, filter: false },
     {
       colId: 'months',
       headerName: c.months,

@@ -74,14 +74,9 @@ export async function call<Schema extends z.ZodType>(
 }
 
 const id = encodeURIComponent;
-const free = z.unknown();
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
 // ---- one function per operation of packages/backend/src/api/operations.ts, named by topic ----
-
-export const system = {
-  health: () => call('GET', '/health', { schema: z.object({ ok: z.boolean() }) }),
-};
 
 export const owners = {
   list: () => call('GET', '/owners', { schema: list(R.ownerSchema) }),
@@ -126,7 +121,7 @@ export const documents = {
   /** What the document confirms and the C money that waits for it (N13). */
   uses: (documentId: string) => call('GET', `/documents/${id(documentId)}/uses`, { schema: R.documentUsesSchema }),
   createContract: (body: z.input<typeof S.createContractBody>) =>
-    call('POST', '/contracts', { body, schema: R.contractSchema }),
+    call('POST', '/contracts', { body, schema: R.createdContractSchema }),
 };
 
 export const splits = {
@@ -169,14 +164,14 @@ export const sources = {
     call('GET', '/sources/lines', { query, schema: R.sourceLinesPageSchema }),
   facets: (query: z.input<typeof S.sourceFacetsQuery> = {}) =>
     call('GET', '/sources/lines/facets', { query, schema: R.sourceFacetsSchema }),
-  uploadBelieve: (file: File) => call('POST', '/sources/believe', { body: fileForm(file), schema: free }),
+  uploadBelieve: (file: File) => call('POST', '/sources/believe', { body: fileForm(file), schema: R.sourceFileSchema }),
 };
 
 export const publishing = {
   uploadB17: (file: File) => call('POST', '/publishing/b17', { body: fileForm(file), schema: R.b17UploadSchema }),
   writers: () => call('GET', '/publishing/writers', { schema: list(R.publishingWriterSchema) }),
   mapWriter: (norm: string, body: z.input<typeof S.mapWriterBody>) =>
-    call('POST', `/publishing/writers/${id(norm)}/map`, { body, schema: free }),
+    call('POST', `/publishing/writers/${id(norm)}/map`, { body, schema: R.ownerSchema }),
   resolveWriters: () => call('POST', '/publishing/writers/resolve', { schema: R.resolveWritersSchema }),
   setTerms: (body: z.input<typeof S.publishingTermsBody>) =>
     call('POST', '/publishing/terms', { body, schema: R.publishingTermsSchema }),
@@ -196,9 +191,8 @@ export const reports = {
     call('GET', `/queue/${id(reason)}`, { query, schema: R.queuePageSchema }),
 };
 
+/** The operations list and the payout snapshot are in `api/money.ts` (with their filters and schemas). */
 export const settlements = {
-  operations: (query: z.input<typeof S.listQuery> = {}) =>
-    call('GET', '/settlements/operations', { query, schema: list(R.operationSchema) }),
   create: (body: z.input<typeof S.createOperationBody>) =>
     call('POST', '/settlements/operations', { body, schema: R.operationSchema }),
   proof: (operationId: string, body: z.input<typeof S.proofBody>) =>
@@ -209,8 +203,6 @@ export const settlements = {
     call('POST', `/settlements/operations/${id(operationId)}/deactivate`, { body, schema: R.operationSchema }),
   returnPayout: (operationId: string, body: z.input<typeof S.returnBody>) =>
     call('POST', `/settlements/operations/${id(operationId)}/return`, { body, schema: R.operationSchema }),
-  snapshot: (operationId: string) =>
-    call('GET', `/settlements/operations/${id(operationId)}/snapshot`, { schema: free }),
 };
 
 /** `GET /search`. Optional `kinds` restricts the result to one or more kinds (EntityPicker). */

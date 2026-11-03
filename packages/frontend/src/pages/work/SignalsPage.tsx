@@ -3,15 +3,18 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { Signals } from '@erp/shared/api-responses';
+import { documentQueries } from '../../api/queries/documents';
 import { reportQueries } from '../../api/queries/reports';
-import { ActionButton } from '../../components/ActionButton';
+import { ActionButton, OperatorNotice } from '../../components/ActionButton';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { PageState, QueryView } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
+import { compareDecimal } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
+import { useOwnerNames } from '../reference/shared';
 import {
   AssignOwnerDialog,
   CloseRuleDialog,
@@ -34,8 +37,11 @@ const a = ru.actions;
 export const SIGNAL_NAMES = Object.keys(ru.signals) as (keyof typeof ru.signals)[];
 type SignalName = (typeof SIGNAL_NAMES)[number];
 
-/** One call for every list (cut to 500 rows; `counts` has the full lengths). */
-const LIMIT = 500;
+/**
+ * One call for every list, cut to the API's cap per list (5000; `counts` has the full lengths): every row is reachable
+ * and the grid pages them on the client (stage 4 walk F2).
+ */
+const LIMIT = 5000;
 
 export function SignalsPage() {
   const { name } = useParams();
@@ -72,7 +78,16 @@ function SignalIndex({ data }: { data: Signals }) {
 
 type Open = (dialog: ReactNode) => void;
 
-function Grid<T>(props: { name: SignalName; rows: readonly T[]; columns: ColDef<T>[]; rowKey: (r: T) => string; count: number }) {
+function Grid<T>(props: {
+  name: SignalName;
+  rows: readonly T[];
+  columns: ColDef<T>[];
+  /** The key of the test hook `signal-row-<name>-<key>` (D-145). */
+  rowKey: (r: T) => string;
+  /** The grid's row id when the key is not unique (unfunded: one row per sales month, which the API does not send). */
+  rowId?: (r: T) => string;
+  count: number;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <div className="text-sm" data-testid="signal-total">
@@ -85,10 +100,10 @@ function Grid<T>(props: { name: SignalName; rows: readonly T[]; columns: ColDef<
         <DataGrid
           rowData={props.rows}
           columnDefs={props.columns}
-          getRowId={props.rowKey}
+          getRowId={props.rowId ?? props.rowKey}
           rowTestId={(r) => `signal-row-${props.name}-${props.rowKey(r)}`}
           autoHeight
-          pageSize={500}
+          pageSize={100}
           gridStateKey="grid"
         />
       )}
@@ -108,7 +123,8 @@ const isrcCol = <T,>(get: (r: T) => string | null): ColDef<T> => ({
 const moneyCol = <T,>(colId: string, headerName: string, get: (r: T) => string): ColDef<T> => ({
   colId,
   headerName,
-  sortable: false,
+  minWidth: 120,
+  comparator: compareDecimal,
   valueGetter: (p) => (p.data ? get(p.data) : null),
   cellRenderer: (p: { data?: T }) => (p.data ? <span data-col={colId}><Money value={get(p.data)} /></span> : null),
 });
@@ -128,7 +144,7 @@ const actionCol = <T,>(render: (r: T) => ReactNode): ColDef<T> => ({
   cellRenderer: (p: { data?: T }) => (p.data ? <div className="flex flex-wrap items-center gap-1 py-1">{render(p.data)}</div> : null),
 });
 const btn = (name: string, label: string, onPress: () => void) => (
-  <ActionButton key={name} name={name} variant="secondary" onPress={onPress}>
+  <ActionButton key={name} name={name} variant="secondary" compact onPress={onPress}>
     {label}
   </ActionButton>
 );
@@ -139,15 +155,30 @@ function SignalList({ name, data }: { name: SignalName; data: Signals }) {
   const close = () => setDialog(null);
   const open: Open = (d) => setDialog(d);
   const count = data.counts[name] ?? 0;
+  // Names for rows that carry only ids (reference lists, no money): owners of twoRowsOneOwner, document titles of assumptions.
+  const owners = useOwnerNames(name === 'twoRowsOneOwner');
+  const docs = useQuery({ ...documentQueries.list(), enabled: name === 'assumptions' });
+  const titles = new Map((docs.data ?? []).map((d) => [d.id, d.title]));
   return (
     <>
-      {renderList(name, data, count, open, close)}
+      <OperatorNotice />
+      {renderList(name, data, count, open, close, { owners, titles })}
       {dialog}
     </>
   );
 }
 
-function renderList(name: SignalName, data: Signals, count: number, open: Open, close: () => void): ReactNode {
+type Names = { owners: Map<string, string>; titles: Map<string, string> };
+
+const fundedText = (v: string | null) => (v === null ? '—' : v in t.funded ? t.funded[v as keyof typeof t.funded] : v);
+const pseudonymCol = <T extends { artistId: string; pseudonym: string }>(): ColDef<T> => ({
+  colId: 'pseudonym',
+  headerName: c.pseudonym,
+  valueGetter: (p) => p.data?.pseudonym,
+  cellRenderer: (p: { data?: T }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null),
+});
+
+function renderList(name: SignalName, data: Signals, count: number, open: Open, close: () => void, names: Names): ReactNode {
   switch (name) {
     case 'unallocated': {
       type R = Signals['unallocated']['pairs'][number];
@@ -207,16 +238,21 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
       );
     }
     case 'unfunded': {
-      type R = Signals['unfunded'][number];
+      // `isrc|month|ruleId` repeats on real data (a row per unit: UPC and sales month), so the grid id adds the position.
+      type R = Signals['unfunded'][number] & { at: number };
       return (
         <Grid<R>
           name={name}
           count={count}
-          rows={data.unfunded}
+          rows={data.unfunded.map((r, at) => ({ ...r, at }))}
           rowKey={(r) => `${r.isrc}|${r.month}|${r.ruleId}`}
+          rowId={(r) => `${r.isrc}|${r.month}|${r.ruleId}|${r.at}`}
           columns={[
             isrcCol((r) => r.isrc),
+            textCol('upc', c.upc, (r) => r.upc),
             textCol('month', c.month, (r) => r.month),
+            pseudonymCol<R>(),
+            textCol('fundedFrom', c.fundedFrom, (r) => fundedText(r.fundedFrom)),
             moneyCol('missing', c.missing, (r) => r.missing),
             textCol('why', c.why, (r) => t.why[r.why]),
             actionCol((r) =>
@@ -279,19 +315,14 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
           rowKey={(r) => `${r.isrc}|${r.month}`}
           columns={[
             isrcCol((r) => r.isrc),
-            {
-              colId: 'pseudonym',
-              headerName: c.pseudonym,
-              valueGetter: (p) => p.data?.pseudonym,
-              cellRenderer: (p: { data?: R }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null),
-            },
+            pseudonymCol<R>(),
             textCol('month', c.month, (r) => r.month),
             actionCol((r) => [
               <Link key="rules" to={`/tracks/${encodeURIComponent(r.isrc)}?tab=rules`} className="text-xs text-accent hover:underline">
                 {t.toRules}
               </Link>,
               btn('close-rule', a.closeRule, () =>
-                open(<CloseRuleDialog artistId={r.artistId} pseudonym={r.pseudonym} month={r.month} onClose={close} />),
+                open(<CloseRuleDialog artistId={r.artistId} month={r.month} onClose={close} />),
               ),
             ]),
           ]}
@@ -313,7 +344,10 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
             {
               colId: 'owner',
               headerName: c.owner,
-              cellRenderer: (p: { data?: R }) => (p.data ? <EntityLink kind="owner" id={p.data.ownerId} label="→" /> : null),
+              minWidth: 180,
+              valueGetter: (p) => (p.data ? (names.owners.get(p.data.ownerId) ?? '') : ''),
+              cellRenderer: (p: { data?: R }) =>
+                p.data ? <EntityLink kind="owner" id={p.data.ownerId} label={names.owners.get(p.data.ownerId) ?? p.data.ownerId} /> : null,
             },
             actionCol(() => (SIGNAL_ACTIONS.twoRowsOneOwner.information ? info(t.info) : null)),
           ]}
@@ -355,13 +389,8 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
           rowKey={(r) => r.participationId}
           columns={[
             isrcCol((r) => r.isrc),
-            {
-              colId: 'pseudonym',
-              headerName: c.pseudonym,
-              valueGetter: (p) => p.data?.pseudonym,
-              cellRenderer: (p: { data?: R }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null),
-            },
-            textCol('fundedFrom', c.fundedFrom, (r) => (r.fundedFrom in t.funded ? t.funded[r.fundedFrom as keyof typeof t.funded] : r.fundedFrom)),
+            pseudonymCol<R>(),
+            textCol('fundedFrom', c.fundedFrom, (r) => fundedText(r.fundedFrom)),
             moneyCol('amount', c.amount, (r) => r.amount),
             actionCol((r) =>
               btn('assign-owner', a.assignOwner, () => open(<AssignOwnerDialog artistId={r.artistId} pseudonym={r.pseudonym} onClose={close} />)),
@@ -382,8 +411,14 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
             {
               colId: 'document',
               headerName: c.document,
+              minWidth: 200,
+              valueGetter: (p) => (p.data?.documentId ? (names.titles.get(p.data.documentId) ?? '') : ''),
               cellRenderer: (p: { data?: R }) =>
-                p.data?.documentId ? <EntityLink kind="document" id={p.data.documentId} label={a.openDocument} /> : <span>—</span>,
+                p.data?.documentId ? (
+                  <EntityLink kind="document" id={p.data.documentId} label={names.titles.get(p.data.documentId) ?? a.openDocument} />
+                ) : (
+                  <span>—</span>
+                ),
             },
             textCol('basis', c.basis, (r) => t.basis[r.basis]),
             moneyCol('amount', c.amount, (r) => r.amount),

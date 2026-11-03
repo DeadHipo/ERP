@@ -1,0 +1,58 @@
+/**
+ * The Russian sentence of every known API error code (the toast shows it; the code stays in `data-code` and the API's
+ * English message beside it). A code missing here shows the API message as it is (R4).
+ */
+export const errors: Record<string, string> = {
+  operator_required: 'Укажите оператора в шапке: без имени запись невозможна',
+  payout_blocked: 'Выплата заблокирована: есть выплата без подтверждения',
+  nothing_to_pay: 'Нечего выплачивать: сумма к выплате не больше нуля',
+  below_threshold: 'Сумма к выплате ниже порога выплаты',
+  owner_not_confirmed: 'Владелец не подтверждён: нужен договор с утверждённым документом',
+  use_payout_button: 'Выплата делается только кнопкой «Выплатить» на карточке владельца',
+  payout_not_counted: 'Выплата ещё не учтена: нет подтверждения или документ не утверждён',
+  payout_sent: 'Выплата уже отправлена',
+  payout_paid: 'Выплата уже подтверждена',
+  proof_exists: 'Подтверждение у этой операции уже есть',
+  has_returns: 'У выплаты есть возвраты: действие невозможно',
+  payment_proof: 'Нужен документ вида «подтверждение выплаты»',
+  return_proof: 'Нужен документ вида «подтверждение возврата»',
+  double_participation: 'Псевдоним уже строка сплита на этом ISRC и дате: участие невозможно (строка или участие, не оба)',
+  participation_overlap: 'Участие этого псевдонима на этом ISRC уже действует в этом периоде',
+  top_above_100: 'Участия «сверху» вместе больше 100 %',
+  split_overlap: 'Сплит этого ISRC уже действует в этом периоде',
+  split_sum_above_100: 'Сумма строк сплита больше 100 %',
+  rule_overlap: 'Правило этого лейбла уже действует в этом периоде',
+  rule_for_own_label: 'Правило задаётся только сублейблу, не своему лейблу',
+  terms_overlap: 'Условия паблишинга этого владельца уже действуют в этом периоде',
+  alias_taken: 'Эта строка лейбла уже привязана к другому лейблу',
+  duplicate_period: 'Отчёт за этот счёт и месяц уже загружен',
+  duplicate_file: 'Этот файл уже загружен',
+  duplicate_track: 'Трек с этим ISRC уже есть',
+  split_document_set: 'У сплита уже другой документ',
+  document_not_attached: 'У документа нет файла: сначала приложите файл',
+  document_required: 'Нужен документ',
+  document_owner_mismatch: 'Документ принадлежит другому владельцу',
+  assumption_not_approvable: 'Допущение не утверждается: замените его документом',
+  owner_merged: 'Владелец слит в другого: откройте целевого владельца',
+  artist_merged: 'Псевдоним слит в другой',
+  merge_direction: 'Так слить нельзя: сливайте в подтверждённого владельца',
+  merge_kind_mismatch: 'Нельзя слить владельцев разного вида (человек и лейбл)',
+  merge_owner_conflict: 'Владельцев нельзя слить: конфликт данных',
+  artist_owner_fixed: 'У псевдонима уже есть владелец',
+  artist_without_owner: 'У псевдонима нет владельца',
+  owner_is_label: 'Владелец является лейблом: действие невозможно',
+  possible_duplicate: 'Похожая запись уже есть: выберите «тот же» или «новый»',
+  empty_period: 'Период пуст после округления дат до начала месяца',
+  validation_error: 'Данные не прошли проверку',
+  contract_mismatch: 'Ответ сервера не совпал с контрактом',
+  not_found: 'Не найдено',
+  conflict: 'Конфликт с существующими данными',
+  network_error: 'Нет связи с сервером',
+  http_error: 'Ошибка сервера',
+  internal: 'Внутренняя ошибка сервера',
+};
+
+/** The Russian text of an API error code, or `undefined` for a code the dictionary does not know. */
+export function errorText(code: string): string | undefined {
+  return Object.hasOwn(errors, code) ? errors[code] : undefined;
+}

@@ -1,14 +1,21 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { artistQueries } from '../../api/queries/artists';
 import { ownerQueries } from '../../api/queries/owners';
 import { EntityLink } from '../../components/EntityLink';
 import { StatusChip } from '../../components/StatusChip';
 import { ru } from '../../i18n/ru';
 
-/** Owner names by id from the cached `GET /owners` list. */
-export function useOwnerNames(): Map<string, string> {
-  const owners = useQuery(ownerQueries.list());
+/** Owner names by id from the cached `GET /owners` list (`enabled: false` skips the request). */
+export function useOwnerNames(enabled = true): Map<string, string> {
+  const owners = useQuery({ ...ownerQueries.list(), enabled });
   return useMemo(() => new Map((owners.data ?? []).map((o) => [o.id, o.name])), [owners.data]);
+}
+
+/** Pseudonyms by artist id from the cached `GET /artists` list (rows that carry only an artist id). */
+export function useArtistNames(): Map<string, string> {
+  const artists = useQuery(artistQueries.list());
+  return useMemo(() => new Map((artists.data ?? []).map((a) => [a.id, a.pseudonym])), [artists.data]);
 }
 
 /** `from → to` of a rule period (`valid_to` is exclusive; null = open-ended). */

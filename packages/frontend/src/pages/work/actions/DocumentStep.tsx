@@ -30,8 +30,6 @@ export function DocumentStep(props: {
   defaultTitle: string;
   /** The owner of a new document (a contract confirms only its own owner). */
   ownerId?: string | null;
-  /** The money of the group, shown in the approve dialog ("ждёт в этой группе"). */
-  waiting?: string;
   ready: ReadyDocument | null;
   onReady: (doc: ReadyDocument | null) => void;
   /** Hide "pick an existing one" (a contract of an owner is a new document). */
@@ -44,7 +42,7 @@ export function DocumentStep(props: {
   const [fileRef, setFileRef] = useState('');
   const [created, setCreated] = useState<DocumentView | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const approveLines = useApproveLines(created, props.waiting, confirmOpen);
+  const approveText = useApproveLines(created, confirmOpen);
 
   const create = useAction(
     () =>
@@ -104,7 +102,8 @@ export function DocumentStep(props: {
             isOpen={confirmOpen}
             onOpenChange={setConfirmOpen}
             title={a.confirm.approveTitle}
-            lines={approveLines}
+            lines={approveText.lines}
+            isLoading={approveText.loading}
             isPending={approve.isPending}
             onConfirm={() =>
               approve.mutate(created.id, {

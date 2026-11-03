@@ -12,6 +12,7 @@ import { DataGrid } from '../../../components/grid/DataGrid';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
+import { compareDecimal } from '../../../lib/money';
 import { fmt, ru } from '../../../i18n/ru';
 import { useUrlParam } from '../../catalog/components/url';
 import { ConfirmSplitDialog } from '../../work/actions/dialogs';
@@ -74,7 +75,7 @@ export function SplitsPage() {
       { colId: 'period', headerName: t.cols.period, minWidth: 200, valueGetter: (p) => (p.data ? period(p.data.validFrom, p.data.validTo) : '') },
       { colId: 'document', headerName: t.cols.document, valueGetter: (p) => p.data?.documentStatus, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <DocumentCell id={p.data.documentId} status={p.data.documentStatus} /> : null) },
       { colId: 'shares', headerName: t.cols.shares, minWidth: 260, valueGetter: (p) => p.data?.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', ') },
-      { colId: 'ourShare', headerName: t.cols.ourShare, valueGetter: (p) => p.data?.ourShare, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <span data-col="ourShare"><Money value={p.data.ourShare} /></span> : null) },
+      { colId: 'ourShare', headerName: t.cols.ourShare, comparator: compareDecimal, valueGetter: (p) => p.data?.ourShare, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <span data-col="ourShare"><Money value={p.data.ourShare} /></span> : null) },
       { colId: 'origin', headerName: t.cols.origin, valueGetter: (p) => p.data?.origin },
       {
         colId: 'actions',

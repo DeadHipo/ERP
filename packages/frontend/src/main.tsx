@@ -6,6 +6,7 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { Toast } from '@heroui/react';
 import { App } from './App';
 import { createQueryClient } from './api/queries/core';
+import { TOAST_PLACEMENT, TOAST_WIDTH } from './components/toast';
 import './index.css';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -18,7 +19,7 @@ createRoot(document.getElementById('root') as HTMLElement).render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
-      <Toast.Provider />
+      <Toast.Provider placement={TOAST_PLACEMENT} width={TOAST_WIDTH} />
     </QueryClientProvider>
   </StrictMode>,
 );

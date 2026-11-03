@@ -13,10 +13,10 @@ import { ru } from '../../../i18n/ru';
 import { CReasonList } from '../../catalog/components/CReasonList';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
 import { centsToText } from '../../owners/components/cents';
-import { ApproveDocumentDialog } from '../../work/actions/dialogs';
-import { DocumentCell, OwnerLink, period, useOwnerNames } from '../shared';
+import { ApproveDocumentDialog, CreateContractDialog } from '../../work/actions/dialogs';
+import { DocumentCell, OwnerLink, period, useArtistNames, useOwnerNames } from '../shared';
 import { ApproveControl } from './DocumentsPage';
-import { AttachDialog, ConfirmSplitWithDocumentDialog, ContractFromDocumentDialog } from './DocumentDialogs';
+import { AttachDialog, ConfirmSplitWithDocumentDialog } from './DocumentDialogs';
 
 const t = ru.reference.documents;
 const r = ru.catalog.rules;
@@ -34,6 +34,7 @@ function Section(props: { title: string; testId: string; empty: boolean; childre
 export function DocumentPage() {
   const id = useParams().id ?? '';
   const names = useOwnerNames();
+  const pseudonyms = useArtistNames();
   const query = useQuery(documentQueries.uses(id));
   const [dialog, setDialog] = useState<'approve' | 'attach' | 'confirm-split' | 'contract' | null>(null);
   useBreadcrumbLabel(query.data?.document.title ?? id);
@@ -71,12 +72,17 @@ export function DocumentPage() {
                   </ActionButton>
                 ) : null}
                 <ApproveControl doc={d} onApprove={() => setDialog('approve')} />
-                <ActionButton name="confirm-split" variant="secondary" onPress={() => setDialog('confirm-split')}>
-                  {t.confirmSplit}
-                </ActionButton>
-                <ActionButton name="create-contract" variant="secondary" onPress={() => setDialog('contract')}>
-                  {t.createContract}
-                </ActionButton>
+                {/* An assumption confirms nothing (its money waits in C assumption): it is only replaced by a document. */}
+                {d.kind === 'assumption' ? null : (
+                  <>
+                    <ActionButton name="confirm-split" variant="secondary" onPress={() => setDialog('confirm-split')}>
+                      {t.confirmSplit}
+                    </ActionButton>
+                    <ActionButton name="create-contract" variant="secondary" onPress={() => setDialog('contract')}>
+                      {t.createContract}
+                    </ActionButton>
+                  </>
+                )}
                 {d.kind === 'assumption' ? (
                   <Link to={`/queue/assumption?q=${encodeURIComponent(d.title)}`} className="text-sm text-accent hover:underline" data-testid="link-assumption-wizard">
                     {t.assumptionWizard}
@@ -99,7 +105,7 @@ export function DocumentPage() {
                   {u.rowsOnly.map((x) => (
                     <tr key={`${x.splitId}-${x.artistId}`} data-testid={`row-only-${x.splitId}-${x.artistId}`} className="border-t border-border">
                       <Td><EntityLink kind="isrc" id={x.isrc} /></Td>
-                      <Td><EntityLink kind="artist" id={x.artistId} /></Td>
+                      <Td><EntityLink kind="artist" id={x.artistId} label={pseudonyms.get(x.artistId) ?? x.artistId} /></Td>
                     </tr>
                   ))}
                 </SimpleTable>
@@ -134,7 +140,7 @@ export function DocumentPage() {
                   {u.contracts.map((c) => (
                     <tr key={c.id} data-testid={`contract-${c.id}`} className="border-t border-border">
                       <Td>{c.number ?? c.id}</Td>
-                      <Td>{c.artistIds.map((a) => <EntityLink key={a} kind="artist" id={a} />).flatMap((x, i) => (i === 0 ? [x] : [', ', x]))}</Td>
+                      <Td>{c.artistIds.map((a) => <EntityLink key={a} kind="artist" id={a} label={pseudonyms.get(a) ?? a} />).flatMap((x, i) => (i === 0 ? [x] : [', ', x]))}</Td>
                     </tr>
                   ))}
                 </SimpleTable>
@@ -151,10 +157,15 @@ export function DocumentPage() {
                   ))}
                 </SimpleTable>
               </Section>
-              {dialog === 'approve' ? <ApproveDocumentDialog documentId={d.id} onClose={close} /> : null}
+              {dialog === 'approve' ? <ApproveDocumentDialog documentId={d.id} doc={d} onClose={close} /> : null}
               {dialog === 'attach' ? <AttachDialog documentId={d.id} title={d.title} onClose={close} /> : null}
               {dialog === 'confirm-split' ? <ConfirmSplitWithDocumentDialog documentId={d.id} title={d.title} onClose={close} /> : null}
-              {dialog === 'contract' ? <ContractFromDocumentDialog documentId={d.id} title={d.title} onClose={close} /> : null}
+              {dialog === 'contract' ? <CreateContractDialog
+                  document={{ id: d.id, title: d.title }}
+                  ownerId={d.ownerId ?? undefined}
+                  ownerLabel={d.ownerId ? names.get(d.ownerId) : undefined}
+                  onClose={close}
+                /> : null}
             </div>
           );
         }}

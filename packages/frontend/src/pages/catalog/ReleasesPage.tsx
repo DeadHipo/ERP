@@ -10,6 +10,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { TextField } from '../../components/fields/TextField';
+import { compareDecimal } from '../../lib/money';
 import { ru } from '../../i18n/ru';
 import { useUrlParam } from './components/url';
 
@@ -66,7 +67,9 @@ function releaseColumns(): ColDef<Item>[] {
     {
       colId: 'net',
       headerName: c.net,
+      minWidth: 130,
       filter: false,
+      comparator: compareDecimal,
       valueGetter: (p) => p.data?.net,
       cellRenderer: (p: { data?: Item }) =>
         p.data ? (

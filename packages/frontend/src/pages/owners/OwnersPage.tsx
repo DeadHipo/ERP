@@ -11,6 +11,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
 import { DataGrid } from '../../components/grid/DataGrid';
+import { compareDecimal } from '../../lib/money';
 import { ru } from '../../i18n/ru';
 import { usePeriod } from '../work/OverviewPage';
 import { CreateOwnerDialog } from './components/CreateOwnerDialog';
@@ -81,9 +82,13 @@ type P = { data?: PayableItem };
 const money = (colId: keyof PayableItem & string, headerName: string): ColDef<PayableItem> => ({
   colId,
   headerName,
-  sortable: false,
   filter: false,
-  minWidth: 90,
+  // Wide enough for the largest amounts (e.g. «1 114 884,25»): money is never cut with an ellipsis (stage 4 walk F9).
+  minWidth: 150,
+  headerTooltip: headerName,
+  wrapHeaderText: true,
+  autoHeaderHeight: true,
+  comparator: compareDecimal,
   valueGetter: (p) => p.data?.[colId],
   cellRenderer: (p: P) => (p.data ? <span data-col={colId}><Money value={p.data[colId] as string} /></span> : null),
 });
@@ -110,6 +115,8 @@ function payableColumns(): ColDef<PayableItem>[] {
       colId: 'gate',
       headerName: c.gate,
       minWidth: 210,
+      wrapHeaderText: true,
+      autoHeaderHeight: true,
       valueGetter: (p) => (p.data ? (p.data.payout.reason ?? 'allowed') : ''),
       cellRenderer: (p: P) =>
         p.data ? (
@@ -139,7 +146,7 @@ function payableColumns(): ColDef<PayableItem>[] {
           </span>
         ) : null,
     },
-    { colId: 'lastPayout', headerName: c.lastPayout, minWidth: 110, valueGetter: (p) => p.data?.lastPayoutDate ?? '' },
+    { colId: 'lastPayout', headerName: c.lastPayout, minWidth: 170, valueGetter: (p) => p.data?.lastPayoutDate ?? '' },
   ];
 }
 

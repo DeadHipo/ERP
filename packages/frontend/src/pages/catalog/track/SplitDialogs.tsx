@@ -136,6 +136,8 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
   const filled = from !== '' && rows.length > 0 && rows.every((x) => x.artistId && x.percent.trim() !== '');
   const ready = filled && (!change || doc !== null);
   const current = from ? splitAt(props.splits, from) : newest;
+  // The new rows end where the next split of the ISRC starts (19 §4); read from the list, no date arithmetic.
+  const next = from ? props.splits.map((x) => x.validFrom).filter((d) => d > from).sort()[0] : undefined;
   const closes = current ? `${periodText(current.validFrom, current.validTo, r.open)}: ${current.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', ')}` : '—';
   return (
     <>
@@ -169,7 +171,10 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
         isOpen={confirm}
         onOpenChange={setConfirm}
         title={r.confirm.changeTitle}
-        lines={[...r.confirm.changeLines(props.isrc, closes, from, rowsText(rows), doc?.title ?? '')]}
+        lines={[
+          ...r.confirm.changeLines(props.isrc, closes, from, rowsText(rows), doc?.title ?? ''),
+          next ? fmt(ru.actions.confirm.changeUntil, { to: next }) : ru.actions.confirm.changeOpen,
+        ]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />

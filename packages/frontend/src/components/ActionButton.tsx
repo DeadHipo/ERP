@@ -18,13 +18,18 @@ export function ActionButton(props: {
   /** A read-only action (e.g. open a dialog that does not write) does not need an operator. */
   write?: boolean;
   variant?: 'primary' | 'secondary' | 'danger' | 'tertiary';
+  /**
+   * In a grid row: the reason of a disabled button is its tooltip, not a text beside it (a list of 50 rows does not
+   * repeat «укажите оператора» 50 times; the page says it once, `OperatorNotice`).
+   */
+  compact?: boolean;
 }) {
   const { hasOperator } = useOperator();
   const needsOperator = props.write !== false && !hasOperator;
   const disabled = props.isPending === true || props.isDisabled === true || needsOperator;
   const reason = needsOperator ? ru.shell.operator.hint : props.reason;
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2" title={props.compact && disabled && reason ? reason : undefined}>
       <Button
         data-testid={`action-${props.name}`}
         variant={props.variant ?? 'primary'}
@@ -35,7 +40,18 @@ export function ActionButton(props: {
       >
         {props.children}
       </Button>
-      {disabled && reason ? <span className="text-xs text-muted">{reason}</span> : null}
+      {disabled && reason && !props.compact ? <span className="text-xs text-muted">{reason}</span> : null}
     </span>
+  );
+}
+
+/** One line per page above a list of compact row buttons: no operator, so the write buttons of the rows are disabled. */
+export function OperatorNotice() {
+  const { hasOperator } = useOperator();
+  if (hasOperator) return null;
+  return (
+    <div className="mb-2 text-sm text-danger" data-testid="operator-notice">
+      {ru.shell.operator.rowsHint}
+    </div>
   );
 }

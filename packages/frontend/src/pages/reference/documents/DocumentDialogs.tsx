@@ -4,7 +4,6 @@ import type { z } from 'zod';
 import type { documentKind } from '@erp/shared/api-schemas';
 import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
-import { ownerQueries } from '../../../api/queries/owners';
 import { splitQueries } from '../../../api/queries/splits';
 import { ActionButton } from '../../../components/ActionButton';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -142,63 +141,6 @@ export function ConfirmSplitWithDocumentDialog(props: { documentId: string; titl
         lines={[...ru.actions.confirm.confirmSplitLines(isrc ?? '', rows, split ? `${split.validFrom} → ${split.validTo ?? ru.reference.common.open}` : '', props.title)]}
         isPending={run.isPending}
         onConfirm={() => split && run.mutate(split.id, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
-      />
-    </>
-  );
-}
-
-/** «Создать договор с этим документом»: owner, its pseudonyms (several), `POST /contracts` after the confirmation. */
-export function ContractFromDocumentDialog(props: { documentId: string; title: string; onClose: () => void }) {
-  const [owner, setOwner] = useState<{ id: string; label: string } | null>(null);
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [confirm, setConfirm] = useState(false);
-  const detail = useQuery({ ...ownerQueries.detail(owner?.id ?? ''), enabled: owner !== null });
-  const artists = detail.data?.artists ?? [];
-  const picked = artists.filter((a) => chosen.has(a.id));
-  const run = useAction(() => api.documents.createContract({ ownerId: owner?.id ?? '', documentId: props.documentId, artistIds: picked.map((a) => a.id) }), {
-    invalidate: 'all',
-    success: () => t.contractCreated,
-  });
-  const toggle = (id: string) =>
-    setChosen((c) => {
-      const n = new Set(c);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-  return (
-    <>
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
-        title={t.contractTitle}
-        subtitle={t.contractSubtitle}
-        footer={
-          <ActionButton name="contract-submit" isPending={run.isPending} isDisabled={!owner || picked.length === 0} reason={ru.actions.hints.fillFields} onPress={() => setConfirm(true)}>
-            {t.contractTitle}
-          </ActionButton>
-        }
-      >
-        <EntityPicker name="contract-owner" label={t.contractOwner} kind="owners" value={owner?.id ?? null} onChange={(id, label) => { setOwner(id ? { id, label } : null); setChosen(new Set()); }} />
-        {owner ? (
-          <fieldset className="flex flex-col gap-1" data-testid="contract-artists">
-            <legend className="text-sm font-medium">{t.contractArtists}</legend>
-            {artists.map((a) => (
-              <label key={a.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" data-testid={`contract-artist-${a.id}`} checked={chosen.has(a.id)} onChange={() => toggle(a.id)} />
-                {a.pseudonym}
-              </label>
-            ))}
-          </fieldset>
-        ) : null}
-      </FormDialog>
-      <ConfirmDialog
-        isOpen={confirm}
-        onOpenChange={setConfirm}
-        title={ru.actions.confirm.contractTitle}
-        lines={[...t.contractConfirmLines(owner?.label ?? '', picked.map((a) => a.pseudonym).join(', '), props.title)]}
-        isPending={run.isPending}
-        onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />
     </>
   );

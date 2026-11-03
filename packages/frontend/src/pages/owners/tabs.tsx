@@ -4,6 +4,7 @@ import type { Balance, OwnerDetail } from '@erp/shared/api-responses';
 import { ownerQueries } from '../../api/queries/owners';
 import { settlementQueries } from '../../api/queries/settlements';
 import { ActionButton } from '../../components/ActionButton';
+import { AuditTable } from '../../components/AuditTable';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { QueryView } from '../../components/PageState';
@@ -127,25 +128,10 @@ export function OperationsTab(props: { detail: OwnerDetail; balance: Balance | u
 /** P10 История: the audit trail of writes that touched the owner (`GET /audit?entityId=`). */
 export function HistoryTab(props: { ownerId: string }) {
   const query = useQuery(ownerQueries.audit(props.ownerId));
-  const h = m.history.cols;
   return (
     <div data-testid="history-tab">
-      <QueryView query={query} isEmpty={(d) => d.items.length === 0} emptyMessage={m.history.empty}>
-        {(data) => (
-          <SimpleTable head={[h.at, h.operator, h.method, h.route, h.summary]}>
-            {data.items.map((x) => (
-              <tr key={x.id} data-testid={`audit-${x.id}`}>
-                <Td>{x.at}</Td>
-                <Td col="operator">{x.operator}</Td>
-                <Td>{x.method}</Td>
-                <Td col="route">{x.route}</Td>
-                <Td>
-                  <code className="text-xs">{JSON.stringify(x.summary)}</code>
-                </Td>
-              </tr>
-            ))}
-          </SimpleTable>
-        )}
+      <QueryView query={query} isEmpty={(d) => d.items.length === 0} emptyMessage={ru.audit.empty}>
+        {(data) => <AuditTable items={data.items} />}
       </QueryView>
     </div>
   );

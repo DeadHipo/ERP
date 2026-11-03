@@ -3,16 +3,13 @@ import type { DocumentView, OwnerDetail } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
 import { ActionButton } from '../../components/ActionButton';
-import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EntityLink } from '../../components/EntityLink';
 import { FormDialog } from '../../components/FormDialog';
 import { StatusChip } from '../../components/StatusChip';
 import { TextField } from '../../components/fields/TextField';
-import { useOperator } from '../../lib/operator';
 import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
-import { useApproveLines } from '../work/actions/approve-lines';
-import { ContractDialog } from './components/ContractDialog';
+import { ApproveDocumentDialog, CreateContractDialog } from '../work/actions/dialogs';
 import { Section, SimpleTable, Td } from './components/Fact';
 
 const t = ru.money.documents;
@@ -94,9 +91,9 @@ export function DocumentsTab(props: { detail: OwnerDetail }) {
         )}
       </Section>
       {active?.action === 'create' ? <CreateDocumentDialog detail={d} onClose={() => setActive(null)} /> : null}
-      {active?.action === 'contract' ? <ContractDialog detail={d} onClose={() => setActive(null)} /> : null}
+      {active?.action === 'contract' ? <CreateContractDialog ownerId={d.owner.id} ownerLabel={d.owner.name} onClose={() => setActive(null)} /> : null}
       {active?.action === 'attach' ? <AttachDialog doc={active.doc} onClose={() => setActive(null)} /> : null}
-      {active?.action === 'approve' ? <ApproveDialog doc={active.doc} onClose={() => setActive(null)} /> : null}
+      {active?.action === 'approve' ? <ApproveDocumentDialog documentId={active.doc.id} doc={active.doc} onClose={() => setActive(null)} /> : null}
     </div>
   );
 }
@@ -137,24 +134,5 @@ function AttachDialog(props: { doc: DocumentView; onClose: () => void }) {
     >
       <TextField name="attach-file" label={t.fileRef} value={fileRef} onChange={setFileRef} isRequired />
     </FormDialog>
-  );
-}
-
-function ApproveDialog(props: { doc: DocumentView; onClose: () => void }) {
-  const { operator } = useOperator();
-  const lines = useApproveLines(props.doc, undefined, true);
-  const run = useAction(() => api.documents.approve(props.doc.id, { by: operator }), {
-    invalidate: 'all',
-    success: (d) => fmt(ru.actions.toast.approved, { title: d.title }),
-  });
-  return (
-    <ConfirmDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={ru.actions.confirm.approveTitle}
-      lines={lines}
-      isPending={run.isPending}
-      onConfirm={() => run.mutate(undefined, { onSettled: props.onClose })}
-    />
   );
 }

@@ -13,7 +13,7 @@ import { fmt, ru } from '../../i18n/ru';
 import { usePeriod } from '../work/OverviewPage';
 import { BalanceTab } from './BalanceTab';
 import { DocumentsTab } from './DocumentsTab';
-import { MergeDialog } from './components/MergeDialog';
+import { MergeOwnerDialog } from '../work/actions/dialogs';
 import { PeriodBar } from './components/PeriodBar';
 import { ArtistsTab, HistoryTab, OperationsTab, PublishingTab } from './tabs';
 
@@ -98,7 +98,7 @@ export function OwnerPage() {
                   { id: 'history', label: t.tabs.history, content: <HistoryTab ownerId={d.owner.id} /> },
                 ]}
               />
-              {merging ? <MergeDialog detail={d} onClose={() => setMerging(false)} /> : null}
+              {merging ? <MergeOwnerDialog ownerId={d.owner.id} ownerLabel={d.owner.name} openTarget onClose={() => setMerging(false)} /> : null}
             </div>
           );
         }}

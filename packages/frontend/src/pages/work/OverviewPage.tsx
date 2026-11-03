@@ -11,6 +11,7 @@ import { ActionButton } from '../../components/ActionButton';
 import { DateField } from '../../components/fields/DateField';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
+import { formatDateTime } from '../../lib/datetime';
 import { fmt, plural, ru } from '../../i18n/ru';
 
 type Overview = z.output<typeof overviewSchema>;
@@ -107,7 +108,7 @@ export function OverviewPage() {
         {(data) => (
           <div className="flex flex-col gap-4">
             <div className="text-xs text-muted" data-testid="overview-meta">
-              {t.calculatedAt}: {data.calculatedAt} · {fmt(t.files, { believe: data.files.believe, b17: data.files.b17 })}
+              <span title={data.calculatedAt}>{t.calculatedAt}: {formatDateTime(data.calculatedAt)}</span> · {fmt(t.files, { believe: data.files.believe, b17: data.files.b17 })}
             </div>
             <QueueStrip queue={data.queue} />
             <SignalStrip signals={data.signals} />
@@ -116,6 +117,7 @@ export function OverviewPage() {
                 name="overview-account"
                 label={t.accountFilter}
                 value={account}
+                placeholder={t.accountPlaceholder}
                 type="search"
                 onChange={(v) =>
                   setParams((prev) => {
@@ -217,7 +219,7 @@ function ReconRow({ r }: { r: Row }) {
   const reasons = Object.entries(r.C_breakdown) as [CReason, string][];
   const labels = Object.entries(r.ourShareByLabel);
   const link = (to: string, value: string, col: string) => (
-    <Link to={to} className="hover:underline" data-col-link={col}>
+    <Link to={to} state={col === 'B' || col === 'ours' ? { sortBy: col } : undefined} className="hover:underline" data-col-link={col}>
       <Money value={value} />
     </Link>
   );

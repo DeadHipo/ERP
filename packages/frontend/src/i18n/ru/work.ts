@@ -6,6 +6,7 @@ export const overview = {
   subtitle: 'Каждый ли доллар каждого счёта и месяца попал в B, C или нашу долю, и что ждёт по каким причинам?',
   period: { from: 'С месяца', to: 'По месяц', basis: 'Месяц по', report: 'отчёту', sales: 'продажам', apply: 'Показать', reset: 'Сбросить' },
   accountFilter: 'Счёт',
+  accountPlaceholder: 'номер счёта: показать только его строки',
   noFiles: 'отчёты не загружены: загрузите отчёт Believe или выписку B17',
   toSources: 'Перейти к отчётам',
   noRows: 'за выбранный период строк нет',
@@ -52,11 +53,21 @@ export const queue = {
   title: 'Очередь ожидания (C)',
   subtitle: 'Что ждёт, по причине и по тому, что это разблокирует, крупное сверху, и что делать?',
   summaryEmpty: 'В очереди ничего не ждёт.',
-  groupsEmpty: 'По этой причине ничего не ждёт (с этими фильтрами).',
+  groupsEmpty: 'По этой причине ничего не ждёт.',
+  groupsEmptyFiltered: 'По этой причине с этими фильтрами ничего не ждёт.',
   open: 'Открыть',
   total: 'Групп: {total}, сумма',
   page: 'Страница (смещение)',
-  filters: { account: 'Счёт', month: 'Месяц', q: 'Поиск', apply: 'Применить', reset: 'Сбросить', owner: 'Владелец' },
+  filters: {
+    account: 'Счёт',
+    accountPlaceholder: 'номер счёта Believe',
+    month: 'Месяц',
+    q: 'Поиск',
+    qPlaceholder: 'ISRC, псевдоним, владелец',
+    apply: 'Применить',
+    reset: 'Сбросить',
+    owner: 'Владелец',
+  },
   cols: {
     reason: 'Причина',
     amount: 'Сумма',
@@ -182,6 +193,8 @@ export const actions = {
     fromArtist: 'Из доли псевдонима',
     note: 'Заметка',
     track: 'Трек',
+    pickExisting: 'выбрать существующего',
+    rule: 'Правило',
   },
   steps: {
     createDocument: 'Создать документ',
@@ -192,9 +205,11 @@ export const actions = {
   },
   confirm: {
     approveTitle: 'Утвердить документ',
-    approveLines: (title: string, kind: string, waiting: string) => [
+    /** While `GET /documents/:id/uses` has not answered: no amount yet (OK disabled). */
+    approvePendingLines: (title: string, kind: string) => [`Документ: ${title} (${kind})`, 'утверждение необратимо'],
+    approveFailedLines: (title: string, kind: string, error: string) => [
       `Документ: ${title} (${kind})`,
-      `ждёт в этой группе: ${waiting}`,
+      `сколько ждёт этого документа, узнать не удалось: ${error}`,
       'утверждение необратимо',
     ],
     /** With `GET /documents/:id/uses`: the money waiting for this document and what it confirms. */
@@ -207,6 +222,10 @@ export const actions = {
     confirms: (splits: number, rows: number, participations: number, rules: number, contracts: number) =>
       `сплитов ${splits}, строк ${rows}, участий ${participations}, правил ${rules}, договоров ${contracts}`,
     contractTitle: 'Создать договор',
+    /** The queue group's amount the contract unblocks (an API value of `GET /queue/owner_unconfirmed`). */
+    contractQueue: 'ждёт подтверждения владельца (очередь): {amount}',
+    waitingForDocument: 'ждёт этого документа: {amount}',
+    waitingUnknown: 'сумму получить не удалось: {error}',
     contractLines: (owner: string, pseudonyms: string, document: string) => [
       `Владелец: ${owner}`,
       `Псевдонимы: ${pseudonyms || '—'}`,
@@ -234,6 +253,8 @@ export const actions = {
       `Документ: ${document}`,
       'даты правил начинаются с первого числа месяца',
     ],
+    changeUntil: 'новые строки действуют до {to} (там начинается следующий сплит)',
+    changeOpen: 'новые строки действуют бессрочно (следующего сплита нет)',
     closeRecreateTitle: 'Закрыть и создать заново',
     closeRecreateLines: (what: string, month: string, document: string) => [
       `${what}`,
@@ -273,5 +294,7 @@ export const actions = {
     noRule: 'Правило не найдено',
     noParticipation: 'Участие не найдено',
     noWriter: 'Автор не найден в списке B17',
+    noPseudonyms: 'у владельца нет псевдонимов',
+    pickRule: 'Выберите правило',
   },
 } as const;

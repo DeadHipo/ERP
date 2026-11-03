@@ -41,24 +41,24 @@ export function OperationButtons(props: { op: Operation; open: (a: OperationActi
   const out = op.direction === 'out';
   const payout = op.meaning === 'payout';
   return (
-    <div className="flex flex-nowrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1 py-1">
       {op.active && out && !op.paymentProofId ? (
-        <ActionButton name="proof" variant="secondary" onPress={() => props.open({ action: 'proof', op })}>
+        <ActionButton name="proof" variant="secondary" compact onPress={() => props.open({ action: 'proof', op })}>
           {t.proof}
         </ActionButton>
       ) : null}
       {op.active && out ? (
-        <ActionButton name="deferred" variant="secondary" isPending={deferred.isPending} onPress={() => deferred.mutate(!op.deferred)}>
+        <ActionButton name="deferred" variant="secondary" compact isPending={deferred.isPending} onPress={() => deferred.mutate(!op.deferred)}>
           {op.deferred ? t.deferredOff : t.deferredOn}
         </ActionButton>
       ) : null}
       {op.active && payout ? (
-        <ActionButton name="return" variant="secondary" onPress={() => props.open({ action: 'return', op })}>
+        <ActionButton name="return" variant="secondary" compact onPress={() => props.open({ action: 'return', op })}>
           {t.returnPayout}
         </ActionButton>
       ) : null}
       {op.active ? (
-        <ActionButton name="deactivate" variant="danger" onPress={() => props.open({ action: 'deactivate', op })}>
+        <ActionButton name="deactivate" variant="danger" compact onPress={() => props.open({ action: 'deactivate', op })}>
           {t.deactivate}
         </ActionButton>
       ) : null}

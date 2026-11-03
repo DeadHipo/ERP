@@ -9,9 +9,9 @@ import { EntityLink } from '../../../components/EntityLink';
 import { Money } from '../../../components/Money';
 import { PageState } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
-import { ru } from '../../../i18n/ru';
+import { fmt, ru } from '../../../i18n/ru';
 import { SimpleTable, Td } from '../components/MoneyTable';
-import { monthKey, type Allocation, type Layer, type Month } from './types';
+import { monthKey, monthRowId, type Allocation, type Layer, type Month } from './types';
 
 const t = ru.catalog.track;
 const m = ru.catalog.money;
@@ -19,6 +19,8 @@ const m = ru.catalog.money;
 /** The months of the ISRC (account × UPC × report month); a month expands into allocations, layers and the breakdown. */
 export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // A shortfall names its participation by the recipient's pseudonym (the rule id is the participation id).
+  const pseudonyms = new Map(data.participations.map((p) => [p.id, p.pseudonym]));
   if (data.months.length === 0) return <PageState variant="empty" message={t.noMonths} />;
   const c = t.cols;
   return (
@@ -27,15 +29,21 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
       headers={[c.expand, c.account, c.upc, c.reportingMonth, c.salesMonth, c.labelName, m.net, m.labelShare, m.ours, c.status]}
     >
       {data.months.map((month) => {
-        const key = monthKey(month);
-        const isOpen = open[key] === true;
+        const id = monthRowId(month);
+        const isOpen = open[id] === true;
         return (
-          <Fragment key={key}>
-            <MonthRow month={month} isOpen={isOpen} onToggle={() => setOpen((o) => ({ ...o, [key]: !isOpen }))} />
+          <Fragment key={id}>
+            <MonthRow month={month} isOpen={isOpen} onToggle={() => setOpen((o) => ({ ...o, [id]: !isOpen }))} />
             {isOpen ? (
-              <tr data-testid={`month-detail-${key}`} className="bg-default/30">
+              <tr
+                data-testid={`month-detail-${monthKey(month)}`}
+                data-sales-month={month.salesMonth}
+                data-label={month.labelName}
+                data-row-id={id}
+                className="bg-default/30"
+              >
                 <td colSpan={10} className="px-3 py-3">
-                  <MonthDetail isrc={isrc} month={month} />
+                  <MonthDetail isrc={isrc} month={month} pseudonyms={pseudonyms} />
                 </td>
               </tr>
             ) : null}
@@ -48,7 +56,13 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
 
 function MonthRow({ month, isOpen, onToggle }: { month: Month; isOpen: boolean; onToggle: () => void }) {
   return (
-    <tr data-testid={`month-${monthKey(month)}`} className="border-t border-border">
+    <tr
+      data-testid={`month-${monthKey(month)}`}
+      data-sales-month={month.salesMonth}
+      data-label={month.labelName}
+      data-row-id={monthRowId(month)}
+      className="border-t border-border"
+    >
       <Td>
         <ActionButton name="expand-month" write={false} variant="tertiary" onPress={onToggle}>
           {isOpen ? t.collapse : t.expand}
@@ -101,7 +115,7 @@ function MonthRow({ month, isOpen, onToggle }: { month: Month; isOpen: boolean; 
   );
 }
 
-function MonthDetail({ isrc, month }: { isrc: string; month: Month }) {
+function MonthDetail({ isrc, month, pseudonyms }: { isrc: string; month: Month; pseudonyms: Map<string, string> }) {
   const [breakdown, setBreakdown] = useState(false);
   return (
     <div className="flex flex-col gap-4">
@@ -110,7 +124,7 @@ function MonthDetail({ isrc, month }: { isrc: string; month: Month }) {
         <Allocations month={month} />
         {month.shortfalls.map((s) => (
           <p key={s.ruleId} className="mt-2 text-sm text-warning" data-testid={`shortfall-${s.ruleId}`}>
-            {t.shortfall.replace('{rule}', s.ruleId.slice(0, 8)).replace('{why}', s.why)}: <Money value={s.missing} />
+            {fmt(t.shortfall, { who: pseudonyms.get(s.ruleId) ?? t.unknownParticipant, why: whyText(s.why) })}: <Money value={s.missing} />
           </p>
         ))}
       </section>
@@ -129,6 +143,8 @@ function MonthDetail({ isrc, month }: { isrc: string; month: Month }) {
     </div>
   );
 }
+
+const whyText = (why: string) => (why in ru.signalsPage.why ? ru.signalsPage.why[why as keyof typeof ru.signalsPage.why] : why);
 
 const basisLabel = (a: Allocation) => (a.assumption ? ru.signalsPage.basis[a.assumption] : '');
 
@@ -226,12 +242,13 @@ function Layers({ month }: { month: Month }) {
   );
 }
 
-/** The platform × country rows of the report month (one call per month, the UPC of this row only). */
+/** The platform × country rows of the report month (one call per month; the UPC and sales month of this row only). */
 function Breakdown({ isrc, month }: { isrc: string; month: Month }) {
   const query = useQuery(trackQueries.breakdown(isrc, month.reportingMonth));
   if (query.isError) return <PageState variant="error" error={query.error} onRetry={() => void query.refetch()} />;
   if (!query.data) return <Spinner aria-label={ru.common.loading} />;
-  const rows = query.data.rows.filter((r) => r.upc === month.upc);
+  // The rows of this month row only: its UPC and its sales month (a report month has a row per sales month).
+  const rows = query.data.rows.filter((r) => r.upc === month.upc && r.salesMonth === month.salesMonth);
   if (rows.length === 0) return <p className="text-sm text-muted">{t.breakdownEmpty}</p>;
   const c = t.breakdownCols;
   return (

@@ -7,17 +7,14 @@ import { useAction } from '../../../api/queries/core';
 import { labelQueries } from '../../../api/queries/labels';
 import { ActionButton } from '../../../components/ActionButton';
 import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
-import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { EntityLink } from '../../../components/EntityLink';
 import { FormDialog } from '../../../components/FormDialog';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
-import { DateField } from '../../../components/fields/DateField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
-import { roundedNote } from '../../catalog/track/SplitDialogs';
-import { SetRuleDialog } from '../../work/actions/dialogs';
+import { CloseRuleDialog, SetRuleDialog } from '../../work/actions/dialogs';
 import { DocumentCell, period } from '../shared';
 
 const t = ru.reference.labels;
@@ -42,45 +39,6 @@ function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
     >
       <TextField name="label-alias" label={t.aliasField} value={alias} onChange={setAlias} isRequired />
     </FormDialog>
-  );
-}
-
-function CloseRuleDialog(props: { label: LabelListItem; rule: Rule; onClose: () => void }) {
-  const [to, setTo] = useState('');
-  const [confirm, setConfirm] = useState(false);
-  const run = useAction(
-    async () => {
-      const closed = await api.labels.closeRule(props.rule.id, { validTo: to });
-      return fmt(t.ruleClosed, { to: closed.validTo ?? '' }) + roundedNote(to, closed.validTo ?? '');
-    },
-    { invalidate: 'all', success: (text) => text },
-  );
-  const what = `${props.label.name} → ${props.rule.recipientPseudonym} ${props.rule.percent} % (${period(props.rule.validFrom, props.rule.validTo)})`;
-  return (
-    <>
-      <FormDialog
-        isOpen
-        onOpenChange={(o) => (o ? null : props.onClose())}
-        title={t.closeTitle}
-        subtitle={ru.actions.hints.monthRule}
-        footer={
-          <ActionButton name="close-rule-submit" isDisabled={to === ''} reason={ru.actions.hints.fillFields} onPress={() => setConfirm(true)}>
-            {t.closeRule}
-          </ActionButton>
-        }
-      >
-        <div className="text-sm" data-testid="close-rule-what">{what}</div>
-        <DateField name="close-at" label={t.closeAt} value={to} onChange={setTo} isRequired />
-      </FormDialog>
-      <ConfirmDialog
-        isOpen={confirm}
-        onOpenChange={setConfirm}
-        title={t.closeTitle}
-        lines={[...t.closeLines(what, to)]}
-        isPending={run.isPending}
-        onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
-      />
-    </>
   );
 }
 
@@ -160,7 +118,7 @@ export function LabelPage() {
               </section>
               {dialog?.kind === 'alias' ? <AddAliasDialog label={l} onClose={close} /> : null}
               {dialog?.kind === 'rule' ? <SetRuleDialog labelString={l.name} month="" onClose={close} /> : null}
-              {dialog?.kind === 'close' ? <CloseRuleDialog label={l} rule={dialog.rule} onClose={close} /> : null}
+              {dialog?.kind === 'close' ? <CloseRuleDialog labelId={l.id} ruleId={dialog.rule.id} onClose={close} /> : null}
             </div>
           );
         }}

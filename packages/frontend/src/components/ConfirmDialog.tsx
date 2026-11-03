@@ -16,6 +16,11 @@ export function ConfirmDialog(props: {
   onConfirm: () => void;
   isPending?: boolean;
   confirmLabel?: string;
+  /**
+   * The lines wait for an API answer (the money of the confirmation, e.g. `GET /documents/:id/uses`): OK stays disabled
+   * and the dialog says «идёт пересчёт» until it arrives (`confirm-dialog-loading`).
+   */
+  isLoading?: boolean;
 }) {
   const { operator, hasOperator } = useOperator();
   return (
@@ -35,6 +40,11 @@ export function ConfirmDialog(props: {
                   <li key={i}>{line}</li>
                 ))}
               </ul>
+              {props.isLoading ? (
+                <div className="mt-2 text-sm text-accent" data-testid="confirm-dialog-loading">
+                  {ru.shell.recalc}
+                </div>
+              ) : null}
               <div className="mt-3 text-sm text-muted">
                 {ru.dialog.operator}:{' '}
                 <span data-testid="confirm-dialog-operator">{hasOperator ? operator : ru.shell.operator.hint}</span>
@@ -51,7 +61,7 @@ export function ConfirmDialog(props: {
               </Button>
               <Button
                 data-testid="confirm-dialog-ok"
-                isDisabled={props.isPending === true || !hasOperator}
+                isDisabled={props.isPending === true || props.isLoading === true || !hasOperator}
                 isPending={props.isPending}
                 onPress={props.onConfirm}
               >

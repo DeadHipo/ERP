@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import { C_REASONS, type CReason, type QueueGroup } from '@erp/shared/api-responses';
 import { reportQueries } from '../../api/queries/reports';
-import { ActionButton } from '../../components/ActionButton';
+import { ActionButton, OperatorNotice } from '../../components/ActionButton';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
@@ -14,7 +14,9 @@ import { DataGrid } from '../../components/grid/DataGrid';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
+import { compareDecimal } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
+import { useOwnerNames } from '../reference/shared';
 import { usePeriod } from './OverviewPage';
 import {
   ApproveDocumentDialog,
@@ -106,6 +108,7 @@ function QueueReason({ reason }: { reason: CReason }) {
   };
   const query = useQuery(reportQueries.queue(reason, { ...period, ...filter, limit, offset }));
   const [active, setActive] = useState<Active | null>(null);
+  const ownerNames = useOwnerNames(filter.ownerId !== undefined);
   const setParam = (key: string, value: string | undefined) =>
     setParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -133,13 +136,19 @@ function QueueReason({ reason }: { reason: CReason }) {
       }} />
       {filter.ownerId ? (
         <div className="mb-2 text-sm">
-          {t.filters.owner}: <EntityLink kind="owner" id={filter.ownerId} />{' '}
+          {t.filters.owner}: <EntityLink kind="owner" id={filter.ownerId} label={ownerNames.get(filter.ownerId) ?? filter.ownerId} />{' '}
           <button type="button" className="text-accent hover:underline" onClick={() => setParam('ownerId', undefined)}>
             ×
           </button>
         </div>
       ) : null}
-      <QueryView query={query} money isEmpty={(d) => d.items.length === 0} emptyMessage={t.groupsEmpty}>
+      <OperatorNotice />
+      <QueryView
+        query={query}
+        money
+        isEmpty={(d) => d.items.length === 0}
+        emptyMessage={filter.account || filter.month || filter.ownerId || filter.q ? t.groupsEmptyFiltered : t.groupsEmpty}
+      >
         {(data) => (
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-3 text-sm" data-testid="queue-total">
@@ -163,6 +172,7 @@ function QueueReason({ reason }: { reason: CReason }) {
               getRowId={(g) => `${g.key.kind}|${g.key.id}`}
               rowTestId={(g) => `queue-group-${g.key.kind}-${g.key.id}`}
               autoHeight
+              pagination={false}
               pageSize={500}
               gridStateKey="grid"
             />
@@ -184,13 +194,13 @@ function QueueFilters(props: {
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="queue-filters">
       <div className="w-40">
-        <TextField name="queue-account" label={t.filters.account} value={account} onChange={setAccount} />
+        <TextField name="queue-account" label={t.filters.account} value={account} onChange={setAccount} placeholder={t.filters.accountPlaceholder} />
       </div>
       <div className="w-40">
         <TextField name="queue-month" label={t.filters.month} value={month} onChange={setMonth} placeholder="YYYY-MM" />
       </div>
       <div className="w-56">
-        <TextField name="queue-q" label={t.filters.q} value={q} onChange={setQ} type="search" />
+        <TextField name="queue-q" label={t.filters.q} value={q} onChange={setQ} type="search" placeholder={t.filters.qPlaceholder} />
       </div>
       <ActionButton name="queue-apply" write={false} onPress={() => props.onApply({ account, month, q })}>
         {t.filters.apply}
@@ -253,10 +263,21 @@ function EntityCell({ g }: { g: QueueGroup }) {
 function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueGroup>[] {
   const c = t.cols;
   return [
-    { colId: 'entity', headerName: c.entity, minWidth: 220, valueGetter: (p) => p.data?.key.label, cellRenderer: (p: { data?: QueueGroup }) => (p.data ? <EntityCell g={p.data} /> : null) },
+    {
+      colId: 'entity',
+      headerName: c.entity,
+      minWidth: 180,
+      wrapText: true,
+      autoHeight: true,
+      valueGetter: (p) => p.data?.key.label,
+      cellRenderer: (p: { data?: QueueGroup }) => (p.data ? <EntityCell g={p.data} /> : null),
+    },
     {
       colId: 'owner',
       headerName: c.owner,
+      minWidth: 160,
+      wrapText: true,
+      autoHeight: true,
       valueGetter: (p) => p.data?.ownerName,
       cellRenderer: (p: { data?: QueueGroup }) =>
         p.data?.ownerId ? <EntityLink kind="owner" id={p.data.ownerId} label={p.data.ownerName ?? p.data.ownerId} /> : null,
@@ -264,6 +285,9 @@ function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueG
     {
       colId: 'pseudonym',
       headerName: c.pseudonym,
+      minWidth: 120,
+      wrapText: true,
+      autoHeight: true,
       valueGetter: (p) => p.data?.pseudonym,
       cellRenderer: (p: { data?: QueueGroup }) =>
         p.data?.artistId ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym ?? p.data.artistId} /> : null,
@@ -271,6 +295,7 @@ function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueG
     {
       colId: 'document',
       headerName: c.document,
+      minWidth: 120,
       valueGetter: (p) => p.data?.documentStatus,
       cellRenderer: (p: { data?: QueueGroup }) =>
         p.data?.documentId || p.data?.documentStatus ? (
@@ -288,16 +313,17 @@ function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueG
     {
       colId: 'amount',
       headerName: c.amount,
-      sortable: false,
+      minWidth: 130,
+      comparator: compareDecimal,
       valueGetter: (p) => p.data?.amount,
       cellRenderer: (p: { data?: QueueGroup }) => (p.data ? <span data-col="amount"><Money value={p.data.amount} /></span> : null),
     },
     { colId: 'isrcCount', headerName: c.isrcCount, maxWidth: 90, valueGetter: (p) => p.data?.isrcCount },
-    { colId: 'months', headerName: c.months, valueGetter: (p) => (p.data ? `${p.data.months.from} – ${p.data.months.to}` : '') },
+    { colId: 'months', headerName: c.months, minWidth: 150, valueGetter: (p) => (p.data ? `${p.data.months.from} – ${p.data.months.to}` : '') },
     {
       colId: 'actions',
       headerName: c.actions,
-      minWidth: 320,
+      minWidth: 220,
       autoHeight: true,
       wrapText: true,
       sortable: false,
@@ -310,7 +336,7 @@ function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueG
 /** The buttons of a group, by reason (16 §2.6); ⚠ items are read-only with their decision id. */
 function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; open: (a: Active) => void }) {
   const btn = (action: string, label: string) => (
-    <ActionButton key={action} name={action} variant="secondary" onPress={() => open({ action, group: g })}>
+    <ActionButton key={action} name={action} variant="secondary" compact onPress={() => open({ action, group: g })}>
       {label}
     </ActionButton>
   );
@@ -347,7 +373,8 @@ function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; ope
         return [btn('publishing-terms', a.publishingTerms)];
     }
   })();
-  return <div className="flex flex-wrap items-center gap-1 py-1">{items}</div>;
+  // Two actions stack (the row grows, autoHeight): a button never overlaps the next row (stage 4 walk F1).
+  return <div className="flex flex-col items-start gap-1 py-1">{items}</div>;
 }
 
 function ActionHost({ active, onClose }: { active: Active; onClose: () => void }) {
@@ -356,11 +383,20 @@ function ActionHost({ active, onClose }: { active: Active; onClose: () => void }
   const ruleKind = g.key.kind === 'split' || g.key.kind === 'participation' || g.key.kind === 'labelRule' ? g.key.kind : null;
   switch (active.action) {
     case 'create-contract':
-      return <CreateContractDialog ownerId={g.key.id} ownerLabel={g.key.label} waiting={g.amount} onClose={onClose} />;
+      return (
+        <CreateContractDialog
+          ownerId={g.key.id}
+          ownerLabel={g.key.label}
+          waiting={g.amount}
+          newDocumentOnly
+          submitName="submit"
+          onClose={onClose}
+        />
+      );
     case 'merge':
       return <MergeOwnerDialog ownerId={g.key.id} ownerLabel={g.key.label} onClose={onClose} />;
     case 'confirm-split':
-      return <ConfirmSplitDialog splitId={g.key.id} isrc={g.key.label} waiting={g.amount} onClose={onClose} />;
+      return <ConfirmSplitDialog splitId={g.key.id} isrc={g.key.label} onClose={onClose} />;
     case 'replace-assumption':
     case 'recreate-rule':
       return ruleKind ? (
@@ -370,13 +406,12 @@ function ActionHost({ active, onClose }: { active: Active; onClose: () => void }
           isrc={ruleKind === 'split' ? g.key.label : isrc}
           oldDocumentId={g.documentId}
           fromMonth={g.months.from}
-          waiting={g.amount}
           title={active.action === 'recreate-rule' ? a.recreateRule : a.replaceAssumption}
           onClose={onClose}
         />
       ) : null;
     case 'approve':
-      return g.documentId ? <ApproveDocumentDialog documentId={g.documentId} waiting={g.amount} onClose={onClose} /> : null;
+      return g.documentId ? <ApproveDocumentDialog documentId={g.documentId} onClose={onClose} /> : null;
     case 'assign-owner':
       return <AssignOwnerDialog artistId={g.key.id} pseudonym={g.key.label} onClose={onClose} />;
     case 'label-alias':

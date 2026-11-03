@@ -14,6 +14,7 @@ import { QueryView } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
 import { DataGrid } from '../../../components/grid/DataGrid';
 import { TextField } from '../../../components/fields/TextField';
+import { compareDecimal, formatCount } from '../../../lib/money';
 import { fmt, ru } from '../../../i18n/ru';
 import { useUrlParam } from '../../catalog/components/url';
 
@@ -27,13 +28,25 @@ function UploadForm(props: { name: 'believe' | 'b17'; label: string; accept: str
   const [key, setKey] = useState(0);
   const run = useAction((f: File) => props.send(f), {
     invalidate: 'all',
-    success: (_r, f) => fmt(props.name === 'believe' ? t.uploaded : t.uploadedB17, { name: f.name }),
+    success: (r) => fmt(props.name === 'believe' ? t.uploaded : t.uploadedB17, { name: r.fileName }),
   });
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid={`upload-${props.name}`}>
-      <label className="text-sm">
-        {props.label}{' '}
-        <input key={key} type="file" accept={props.accept} data-testid={`field-upload-${props.name}`} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      {/* The native input is hidden (its browser text is English); the label is the Russian button and the chosen name. */}
+      <label className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
+        <span>{props.label}</span>
+        <span className="rounded-lg border border-border bg-default/40 px-3 py-1">{t.chooseFile}</span>
+        <span className="text-muted" data-testid={`upload-${props.name}-chosen`}>
+          {file ? file.name : t.noFileChosen}
+        </span>
+        <input
+          key={key}
+          type="file"
+          accept={props.accept}
+          className="sr-only"
+          data-testid={`field-upload-${props.name}`}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
       </label>
       <ActionButton
         name={`upload-${props.name}`}
@@ -59,8 +72,8 @@ export function SourcesPage() {
       { colId: 'month', headerName: t.cols.month, valueGetter: (p) => p.data?.reportingMonth },
       { colId: 'fileName', headerName: t.cols.fileName, minWidth: 260, valueGetter: (p) => p.data?.fileName },
       { colId: 'status', headerName: t.cols.status, valueGetter: (p) => p.data?.status, cellRenderer: (p: { data?: BelieveFile }) => (p.data ? <StatusChip kind="fileStatus" value={p.data.status} /> : null) },
-      { colId: 'lineCount', headerName: t.cols.lineCount, valueGetter: (p) => p.data?.lineCount },
-      { colId: 'net', headerName: t.cols.net, valueGetter: (p) => p.data?.netTotal, cellRenderer: (p: { data?: BelieveFile }) => (p.data ? <span data-col="net"><Money value={p.data.netTotal} /></span> : null) },
+      { colId: 'lineCount', headerName: t.cols.lineCount, valueGetter: (p) => p.data?.lineCount, valueFormatter: (p) => (typeof p.value === 'number' ? formatCount(p.value) : '') },
+      { colId: 'net', headerName: t.cols.net, comparator: compareDecimal, valueGetter: (p) => p.data?.netTotal, cellRenderer: (p: { data?: BelieveFile }) => (p.data ? <span data-col="net"><Money value={p.data.netTotal} /></span> : null) },
       { colId: 'createdAt', headerName: t.cols.createdAt, valueGetter: (p) => p.data?.createdAt.slice(0, 19).replace('T', ' ') },
     ],
     [],
@@ -69,9 +82,9 @@ export function SourcesPage() {
     () => [
       { colId: 'periods', headerName: t.cols.periods, valueGetter: (p) => p.data?.periods.join(', ') },
       { colId: 'fileName', headerName: t.cols.fileName, minWidth: 260, valueGetter: (p) => p.data?.fileName },
-      { colId: 'status', headerName: t.cols.status, valueGetter: (p) => p.data?.status },
-      { colId: 'lineCount', headerName: t.cols.lineCount, valueGetter: (p) => p.data?.lineCount },
-      { colId: 'totalPayable', headerName: t.cols.totalPayable, valueGetter: (p) => p.data?.totalPayable, cellRenderer: (p: { data?: Statement }) => (p.data ? <span data-col="totalPayable"><Money value={p.data.totalPayable} /></span> : null) },
+      { colId: 'status', headerName: t.cols.status, valueGetter: (p) => p.data?.status, cellRenderer: (p: { data?: Statement }) => (p.data ? <StatusChip kind="fileStatus" value={p.data.status} /> : null) },
+      { colId: 'lineCount', headerName: t.cols.lineCount, valueGetter: (p) => p.data?.lineCount, valueFormatter: (p) => (typeof p.value === 'number' ? formatCount(p.value) : '') },
+      { colId: 'totalPayable', headerName: t.cols.totalPayable, comparator: compareDecimal, valueGetter: (p) => p.data?.totalPayable, cellRenderer: (p: { data?: Statement }) => (p.data ? <span data-col="totalPayable"><Money value={p.data.totalPayable} /></span> : null) },
       { colId: 'warnings', headerName: t.cols.warnings, minWidth: 200, valueGetter: (p) => p.data?.warnings.join('; ') },
     ],
     [],
@@ -93,7 +106,7 @@ export function SourcesPage() {
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">{t.believe}</h2>
-          <UploadForm name="believe" label={t.uploadBelieve} accept=".csv,.zip" send={(f) => api.sources.uploadBelieve(f).then((r) => ({ fileName: (r as { fileName?: string } | null)?.fileName ?? f.name }))} />
+          <UploadForm name="believe" label={t.uploadBelieve} accept=".csv,.zip" send={(f) => api.sources.uploadBelieve(f).then((r) => ({ fileName: r.fileName }))} />
           <QueryView query={query} isEmpty={(d) => d.believe.length === 0} emptyMessage={t.noBelieve}>
             {(d) => <DataGrid rowData={d.believe.filter((f) => needle === '' || [f.account, f.reportingMonth, f.fileName].some((x) => x.toLocaleLowerCase('ru').includes(needle)))} columnDefs={believeCols} getRowId={(f) => f.id} rowTestId={(f) => `source-file-${f.id}`} gridStateKey="believe" height="360px" />}
           </QueryView>

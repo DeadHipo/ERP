@@ -14,16 +14,16 @@ export const OPERATION_COVERAGE: Record<
   'GET /owners': {
     page: 'P11',
     route: '/artists',
-    note: 'owner names by id in the rows of P11, P12, P13, P14 and P18 (useOwnerNames); the pickers use /search and the lists use /owners/payables',
+    note: 'owner names by id in the rows of P11, P12, P13, P14, P18, the owner filter of P2 and P21 twoRowsOneOwner (useOwnerNames); the pickers use /search and the lists use /owners/payables',
   },
   'POST /owners': { page: 'P9', route: '/owners', note: 'action-create-owner with the duplicate dialog' },
   'POST /owners/merge': { page: 'P10', route: '/owners/:id', note: 'action-merge' },
   'GET /owners/payables': { page: 'P9', route: '/owners', note: 'also the payouts view /owners?view=payouts (P4 of revision 1)' },
   'GET /owners/:id': { page: 'P10', route: '/owners/:id' },
-  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs' },
+  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs; also the merge confirmation (the merged owner, once)' },
   'POST /owners/:id/payouts': { page: 'P10', route: '/owners/:id', note: 'action-pay on the balance tab' },
 
-  'GET /artists': { page: 'P11', route: '/artists' },
+  'GET /artists': { page: 'P11', route: '/artists', note: 'also the pseudonyms of the rows of P14 that carry only an artist id (useArtistNames)' },
   'GET /artists/duplicates': { page: 'P11', route: '/artists/duplicates' },
   'POST /artists': { page: 'P11', route: '/artists', note: 'action-create-artist' },
   'GET /artists/:id': { page: 'P12', route: '/artists/:id' },
@@ -32,7 +32,7 @@ export const OPERATION_COVERAGE: Record<
   'GET /tracks': {
     page: 'P21',
     route: '/signals/:name',
-    note: 'only NoteDialog (a note on a track chosen by ISRC) resolves the track id from it; P5 uses /tracks/summary',
+    note: 'only NoteDialog «Заметка к треку» (a track chosen by ISRC) resolves the track id from it: /search returns tracks without their id and /tracks/summary is a money call; P5 uses /tracks/summary',
   },
   'POST /tracks': { page: 'P5', route: '/tracks', note: 'action-create-track; also the register-track dialog of the queue' },
   'PATCH /tracks/:id': {
@@ -48,11 +48,11 @@ export const OPERATION_COVERAGE: Record<
   'GET /releases': { page: 'P7', route: '/releases' },
   'GET /releases/:upc': { page: 'P8', route: '/releases/:upc' },
 
-  'GET /documents': { page: 'P13', route: '/documents' },
+  'GET /documents': { page: 'P13', route: '/documents', note: 'also the document titles of P21 assumptions and of the approve and recreate confirmations' },
   'POST /documents': { page: 'P13', route: '/documents', note: 'action-create-document; also the document step of the queue actions' },
   'POST /documents/:id/attach': { page: 'P13', route: '/documents', note: 'action-attach' },
   'POST /documents/:id/approve': { page: 'P13', route: '/documents', note: 'action-approve; also the queue' },
-  'GET /documents/:id/uses': { page: 'P14', route: '/documents/:id' },
+  'GET /documents/:id/uses': { page: 'P14', route: '/documents/:id', note: 'also the approve and contract confirmations (OK waits for it)' },
   'POST /contracts': { page: 'P14', route: '/documents/:id', note: 'action-create-contract; also the documents tab of P10 and the queue' },
 
   'GET /splits': { page: 'P15', route: '/splits' },
@@ -83,7 +83,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /publishing/terms': { page: 'P18', route: '/publishing', note: 'action-set-terms; also the queue' },
 
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
-  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 500 for the index and the lists' },
+  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client' },
   'GET /overview': { page: 'P1', route: '/', note: 'also the queue summary of P2' },
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 

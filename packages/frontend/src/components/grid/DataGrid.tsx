@@ -40,6 +40,10 @@ export function DataGrid<T>(props: {
   rowTestId?: (row: T) => string;
   /** The grid grows with its rows (no inner scroll, every row of the page is in the DOM): for short lists. */
   autoHeight?: boolean;
+  /** `false` for a list paged by the server (the page has its own pager): one pagination control per grid. */
+  pagination?: boolean;
+  /** The sort applied when the URL carries no grid state (e.g. the P1 drill-down sorts by B or ours). */
+  defaultSort?: readonly [string, 'asc' | 'desc'];
 }) {
   const [params, setParams] = useSearchParams();
   const apiRef = useRef<GridApi<T> | null>(null);
@@ -68,17 +72,21 @@ export function DataGrid<T>(props: {
     );
   }, [key, setParams]);
 
+  const defaultSort = props.defaultSort;
   const onGridReady = useCallback(
     (e: GridReadyEvent<T>) => {
       apiRef.current = e.api;
-      if (!key) return;
+      if (!key) {
+        if (defaultSort) e.api.applyColumnState({ state: [{ colId: defaultSort[0], sort: defaultSort[1], sortIndex: 0 }] });
+        return;
+      }
       const state = readState(params.get(key));
-      if (state.s?.length)
-        e.api.applyColumnState({ state: state.s.map(([colId, sort], i) => ({ colId, sort, sortIndex: i })) });
+      const sort = state.s?.length ? state.s : defaultSort ? [defaultSort] : [];
+      if (sort.length) e.api.applyColumnState({ state: sort.map(([colId, dir], i) => ({ colId, sort: dir, sortIndex: i })) });
       if (state.f) e.api.setFilterModel(state.f);
     },
     // The initial URL state is applied once, when the grid is created.
-    [key],
+    [key, defaultSort],
   );
 
   const getRowIdFn = useCallback((p: { data: T }) => props.getRowId(p.data), [props]);
@@ -104,9 +112,9 @@ export function DataGrid<T>(props: {
         defaultColDef={DEFAULT_COL_DEF}
         getRowId={getRowIdFn}
         localeText={localeText}
-        pagination
+        pagination={props.pagination !== false}
         paginationPageSize={pageSize}
-        paginationPageSizeSelector={PAGE_SIZES}
+        paginationPageSizeSelector={props.pagination === false ? false : PAGE_SIZES}
         rowHeight={36}
         loading={props.loading}
         domLayout={props.autoHeight ? 'autoHeight' : 'normal'}
@@ -118,6 +126,9 @@ export function DataGrid<T>(props: {
           if (e.data && props.onRowClicked) props.onRowClicked(e.data);
         }}
         suppressCellFocus={false}
+        // Every column is in the DOM even when the grid scrolls sideways (a few columns per grid; the hooks of the
+        // right-hand cells must exist on a narrow screen).
+        suppressColumnVirtualisation
       />
     </div>
   );

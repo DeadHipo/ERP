@@ -148,7 +148,7 @@ export function DocumentsPage() {
       </QueryView>
       {dialog?.kind === 'create' ? <CreateDocumentDialog onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === 'attach' ? <AttachDialog documentId={dialog.doc.id} title={dialog.doc.title} onClose={() => setDialog(null)} /> : null}
-      {dialog?.kind === 'approve' ? <ApproveDocumentDialog documentId={dialog.doc.id} onClose={() => setDialog(null)} /> : null}
+      {dialog?.kind === 'approve' ? <ApproveDocumentDialog documentId={dialog.doc.id} doc={dialog.doc} onClose={() => setDialog(null)} /> : null}
     </div>
   );
 }

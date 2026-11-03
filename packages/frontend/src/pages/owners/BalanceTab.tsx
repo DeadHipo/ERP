@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { Balance, CReason } from '@erp/shared/api-responses';
+import { useQuery } from '@tanstack/react-query';
+import type { Balance, CReason, Operation } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
+import { settlementQueries } from '../../api/queries/settlements';
+import { statusLabel } from '../../components/StatusChip';
 import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EntityLink } from '../../components/EntityLink';
@@ -15,13 +18,28 @@ import { GateChip } from './OwnersPage';
 
 const t = ru.money.balance;
 
-/** The API's own signal that the payable is negative: the shown value differs from the exact one (19 S24). */
-export const isPayableHidden = (b: Balance) => b.total.payableShown !== b.total.payable;
+/** One operation as the operator reads it: date · meaning · amount · pseudonym (from `GET /settlements/operations`). */
+function operationText(op: Operation | undefined, id: string): string {
+  if (!op) return id;
+  return fmt(t.operationLine, {
+    date: op.date,
+    meaning: statusLabel('operationMeaning', op.meaning),
+    amount: formatMoney(centsToText(op.amountCents)),
+    pseudonym: op.pseudonym ? ` · ${op.pseudonym}` : '',
+  });
+}
+
+const pendingWhy = (why: string) => (Object.hasOwn(t.pendingWhy, why) ? t.pendingWhy[why] : undefined) ?? why;
 
 /** P10 Баланс: the formula as fields, the gate and the payout button, waiting by reason, by label, per pseudonym and ISRC, positions. */
 export function BalanceTab(props: { ownerId: string; balance: Balance }) {
   const b = props.balance;
   const waiting = (Object.entries(b.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
+  // The blocking and pending operations are named by their date, meaning, amount and pseudonym (the owner's operations
+  // list, the same cached query as the Операции tab; not a money call), never by their id.
+  const listed = b.blockingPayouts.length > 0 || b.pendingOperations.length > 0;
+  const ops = useQuery({ ...settlementQueries.operations({ ownerId: props.ownerId }), enabled: listed });
+  const opById = new Map((ops.data ?? []).map((o) => [o.id, o]));
   return (
     <div className="flex flex-col gap-4" data-testid="balance-tab">
       <div className="grid gap-4 lg:grid-cols-2">
@@ -33,7 +51,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
           <Fact testId="balance-credits" label={t.credits} value={b.total.credits} />
           <Fact testId="balance-payable" label={t.payable} value={b.total.payable} strong />
           <Fact testId="balance-payableShown" label={t.payableShown} value={b.total.payableShown} />
-          {isPayableHidden(b) ? (
+          {b.total.payableNegative ? (
             <div data-testid="payable-negative" className="rounded-lg border border-danger/40 bg-danger/5 p-2 text-sm text-danger">
               {t.negative}
               <Money value={b.total.payable} />
@@ -51,8 +69,8 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
             <div className="text-sm" data-testid="blocking-payouts">
               {t.blocking}:{' '}
               {b.blockingPayouts.map((id) => (
-                <span key={id} data-testid={`blocking-${id}`} className="mr-2 font-mono text-xs">
-                  {id}
+                <span key={id} data-testid={`blocking-${id}`} className="mr-2" title={id}>
+                  {operationText(opById.get(id), id)}
                 </span>
               ))}
             </div>
@@ -62,8 +80,8 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
               <div className="font-medium">{t.pending}</div>
               <ul className="list-disc pl-5">
                 {b.pendingOperations.map((p) => (
-                  <li key={p.operationId} data-testid={`pending-${p.operationId}`}>
-                    <span className="font-mono text-xs">{p.operationId}</span>: {p.why}
+                  <li key={p.operationId} data-testid={`pending-${p.operationId}`} title={p.operationId}>
+                    {operationText(opById.get(p.operationId), p.operationId)}: <span data-why={p.why}>{pendingWhy(p.why)}</span>
                   </li>
                 ))}
               </ul>
