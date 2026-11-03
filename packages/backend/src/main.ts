@@ -23,11 +23,17 @@ const server = app.listen(port, () =>
   console.log(`ERP API on http://localhost:${port}/api/v1 (data: ${dataDir})`),
 );
 
+// server.close() alone waits for keep-alive sockets (Vite proxy, browser) and in-flight requests, so tsx watch had to
+// force-kill every restart: drop the sockets, give the stores 2 s to close, and exit at once on a second signal.
+let stopping = false;
 function shutdown() {
-  server.close(async () => {
-    await closeSources();
-    process.exit(0);
+  if (stopping) process.exit(1);
+  stopping = true;
+  setTimeout(() => process.exit(1), 2000).unref();
+  server.close(() => {
+    void closeSources().finally(() => process.exit(0));
   });
+  server.closeAllConnections();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
