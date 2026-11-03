@@ -176,6 +176,7 @@ describe('GET /owners/payables (N4)', () => {
       expect(item).toMatchObject({ name: o.name, kind: o.kind, status: o.status, confirmed: b.confirmed });
       for (const k of ['earned', 'waiting', 'recouped', 'paid', 'returns', 'credits', 'payable', 'payableShown'] as const)
         expect(item[k], `${o.name} ${k}`).toBe(b.total[k].toFixed());
+      expect(item.payableNegative).toBe(b.total.payableNegative);
       expect(item.waitingBreakdown).toEqual(
         Object.fromEntries(Object.entries(b.period.waitingBreakdown).map(([k, v]) => [k, v.toFixed()])),
       );

@@ -100,6 +100,14 @@ export const contractSchema = z.object({
   artistIds: z.array(z.string()),
 });
 
+/** `POST /contracts`: the created contract with its owner. */
+export const createdContractSchema = contractSchema.extend({ ownerId: z.string() });
+
+/** `details` of 409 `possible_duplicate` (`POST /owners`, `POST /artists`): the similar live records. */
+export const possibleDuplicateDetailsSchema = z.object({
+  similar: z.array(z.object({ id: z.string(), name: z.string(), matchedBy: z.array(z.string()) })),
+});
+
 export const publishingTermsSchema = z.object({
   id: z.string(),
   ownerId: z.string(),
@@ -365,6 +373,9 @@ export const signalsSchema = z.object({
         upc: z.string(),
         month,
         ruleId: z.string(),
+        artistId: z.string().describe('The participation recipient (the rule id is a participation id)'),
+        pseudonym: z.string(),
+        fundedFrom: z.string().nullable().describe('The bucket the participation is funded from'),
         missing: money,
         why: z.enum(['bucket_short', 'no_source_row', 'top_above_100']),
       }),
@@ -500,6 +511,7 @@ export const balanceSchema = z.object({
     credits: money,
     payable: money,
     payableShown: money,
+    payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
   }),
   byLabel: z
     .record(z.string(), z.object({ earned: money, waiting: money }))
@@ -695,6 +707,7 @@ export const payableItemSchema = z.object({
   credits: money,
   payable: money,
   payableShown: money,
+  payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
   payout: payoutGateSchema,
   blockingPayouts: z.number().int(),
   pendingOperations: z.number().int(),

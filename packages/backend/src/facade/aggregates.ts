@@ -97,6 +97,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           credits: b.total.credits,
           payable: b.total.payable,
           payableShown: b.total.payableShown,
+          payableNegative: b.total.payableNegative,
           payout: gateOf(b),
           blockingPayouts: b.blockingPayouts.length,
           pendingOperations: b.pendingOperations.length,
@@ -234,8 +235,15 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         tracks.filter((t) => t.upc),
         (t) => t.upc as string,
       );
+      // The first pair (smallest `isrc|upc` key) of every UPC in one pass: a scan of all pairs per UPC took 13 s (D-150).
+      const firstKey = new Map<string, string>();
+      for (const k of attrs.keys()) {
+        const upc = k.slice(k.indexOf('|') + 1);
+        const cur = firstKey.get(upc);
+        if (cur === undefined || k < cur) firstKey.set(upc, k);
+      }
       const firstPair = (upc: string) => {
-        const k = [...attrs.keys()].filter((x) => x.endsWith(`|${upc}`)).sort()[0];
+        const k = firstKey.get(upc);
         return k ? attrs.get(k) : undefined;
       };
       const needle = q?.trim().toLowerCase();

@@ -152,6 +152,7 @@ export async function signalsFrom(
     tracks: await owners.listTracks(),
     parts: await splits.listParticipations(),
   }));
+  const partById = new Map(parts.map((p) => [p.id, p]));
   const lists = {
     unallocated: {
       total: unknownPairs.reduce((s, p) => s.add(p.net), ZERO),
@@ -162,7 +163,16 @@ export async function signalsFrom(
       .map(([isrc, net]) => ({ isrc, net }))
       .sort((a, b) => b.net.cmp(a.net)),
     ambiguousWriters: (await publishing.listWriters()).filter((w) => w.resolution === 'ambiguous'),
-    unfunded,
+    unfunded: unfunded.map((u) => {
+      const part = partById.get(u.ruleId);
+      return {
+        ...u,
+        // The rule id is a participation id: its recipient and funding bucket tell identical rows apart (stage 3, product 4).
+        artistId: part?.artistId ?? '',
+        pseudonym: part ? pseudonymOf(part.artistId) : '?',
+        fundedFrom: part?.fundedFrom ?? null,
+      };
+    }),
     labelUnmapped: [...unmapped.entries()]
       .map(([labelName, net]) => ({ labelName, net }))
       .sort((a, b) => b.net.cmp(a.net)),

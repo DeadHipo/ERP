@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { possibleDuplicateDetailsSchema } from '@erp/shared/api-responses';
 import { join } from 'node:path';
 import { createApp } from '../src/api/app';
 import { newFacade, TMP } from './helpers/fixtures';
@@ -106,5 +107,71 @@ describe('operator header hook', () => {
     await writer(app).post('/api/v1/owners').send({ name: '', kind: 'x' }).expect(400);
     await writer(app).get('/api/v1/owners').expect(200);
     expect((await f.recentActions(100)).length).toBe(before);
+  });
+
+  it('keeps the free-text reason of a merge out of the summary (D-150)', async () => {
+    const { f, app } = await setup();
+    const from = await f.modules.owners.createOwner({ name: 'Merge From Synthetic', kind: 'person' });
+    const into = await f.modules.owners.createOwner({ name: 'Merge Into Synthetic', kind: 'person' });
+    const doc = await f.modules.owners.createDocument({
+      kind: 'contract',
+      title: 'Merge Contract Synthetic',
+      fileRef: 'dummy://m.pdf',
+      ownerId: into.id,
+      requiresApproval: true,
+    });
+    await writer(app, 'Chief').post(`/api/v1/documents/${doc.id}/approve`).send({}).expect(200);
+    const art = await f.modules.owners.createArtist({ pseudonym: 'Merge Artist', ownerId: null });
+    await f.modules.owners.createContract({ ownerId: into.id, documentId: doc.id, artistIds: [art.id] });
+    const merged = await writer(app, 'Chief')
+      .post('/api/v1/owners/merge')
+      .send({ fromId: from.id, intoId: into.id, reason: 'secret reason words' });
+    expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+    const [row] = await f.auditOf(from.id);
+    expect(row).toBeDefined();
+    expect(JSON.stringify(row?.summary)).not.toContain('reason');
+    expect(JSON.stringify(row)).not.toContain('secret reason words');
+  });
+
+  it('answers 2xx with X-Audit: failed when the record fails after the write (D-150)', async () => {
+    const { f, app } = await setup();
+    const spy = vi.spyOn(f, 'recordAction').mockRejectedValue(new Error('audit store down'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const res = await writer(app, 'Chief')
+        .post('/api/v1/owners')
+        .send({ name: 'Kept Synthetic', kind: 'person' })
+        .expect(201);
+      expect(res.headers['x-audit']).toBe('failed');
+      expect(res.body.name).toBe('Kept Synthetic'); // the write happened and its result is sent
+      expect(log).toHaveBeenCalled();
+      expect((await f.modules.owners.listOwners()).some((o) => o.name === 'Kept Synthetic')).toBe(true);
+    } finally {
+      spy.mockRestore();
+      log.mockRestore();
+    }
+    const ok = await writer(app, 'Chief').post('/api/v1/owners').send({ name: 'Other Synthetic', kind: 'person' }).expect(201);
+    expect(ok.headers['x-audit']).toBeUndefined();
+  });
+});
+
+describe('api details and limits', () => {
+  it('parses the details of 409 possible_duplicate with the shared schema (owners and artists)', async () => {
+    const f = await newFacade();
+    const app = createApp(f, { tmpDir: join(TMP, 'audit-uploads') });
+    await writer(app).post('/api/v1/owners').send({ name: 'Twin Synthetic', kind: 'person' }).expect(201);
+    const dup = await writer(app).post('/api/v1/owners').send({ name: 'Twin Synthetic', kind: 'person' }).expect(409);
+    expect(dup.body.error.code).toBe('possible_duplicate');
+    expect(possibleDuplicateDetailsSchema.parse(dup.body.error.details).similar[0]?.matchedBy).toContain('name');
+    await writer(app).post('/api/v1/artists').send({ pseudonym: 'Twin Artist' }).expect(201);
+    const adup = await writer(app).post('/api/v1/artists').send({ pseudonym: 'Twin Artist' }).expect(409);
+    expect(possibleDuplicateDetailsSchema.parse(adup.body.error.details).similar.length).toBe(1);
+  });
+
+  it('accepts /signals?limit up to 5000 and refuses more', async () => {
+    const f = await newFacade();
+    const app = createApp(f, { tmpDir: join(TMP, 'audit-uploads') });
+    await writer(app).get('/api/v1/signals?limit=5000').expect(200);
+    await writer(app).get('/api/v1/signals?limit=5001').expect(400);
   });
 });

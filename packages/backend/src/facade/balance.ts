@@ -65,6 +65,8 @@ export interface OwnerBalance {
     payable: Decimal;
     /** Negative payable is kept as is; the owner sees 0. */
     payableShown: Decimal;
+    /** True when payable < 0 (the screen shows `payableShown` and a note; the client does not compare money). */
+    payableNegative: boolean;
   };
   /**
    * All-time master earned (B) and waiting (C) per label of record (the units' `ourLabelName`, '?' for an unmapped
@@ -374,6 +376,7 @@ export function ownerBalance(
       credits: tCredits,
       payable,
       payableShown: Decimal.max(payable, 0),
+      payableNegative: payable.isNegative() && !payable.isZero(),
     },
     byLabel,
     artists: [...artistsOfOwner.values()],

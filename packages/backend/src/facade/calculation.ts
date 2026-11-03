@@ -1,5 +1,5 @@
 import { Decimal, picoToDecimal, ZERO } from '../shared/money';
-import { inMonthRange, quarterEndMonth } from '../shared/dates';
+import { quarterEndMonth } from '../shared/dates';
 import type { OwnersService } from '../modules/owners';
 import type { LabelsService } from '../modules/labels';
 import type { SplitsService } from '../modules/splits';
@@ -26,6 +26,7 @@ import {
   type UnitState,
 } from './layers';
 import { cItems } from './queue';
+import { pubInPeriod, unitInPeriod, type PeriodFilter } from './period';
 
 export type { CReason, Category };
 
@@ -277,19 +278,7 @@ export async function calculate(
   };
 }
 
-export type DateBasis = 'report' | 'sales';
-export interface PeriodFilter {
-  from?: string;
-  to?: string;
-  basis?: DateBasis;
-}
-
-export const unitInPeriod = (u: Pick<UnitResult, 'reportingMonth' | 'salesMonth'>, f: PeriodFilter) =>
-  inMonthRange((f.basis ?? 'report') === 'sales' ? u.salesMonth : u.reportingMonth, f.from, f.to);
-
-/** Publishing has no sales date: both bases use the statement's report month (quarter end). */
-export const pubInPeriod = (p: Pick<PublishingResult, 'reportMonth'>, f: PeriodFilter) =>
-  inMonthRange(p.reportMonth, f.from, f.to);
+export { unitInPeriod, pubInPeriod, type DateBasis, type PeriodFilter } from './period';
 
 export interface Reconciliation {
   source: 'believe' | 'b17';

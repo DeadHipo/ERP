@@ -1,14 +1,6 @@
 import { Decimal, ZERO } from '../shared/money';
-import {
-  pubInPeriod,
-  unitInPeriod,
-  type Calculation,
-  type CReason,
-  type MasterAllocation,
-  type PeriodFilter,
-  type PublishingResult,
-  type UnitResult,
-} from './calculation';
+import type { Calculation, CReason, MasterAllocation, PublishingResult, UnitResult } from './calculation';
+import { pubInPeriod, unitInPeriod, type PeriodFilter } from './period';
 
 /**
  * The category-C queue (17 N3, 16 §2.6): every dollar that waits, as items, then grouped by what the operator fixes.

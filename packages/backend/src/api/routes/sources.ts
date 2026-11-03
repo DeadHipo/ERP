@@ -27,7 +27,8 @@ export function sourcesRouter(facade: Facade, opts: { tmpDir: string }) {
   r.post('/sources/believe', async (req, res) => {
     const up = await receiveUpload(req, opts.tmpDir);
     try {
-      res.status(201).json(await facade.ingestBelieve({ path: up.path, fileName: up.fileName }));
+      const file = await facade.ingestBelieve({ path: up.path, fileName: up.fileName });
+      res.status(201).json({ ...file, storedPath: undefined }); // the server path is not part of the response
     } finally {
       await up.cleanup();
     }

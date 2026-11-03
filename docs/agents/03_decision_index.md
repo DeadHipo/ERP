@@ -55,6 +55,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-147 The money pages: owners with payable and the gate (payouts view), the owner card with the payout button behind `balance.payout`, operations with row actions, merge, the duplicate dialog; `centsToText` · in force
 - D-148 The reference pages with input: pseudonyms and duplicates, documents and the document card, splits, participations, labels, publishing, reports and lines · in force
 - D-149 Operation coverage guard (`coverage.ts`, `paths.ts`), the reason and signal action table, legacy pages removed, guides refreshed · in force
+- D-150 Stage 5 backend rework: audit summary without free text, `X-Audit: failed` instead of 500 after a committed write, schemas for every operation, duplicate details schema, unfunded signals with the recipient, `/releases` 15 s to 1.2 s, `payableNegative` · in force; changes D-140 (audit failure)
 - D-139 Frontend goal design: rules R1–R8 with machine checks, the stack pinned, operator trace, payout gate as a field, e2e on private stores; the event loop and the money text as допущения · in force; changes D-119 (the client parses responses), corrects D-121 (ClickHouse database name, N20)
 
 ## Module 1: owners, artists, tracks, documents

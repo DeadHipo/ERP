@@ -26,9 +26,6 @@ export interface ApiOperation {
   errors?: string[];
 }
 
-/** Bodies whose shape is computed by the facade and not described field by field yet. */
-const free = (what: string) => z.looseObject({}).describe(`${what} (free-form, see docs/09_фасад.md)`);
-
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
 const OPERATOR_HEADER = {
@@ -269,7 +266,7 @@ const operations: ApiOperation[] = [
     summary: 'Create a contract of an owner for artists',
     body: S.createContractBody,
     status: 201,
-    response: free('Contract'),
+    response: R.createdContractSchema,
   },
 
   // ---- splits ----
@@ -422,7 +419,7 @@ const operations: ApiOperation[] = [
     summary: 'Upload a Believe report (csv or zip, streamed)',
     upload: true,
     status: 201,
-    response: free('Loaded file'),
+    response: R.sourceFileSchema,
     errors: ['409 duplicate_period: a file for this account and month is already loaded'],
   },
   {
@@ -448,7 +445,7 @@ const operations: ApiOperation[] = [
     tag: 'publishing',
     summary: 'Link a writer to an owner (or create one)',
     body: S.mapWriterBody,
-    response: free('Mapping result'),
+    response: R.ownerSchema,
   },
   {
     method: 'post',

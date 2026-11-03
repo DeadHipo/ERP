@@ -544,6 +544,9 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     expect(s.unfunded.map((x) => [x.isrc, x.missing.toFixed(), x.why])).toEqual([
       [I(1), '10', 'bucket_short'],
     ]);
+    // the recipient and the bucket of the participation tell identical rows apart (D-150)
+    expect(s.unfunded[0]).toMatchObject({ pseudonym: 'P', fundedFrom: 'artist_pool' });
+    expect(s.unfunded[0]?.artistId).toBeTruthy();
     await c.verify();
   });
 
@@ -659,6 +662,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await migrationPayout(c, 'A', '40');
     const b = await c.balance('A');
     expect([b.total.payable.toFixed(), b.total.payableShown.toFixed()]).toEqual(['-20', '0']);
+    expect(b.total.payableNegative).toBe(true);
     await c.verify();
   });
 

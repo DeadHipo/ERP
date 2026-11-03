@@ -299,6 +299,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.payable.toFixed()).toBe('-30');
     expect(b.total.payableShown.toFixed()).toBe('0');
+    expect(b.total.payableNegative).toBe(true);
   });
 });
 

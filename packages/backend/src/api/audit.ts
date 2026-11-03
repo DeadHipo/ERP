@@ -4,6 +4,8 @@ import { ValidationError } from '../shared/errors';
 
 // The operator's trace (D-140, R5): every write needs `X-Operator` (URI-encoded name), every successful write leaves one
 // row in the audit module before the response is sent, so a following GET /audit sees it.
+// If the record fails after the handler has committed, the write is NOT reported as failed (a retry could duplicate an
+// advance): the failure is logged, the 2xx response goes out with the header `X-Audit: failed` (D-150).
 
 const WRITES = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 
@@ -21,7 +23,7 @@ const BODY_ID_FIELDS = [
   'labelId',
   'paymentProofId',
 ];
-/** Body fields copied to the summary (never names, titles, comments or aliases). */
+/** Body fields copied to the summary (never names, titles, comments, aliases or a free-text `reason`). */
 const SUMMARY_FIELDS = [
   'amount',
   'percent',
@@ -32,7 +34,6 @@ const SUMMARY_FIELDS = [
   'kind',
   'status',
   'direction',
-  'reason',
 ];
 
 const asRecord = (v: unknown): Record<string, unknown> =>
@@ -108,11 +109,9 @@ export function operatorTrace(facade: Facade): RequestHandler {
           });
           original(body);
         } catch (e) {
-          console.error(e);
-          res.status(500);
-          original({
-            error: { code: 'audit_failed', message: 'The write was done but its trace was not saved', statusCode: 500 },
-          });
+          console.error('audit record failed after a committed write', e);
+          res.setHeader('X-Audit', 'failed');
+          original(body);
         }
       })();
       return res;

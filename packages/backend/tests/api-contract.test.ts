@@ -309,7 +309,7 @@ describe('API contract', () => {
     const trail = await call('get', '/audit', { query: { entityId: owner.id, limit: '3' } });
     expect(trail.items[0]).toMatchObject({ method: 'POST', route: '/owners/merge', operator: OPERATOR });
     expect(trail.items[0].entityIds).toEqual(expect.arrayContaining([other.id, owner.id]));
-    expect(trail.items[0].summary.body).toEqual({ reason: 'same person' });
+    expect(trail.items[0].summary.body).toEqual({}); // the free-text reason is not kept (D-150)
     expect(trail.items.length).toBeLessThanOrEqual(3);
   });
 
