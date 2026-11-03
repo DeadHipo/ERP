@@ -130,7 +130,7 @@ catalogue before its sale, withdrawn and other excluded recordings); no receipts
 (2, 4, 5), its perimeter (Duetti, withdrawn), a contract the Annex records differently (Matra!, Maximum Madness), a
 data gap (second UPC: fixed; no split; no rows) or the Q12 assumption. Precedence of map §6 decides every verdict.
 
-### 3.2 Top 40 ISRC by |diff| in `split_differs` and `other` (run 1; 353,199.48 of 399,228.89)
+### 3.2 Top 40 ISRC by |diff| in `split_differs` and `other` (run 1; 353,199.48 of 399,228.89; the current screen figures of rows 1–10 are in §11)
 
 ERP rule = the splits and participations of the ISRC from `splits.splits`, `splits.split_shares`,
 `splits.participations` (period, rows, document kind). Annex row = `splits_diff.json` (Annex "Splits by ISRC").
@@ -222,7 +222,7 @@ participations (D-135) 101,552.83 + carve rows covered by a participation and ne
 +214,662.36, carve deductions not recouped +19,017.11, carve rows replaced or covered +112,958.02, ads +2,699.39,
 master residual −276,947.29 (sum −1,090,987.64; 0.14 rounding of 992 owners).
 
-### 4.2 The 40 owners with the largest |payable difference| (run 2)
+### 4.2 The 40 owners with the largest |payable difference| (run 2, before D-137 / D-138; the current screen figures of rows 1–10 are in §11)
 
 Components per owner (sum = diff to 0.01): B17 holder (Main publishing income on the nickname, ERP pays the holder
 owner), C by reason of the owner's master allocations, Echo8 account B, buy-out price or fee kept as a document,
