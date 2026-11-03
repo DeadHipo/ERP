@@ -157,6 +157,16 @@ export const mergeOwnersBody = z.object({
   reason: z.string().min(1),
 });
 
+export const queueQuery = z.object({
+  account: z.string().optional(),
+  month: month.optional(),
+  ownerId: z.string().optional(),
+  q: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  ...periodQuery.shape,
+});
+
 export const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(5000).optional(),
   isrc: z.string().optional(),

@@ -47,7 +47,12 @@ describe('API contract', () => {
   /** Every successful write leaves exactly one audit row, newest first, with the route template (R5, D-140). */
   async function expectOneAuditRow(method: string, template: string, params?: Record<string, string>) {
     const res = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
-    const items = res.body.items as { operator: string; method: string; route: string; entityIds: string[] }[];
+    const items = res.body.items as {
+      operator: string;
+      method: string;
+      route: string;
+      entityIds: string[];
+    }[];
     expect(items.length, `audit rows after ${method} ${template}`).toBe(auditRows + 1);
     auditRows = items.length;
     expect(items[0]).toMatchObject({ operator: OPERATOR, method: method.toUpperCase(), route: template });
@@ -104,7 +109,10 @@ describe('API contract', () => {
     await call('post', '/tracks', { body: { title: 'Track Three', isrc: I3, upc: UPC } });
     await call('patch', '/tracks/:id', { params: { id: t1.id }, body: { isrc: I1, upc: UPC } });
     await call('get', '/tracks');
-    const noted = await call('patch', '/tracks/:id', { params: { id: t1.id }, body: { note: 'check the rights' } });
+    const noted = await call('patch', '/tracks/:id', {
+      params: { id: t1.id },
+      body: { note: 'check the rights' },
+    });
     expect(noted.note).toBe('check the rights');
     const assumption = await call('post', '/documents', {
       body: { kind: 'assumption', title: 'Council decision', requiresApproval: false },
@@ -177,9 +185,14 @@ describe('API contract', () => {
     });
     expect(rule.validFrom).toBe('2026-02-01');
     const labelList = await call('get', '/labels');
-    expect((labelList as unknown as { rules: { recipientPseudonym: string }[] }[]).flatMap((l) => l.rules)[0]
-      ?.recipientPseudonym).toBe('Synth Two');
-    await call('post', '/labels/rules/:id/close', { params: { id: rule.id }, body: { validTo: '2026-06-01' } });
+    expect(
+      (labelList as unknown as { rules: { recipientPseudonym: string }[] }[]).flatMap((l) => l.rules)[0]
+        ?.recipientPseudonym,
+    ).toBe('Synth Two');
+    await call('post', '/labels/rules/:id/close', {
+      params: { id: rule.id },
+      body: { validTo: '2026-06-01' },
+    });
 
     // participations
     const part = await call('post', '/participations', {
@@ -196,7 +209,10 @@ describe('API contract', () => {
     expect(part.validFrom).toBe('2026-03-01');
     const plist = await call('get', '/participations', { query: { isrc: I1 } });
     expect(plist.total).toBe(1);
-    await call('post', '/participations/:id/close', { params: { id: part.id }, body: { validTo: '2026-09-01' } });
+    await call('post', '/participations/:id/close', {
+      params: { id: part.id },
+      body: { validTo: '2026-09-01' },
+    });
 
     // sources and publishing
     await call('post', '/sources/believe', {
@@ -233,6 +249,12 @@ describe('API contract', () => {
     });
     await call('get', '/reconciliation', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/signals');
+    await call('get', '/overview', { query: { from: '2026-07', to: '2026-07' } });
+    await call('get', '/queue/:reason', { params: { reason: 'split_unconfirmed' }, query: { limit: '10' } });
+    await call('get', '/queue/:reason', {
+      params: { reason: 'writer_unmapped' },
+      query: { month: '2026-07' },
+    });
     await call('get', '/tracks/:isrc/explain', { params: { isrc: I1 } });
 
     // settlements
@@ -308,9 +330,9 @@ describe('API contract', () => {
     expect(count(doc.body)).toBe(API_OPERATIONS.length);
     expect(count(built)).toBe(API_OPERATIONS.length);
     expect(doc.body.paths['/owners/{id}/balance'].get.parameters.length).toBeGreaterThan(1);
-    const header = (doc.body.paths['/owners'].post.parameters as { name: string; in: string; required: boolean }[]).find(
-      (p) => p.in === 'header',
-    );
+    const header = (
+      doc.body.paths['/owners'].post.parameters as { name: string; in: string; required: boolean }[]
+    ).find((p) => p.in === 'header');
     expect(header).toMatchObject({ name: 'X-Operator', required: true });
     expect(doc.body.paths['/owners'].get.parameters ?? []).toEqual([]);
     const ui = await request(app).get('/api/v1/docs/').expect(200);

@@ -13,4 +13,4 @@ export const signals = {
   tracksWithNote: 'Треки с заметкой',
   participantsWithoutOwner: 'Участники без владельца',
   assumptions: 'Допущения',
-} as const satisfies Record<keyof typeof signalsSchema.shape, string>;
+} as const satisfies Record<Exclude<keyof typeof signalsSchema.shape, 'counts'>, string>;

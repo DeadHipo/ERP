@@ -34,7 +34,8 @@ const list = <T extends z.ZodType>(item: T) => z.array(item);
 const OPERATOR_HEADER = {
   name: 'X-Operator',
   required: true,
-  description: 'Name of the operator, URI-encoded (1-200 characters); a write without it is refused: 400 operator_required',
+  description:
+    'Name of the operator, URI-encoded (1-200 characters); a write without it is refused: 400 operator_required',
 };
 
 const operations: ApiOperation[] = [
@@ -408,6 +409,23 @@ const operations: ApiOperation[] = [
     summary: 'Money without a recipient, ISRCs without a split, ambiguous writers',
     query: S.listQuery,
     response: R.signalsSchema,
+  },
+  {
+    method: 'get',
+    path: '/overview',
+    tag: 'reports',
+    summary: 'Overview in one calculation: reconciliation, C queue summary, signal counts, file counts',
+    query: S.periodQuery,
+    response: R.overviewSchema,
+  },
+  {
+    method: 'get',
+    path: '/queue/:reason',
+    tag: 'reports',
+    summary: 'One reason of the waiting money (category C) grouped by what to fix',
+    query: S.queueQuery,
+    response: R.queuePageSchema,
+    errors: ['400 validation_error: unknown reason'],
   },
 
   // ---- settlements ----

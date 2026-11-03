@@ -25,6 +25,7 @@ import {
   type UnitAllocation,
   type UnitState,
 } from './layers';
+import { cItems } from './queue';
 
 export type { CReason, Category };
 
@@ -334,24 +335,23 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
     r.A_received = r.A_received.add(u.net);
     for (const a of u.allocations) {
       if (a.category === 'B') r.B_notOurs = r.B_notOurs.add(a.amount);
-      else addC(r, a.reason as CReason, a.amount);
     }
     if (u.labelShareCategory === 'ours') {
       r.ourShare = r.ourShare.add(u.labelShare);
       const label = u.ourLabelName ?? '?';
       r.ourShareByLabel[label] = (r.ourShareByLabel[label] ?? ZERO).add(u.labelShare);
       if (u.status === 'no_split') r.ourShareNoSplit = r.ourShareNoSplit.add(u.labelShare);
-    } else addC(r, u.labelShareCategory, u.labelShare);
+    }
   }
   for (const p of calc.publishing) {
     if (!pubInPeriod(p, f)) continue;
     const r = row('b17', 'b17', p.reportMonth);
     r.A_received = r.A_received.add(p.payable);
-    if (!p.ownerId) addC(r, 'writer_unmapped', p.payable);
-    else if (p.category === 'B') r.B_notOurs = r.B_notOurs.add(p.authorAmount);
-    else addC(r, p.reason as CReason, p.authorAmount);
+    if (p.ownerId && p.category === 'B') r.B_notOurs = r.B_notOurs.add(p.authorAmount);
     r.ourShare = r.ourShare.add(p.labelAmount);
   }
+  // the C side: the very items the queue groups (queue.ts), so the two cannot drift
+  for (const it of cItems(calc, f)) addC(row(it.source, it.account, it.month), it.reason, it.amount);
   for (const r of rows.values())
     r.discrepancy = r.A_received.sub(r.B_notOurs).sub(r.C_waiting).sub(r.ourShare);
   return [...rows.values()].sort((a, b) =>

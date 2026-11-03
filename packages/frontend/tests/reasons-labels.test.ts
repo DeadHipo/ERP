@@ -15,7 +15,7 @@ describe('Russian dictionary coverage', () => {
   });
 
   it('has a label for every signal list', () => {
-    const names = Object.keys(signalsSchema.shape);
+    const names = Object.keys(signalsSchema.shape).filter((n) => n !== 'counts'); // counts is a number map, not a list
     expect(names.length).toBeGreaterThan(5);
     for (const name of names) {
       expect(ru.signals[name as keyof typeof ru.signals], name).toBeTruthy();

@@ -216,7 +216,6 @@ export const sourceFileSchema = z.object({
   reportingMonth: month,
   reportId: z.string().nullable(),
   fileName: z.string(),
-  storedPath: z.string(),
   sha256: z.string(),
   status: z.enum(['loading', 'loaded', 'failed', 'superseded']),
   lineCount: z.number().int().nullable(),
@@ -337,6 +336,9 @@ export const reconciliationRowSchema = z.object({
 export type ReconciliationRow = z.infer<typeof reconciliationRowSchema>;
 
 export const signalsSchema = z.object({
+  counts: z
+    .record(z.string(), z.number().int())
+    .describe('Full length of every list (the lists are cut to `limit`)'),
   unallocated: z.object({
     total: money,
     withoutIsrc: money,
@@ -407,6 +409,56 @@ export const signalsSchema = z.object({
   ),
 });
 export type Signals = z.infer<typeof signalsSchema>;
+
+// ---- the C queue and the overview (D-141) ----
+
+export const queueGroupSchema = z.object({
+  key: z.object({
+    kind: z.enum([
+      'owner',
+      'split',
+      'participation',
+      'labelRule',
+      'artist',
+      'labelString',
+      'pair',
+      'writer',
+      'ownerTerms',
+    ]),
+    id: z.string(),
+    label: z.string(),
+  }),
+  ownerId: z.string().nullable(),
+  ownerName: z.string().nullable(),
+  artistId: z.string().nullable(),
+  pseudonym: z.string().nullable(),
+  documentId: z.string().nullable(),
+  documentStatus: z.enum(['approved', 'not_approved', 'not_attached', 'missing']).nullable(),
+  ruleId: z.string().nullable(),
+  amount: money,
+  isrcCount: z.number().int(),
+  months: z.object({ from: month, to: month }),
+  isrcs: z.array(z.object({ isrc: z.string(), amount: money })).describe('Top 20 by |amount|'),
+  assumptionBasis: z.enum(['document', 'q11', 'r1']).nullable(),
+});
+export type QueueGroup = z.infer<typeof queueGroupSchema>;
+
+export const queuePageSchema = z.object({
+  calculatedAt: timestamp,
+  total: z.number().int().describe('Number of groups of the reason'),
+  amount: money.describe('Σ of all groups of the reason (not only the page)'),
+  items: z.array(queueGroupSchema),
+});
+
+export const overviewSchema = z.object({
+  calculatedAt: timestamp,
+  reconciliation: z.array(reconciliationRowSchema.extend({ negativeRemainders: z.number().int() })),
+  queue: z.array(
+    z.object({ reason: cReasonSchema, amount: money, groups: z.number().int(), isrcs: z.number().int() }),
+  ),
+  signals: z.array(z.object({ name: z.string(), count: z.number().int() })),
+  files: z.object({ believe: z.number().int(), b17: z.number().int() }),
+});
 
 export const balanceSchema = z.object({
   owner: ownerSchema,
@@ -595,7 +647,9 @@ export const auditActionSchema = z.object({
   method: z.string(),
   route: z.string().describe('Route template, e.g. /documents/:id/approve'),
   entityIds: z.array(z.string()),
-  summary: z.record(z.string(), z.unknown()).describe('Ids, amounts and dates of the write; never names or free text'),
+  summary: z
+    .record(z.string(), z.unknown())
+    .describe('Ids, amounts and dates of the write; never names or free text'),
 });
 export const auditListSchema = z.object({ items: z.array(auditActionSchema) });
 export type AuditAction = z.infer<typeof auditActionSchema>;

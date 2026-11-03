@@ -138,6 +138,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-123 Layered calculation of the master money (MVP goal design: labels module, participations, layer order, C reasons `assumption` / `rule_unconfirmed` / `label_unmapped`, council decisions Q1…Q12) · in force (design); closes D-067 ⚠ by owner decision 2 of 2026-11-02
 - D-127 Master layers in `facade/layers/` (label of record → perimeter → off the top → split → carves → categorise; 12-decimal quantisation, remainders by subtraction, residue to the largest), reconciliation per account with `ourShare` from the layer state and `ourShareByLabel`, new C reasons as one shared enum, new signals, explain per layer, recoup moved to the facade · in force
 - D-130 Stage 3 council fixes: end dates floored to the month start (`empty_period`, facade `closeLabelRule`), sign-safe rounding at exactly 100 (`capToBase`, `distributeCapped`), 12 decimals in the publishing layers, participation overlap key with the source artist (migration 0010), `ownerBalance().byLabel` (B and C per label of record; paid is one total), the M18 channel rule · in force
+- D-141 The C queue (`cItems` shared with `reconcile()`, groups per reason), `GET /queue/:reason`, `GET /overview` in one calculation, signals with `counts` and `limit` on every list, `storedPath` dropped · in force
 - D-136 Signals `sublabelWithoutRule`, `ruleRecipientIsRow`, `twoRowsOneOwner` (no amount changes); catalogue M53–M58 and the out-of-scope list completed · in force
 
 ## Data import, demo, reference checks
