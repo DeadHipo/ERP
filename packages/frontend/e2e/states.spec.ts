@@ -38,7 +38,7 @@ test('SS2: a slow money query -> the long state and the recalc indicator; the sh
   await expect(page.getByTestId('recalc-indicator')).toBeVisible();
   await page.getByTestId('nav-documents').click();
   await expect(page).toHaveURL(/\/documents$/);
-  await expect(page.getByTestId('placeholder-page')).toBeVisible();
+  await expect(page.getByTestId('documents-page')).toBeVisible();
   await expect(page.getByTestId('recalc-indicator')).toBeHidden({ timeout: 10_000 });
 });
 

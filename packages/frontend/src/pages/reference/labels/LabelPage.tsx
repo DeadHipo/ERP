@@ -1,0 +1,170 @@
+import { useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import type { LabelListItem } from '@erp/shared/api-responses';
+import * as api from '../../../api/client';
+import { useAction } from '../../../api/queries/core';
+import { labelQueries } from '../../../api/queries/labels';
+import { ActionButton } from '../../../components/ActionButton';
+import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { EntityLink } from '../../../components/EntityLink';
+import { FormDialog } from '../../../components/FormDialog';
+import { PageHeader } from '../../../components/PageHeader';
+import { QueryView } from '../../../components/PageState';
+import { DateField } from '../../../components/fields/DateField';
+import { TextField } from '../../../components/fields/TextField';
+import { fmt, ru } from '../../../i18n/ru';
+import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { roundedNote } from '../../catalog/track/SplitDialogs';
+import { SetRuleDialog } from '../../work/actions/dialogs';
+import { DocumentCell, period } from '../shared';
+
+const t = ru.reference.labels;
+type Rule = LabelListItem['rules'][number];
+
+function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
+  const [alias, setAlias] = useState('');
+  const run = useAction(() => api.labels.addAlias(props.label.id, { alias: alias.trim() }), {
+    invalidate: 'all',
+    success: (l) => fmt(t.aliasAdded, { alias: alias.trim(), label: l.name }),
+  });
+  return (
+    <FormDialog
+      isOpen
+      onOpenChange={(o) => (o ? null : props.onClose())}
+      title={t.addAlias}
+      footer={
+        <ActionButton name="alias-submit" isPending={run.isPending} isDisabled={alias.trim() === ''} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+          {t.addAlias}
+        </ActionButton>
+      }
+    >
+      <TextField name="label-alias" label={t.aliasField} value={alias} onChange={setAlias} isRequired />
+    </FormDialog>
+  );
+}
+
+function CloseRuleDialog(props: { label: LabelListItem; rule: Rule; onClose: () => void }) {
+  const [to, setTo] = useState('');
+  const [confirm, setConfirm] = useState(false);
+  const run = useAction(
+    async () => {
+      const closed = await api.labels.closeRule(props.rule.id, { validTo: to });
+      return fmt(t.ruleClosed, { to: closed.validTo ?? '' }) + roundedNote(to, closed.validTo ?? '');
+    },
+    { invalidate: 'all', success: (text) => text },
+  );
+  const what = `${props.label.name} → ${props.rule.recipientPseudonym} ${props.rule.percent} % (${period(props.rule.validFrom, props.rule.validTo)})`;
+  return (
+    <>
+      <FormDialog
+        isOpen
+        onOpenChange={(o) => (o ? null : props.onClose())}
+        title={t.closeTitle}
+        subtitle={ru.actions.hints.monthRule}
+        footer={
+          <ActionButton name="close-rule-submit" isDisabled={to === ''} reason={ru.actions.hints.fillFields} onPress={() => setConfirm(true)}>
+            {t.closeRule}
+          </ActionButton>
+        }
+      >
+        <div className="text-sm" data-testid="close-rule-what">{what}</div>
+        <DateField name="close-at" label={t.closeAt} value={to} onChange={setTo} isRequired />
+      </FormDialog>
+      <ConfirmDialog
+        isOpen={confirm}
+        onOpenChange={setConfirm}
+        title={t.closeTitle}
+        lines={[...t.closeLines(what, to)]}
+        isPending={run.isPending}
+        onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
+      />
+    </>
+  );
+}
+
+/** P17 «Лейбл» `/labels/:id`: aliases and rules of one label; add alias, set rule, close rule. */
+export function LabelPage() {
+  const id = useParams().id ?? '';
+  const query = useQuery(labelQueries.list());
+  const label = query.data?.find((l) => l.id === id);
+  const [dialog, setDialog] = useState<{ kind: 'alias' } | { kind: 'rule' } | { kind: 'close'; rule: Rule } | null>(null);
+  useBreadcrumbLabel(label?.name ?? id);
+  const close = () => setDialog(null);
+  return (
+    <div data-testid="label-page">
+      <QueryView query={query}>
+        {(all) => {
+          const l = all.find((x) => x.id === id);
+          if (!l) return <p className="text-sm text-muted" data-testid="label-missing">{ru.common.notFound}</p>;
+          const own = l.ownLabelId ? all.find((x) => x.id === l.ownLabelId) : undefined;
+          return (
+            <div className="flex flex-col gap-6">
+              <PageHeader title={l.name} subtitle={t.detailSubtitle} />
+              <div className="flex flex-wrap gap-4 text-sm" data-testid="label-header">
+                <span data-testid="label-kind">{t.kind[l.kind]}</span>
+                {own ? (
+                  <span>
+                    {t.ownerOf}: <EntityLink kind="label" id={own.id} label={own.name} />
+                  </span>
+                ) : null}
+              </div>
+              <section>
+                <div className="mb-2 flex items-center gap-3">
+                  <h2 className="text-sm font-medium">{t.aliases}</h2>
+                  <ActionButton name="add-alias" variant="secondary" onPress={() => setDialog({ kind: 'alias' })}>
+                    {t.addAlias}
+                  </ActionButton>
+                </div>
+                {l.aliases.length === 0 ? (
+                  <p className="text-sm text-muted">{t.noAliases}</p>
+                ) : (
+                  <ul className="flex flex-wrap gap-2" data-testid="label-aliases">
+                    {l.aliases.map((a) => (
+                      <li key={a} data-testid={`alias-${a}`} className="rounded-lg border border-border px-2 py-1 text-sm">
+                        {a}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <section>
+                <div className="mb-2 flex items-center gap-3">
+                  <h2 className="text-sm font-medium">{t.rules}</h2>
+                  {l.kind === 'sublabel' ? (
+                    <ActionButton name="set-rule" variant="secondary" onPress={() => setDialog({ kind: 'rule' })}>
+                      {t.setRule}
+                    </ActionButton>
+                  ) : null}
+                </div>
+                {l.rules.length === 0 ? (
+                  <p className="text-sm text-muted">{t.noRules}</p>
+                ) : (
+                  <SimpleTable testId="label-rules" headers={[t.ruleCols.recipient, t.ruleCols.percent, t.ruleCols.period, t.ruleCols.document, t.ruleCols.actions]}>
+                    {l.rules.map((x) => (
+                      <tr key={x.id} data-testid={`label-rule-${x.id}`} className="border-t border-border">
+                        <Td col="recipient"><EntityLink kind="artist" id={x.recipientArtistId} label={x.recipientPseudonym} /></Td>
+                        <Td col="percent">{x.percent}</Td>
+                        <Td col="period">{period(x.validFrom, x.validTo)}</Td>
+                        <Td col="document"><DocumentCell id={x.documentId} status={x.documentStatus} /></Td>
+                        <Td>
+                          <ActionButton name="close-rule" variant="secondary" onPress={() => setDialog({ kind: 'close', rule: x })}>
+                            {t.closeRule}
+                          </ActionButton>
+                        </Td>
+                      </tr>
+                    ))}
+                  </SimpleTable>
+                )}
+              </section>
+              {dialog?.kind === 'alias' ? <AddAliasDialog label={l} onClose={close} /> : null}
+              {dialog?.kind === 'rule' ? <SetRuleDialog labelString={l.name} month="" onClose={close} /> : null}
+              {dialog?.kind === 'close' ? <CloseRuleDialog label={l} rule={dialog.rule} onClose={close} /> : null}
+            </div>
+          );
+        }}
+      </QueryView>
+    </div>
+  );
+}
