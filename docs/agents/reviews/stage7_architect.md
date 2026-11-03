@@ -176,3 +176,21 @@ The architecture is intact at the end of the MVP:
 - the decision log matches the database on every claim I checked.
 
 There are no blockers. Findings 1–4 are documentation corrections that should land with the stage 7 record.
+
+## Revision 2 (HEAD `6b53a3c`, D-138)
+
+Revision 2: the verdict stays **yes**.
+- Findings 1–4 are fixed:
+  - `CLAUDE.md:23` says 361, and `:49` names the three bypasses and the Python extractors;
+  - `01` §5 has the right stage labels and D-123…D-138, and `05:43` says D-131…D-138;
+  - recipe 9 lists the extractors and says the annex/echo8 inputs cannot be rebuilt from the repo alone;
+  - `03:153` reads "refined by D-137".
+- Note 9 is closed: `owner_alloc.tsv` is gone.
+- Note 11 is closed: `git grep` finds the nickname nowhere in HEAD. The edit of D-132 and D-135 in place is recorded as a privacy-only exception in D-138, and I accept it. The settlement participant's pseudonym is now read from the git-ignored `data/mvp-load/private_names.json` (`participations.py:6`).
+- No regression:
+  - D-138 changes no `src` file, and its loader change (`steps-stage6.ts`) goes through the same `ctx`/facade paths;
+  - typecheck and lint are clean;
+  - `REQUIRE_STACK=1 npm test` passes: 32 files, 361 tests;
+  - `build:client` builds;
+  - nothing is pushed.
+- Working tree: the only change is `docs/agents/reviews/stage7_product.md`, edited by another reviewer.

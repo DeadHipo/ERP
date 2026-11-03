@@ -220,3 +220,62 @@ stage 3 it was 20 pinned, 3 partial and 2 open. E19 has moved to pinned since th
   the coverage notes carried from stage 3 (finding 5). None of them changes money.
 
 Blockers: none.
+
+## Revision 2 (2026-11-03, after D-138, HEAD `6b53a3c`)
+
+**Verdict: yes.** No number regressed and there are no blockers. Scratch output is in
+`/private/tmp/claude-501/-Users-nearlydeadhipo-Desktop-0to8-ERP/441975a6-0f8b-4dbd-b984-d2856fc5b0b0/scratchpad/qa7/r2/`.
+
+### What I re-ran
+
+| Check | Result |
+|---|---|
+| `npm run typecheck`, `npm run lint` | exit 0, exit 0 |
+| `REQUIRE_STACK=1 npm test`, once | 32 files, **361 passed**, 0 failed, 0 skipped. G47 is the new test |
+| `load.ts all`, dry run | exit 0. Nothing to do: `settlement-prestart` `already_done=12 already_pro_rata=18`; `hygiene` `already_done=1`. The `main` counter is renamed `holder_owner_for_nickname=18`, which closes finding 3 |
+| `compare-annex.ts --out r2/annex.md` | the same as `data/mvp-load/verify/annex.md` except the timestamp lines |
+| `compare-main.ts --out r2/main.md` | `main.md` and `main_owners.csv` are the same as `data/mvp-load/verify/` |
+| `decompose-main.ts --csv r2/main_owners.csv` | exit 0, max \|check\| 0.00. The script has no scratch path, no absolute path and no hard-coded E1 owner or amount (grep). It is documented in `04_recipes.md` §9. This closes finding 2 |
+| API on port 3014, `GET /reconciliation?from=2024-01&to=2026-08` | 52 rows. The server is stopped |
+| Ports 3001–3014 at the end | free |
+| Privacy sweep, tracked files (281) | 0 hits for the 485 multi-word legal names. 0 tracked `.pyc` |
+
+### Reproduced against `14` §10 and `15` §2
+
+| Number | Documented | Reproduced | Δ |
+|---|---|---|---|
+| Reconciliation rows with discrepancy ≠ 0; `fileDiscrepancy` ≠ 0; A − B − C − ours ≠ 0 | 0 of 52; 0 of 45; — | 0; 0; 0 | — |
+| 1052428 B / C / ours | 6,622,032.09 / 870,017.51 / 7,788,743.83 | same | — |
+| 1052428 ours by label: 0to8 / Echo8; ours without a split | 7,656,895.54 / 131,848.28; 469,642.73 | same | — |
+| 1052428 C owner_unconfirmed | 591,528.25 | same | — |
+| 1055956 and B17 (A / B / C / ours and C by reason) | as §9 | same | — |
+| Master C by reason, both accounts (`15` §2, `13` §1.4) | 594,298.41 / 454,219.01 / 144,195.41 / 5,296.64 / 2,362.68 | same | — |
+| C total, both Believe accounts (`13` §1.4) | 1,200,372.14 | 870,017.51 + 330,354.64 = 1,200,372.15 | rounding |
+| No-split net, 2024-01…2026-08 (`15` §2, `13`) | 622,047.62 on 2,500 ISRC, ours 620,565.88; 81 above 1,000 = 519,882.96 | same (`qa7/nosplit.mts`) | — |
+| Annex cells within 0.01; receipts that match | 91,348; 92.35 % (92.80 %) | same | — |
+| Σ ERP label share − Σ Annex NLS | 412,013.64 | 412,013.64 (7,653,573.08 − 7,241,559.44) | — |
+| Main: Σ ERP B / C; Σ payable / Σ Main balance | 6,656,096.01 / 984,876.50; −627,773.52 / 584,418.47 | same | — |
+| Main: owners with \|diff\| > 1.00 (Σ\|diff\|) | 802 (2,140,428.23) | same | — |
+| Explained / not explained, max(1.00, 2 %) | 641 / 161 (337,982.01) | same | — |
+| Explained / not explained, 1.00 | 513 / 289 (363,535.47) | same | — |
+| Suite | 32 files, 361 tests | same | — |
+
+Every number the coordinator listed reproduces. Finding 1 is closed: the figures in `15` §2 and `13` §1.4 now
+match the final database.
+
+### Notes for revision 2
+
+- R2-1 (note): `decompose-main.ts` states its tolerance as "max(1.00, 2 % of max(|Main income|, |diff|))".
+  `decomp2.py` used 2 % of Main income only. `14` §10 says the two give the same counts on the same state, and I did
+  not re-test this on the old state. Keep the stated definition when the numbers are quoted.
+- R2-2 (note): the D-138 pro-rata step moves 165.79 from LDRR into ours, as the bought-out 7.5 % of DJ Ikeraus in
+  2025-12…2026-01. This is the source of the −16 Annex cells. `14` §10 lists it for the owner. It is consistent with
+  the money identity (the changes sum to 0.00).
+- Findings 4, 5 and 6 stand as written. The E→test table is unchanged, except that G47 adds E7 / E17 coverage for
+  the pro-rata settlement. E6, E10 and E22 are still partial, E9 is out of scope, and N2 and N3 are still partial.
+- Hygiene:
+  - My two edits to this file are the only changes from this review. At the time of this check, `stage7_architect.md`
+    and `stage7_product.md` had uncommitted changes from the other council members.
+  - Three `.pyc` files exist on disk in the git-ignored `__pycache__`.
+
+Blockers: none.

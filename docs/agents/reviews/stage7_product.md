@@ -1,4 +1,52 @@
-Verdict: no
+Verdict: yes
+
+**Revision 2 (2026-11-03, after `133455e` "stage 7 closing (D-138)" and `6b53a3c`).** Re-verified read-only: SELECTs
+on `erp`, one read-only `calculate()` (my `own.mts`, compared with the run before the fix), and the docs at HEAD.
+
+- **Finding 1 (blocker) is fixed.**
+  - The settlement splits before 2026-02-01 are pro rata under the approved "Owner decision 6" document:
+    - DGA052431789: LDRR 35 → 50;
+    - DGA082458655: DJ Ikeraus 25 / LDRR 25 to 2025-12, then DJ Ikeraus 0 / LDRR 25 to 2026-02;
+    - DGA0L2423523: LDRR 20 / RD12 15 / DJ MRCL 15.
+  - The windows from 2026-02 are unchanged.
+  - My recomputation, report months 2024-06 … 2026-01 on the 30 ISRC:
+
+    | Owner | Before | After | Change | Category |
+    |---|---:|---:|---:|---|
+    | DJ Ikeraus | 18,402.8 | 26,289.8 | +7,887.0 | B |
+    | LDRR | 438,299 | 429,973 | −8,326 | B |
+    | RD12 | | 455.22 | | B |
+    | DJ MRCL | | 455.22 | | C `owner_unconfirmed` |
+
+    This agrees with D-138 (+7,886.93 / −8,325.86 / +136.56 each / ours +165.80, Σ 0). My +178.18 included the
+    12.38 that goes to RD12 and DJ MRCL; the coordinator's correction is right.
+  - Against Main, LDRR's monthly excess is now 0.00 in 2024-06 (was 26.83). It falls to 12–90 a month in 2025
+    (was up to 2,628).
+  - DJ Ikeraus' 2025 deficits are within about ±250 a month (2025-02 −211.62, was −2,775.07). His 2024 deficits and
+    the M52 month 2025-11 remain other causes.
+  - G47 is in `12` and in `tests/golden.test.ts` (I did not run the suite; QA's domain; D-138 reports 361 green).
+- **Finding 2 is fixed.** 15 §4 states E1 as a decision on Main's payment fact, with the amounts. Q12 is 11,234
+  without Q11's 63.30. Σ of the table is 144,195 = C `assumption`.
+- **Finding 3 is fixed.** 15 §3.6 lists all sublabel money in C with reasons and amounts: NoGhost 19,133.97 (+63.30
+  Q11), 77 Records 14,326.87, R2R 471.08, NoGhost before 2026-06 4,840.35. It names the condition for linking the
+  NoGhost contract (the routed payments of C22).
+- **Finding 4 is fixed.** 15 §3 items 11 (C11, 622,048 / 81 ISRC 519,883), 12 (C26, 240,081.34 at the default 50 %)
+  and 13 (C25, incl. ACIDO III 23 vs 25) are added; C22's amounts are in item 6.
+- **Finding 5 is fixed.** 14 §4.3 and 15 §3.10 state Zachz Winner's 21,225.40 as money owed (a Main error). 161
+  owners remain, and 15 §3.10 says what most of them are.
+- **New owner check (accepted as open):** 15 §3.14 lists the 165.80 that is ours after the DJ Ikeraus buy-out
+  (Annex 14 differs on 16 cells).
+- Notes 6–8 are unchanged and not blocking.
+- D-138 also edits D-132 and D-135 to remove a nickname that reads like a legal name. This is a privacy exception to
+  append-only, and it is stated in D-138; I accept it on product grounds.
+
+Every ✅ MVP item is closed by a golden test or a D-entry data rule (section 1). The five recordings agree with the
+contract or owner rule (section 2; the settlement ISRC now gives DJ Ikeraus 25 / LDRR 25 before 2026-02). No money in
+B rests on an unsourced assumption. Product accepts stage 7.
+
+---
+
+Revision 1 (verdict no) follows unchanged.
 
 Stage 7 council, product member. HEAD `9643b34` (branch `feature/fable-001`), 2026-11-03. Read-only: SELECTs on the
 dev database `erp`, read-only `calculate()` scripts (bootstrap of `scripts/mvp/compare-common.ts`), GET calls to the
