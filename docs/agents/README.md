@@ -18,6 +18,9 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [14_verification.md](14_verification.md) | Stage 6 verification: what was checked against the workbooks and the old ERP, and the differences found |
 | [15_mvp_report.md](15_mvp_report.md) | The MVP report: what is closed, what is open for the owner, which assumptions the money depends on |
 | [16_frontend_jobs.md](16_frontend_jobs.md) | The frontend goal, stage 1: the operator's jobs by cadence, where the answer comes from today, every C reason and signal with its action, what the API and pages answer, the endpoint gaps, what to take from zero-erp |
+| [17_frontend_model.md](17_frontend_model.md) | The frontend goal, stage 2: the rules, the shell, every page in one sentence, drill-down, components, actions with confirmations, the new endpoints, page states, the e2e harness |
+| [18_frontend_plan.md](18_frontend_plan.md) | The frontend goal, stage 2: libraries with their D-entry, the steps of stage 3 with D-entries and golden screens, stages 4–6 |
+| [19_golden_screens.md](19_golden_screens.md) | The frontend goal, stage 2: what the operator sees and does on the golden-case data, with the exact numbers before and after each action (the Playwright specs) |
 | [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) and of the frontend goal (`frontend_stageN_*.md`) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):

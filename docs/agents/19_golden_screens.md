@@ -1,0 +1,474 @@
+# Golden screens: what the operator sees, does, and the exact numbers (stage 2, 2026-11-03, revision 2)
+
+Input: `17_frontend_model.md` (pages P1–P21, actions §6, endpoints N1–N18, harness §9), `12_golden_cases.md` (every
+number below is copied from a golden case or derived with the layer rules of `10` §3 / the balance rule of `10` §5,
+arithmetic in §7), `packages/backend/tests/golden.test.ts` (how each case is seeded through the facade),
+`16_frontend_jobs.md` §2.6–2.8. Revision 2 applies the stage 2 council (`reviews/frontend_stage2_product.md`,
+`_architect.md`, `_qa.md`). These scenarios are the Playwright specs of `packages/frontend/e2e/golden/`, seeded by
+`packages/backend/scripts/e2e/seed.ts` on the private stores. No money rule is new here. Page names: P2 «Очередь
+ожидания (C)», P3 «Решения руководителя», P4 = the owners page in its payouts view `/owners?view=payouts`, P21
+«Сигналы» (`/signals`, `/signals/:name`).
+
+## 1. Conventions
+
+| Item | Rule |
+|---|---|
+| Data | synthetic only; no legal names, no real ISRC/UPC/accounts |
+| Scenario / case ids | scenario `S<nn>` (01…37) plus the mocked group `SS1…SS7`; inside a scenario each golden case has an index `k` (1…8) |
+| ISRC | `QZTST27<nn><k>0<j>` (j = 1…9), e.g. `QZTST2703101`. (`QZTSTE<nn>001` fails `assertIsrc` `^[A-Z]{2}[A-Z0-9]{3}\d{7}$`; `27` keeps the range apart from `golden.test.ts`'s `QZTST26…`) |
+| UPC | `27<nn><k>0000000<j>` (13 digits), e.g. `2711100000002` |
+| Account | `27<nn><k>0<a>` (7 digits, a = 1 for a second account). Not 1052428: P1 rows are keyed by account and month, so one shared account would sum every scenario |
+| Report month, net | 2026-03, one unit of net `100`, label string `Test Label`, unless the case says otherwise |
+| Pseudonyms, owners | the letter of 12 plus `-<nn><k>`: `A-011`, `M1-031`; owner `Owner A-011` (person, confirmed: approved contract). Tables write the bare letter. `Case.ordered` artists (S09) and the default approved appendix are created per scenario. Shared read-only: `NG` (owner `Company NG`, kind label) as recipient of `NoGhost Records`, `QQ` of `qaraqshy records`, brand pseudonym `0to8` |
+| Labels (seeded once) | own `0to8` (aliases `Test Label`, `0to8`, `Ahh Music`), own `Echo8` (alias `Echo8`); sublabel `NoGhost Records` of 0to8, rule 50 → NG from 2020-01-01 (approved contract); sublabel `qaraqshy records` of Echo8, rule 50 → QQ under an `assumption` document. A case whose queue group, balance or action touches a sublabel has its own string and recipient: `NoGhost Records 08a/08b/08d` → `NG-081/082/084` (S08), `NoGhost Records 23` → `NG-231`, `Mystery Records` (S16), `Mystery Records B` (S17), `Ghost Label 35` (S35), `Close Label 37` (S37) |
+| Shared mutation | the only allowed one: S16 adds the alias `Mystery Records` to 0to8 (fresh stores per run, so idempotent per run); no spec asserts the alias list of 0to8 |
+| B17 | one statement for the whole seed, loaded last (after every owner and alias), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
+| Isolation | every scenario owns its ISRCs, UPCs, accounts, owners, pseudonyms, documents. **Never asserted**: queue reason totals, signal counts, P1 totals, P3 items, queue groups keyed by a shared entity (the NoGhost rule, QQ rule, 0to8), and N3 has no `isrc` filter (a spec finds its group by key, `ownerId` or `month`) |
+| Operator | `e2e-operator` in `localStorage` before every spec; every write sends `X-Operator: e2e-operator` |
+| Payout threshold | `scripts/e2e/start.sh` sets `PAYOUT_THRESHOLD_CENTS=0` (default 10000 → `below_threshold` for G27) |
+| Pay gate | the balance (and N4) carries `payout: { allowed, reason, amountCents }` computed by the checks of `createPayout`; the button follows it and the spec asserts the field, never a client comparison |
+| N13 figure | the approve dialog shows `waiting.amount` of `GET /documents/:id/uses` as «ждёт этого документа: X» (money waiting for this document), not "releases" |
+| Money text | `title` = the exact API string, e.g. `19.125`, `-21.25`, `12.266666666666`. Text = `formatMoney`: `Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2, roundingMode: 'halfExpand', signDisplay: 'negative' }).format(decimalString)` on the string (no float). Specs normalise any no-break space (U+00A0 or U+202F) and U+2212 to `-` before comparing. Examples: `19.125` → `19,13`; `4.165` → `4,17`; `-21.25` → `-21,25` (red); `12.266666666666` → `12,27`; `1234.567` → `1 234,57`; `999.995` → `1 000,00`; `-0.004` → `0,00` (no sign) |
+
+Notation: "A 50 B" = allocation of pseudonym A, amount `50`, category B; "L 20 C assumption" = C with that reason. P1
+row = `A_received / B_notOurs / C_waiting / ourShare`, plus `C_breakdown`, `ourShareByLabel`, `ourShareNoSplit` when
+not trivial; `discrepancy` is `0` on every row.
+
+## 2. Test hooks (`data-testid` and attributes the specs rely on)
+
+| Hook | Where |
+|---|---|
+| `page-state-empty`, `page-state-long`, `page-state-error` | `PageState` |
+| `recalc-indicator` | header "идёт пересчёт"; `stale-badge` on a refetching page |
+| `confirm-dialog`, `confirm-dialog-ok`, `confirm-dialog-cancel` | `ConfirmDialog` |
+| toast with `data-code="<api code>"` (`data-code="ok"` on success) | `toast` |
+| `money` elements with `title` = exact string | `Money` |
+| AG Grid rows `[row-id="<key>"]` (`getRowId`: ISRC, UPC, id, `account|month`, group key) | `DataGrid` |
+| `action-<name>` buttons (`action-approve`, `action-confirm-split`, `action-pay`, `action-merge`, …) | every action of 17 §6 |
+
+## 3. Golden case → screen scenario
+
+| Case | Page(s) | Scenario |
+|---|---|---|
+| G01 | P1, P6, P10 | S01 (bases of S14, S15, S32) |
+| G02, G03a, G03c, G06, G07 | P6 rows as entered, P1 | S02 |
+| G03b, G04, G11, G12, G32, G35, G36, G37 | P6 by layer/kind, P1; G37 in P21 `unfunded` | S03 |
+| G45, G46, G47 | P6 two months each, P1 per month | S04 |
+| G05a, G05b, G31, G41 | P6 NG allocation B, P1 | S05 (G05a again in S17) |
+| G08a, G08b, G38 | P1 `ourShareByLabel`, P6 label string per month | S06 |
+| G08c | P2 `label_unmapped`, P21 `labelUnmapped`, P17 | S16, S17 |
+| G09 | P6 months 02/03/05, P15 dialogs | S25 |
+| G10a, G10b | P2 `assumption`, P21 `assumptions`, P6 | S13 |
+| G13, G17 | P6 months 05/06, P10 | S26 |
+| G14 | P6 months 03/04, P16 close | S27 (label-rule analogue S37) |
+| G15, G16 | P6 negative / zero, P1 | S07 |
+| G18, G18b, G20, G21 | P2 `assumption` (⚠ Q11, R1 read-only), P6, P21 `isrcsWithoutSplit` (G21) | S08 |
+| G19 | P2 `split_unconfirmed`, P6, P1 | S12 |
+| G21b, G21c | P21 `sublabelWithoutRule`, `ruleRecipientIsRow`, `twoRowsOneOwner` | S35 |
+| G22 | P21 `unfunded`, P6, P16 | S21 |
+| G23 | P6 Правила errors | S29 |
+| G24 | P8, P10 | S11 |
+| G25 | P16 create, toast date | S28 |
+| G26a–c, G26e | P10 Паблишинг, P1 b17 row | S18 |
+| G26d | P2 `publishing_terms_unconfirmed`, P18 | S18 |
+| G27, G27b | P10 payout, P4, P20, deferred | S22 |
+| G28, G39 | P10 / P4 negative payable shown 0 | S24 |
+| G29 | P10 sublabel advance | S23 |
+| G30 | P2 `no_isrc` (read-only), `unknown_pair`; P21 `unallocated` | S20 |
+| G33, G40 | P1 rows per account | S10 |
+| G34, G44 | P6 exact strings in `title` | S09 |
+| G42 | P6 brand pseudonym | S01 |
+| G43 (i)–(iii) | P10 Операции | S31 |
+| no golden id: `owner_unconfirmed`, `artist_without_owner`, `writer_unmapped`, `rule_unconfirmed`; merge; upload; duplicate dialog; notes; participants without owner | P2, P9, P10, P19, P21 | S14, S15, S19, S32, S33, S34, S36, S35 |
+
+## 4. Scenarios
+
+### Read-only (P1, P6, P10; every number from 12)
+
+| S / k | Case | Seed (as in `golden.test.ts`) | P6 month 2026-03 (allocations; ours) | P1 row |
+|---|---|---|---|---|
+| S01/1 | G01 | row A 50 | A 50 B; ours 50 | 100 / 50 / 0 / 50 (0to8 50); P10 earned 50, payable 50 |
+| S01/2 | G42 | brand `0to8` of the label owner linked to the track, no row; row A 50 | A 50 B (no `0to8` allocation); ours 50 | 100 / 50 / 0 / 50 |
+| S02/1 | G02 | rows A, B, C 16.6 | each 16.6 B; ours 50.2 | 100 / 49.8 / 0 / 50.2 |
+| S02/2 | G03a | rows A 33.333333, B 16.666667 | `33.333333` (33,33), `16.666667` (16,67); ours 50 | 100 / 50 / 0 / 50 |
+| S02/3 | G03c | rows 29.761905, 10.119048, 10.119047 | as entered (29,76 / 10,12 / 10,12); ours 50 | 100 / 50 / 0 / 50 |
+| S02/4 | G06 | row RX 66.6 (label-kind owner) | RX 66.6 B; ours 33.4 | 100 / 66.6 / 0 / 33.4 |
+| S02/5 | G07 | row LL 25 (label-kind owner) | LL 25 B; ours 75 | 100 / 25 / 0 / 75 |
+| S03/1 | G03b | rows A, B 25; M1, M2 13 (net, artist_pool) | M1 13, M2 13; A 12, B 12; ours 50 | 100 / 50 / 0 / 50 |
+| S03/2 | G04 | rows A, B 25; R 15 (net, top) | R 15; A 21.25, B 21.25; ours 42.5 | 100 / 57.5 / 0 / 42.5 |
+| S03/3 | G11 | row A 50; P 15 (bucket, label_share) | A 50, P 7.5; ours 42.5 | 100 / 57.5 / 0 / 42.5 |
+| S03/4 | G12 | row A 50; E 10 (bucket, artist_share of A) | E 5, A 45; ours 50 | 100 / 50 / 0 / 50 |
+| S03/5 | G32 | row A 100; R 15 (net, top) | R 15, A 85; ours 0 | 100 / 100 / 0 / 0 |
+| S03/6 | G35 | row A 50; P1 10, P2 15 (bucket, label_share) | P1 5, P2 7.5; ours 37.5 | 100 / 62.5 / 0 / 37.5 |
+| S03/7 | G36 | rows A, B 25; S 15 (net, label_share) | S 15; ours 35 | 100 / 65 / 0 / 35 |
+| S03/8 | G37 | row A 50; P 70 (net, label_share) | P 50; ours 0; shortfall `20` | 100 / 100 / 0 / 0 |
+| S04/1 | G45 | legacy A 35 S 15 to 2026-02-01; A 35 from 2026-02-01; S 15 (net, label_share) from 2026-02-01; change from 2026-01-01 to A 50 (doc `other`); units 01, 03 | 01: A 50; 03: A 35, S 15; ours 50 both | each month 100 / 50 / 0 / 50 |
+| S04/2 | G46 | rows A, B 25; M1, M2 each 16.66 (bucket, artist_share) of A and of B from 2026-01-01; units 01, 03 | each month A 16.67, B 16.67, M1 8.33 (two allocations `4.165` = 4,17), M2 8.33; ours 50 | each month 100 / 50 / 0 / 50 |
+| S04/3 | G47 | legacy A, B 17.5, S 15 to 2026-02-01; A, B 17.5 from 2026-02-01; S 15 (net, label_share) from 2026-02-01; change from 2026-01-01 to A 25 B 25; units 01, 02 | 01: A 25, B 25; 02: A 17.5, B 17.5, S 15; ours 50 | each month 100 / 50 / 0 / 50 |
+| S05/1 | G05a | `NoGhost Records`; row A 50 | A 50, NG 25 B; ours 25 | 100 / 75 / 0 / 25 (0to8 25) |
+| S05/2 | G05b | as S05/1, row A 70 | A 70, NG 15; ours 15 | 100 / 85 / 0 / 15 |
+| S05/3 | G31 | row A 100; `NoGhost Records` | A 100, NG `0` (emitted); ours 0 | 100 / 100 / 0 / 0 |
+| S05/4 | G41 | one row A 0; `NoGhost Records` | NG 50 **B**; ours 50 | 100 / 50 / 0 / 50 |
+| S06/1 | G08a | string `Ahh Music`; row A 50 | A 50; label of record 0to8 | 100 / 50 / 0 / 50, {0to8: 50} |
+| S06/2 | G08b | string `Echo8`; row A 50 | A 50; label of record Echo8 | 100 / 50 / 0 / 50, {Echo8: 50} |
+| S06/3 | G38 | `NoGhost Records` in 03, `Test Label` in 04; row A 50 | 03: A 50, NG 25, ours 25; 04: A 50, ours 50 | 03: 100 / 75 / 0 / 25; 04: 100 / 50 / 0 / 50 |
+| S07/1 | G15 | net `-100`; `NoGhost Records`; rows A, B 25; R 15 (net, top) | R -15, A -21.25, B -21.25, NG -21.25; ours -21.25 | -100 / -78.75 / 0 / -21.25 |
+| S07/2 | G16 | net `0`; as S07/1 | R, A, B, NG `0` (emitted); ours 0 | 0 / 0 / 0 / 0 |
+| S08/1 | G18 | `NoGhost Records 08a` (rule 50 → NG-081); rows A, B 25; R 15 (net, top), M 13 (net, artist_pool), P 10 (bucket, label_share) | R 15, A 14.75, B 14.75, M 13 B; P 4.25 C assumption (q11), NG `19.125` C (q11); ours `19.125` | 100 / 57.5 / 23.375 / 19.125 |
+| S08/2 | G18b | `NoGhost Records 08b` → NG-082; as S08/1 plus E 10 (bucket, artist_share of A) | E `1.475` (1,48), A `13.275` (13,28); rest as S08/1 | 100 / 57.5 / 23.375 / 19.125 |
+| S08/3 | G20 | `qaraqshy records`; row A 50 | A 50 B; QQ 25 C assumption (document); ours 25 (Echo8) | 100 / 50 / 25 / 25 (Echo8 25) |
+| S08/4 | G21 | `NoGhost Records 08d` → NG-084; **no split** | NG-084 50 C assumption (r1); no_split; ours 50 | 100 / 0 / 50 / 50, `ourShareNoSplit` 50 |
+| S09/1 | G34 | rows A, B, C 16.6 (ids ascending, `Case.ordered`); M 13 (net, artist_pool) | A `12.266666666666`, B, C `12.266666666667` (12,27), M 13; ours 50.2 | 100 / 49.8 / 0 / 50.2 |
+| S09/2 | G44 | row A 10; M1–M3 13 (net, artist_pool), ids ascending | M1 `3.333333333334`, M2, M3 `3.333333333333` (3,33), A `0`; shortfall `29` | 100 / 10 / 0 / 90 |
+
+S08 in P2 `/queue/assumption`: S08/1 groups participation P `4.25` and label rule NG-081 `19.125` (basis q11,
+read-only "⚠ Q11"); S08/2 groups P `4.25` and NG-082 `19.125`; S08/4 group label rule NG-084 `50` (basis r1, "⚠ R1").
+The QQ rule (S08/3) is shared: its group is not asserted.
+
+**S10 Overview per account (G33, G40)**, P1 month 2026-03.
+
+| k | Seed | P1 rows |
+|---|---|---|
+| 1 G33 | ISRC j1 unit 100 `Test Label` in 2710100; ISRC j2 unit 50 `Echo8` in 2710101; row A 50 on both | 2710100: 100 / 50 / 0 / 50, {0to8: 50}; 2710101: 50 / 25 / 0 / 25, {Echo8: 25} |
+| 2 G40 | one ISRC: unit 100 `Echo8` in 2710200; unit 50 `Echo8` plus unknown pair `QZTST2710209` net 7 in 2710201; row A 50 | 2710200: 100 / 50 / 0 / 50, {Echo8: 50}; 2710201: 57 / 25 / 7 / 25, {Echo8: 25}, {unknown_pair: 7}; P10 Owner A-102 earned 75 |
+
+The C `7` cell opens `/queue/unknown_pair?month=2026-03` with the group `QZTST2710209` `7`.
+
+**S11 Release by UPC (G24)**, P8. Seed: `QZTST2711101` under UPC1 `2711100000001` and UPC2 `2711100000002`; row A
+50; P 10 (bucket, label_share); units UPC1 100, UPC2 50. P8 UPC1: net 100, B `55`, ours `45`; UPC2: net 50, B `27.5`,
+ours `22.5`. P6: UPC1 A 50, P 5, ours 45; UPC2 A 25, P 2.5, ours 22.5. P1 2711100: 150 / 82.5 / 0 / 67.5. P10 A
+earned `75`, P `7.5`.
+
+### Action scenarios: the waiting queue
+
+**S12 `split_unconfirmed` → document and confirm (G19).** Seed: row A 50 with no document; P 10 (bucket,
+label_share) approved.
+
+| State | P2 `/queue/split_unconfirmed` (key split) | P6 2026-03 | P1 2712100 |
+|---|---|---|---|
+| before | split of `QZTST2712101`, owner A, `50`, months 2026-03…2026-03 | A 50 C split_unconfirmed; P 5 B; ours 45 | 100 / 5 / 50 / 45 |
+| after | gone | A 50 B; P 5 B; ours 45 | 100 / 55 / 0 / 45 |
+
+Action: create document (kind appendix, title, file ref) → approve (dialog: «ждёт этого документа: 0», nothing links
+it yet) → confirm split (dialog: ISRC, rows A 50, period 2020-01-01 → бессрочно, the document). P10 A: earned 0 →
+`50`, payable `50`.
+
+**S13 `assumption` on a row → replace by a document (G10a, G10b).** Seed: rows A 23, L 20 (own document of kind
+`assumption` "Q1"), D 7 under an approved appendix from 2020-01-01; buy-out of A from 2026-05-01 (A 0, L 20 with Q1,
+D 7); units 2026-03, 2026-05.
+
+| State | P2 `/queue/assumption` (key split, document Q1) | P6 | P1 2713100 |
+|---|---|---|---|
+| before | split from 2020-01-01 `20` (month 03); buy-out split from 2026-05-01 `20` (month 05) | 03: A 23 B, L 20 C assumption, D 7 B, ours 50; 05: L 20 C, D 7 B, ours 73 | 03: 100 / 30 / 20 / 50; 05: 100 / 7 / 20 / 73 |
+| after | first group gone; 05 group `20` stays | 03: A 23, L 20, D 7 all B, ours 50; 05 unchanged | 03: 100 / 50 / 0 / 50; 05 unchanged |
+
+`confirmSplit` cannot do it (the row's own document wins, `10` §3 layer 6; another document on a confirmed split is
+`split_document_set`). The wizard creates and approves an appendix, then `POST /splits/change` {from 2026-03-01, A 23,
+L 20, D 7 without row documents, documentId = the new appendix}. Dialog: closes 2020-01-01…2026-03-01 (A 23, L 20
+[допущение], D 7); new rows from 2026-03-01 up to the next split (2026-05-01, read from the split list). Q1's approve
+button is hidden; a forced approve returns 422 `assumption_not_approvable`. P21 `assumptions`: Q1 `40` → `20`.
+
+**S14 `owner_unconfirmed` → contract.** Seed: `unconfirmedOwner` "Owner A-141", pseudonym A; row A 50 (approved).
+
+| State | P2 (key owner) | P6 | P1 2714100 | P10 / P4 |
+|---|---|---|---|---|
+| before | Owner A-141 `50` | A 50 C owner_unconfirmed | 100 / 0 / 50 / 50 | confirmed false, waiting `50`, payable `0`; `payout` {allowed false, reason owner_not_confirmed} |
+| after | gone | A 50 B | 100 / 50 / 0 / 50 | confirmed true, earned `50`, payable `50`; `payout` {allowed true, amountCents 5000} |
+
+Action (P10 Документы и договоры): create document kind contract with a file ref (`POST /documents`; without a file
+approve is 422 `document_not_attached`, so the form attaches it, or `POST /documents/:id/attach`) → approve (dialog)
+→ `POST /contracts` {owner, document, artistIds [A]} (dialog: "владелец становится подтверждённым").
+
+**S15 `artist_without_owner` → assign.** Seed: artist A-151 without owner; row A 50; confirmed Owner A-151 (contract on
+Z-151). Before: P2 (key artist) A-151 `50`; P6 A 50 C artist_without_owner; P1 2715100 100 / 0 / 50 / 50. Action
+`POST /artists/:id/owner` (no dialog). After: group gone; A 50 B; P1 100 / 50 / 0 / 50; owner earned `50`.
+
+**S16 `label_unmapped` → alias (G08c).** Seed: string `Mystery Records`; row A 50. Before: P2 (key label string)
+`Mystery Records` `50`; P21 `labelUnmapped` `Mystery Records` net `100`; P6 A 50 B, label share 50 C label_unmapped,
+ours 0; P1 2716100 100 / 50 / 50 / 0, {label_unmapped: 50}. Action `POST /labels/:id/aliases` (0to8). After: group
+and signal row gone; ours 50 (0to8); P1 100 / 50 / 0 / 50, {0to8: 50}.
+
+**S17 `label_unmapped` → sublabel and rule (G08c → G05a).** Seed: string `Mystery Records B`; row A 50; company
+NG-171. Before: group `50`; P1 2717100 100 / 50 / 50 / 0. Action: `POST /labels` (sublabel of 0to8) → aliases (the
+string) → rules (50 → NG-171 from 2020-01-01, approved contract). After: P17 shows the rule; P6 A 50, NG-171 25 B,
+ours 25; P1 100 / 75 / 0 / 25.
+
+**S18 Publishing (G26a–e), `publishing_terms_unconfirmed` → terms (G26d).** Seed as the G26 test: owners W1, W2, W3
+with aliases; terms W1 50, W2 90 and 50 (Synchronization), approved; W3 none; lines T-A (W1, W2; Mechanical 100), T-B
+(Synchronization 100), T-C (W1, X; 100), T-D (W3; 100), holder `HOLDER H`, period 1Q26.
+
+| Page | before | after W3 terms |
+|---|---|---|
+| P2 `publishing_terms_unconfirmed` | owner W3 `50` | gone |
+| P10 W1 Паблишинг | T-A 50 / 50 / 25 B; T-B 50 / 50 / 25 B; T-C 100 / 50 / 50 B; earnedPublishing `100` | unchanged |
+| P10 W2 | T-A 50 / 90 / 45 B; T-B 50 / 50 / 25 B; `70` | unchanged |
+| P10 W3 | T-D 100 / 50 / 50 C; waiting `50` | T-D B; earned `50`, payable `50` |
+| P1 b17 / 2026-03 | 400 / 170 / 50 / 180 | 400 / 220 / 0 / 180 |
+
+Action: `POST /publishing/terms` {W3, 50, validFrom 2020-01-01, approved contract of W3}; no dialog.
+
+**S19 `writer_unmapped` → map the writer.** An unknown holder gets an auto-created owner and an unknown songwriter is
+marked external, so the testable state is an **ambiguous** writer (or a label-kind owner). Seed: confirmed owners
+W4a-191, W4b-191, both with alias `HOLDER W4`; W4a has approved terms 50; one line, holder `HOLDER W4`, no songwriters,
+payable 100, period 4Q25. Before: P18 `HOLDER W4` ambiguous; P21 `ambiguousWriters` lists it; P2 (key writer)
+`HOLDER W4` `100`; P1 b17 / 2025-12 100 / 0 / 100 / 0 {writer_unmapped: 100}. Action `POST /publishing/writers/:norm/map`
+{ownerId W4a}. After: resolution manual; signal and group gone; P1 100 / 50 / 0 / 50; W4a earned `50`.
+
+**S20 Perimeter (G30).** Seed: account 2720100, lines without ISRC (UPC `2720100000001`) net 2 and `QZTST2720109`
+(unregistered) net 7. Before: P2 `no_isrc` pair `2` read-only "⚠ D-035"; `unknown_pair` `QZTST2720109` `7`, action
+"создать трек"; P21 `unallocated` the same two pairs (the ISRC one with the action, the other read-only); P1 9 / 0 /
+9 / 0 {no_isrc: 2, unknown_pair: 7}. Action `POST /tracks` {isrc, upc prefilled, title}. After: `unknown_pair` group and
+its `unallocated` row gone; P6 status no_split, ours `7`; P21 `isrcsWithoutSplit` lists it with net `7`; P1 9 / 0 / 2
+/ 7, `ourShareNoSplit` 7.
+
+**S21 Unfunded carve (G22).** Seed: row A 10; P 20 (net, artist_pool) from 2020-01-01. Before: P21 `unfunded`
+`QZTST2721101` missing `10`, why bucket_short; P6 A `0`, P `10`, ours 90; P1 100 / 10 / 0 / 90. Action (P16): close P
+at 2026-03-01 (dialog) → create P 10 (net, artist_pool) from 2026-03-01. After: the shortfall is gone; A `0`, P `10`;
+P1 unchanged.
+
+**S32 `rule_unconfirmed` → approve the rule's document.** Seed: row A 50 (approved appendix); P 10 (bucket,
+label_share) under a `contract` document with a file attached, not approved.
+
+| State | P2 `/queue/rule_unconfirmed` (key participation) | P6 | P1 2732100 |
+|---|---|---|---|
+| before | P on `QZTST2732101`, `5` | A 50 B; P 5 C rule_unconfirmed; ours 45 | 100 / 50 / 5 / 45 |
+| after | gone | P 5 B | 100 / 55 / 0 / 45 |
+
+Action (P14 or the group): approve (dialog: the document, confirms 1 participation, «ждёт этого документа: 5»).
+
+### Action scenarios: owners, sources, duplicates
+
+**S33 Merge owners.** The direction is fixed by `mergeOwners`: the merged owner must have no approved documents and
+the target must be confirmed (else 422 `merge_direction`; different kinds 422 `merge_kind_mismatch`). Seed: confirmed
+Owner X-331 (pseudonym A, row A 50 on ISRC j1); Owner Y-331 without contract (pseudonym B, row B 50 on ISRC j2); one
+file, account 2733100.
+
+| State | P10 X | P10 Y | P1 2733100 |
+|---|---|---|---|
+| before | earned `50`, pseudonyms A | earned 0, waiting `50` (owner_unconfirmed), pseudonyms B | 200 / 50 / 50 / 100 |
+| after | earned `100`, pseudonyms A and B | hidden from P9; `/owners/:Y` says "объединён с X-331" | 200 / 100 / 0 / 100 |
+
+Action (P10 of Y, "объединить в…"): `POST /owners/merge` {fromId Y, intoId X, reason}; dialog: from → into,
+pseudonym B and documents that move, "необратимо". History of X shows the audit row with `e2e-operator`.
+
+**S34 Upload a Believe file (P19).** Fixture: `packages/frontend/e2e/fixtures/9900001_2734100_2026-03-01_2026-03-01.csv`
+(synthetic, one line `QZTST2734101`, UPC `2734100000001`, net 100, `Test Label`); seed: the track and row A 50, no
+file. Before: P19 has no file of account 2734100, P1 has no row. Upload → file `loaded`, lineCount 1; P1 2734100 /
+2026-03: 100 / 50 / 0 / 50. Same file again: 409 `duplicate_period` (the loader checks account + month before the
+hash). The same bytes renamed to account 2734101 (`9900002_2734101_…csv`): 409 `duplicate_file`.
+
+**S30 Duplicate pseudonyms (P11).** Seed: artist `DUP-301` of confirmed Owner DUP-301; a second artist `DUP-301`
+without owner; `QZTST2730101` registered, Believe artist name `DUP-301`, net 100, no split. Before: P11 group (2
+artists; isrcsWithoutSplit `QZTST2730101` `100`); P6 no_split, ours 100; P1 2730100 100 / 0 / 0 / 100. Assign owner
+to the second artist: numbers unchanged. Create split DUP-301 (first) 50 with an approved appendix: isrcsWithoutSplit
+empty; P6 DUP 50 B, ours 50; P1 100 / 50 / 0 / 50.
+
+**S36 Duplicate dialog.** Seed: Owner DUP-361 and artist `A-361`. `POST /owners` {name "Owner DUP-361"} → 409
+`possible_duplicate` with `similar` → dialog lists Owner DUP-361; "тот же" opens its P10 (nothing created); "новый"
+repeats with `force: true` → 201, P9 shows two owners of that name. The same for `POST /artists` {pseudonym `A-361`}.
+
+### Action scenarios: payouts and operations
+
+**S22 Payout (G27, G27b) and the deferred flag.** Seed (2722100): row A 50, P 15 (bucket, label_share); units
+2026-03, 2026-04 net 100; advance 10 on P (scope any, 2026-03-01, approved basis, proof). k2 (2722200): the same with
+the 04 unit `-100`.
+
+| Step | P10 Owner P-221 | `payout` | P20 |
+|---|---|---|---|
+| before | earned `15`, recouped `10`, position remaining `0`, payable `5` | allowed true, amountCents 500 | the advance |
+| Pay (dialog: payable `5`, formula fields, P 5, "снимок будет сохранён") | payable stays `5` (an unproved payout is not counted), pendingOperations [no payment proof yet], blockingPayouts [payout]; P4 blockingPayouts 1 | allowed false, payout_blocked | payout, amountCents 500, deferred true |
+| attach proof | paid `5`, payable `0`, blockingPayouts [] | allowed false, nothing_to_pay | proof, deferred false |
+| set deferred (P20) | paid `5` (still counted), blockingPayouts [payout] | allowed false, payout_blocked | deferred true |
+| unset deferred | blockingPayouts [] | allowed false, nothing_to_pay | deferred false |
+
+An unproved payout also blocks a new advance (`createOperation` out gate); the Операции tab says so. k2 read-only:
+P-222 earned `0`, recouped `0`, remaining `10`, payable `0`. P1: 2722100 03 and 04 100 / 57.5 / 0 / 42.5; 2722200 03
+same, 04 -100 / -57.5 / 0 / -42.5.
+
+**S23 Sublabel advance (G29).** Seed: `NoGhost Records 23` (rule 50 → NG-231); row A 50; advance 50 on NG-231 (scope
+any, proved). P10 NG-231: earned `25`, recouped `25`, remaining `25`, payable `0`, `payout` {allowed false,
+nothing_to_pay}. P1 2723100: 100 / 75 / 0 / 25.
+
+**S24 Negative payable shown as 0 (G28, G39).**
+
+| k | Seed / action | P10 `total` | `payout` / P4 |
+|---|---|---|---|
+| 1 G28 | row A 50; migration payout 30 | paid `30`, payable `20` | allowed true, 2000 / 20 |
+| 2 G28 | migration payouts 30 and 40 | paid `70`, payable `-20`, payableShown `0`, warning with `-20` in `title` | allowed false, nothing_to_pay / 0 + warning |
+| 3 G39 before | row A 50; migration payout 50 | earned 50, paid 50, payable `0` | nothing_to_pay |
+| 3 G39 after | P16: create R 15 (net, top) from 2026-01-01 | earned `42.5`, payable `-7.5`, payableShown `0`, warning | nothing_to_pay / 0 + warning |
+
+S24/3 after: P6 R 15, A 42.5, ours 42.5; P1 2724300 100 / 50 / 0 / 50 → 100 / 57.5 / 0 / 42.5.
+
+**S31 Operations (G43; deduction, credit, deactivate, return).** k1–k3 seed: Owner A (row A 50, unit 100; B17 holder
+line `OWNER, A-31k` payable 60 in 2Q26; terms 50 approved; second track `QZTST2731k02` without income): earned `80`,
+payable `80`.
+
+| k | Action (dialog: direction, amount, pseudonym, scope, basis) | without proof | after proof |
+|---|---|---|---|
+| 1 (i) | advance 40, scope publishing, 2026-01-01 | payable `80`, pending + blocking [advance] | recouped `30`, remaining `10`, payable `50` |
+| 2 (ii) | advance 40, scope isrcs [`QZTST2731202`] | payable `80` | recouped `0`, remaining `40`, payable `80` |
+| 3 (iii) | read-only: seeded migration payout 20 | — | paid `20`, payable `60` |
+
+k4 (G01 base, Owner A-314 payable 50): deduction 10 (in, artist A, approved adjustment_basis, 2026-03-01) → recouped
+`10`, payable `40`; credit 5 (in, amount `-5`, approved basis) → credits `5`, payable `45`; deactivate the deduction
+(reason, "необратимо") → recouped `0`, payable `55`; Pay (`payout` amountCents 5500) and proof → paid `55`, payable
+`0`; return the payout (file, date = payout date; "необратимо") → operation meaning return, amountCents -5500, returns
+`55`, payable `55`. Without a scope and not migration the API refuses `use_payout_button`; the form has no such choice.
+
+### Action scenarios: rules and dates
+
+**S25 Buy-out (G09).** Seed: row A 50 from 2020-01-01; units 02, 03, 05; approved `buyout` document.
+
+| State | P6 A; ours (02 / 03 / 05) | P1 2725100 B / ours | P10 A earned |
+|---|---|---|---|
+| before | 50;50 / 50;50 / 50;50 | 50/50, 50/50, 50/50 | `150` |
+| change from 2026-03-15 → A 25 | 50;50 / 25;75 / 25;75 | 50/50, 25/75, 25/75 | `100` |
+| buy-out from 2026-05-10 | 50;50 / 25;75 / —;100 | 50/50, 25/75, 0/100 | `75` |
+
+Dialogs carry "даты правил начинаются с первого числа месяца"; the toast shows the stored date (2026-03-01, 2026-05-01).
+
+**S26 Assignment (G13; G17 read-only).** k1: row A 50, units 05, 06; change from 2026-06-01 to A2 50 (doc `other`).
+Before: A 50 both months; A earned `100`, A2 `0`. After: 05 A 50, 06 A2 50, ours 50; A `50`, A2 `50`. k2 (G17): 05 A
+50, ours 50; 06 DU 100, ours 0.
+
+**S27 Close a participation (G14).** Row A 50; P 15 (bucket, label_share) from 2026-01-01; units 03, 04. Before: both
+P 7.5, ours 42.5. Close at 2026-04-01 (dialog). After: 04 A 50, ours 50; P1 2727100 04 100 / 50 / 0 / 50; P earned 15
+→ `7.5`. A close entered 2026-04-20 floors to 2026-04-01.
+
+**S37 Close a label rule (G14 analogue).** Seed: `Close Label 37` (sublabel of 0to8, rule 50 → NG-371 from 2020-01-01);
+row A 50; units 03, 04 on that string. Before: both months A 50, NG-371 25, ours 25; P1 2737100 100 / 75 / 0 / 25.
+Close the rule at 2026-04-01 (`POST /labels/rules/:id/close`, dialog: the rule, the month). After: 03 unchanged; 04 A
+50, ours 50, no NG; P1 04 100 / 50 / 0 / 50; P21 `sublabelWithoutRule` [`Close Label 37`, 2026-04, `100`]; NG-371
+earned 50 → `25`.
+
+**S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
+`validFrom` 2026-03-01; toast "начало округлено до 2026-03-01" (dates compared, no money). P6 A 50, ours 50 → A 50, P
+7.5, ours 42.5; P1 2728100 B 50 → 57.5.
+
+**S29 Refusals (G23).** No Believe unit; row A 50; P 10 (bucket, label_share); R1 60 (net, top). Participation A (net,
+top 10) → 422 `double_participation`; change split from 2026-06-01 to A 50 + P 10 → 422 `double_participation`; R2 60
+(net, top) → 422 `top_above_100` (status to verify in 3.x). The money tab shows `page-state-empty` "нет строк отчётов".
+
+**S35 Signals without a golden number (G21b, G21c, notes, participants without owner).** P1 identity only.
+
+| k | Seed | P21 before | Action | after |
+|---|---|---|---|---|
+| 1 G21b | `Ghost Label 35` (sublabel of 0to8), rule 50 → R from 2026-06-01; ISRC j1 rows A 40, R 10; j2 row A 50; units 03 and 06 (100 and 40 on that string) | `sublabelWithoutRule` [`Ghost Label 35`, 2026-03, `140`]; `ruleRecipientIsRow` [j1, R, 2026-06] | none (links to P17 / P15) | — |
+| 2 G21c | rows A 30, A2 20 (one owner); unit 03 | `twoRowsOneOwner` [j1, 2026-03, [A, A2]] (information only) | none | — |
+| 3 | row A 50; unit 03 | no `tracksWithNote` row | P6 header: set note "производная вне разрешения" (`PATCH /tracks/:id`) | row with the note; clearing it removes the row; money unchanged |
+| 4 | row A 50; P 10 (bucket, label_share) to pseudonym P-354 without owner; unit 03 | `participantsWithoutOwner` [j1, P-354, label_share, `5`]; P6 P 5 C artist_without_owner; P1 100 / 50 / 5 / 45 | assign Owner P-354 (confirmed) | row gone; P 5 B; P1 100 / 55 / 0 / 45 |
+
+P21 rows from other scenarios: S03/8 `unfunded` `20`; S21 `unfunded` `10`; S16/S17 `labelUnmapped`; S20 `unallocated`
+and `isrcsWithoutSplit` (`7`); S08/4 `isrcsWithoutSplit` `QZTST2708401` `100`; S30 `isrcsWithoutSplit` `100`; S13
+`assumptions` Q1 `40` → `20`; S08/1 `assumptions` q11 as two rows keyed by document (`facade/reports.ts`: `documentId|basis`): `4.25` (the participation's appendix) and `19.125` (the NG-081 rule's contract), asserted by document id, S08/4 r1 `50`; S19 `ambiguousWriters`; S37
+`sublabelWithoutRule`.
+
+### SS: page states (one spec, `page.route` mocks, no seed dependency)
+
+| Id | Mock | Expected |
+|---|---|---|
+| SS1 | `/sources/files` and `/overview` empty | P1 `page-state-empty` "отчёты не загружены" with the upload link |
+| SS2 | `/overview` delayed 8 s | `page-state-long` and `recalc-indicator`; the sidebar navigates to P13 meanwhile |
+| SS3 | `/owners/:id/balance` → 500 `{error: {code: "internal", message}}` | `page-state-error` with the code and message; retry refetches |
+| SS4 | `/tracks/:isrc/money` with a field of the wrong type | error state "ответ API не соответствует контракту" |
+| SS5 | after an action the money refetch is delayed | old numbers stay with `stale-badge` until the response |
+| SS6 | `/tracks/summary` total 26,000, infinite rows | the grid pages through server pages; row `[row-id]` of page 3 reachable |
+| SS7 | `/search?kinds=owners` backed by 2,100 synthetic owners | the picker shows ≤ 10 matches per typed query, never a full list |
+
+## 5. Checks every scenario asserts
+
+1. After every action and once per read-only case: the scenario's P1 rows satisfy `A_received` = `B_notOurs` +
+   `C_waiting` + `ourShare`, `discrepancy` `0` (the spec sums the `title` strings with decimal.js; the page never sums).
+2. P6 month rows: Σ allocations + the unit's label share = the unit net.
+3. P10 of every scenario owner: `total.earned` = Σ of its B allocations (+ B publishing author amounts in S18, S19,
+   S31); `total.waiting` = Σ of its C allocations.
+4. The History tab of the changed entity shows the action with `e2e-operator`.
+5. Every money page waits up to 20 s for `recalc-indicator` to hide (`toBeHidden({ timeout: 20000 })`), never
+   `waitForTimeout`; a zod parse failure fails the spec.
+6. Second press: in the UI the button is disabled while its request is in flight (a double click sends one request);
+   the second request is then sent directly with the Playwright `request` fixture and asserted per the table below.
+
+| Action | Second request | Expected |
+|---|---|---|
+| approve a document | same id | 200, the first `approvedAt` / `approvedBy` kept |
+| confirm split | same document / another | 200 no-op / 409 `split_document_set` |
+| contract on the same document | same body | 201, a second contract row; money unchanged |
+| merge owners | same from → into | 422 `owner_merged` |
+| assign owner | same owner / another | 200 idempotent / 422 `artist_owner_fixed` |
+| change split from a date, identical | same body | 201: the first new split gets an empty period, an identical split is inserted; money unchanged, the Правила history grows (open point 1) |
+| buy-out | same seller, same date | 200/201 with an empty list (the seller is already 0 in every affected split); no change |
+| create participation | same | 409 `participation_overlap` (a split row: 422 `double_participation`) |
+| close participation | same date | 200, no change (refused only for ≤ `validFrom` or an extension) |
+| add label alias | same string | 409 `alias_taken` |
+| set label rule | overlapping period | 409 `rule_overlap` |
+| close label rule | same date | 200, no change |
+| set publishing terms | same `validFrom` | 409 `terms_overlap` |
+| map writer | same owner | 200 expected; to verify in 3.x (`addOwnerAlias` of an existing alias) |
+| pay | button disabled (`payout.allowed` false) | direct: 422 `payout_blocked` or `nothing_to_pay` |
+| advance / deduction / credit | same body | 201: a second operation (assert two in P20; the second advance is refused 422 `payout_blocked` while the first has no proof) |
+| payment proof | same operation | 400 "This operation cannot take a payment proof" (facade check; module 409 `proof_exists`) |
+| deferred | same value | 200, unchanged |
+| deactivate | same | 409 "Operation is already inactive" |
+| return | same payout | 400 "Returns cannot exceed the payout" |
+| create track | same ISRC + UPC | refused; code to verify in 3.x |
+| upload Believe | same file | 409 `duplicate_period`; same bytes under another account: 409 `duplicate_file` |
+
+## 6. Spec files (`packages/frontend/e2e/golden/`)
+
+| File | Scenarios |
+|---|---|
+| `master-rows.spec.ts` | S01, S02, S03, S04 |
+| `labels-and-signs.spec.ts` | S05, S06, S07 |
+| `assumptions-exactness.spec.ts` | S08, S09 |
+| `overview-release.spec.ts` | S10, S11 |
+| `queue-documents.spec.ts` | S12, S13, S32 |
+| `queue-owners.spec.ts` | S14, S15, S30, S33, S36 |
+| `queue-labels.spec.ts` | S16, S17, S37 |
+| `publishing.spec.ts` | S18, S19 |
+| `perimeter-signals.spec.ts` | S20, S21, S35 |
+| `payouts.spec.ts` | S22, S23, S24 |
+| `operations.spec.ts` | S31 |
+| `rules-dates.spec.ts` | S25, S26, S27, S28, S29 |
+| `sources.spec.ts` | S34 |
+| `states.spec.ts` | SS1–SS7 |
+
+## 7. Derivation notes (numbers not stated in 12)
+
+- S03/8 (G37): label share 50 < 70 → P 50, missing 20 (`why` bucket_short). S07/1: B = -15 − 21.25 × 3 = -78.75.
+- S08/2: E = 14.75 × 10 % = 1.475; A = 13.275; B unchanged 57.5.
+- S10/2 2710201: A = 50 + 7. S11: B per UPC = A + P (55, 27.5); P earned 5 + 2.5.
+- S12 / S32 after: B = A 50 + P 5 = 55; ours 45 unchanged.
+- S13: the 05 unit runs the buy-out split (G10b); the change ends at that split; Q1 = 20 + 20 before.
+- S18 after: B = 170 + 50; ours = Σ label amounts, unchanged 180.
+- S19: holder-only line → one part 100; ambiguous → owner null → author and label 0, C 100; after: terms 50.
+- S20 after: known pair, no split → label share = net 7 ours (D-029).
+- S21 after: pool A 10, target 10 → A 0, P 10, no shortfall.
+- S22: payable = earned − recouped − paid + returns + credits (10 §5); an unproved payout is not counted
+  (`classifyOperation`); a deferred payout with a proof is counted but blocks (`blockingPayouts`). k2 04: A -50, P -7.5.
+- S24/3: R 15 + A 42.5 = 57.5. S25: earned 150 → 50 + 25 + 25 → 50 + 25 + 0.
+- S27: P 15 → 7.5. S28: 15 % of 50. S31/k2: nothing in scope → remaining 40.
+- S31/k4: a deduction is a position recouped from income in scope any: 50 − 10 = 40; credit -5 adds 5; deactivation
+  → 55; payout 55 → 0; return -5500 adds 55.
+- S33: before X 50 B, Y's B 50 C owner_unconfirmed; after the merge B's owner is X (confirmed) → B. P1 A 200, ours 100.
+- S35/4: P 10 % of the label share 50 = 5 (the D-130 test in `golden.test.ts`); C artist_without_owner until assigned.
+- S37: without a rule in force the sublabel carve does not run (10 §3 layer 5); the label share 50 is ours.
+- S30 after the split: 50 of 100, ours 50.
+
+## 8. Open points (for `18_frontend_plan.md` and the stage 3 D-entries)
+
+1. `split_unchanged`: a second identical split change is accepted and adds an empty-period split plus an identical
+   one (S13, S25 dialogs, §5 table). Pin it, or refuse it with `split_unchanged` in stage 3 (product prefers the
+   refusal); decide with a D-entry.
+2. Deduction, credit, deactivate, return (S31/k4), the after-payout and deferred states (S22), S33, S35/4 and S37 are
+   derived from the balance and layer rules; propose adding them to 12 as G48 (operations) and G49 (merge, rule close).
+3. N6 allocations carry ids only (`allocationSchema`); P6 needs pseudonym and owner labels in the N6 response.
+4. N13 `waiting` for a contract document (S14): define it as the `owner_unconfirmed` money of the contract's
+   pseudonyms, or the dialog shows «ждёт этого документа: 0».
+5. M52 in dialogs: the client may not floor dates; the dialog states the rule, the toast shows the stored date. A
+   pre-confirm floored date needs a dry-run field from the API.
+6. To verify in 3.x: map writer twice, create track twice, the HTTP status of `top_above_100`; `payout` field and P21
+   are new endpoints of 17 (N4 / balance, N18 `/signals`).
+7. G45 / G47 are seeded with the changed split, as the golden test does, not by the loader step.
+8. The council asked for a label-rule variant of S32 (`rule_unconfirmed` on a sublabel rule); not added, the same
+   approve dialog covers it.
