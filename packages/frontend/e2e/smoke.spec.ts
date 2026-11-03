@@ -87,12 +87,26 @@ const DETAIL_ROUTES = [
   '/sources/lines',
 ];
 
+/** Routes whose page is built (step 3.5 on): the page's own root hook instead of the placeholder. */
+const BUILT: Record<string, string> = {
+  '/': 'overview-page',
+  '/queue': 'queue-page',
+  '/queue/assumption': 'queue-page',
+  '/signals': 'signals-page',
+  '/signals/unfunded': 'signals-page',
+  '/questions': 'questions-page',
+};
+
 test('every route of nav.ts and every detail route renders a page without a console error', async ({ page }) => {
   const errors = trackErrors(page);
   for (const path of [...ALL_ITEMS.map((i) => i.path), ...DETAIL_ROUTES]) {
     await page.goto(path);
-    await expect(page.getByTestId('placeholder-page'), path).toBeVisible();
-    await expect(page.getByTestId('placeholder-text'), path).toContainText('Страница в разработке (шаг 3.');
+    const built = BUILT[path.split('?')[0] ?? path];
+    if (built) await expect(page.getByTestId(built), path).toBeVisible();
+    else {
+      await expect(page.getByTestId('placeholder-page'), path).toBeVisible();
+      await expect(page.getByTestId('placeholder-text'), path).toContainText('Страница в разработке (шаг 3.');
+    }
     await expect(page.getByTestId('breadcrumbs'), path).toBeVisible();
   }
   expect(errors).toEqual([]);

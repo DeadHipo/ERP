@@ -6,7 +6,8 @@
   "exports": {
     "./api-schemas": "./src/api-schemas.ts",
     "./api-responses": "./src/api-responses.ts",
-    "./reasons": "./src/reasons.ts"
+    "./reasons": "./src/reasons.ts",
+    "./open-questions": "./src/open-questions.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

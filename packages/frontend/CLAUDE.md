@@ -40,20 +40,34 @@ mounted under `/legacy/*`, loaded lazily, removed in step 3.9).
 New pages go in their own folder (`catalog/`, `owners/`, ...) and replace the placeholder element in the route file; add their
 queries to `api/queries/<domain>.ts` and strings to `i18n/ru/<domain>.ts` (register a new file in `i18n/ru.ts`).
 
+## Pages built so far (one sentence each: the operator question)
+- **P1 Обзор** `/` (`pages/work/OverviewPage.tsx`, one `GET /overview`, period in the URL): did every dollar of each account and month land
+  in B, C or ours, and what waits by reason? A plain table (rows `overview-row-<source>-<account>-<month>`, cells `data-col="A|B|C|ours|noSplit|discrepancy|fileDiscrepancy"`,
+  `c-reason-<reason>`, `by-label-<name>`), the queue strip (`queue-chip-<reason>`) and signal counts (`signal-chip-<name>`); no totals row.
+- **P2 Очередь ожидания (C)** `/queue` (summary from the same overview query, `queue-reason-<reason>`) and `/queue/:reason` (`GET /queue/:reason`, filters
+  and `limit`/`offset` in the URL): what waits, grouped by what unblocks it, and what do I do? Rows `queue-group-<key.kind>-<key.id>`, one action dialog
+  per reason (`pages/work/actions/dialogs.tsx`, buttons `action-<name>`, the dialog submit `action-<dialog>-submit` or `action-submit`; the
+  document step `actions/DocumentStep.tsx`: `field-document-file`, `action-document-create`, `action-document-approve`, `document-ready`).
+- **P21 Сигналы** `/signals` (`signal-list-<name>` with counts) and `/signals/:name` (one `GET /signals?limit=500`): what looks wrong without being C?
+  Rows `signal-row-<name>-<key>` (keys in D-145), the actions of 16 §2.7 through the same dialogs.
+- **P3 Решения руководителя** `/questions`: which open items wait for the head of the label? The static `OPEN_QUESTIONS` of
+  `@erp/shared/open-questions` (rows `question-<id>`, chips `decision-<D-nnn>`, `question-link`).
+
 ## Components (`src/components/`) and their test hooks
 | Component | Hooks |
 |---|---|
 | `AppShell`, `Sidebar` (collapsible, `sessionStorage` `erp.sidebar`), `Breadcrumbs` (from `nav.ts`; a detail page calls `useBreadcrumbLabel(name)`), `GlobalSearch` (Cmd/Ctrl+K, `GET /search?q=`, 404 shows "поиск появится на шаге 3.3b"), `OperatorField`, `RecalcIndicator`, `ThemeToggle` (`html.dark`, `localStorage` `erp.theme`) | `sidebar`, `sidebar-toggle`, `nav-<id>`, `breadcrumbs`, `global-search`, `global-search-dialog`, `global-search-input`, `global-search-results`, `operator-field`, `operator-hint`, `recalc-indicator`, `theme-toggle` |
-| `DataGrid` (AG Grid, one theme on HeroUI variables, `locale-ru.ts`, pagination 50/100/500, required `getRowId`, `onRowClicked`, sort/filter in the URL under `gridStateKey`) | `data-grid`; rows are `[row-id="<key>"]` (AG Grid's own attribute on `.ag-row`, from `getRowId`) |
+| `DataGrid` (AG Grid, one theme on HeroUI variables, `locale-ru.ts`, pagination 50/100/500, required `getRowId`, `onRowClicked`, sort/filter in the URL under `gridStateKey`; `rowTestId` puts a `data-testid` on the row, `autoHeight` keeps every row of the page in the DOM) | `data-grid`; rows are `[row-id="<key>"]` (AG Grid's own attribute on `.ag-row`, from `getRowId`) |
 | `Money` (`formatMoney`; exact string in `title`; negative red) | `money` with `title` |
 | `StatusChip` (kinds: documentStatus, documentKind, ownerStatus, artistStatus, category, cReason, operationMeaning, fileStatus, signal) | `chip-<value>` |
 | `EntityLink`, `entityPath` | |
 | `EntityCard` + `CardTabs` (tabs in `?tab=`) | `entity-card`, `tab-<id>` |
-| `fields/TextField`, `SelectField` (max 50 options), `DateField` (native date input in HeroUI styles), `EntityPicker` (debounced `/search` restricted to one kind, shows at most 10) | `field-<name>` |
+| `fields/TextField`, `SelectField` (max 50 options), `DateField` (native date input in HeroUI styles), `EntityPicker` (debounced `/search` restricted to one kind, shows at most 10; `accept` filters the matches; on a 404 of `/search` it searches the reference list of the kind) | `field-<name>`, `picker-list-<name>` |
 | `ConfirmDialog` (HeroUI AlertDialog + `HiddenRacDialogAnchor`; operator shown; OK disabled while pending) | `confirm-dialog`, `confirm-dialog-ok`, `confirm-dialog-cancel` |
 | `PageState` (`empty`, `long`, `error`), `StaleBadge`, `QueryView` (applies the states to a query) | `page-state-empty`, `page-state-long`, `page-state-error`, `error-code`, `error-message`, `action-retry`, `stale-badge` |
 | `toast.tsx` (`notifySuccess`, `notifyError(ApiError)`) | `toast` with `data-code` (`ok` or the API code) |
 | `ActionButton` (disabled while pending or while no operator) | `action-<name>` |
+| `FormDialog` (HeroUI Modal for the fields of an action; its irreversible steps open `ConfirmDialog` on top) | `form-dialog`, `form-dialog-close` |
 HeroUI's Toast cannot take attributes on its root, so the hooks sit on a `<span>` inside the toast title. `useAction(fn, { invalidate, success })`
 (`api/queries/core.ts`) is the one mutation hook: toasts, invalidation, and a synchronous in-flight guard (a double click sends one request).
 
@@ -65,7 +79,14 @@ HeroUI's Toast cannot take attributes on its root, so the hooks sit on a `<span>
 - **The states fixture page** `/dev/states?case=<ss1..ss7|action>` (`src/pages/dev/StatesPage.tsx`, not in the sidebar) hosts the checks SS1-SS7 of `19` until the real pages
   exist: `e2e/states.spec.ts` mocks the API with `page.route` and asserts the empty/long/error/contract-mismatch/stale states, a 26,000-row grid, the picker over 2,100 mocked owners, the
   confirm dialog, the double click and the toasts. Keep it working when pages arrive: the specs of the real pages come in `e2e/golden/`.
-- `e2e/smoke.spec.ts`: shell, search, operator, theme, every route renders without a console error, legacy pages work.
+- `e2e/smoke.spec.ts`: shell, search, operator, theme, every route renders without a console error (a built page by its root hook, the rest as
+  placeholders: the `BUILT` map), legacy pages work.
+- `e2e/golden/*.spec.ts`: the golden screens on the seeded stores. `e2e/helpers.ts` reads the seed keys (`e2e/.seed-keys.json`, written by the seed; `E2E_KEYS=<file>`
+  for another one) and re-exports the naming of `packages/backend/scripts/e2e/keys.ts` (`isrc`, `upc`, `account`, ...); `openAs` sets the operator, `settled` waits for
+  the recalculation and the stale badge, `expectP1` asserts a P1 row as `A / B / C / ours`, `pick` / `choose` fill pickers and selects, `apiPost` sends the second press.
+  The specs of step 3.5: `overview` (S01–S11 rows, drill-down, P1 states by mocks), `queue` (S12–S19, S32, S08 read-only, S20 before), `signals` (S20, S21, S35 and
+  the P21 rows of other scenarios), `questions` (the 14 items and their links). Files run in alphabetical order on one seed and every scenario owns its data, so an action
+  spec never changes another spec's numbers; a spec that acts on a scenario is the only one that asserts its after state.
 
 ## Legacy
 `src/legacy/` keeps the old pages (`/legacy/*`), `legacy/client.ts` (sends `X-Operator` from `erp.operator` on writes), `legacy/ui.tsx` and `legacy/styles.css` (scoped under `.legacy`). They are exempt from the money lint

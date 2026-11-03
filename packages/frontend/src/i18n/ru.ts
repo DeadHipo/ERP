@@ -8,9 +8,27 @@ import { toast } from './ru/toast';
 import { reasons } from './ru/reasons';
 import { signals } from './ru/signals';
 import { status } from './ru/status';
+import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
 /** The one Russian dictionary of the interface, split by domain. A "t" is just importing `ru`. */
-export const ru = { common, nav, shell, search, pageState, dialog, toast, reasons, signals, status } as const;
+export const ru = {
+  common,
+  nav,
+  shell,
+  search,
+  pageState,
+  dialog,
+  toast,
+  reasons,
+  signals,
+  status,
+  overview,
+  reasonActions,
+  queue,
+  signalsPage,
+  questions,
+  actions,
+} as const;
 
 /** Russian plural form: `plural(21, ['файл', 'файла', 'файлов'])` gives `файл`. */
 export function plural(n: number, [one, few, many]: readonly [string, string, string]): string {

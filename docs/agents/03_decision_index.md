@@ -50,6 +50,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-113 Lines page `/sources/lines` · in force
 - D-129 API and pages for labels, participations, terms by type, track notes; shared `REASON_LABELS` · in force (the pages are replaced by the frontend goal, D-139 …)
 - D-144 The frontend foundation: shell, components with test hooks, the client contract (schema.parse, X-Operator), the money text rule, eslint money bans and guard tests, `npm run e2e` on private stores, legacy pages under `/legacy/*` · in force; допущения A4, A7, A8
+- D-145 The work pages: P1 overview (no totals row), P2 C queue with one action dialog per reason (the document step, the assumption replacement), P21 signals with their actions, P3 the open-question list `OPEN_QUESTIONS` in `@erp/shared`; `FormDialog`, `DataGrid` `rowTestId` / `autoHeight`, specs `e2e/golden/{overview,queue,signals,questions}` · in force
 - D-139 Frontend goal design: rules R1–R8 with machine checks, the stack pinned, operator trace, payout gate as a field, e2e on private stores; the event loop and the money text as допущения · in force; changes D-119 (the client parses responses), corrects D-121 (ClickHouse database name, N20)
 
 ## Module 1: owners, artists, tracks, documents

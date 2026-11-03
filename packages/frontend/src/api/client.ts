@@ -124,8 +124,10 @@ export const documents = {
     call('POST', `/documents/${id(documentId)}/attach`, { body, schema: R.documentSchema }),
   approve: (documentId: string, body: z.input<typeof S.approveBody>) =>
     call('POST', `/documents/${id(documentId)}/approve`, { body, schema: R.documentSchema }),
+  /** What the document confirms and the C money that waits for it (N13). */
+  uses: (documentId: string) => call('GET', `/documents/${id(documentId)}/uses`, { schema: R.documentUsesSchema }),
   createContract: (body: z.input<typeof S.createContractBody>) =>
-    call('POST', '/contracts', { body, schema: free }),
+    call('POST', '/contracts', { body, schema: R.contractSchema }),
 };
 
 export const splits = {
@@ -184,8 +186,15 @@ export const publishing = {
 export const reports = {
   reconciliation: (query: z.input<typeof S.periodQuery> = {}) =>
     call('GET', '/reconciliation', { query, schema: list(R.reconciliationRowSchema) }),
-  signals: (query: z.input<typeof S.listQuery> = {}) =>
+  /** Signals: every list cut to `limit`, `counts` has the full length of each (N18). */
+  signals: (query: z.input<typeof S.listQuery> & z.input<typeof S.periodQuery> = {}) =>
     call('GET', '/signals', { query, schema: R.signalsSchema }),
+  /** P1 in one calculation: reconciliation rows, the C queue summary, signal counts, file counts (N1). */
+  overview: (query: z.input<typeof S.periodQuery> = {}) =>
+    call('GET', '/overview', { query, schema: R.overviewSchema }),
+  /** One reason of the C queue grouped by what unblocks it, largest first, paged (N3). */
+  queue: (reason: z.output<typeof R.cReasonSchema>, query: z.input<typeof S.queueQuery> = {}) =>
+    call('GET', `/queue/${id(reason)}`, { query, schema: R.queuePageSchema }),
 };
 
 export const settlements = {

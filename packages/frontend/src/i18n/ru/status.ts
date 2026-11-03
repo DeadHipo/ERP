@@ -3,6 +3,7 @@ export const status = {
     not_attached: 'нет файла',
     not_approved: 'не утверждён',
     approved: 'утверждён',
+    missing: 'нет документа',
   },
   documentKind: {
     contract: 'договор',

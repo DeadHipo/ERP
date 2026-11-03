@@ -2,17 +2,31 @@ import { useEffect, useState } from 'react';
 import { ComboBox, Input, Label, ListBox } from '@heroui/react';
 import { useQuery } from '@tanstack/react-query';
 import type { z } from 'zod';
+import { ApiError } from '../../api/client';
 import type { searchResponseSchema } from '../../api/search-schema';
 import { searchQueries } from '../../api/queries/search';
+import { ownerQueries } from '../../api/queries/owners';
+import { artistQueries } from '../../api/queries/artists';
+import { documentQueries } from '../../api/queries/documents';
+import { labelQueries } from '../../api/queries/labels';
+import { trackQueries } from '../../api/queries/tracks';
 import { ru } from '../../i18n/ru';
 
 export type PickerKind = 'owners' | 'artists' | 'tracks' | 'documents' | 'labels';
+
+/** One match of a picker: the key, the text, and for documents / labels / owners their kind and status. */
+export type PickerItem = { id: string; label: string; kind?: string; status?: string };
 
 /** Never more than this many matches are shown for a typed query (SS7): the list is searched, not browsed. */
 export const PICKER_LIMIT = 10;
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
 
+/**
+ * A typed search restricted to one kind. It asks `GET /search`; while that endpoint does not exist (404 until step
+ * 3.3b) it searches the reference list of the kind (`GET /owners`, `/artists`, `/documents`, `/labels`, `/tracks`)
+ * by the typed text instead. Either way at most `PICKER_LIMIT` matches are shown.
+ */
 export function EntityPicker(props: {
   name: string;
   label: string;
@@ -20,6 +34,8 @@ export function EntityPicker(props: {
   /** The key of the chosen entity (owner id, artist id, ISRC, document id, label id) or null. */
   value: string | null;
   onChange: (key: string | null, label: string) => void;
+  /** Keeps only some matches (e.g. approved documents of a kind). */
+  accept?: (item: PickerItem) => boolean;
 }) {
   const [text, setText] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -30,7 +46,10 @@ export function EntityPicker(props: {
 
   const enabled = debounced.length >= MIN_CHARS;
   const result = useQuery({ ...searchQueries.query(debounced, [props.kind]), enabled });
-  const items = enabled ? pickItems(props.kind, result.data).slice(0, PICKER_LIMIT) : [];
+  const fallback = result.error instanceof ApiError && result.error.status === 404;
+  const list = useFallbackList(props.kind, enabled && fallback);
+  const all = fallback ? filterByText(list, debounced) : pickItems(props.kind, result.data);
+  const items = enabled ? all.filter((i) => props.accept?.(i) ?? true).slice(0, PICKER_LIMIT) : [];
 
   return (
     <ComboBox
@@ -70,21 +89,44 @@ export function EntityPicker(props: {
   );
 }
 
-function pickItems(
-  kind: PickerKind,
-  data: z.output<typeof searchResponseSchema> | undefined,
-): { id: string; label: string }[] {
+/** The reference list of a kind, loaded only while `GET /search` is missing. */
+function useFallbackList(kind: PickerKind, enabled: boolean): PickerItem[] {
+  const owners = useQuery({ ...ownerQueries.list(), enabled: enabled && kind === 'owners' });
+  const artists = useQuery({ ...artistQueries.list(), enabled: enabled && kind === 'artists' });
+  const documents = useQuery({ ...documentQueries.list(), enabled: enabled && kind === 'documents' });
+  const labels = useQuery({ ...labelQueries.list(), enabled: enabled && kind === 'labels' });
+  const tracks = useQuery({ ...trackQueries.list(), enabled: enabled && kind === 'tracks' });
+  switch (kind) {
+    case 'owners':
+      return (owners.data ?? []).map((o) => ({ id: o.id, label: o.name, kind: o.kind, status: o.status }));
+    case 'artists':
+      return (artists.data ?? []).map((a) => ({ id: a.id, label: a.pseudonym, status: a.status }));
+    case 'documents':
+      return (documents.data ?? []).map((d) => ({ id: d.id, label: d.title, kind: d.kind, status: d.status }));
+    case 'labels':
+      return (labels.data ?? []).map((l) => ({ id: l.id, label: l.name, kind: l.kind }));
+    case 'tracks':
+      return (tracks.data ?? []).flatMap((t) => (t.isrc ? [{ id: t.isrc, label: `${t.isrc} · ${t.title}` }] : []));
+  }
+}
+
+function filterByText(items: PickerItem[], text: string): PickerItem[] {
+  const needle = text.toLocaleLowerCase('ru');
+  return items.filter((i) => i.label.toLocaleLowerCase('ru').includes(needle));
+}
+
+function pickItems(kind: PickerKind, data: z.output<typeof searchResponseSchema> | undefined): PickerItem[] {
   if (!data) return [];
   switch (kind) {
     case 'owners':
-      return data.owners.map((o) => ({ id: o.id, label: o.name }));
+      return data.owners.map((o) => ({ id: o.id, label: o.name, status: o.status }));
     case 'artists':
       return data.artists.map((a) => ({ id: a.id, label: a.pseudonym }));
     case 'tracks':
       return data.tracks.flatMap((t) => (t.isrc ? [{ id: t.isrc, label: `${t.isrc} · ${t.title}` }] : []));
     case 'documents':
-      return data.documents.map((d) => ({ id: d.id, label: d.title }));
+      return data.documents.map((d) => ({ id: d.id, label: d.title, kind: d.kind, status: d.status }));
     case 'labels':
-      return data.labels.map((l) => ({ id: l.id, label: l.name }));
+      return data.labels.map((l) => ({ id: l.id, label: l.name, kind: l.kind }));
   }
 }

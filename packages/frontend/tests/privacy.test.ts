@@ -8,7 +8,7 @@ describe('privacy patterns', () => {
     ...filesUnder('e2e', /\.(tsx?|json)$/),
     ...filesUnder('tests', /\.tsx?$/),
     ...filesUnder('scripts', /\.(sh|ts)$/),
-  ].filter((f) => !f.endsWith('privacy.test.ts'));
+  ].filter((f) => !f.endsWith('privacy.test.ts') && !/\/\.[^/]+$/.test(f)); // generated dot-files (the seed keys) are git-ignored
 
   it('scans files', () => {
     expect(files.length).toBeGreaterThan(20);

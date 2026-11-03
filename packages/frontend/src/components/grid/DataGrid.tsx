@@ -36,6 +36,10 @@ export function DataGrid<T>(props: {
   height?: string;
   pageSize?: number;
   loading?: boolean;
+  /** A `data-testid` for the row element (e.g. `queue-group-<kind>-<id>`), set when AG Grid creates the row. */
+  rowTestId?: (row: T) => string;
+  /** The grid grows with its rows (no inner scroll, every row of the page is in the DOM): for short lists. */
+  autoHeight?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
   const apiRef = useRef<GridApi<T> | null>(null);
@@ -80,9 +84,19 @@ export function DataGrid<T>(props: {
   const getRowIdFn = useCallback((p: { data: T }) => props.getRowId(p.data), [props]);
   const localeText = useMemo(() => AG_GRID_LOCALE_RU, []);
   const pageSize = props.pageSize ?? PAGE_SIZES[0];
+  const rowTestId = props.rowTestId;
+  const processRowPostCreate = useCallback(
+    (p: { eRow: HTMLElement; node: { data?: T } }) => {
+      if (rowTestId && p.node.data) p.eRow.setAttribute('data-testid', rowTestId(p.node.data));
+    },
+    [rowTestId],
+  );
 
   return (
-    <div data-testid="data-grid" style={{ height: props.height ?? 'calc(100vh - 16rem)', minHeight: 360 }}>
+    <div
+      data-testid="data-grid"
+      style={props.autoHeight ? undefined : { height: props.height ?? 'calc(100vh - 16rem)', minHeight: 360 }}
+    >
       <AgGridReact<T>
         theme={GRID_THEME}
         rowData={props.rowData as T[]}
@@ -95,6 +109,8 @@ export function DataGrid<T>(props: {
         paginationPageSizeSelector={PAGE_SIZES}
         rowHeight={36}
         loading={props.loading}
+        domLayout={props.autoHeight ? 'autoHeight' : 'normal'}
+        processRowPostCreate={processRowPostCreate}
         onGridReady={onGridReady}
         onSortChanged={save}
         onFilterChanged={save}

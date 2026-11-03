@@ -9,7 +9,7 @@ const entries = <K extends string>(labels: Record<K, string>, colors: Record<K, 
 
 /** One table: enum kind -> value -> label and colour. Labels come from the dictionary (`ru.status`, `ru.reasons`). */
 const TABLE = {
-  documentStatus: entries(ru.status.documentStatus, { not_attached: 'warning', not_approved: 'warning', approved: 'success' }),
+  documentStatus: entries(ru.status.documentStatus, { not_attached: 'warning', not_approved: 'warning', approved: 'success', missing: 'danger' }),
   documentKind: entries(ru.status.documentKind, {
     contract: 'default', appendix: 'default', buyout: 'default', advance_basis: 'default', adjustment_basis: 'default',
     payment_proof: 'default', return_proof: 'default', other: 'default', assumption: 'warning',
