@@ -70,6 +70,7 @@ sublabel) → categorise.
 | G43 | three separate tests, each starting from owner A (pseudonym A) earning master 50 (row A 50) and publishing 30 (a B17 line, G26-style), payable 80: (i) advance 40 scope `publishing` → recouped 30, remaining 10, payable 50; (ii) advance 40 scope `isrcs` [another ISRC] → recouped 0, payable 80; (iii) a migration payout 20 without scope (non-recoupable one-off) → paid 20, payable 60 | | | | | M19, M20 |
 | G45 | settlement window: legacy registry rows A 35, S 15 valid 2000-01-01 … 2026-02-01; from 2026-02-01 row A 35 and participation S 15 `(net, label_share)` under the settlement document; the loader rewrites the legacy split for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-03 | 2026-01: A 50, S 0; 2026-03: A 35, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6 |
 | G46 | rows A 25, B 25; Main carve "16.66 % (8.33 %/8.33 %) M1 & M2": each of A and B pays 8.33 % of net, each of M1, M2 gets 8.33 % of net; entered as participations M1 16.66 `(bucket, artist_share of A)`, M1 16.66 `(bucket, artist_share of B)`, M2 the same two, valid from the release's first month, approved documents | A 25 − 4.165 − 4.165 = 16.67; B 16.67; M1 4.165 + 4.165 = 8.33; M2 8.33 | 50 | 0 | 50 | M13, M43 |
+| G47 | settlement window with co-artists: legacy rows A 17.5, B 17.5, S 15 under one appendix, valid 2000-01-01 … 2026-02-01; from 2026-02-01 rows A 17.5, B 17.5 and participation S 15 `(net, label_share)` under the settlement document; the loader spreads S's 15 over A and B pro rata to 17.5 : 17.5 for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-02 | 2026-01: A 25, B 25, S 0; 2026-02: A 17.5, B 17.5, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6, D-138 |
 
 ## Publishing cases
 
@@ -118,3 +119,11 @@ sublabel) → categorise.
   release's first month: targets 16.66 from the pool 50 pro rata 25 : 25, 8.33 from each of A and B; the same
   allocations as the per-source entry when A and B are the only rows (with a third row the pool form takes from it
   too, pro rata). The test asserts both entry forms in 2026-01 and 2026-03.
+- G47 (stage 7, product verdict finding 1; D-138): the legacy split carries the participant S beside two co-artists.
+  Main paid S's 15 % before the window to the co-artists pro rata (DJ Ikeraus and LDRR +7.5 each where both held
+  17.5), so the loader step `settlement-prestart` changes the legacy split from the first report month (here
+  2026-01) to A 17.5 + 15 × 17.5 / 35 = 25 and B 17.5 + 7.5 = 25, ours 50 (the label share is unchanged before the
+  window). From 2026-02-01: rows A 17.5, B 17.5 (35), label share 65, S 15 % of net from it, ours 50. With one
+  co-artist (G45) the pro rata gives it the whole 15. A row that is 0 in a later split before the window (a buy-out)
+  takes nothing; its part stays with the label (after the 2025-12 buy-out of DJ Ikeraus: rows DJ Ikeraus 0, LDRR 25,
+  ours 75, where the D-137 form gave LDRR 32.5, ours 67.5).

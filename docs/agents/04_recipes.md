@@ -7,7 +7,7 @@ start with `packages/`.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   # PostgreSQL + ClickHouse (+ migrations)
-npm run typecheck && npm run lint && REQUIRE_STACK=1 npm test          # 354 tests on 2026-11-03
+npm run typecheck && npm run lint && REQUIRE_STACK=1 npm test          # 361 tests on 2026-11-03
 ```
 Without the stack the facade/sources tests are **skipped**, not failed: always use `REQUIRE_STACK=1` before saying
 "tests pass". Then append a D-entry to `docs/97_принятые_решения.md` and a line to `docs/agents/03_decision_index.md`.
@@ -137,12 +137,27 @@ Then run `tests/layers/exactness.test.ts` and `tests/golden.test.ts`. The publis
 
 ## 9. Re-run the stage 4 loader and the stage 5 compares
 
-All scripts are in `packages/backend/scripts/mvp/`, use the database of `<repo>/.env` (`DB_DATABASE`), go through the
-facade, and print counts only (no names). Inputs live in git-ignored `data/mvp-load/` and `context_data/`.
+All scripts are in `packages/backend/scripts/mvp/`, use the database of `<repo>/.env` (`DB_DATABASE`), and print
+counts only (no names). The TypeScript loader writes through the facade, with three documented migration-only
+bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-module deletes `deleteEmptySplits` /
+`deleteParticipations` (D-137), and a run-cached `owners.artistIndex` (D-131). Inputs live in git-ignored
+`data/mvp-load/` and `context_data/`.
+- Extraction (Python 3, standard library only, run with `python3 -I`): the JSON inputs of the loader are produced by
+  `labels.py` (→ `annex/labels.json`), `splits_diff.py` (→ `annex/splits_diff.json`), `participations.py`
+  (→ `annex/participations.json`), `exclusions.py` (→ `annex/exclusions.json`; with `duetti_schedule.py`),
+  `echo8.py` (→ `echo8/{tracks,splits}.json`, `coverage.md`), `build_main.py` + `report_main.py`
+  (→ `main/{nicknames,cash_rows,carve_pairs,sch3b_check}.json`, `README.md`, `reconciliation.md`), `annex_nls.py`
+  (the Annex NLS cache of `compare-annex.ts`), `dump_sch3b.py`; helpers `common.py`, `xl.py`, `readmain.py`. They
+  only read: the workbooks in `context_data/`, ClickHouse over HTTP (`common.py`), `splits.db` / `erp.db` (sqlite,
+  `echo8.py`) and SELECTs on `owners.*` (`build_main.py`). Only Main has a rebuild command from the repo
+  (`python3 -I packages/backend/scripts/mvp/build_main.py`, then `report_main.py`). The annex and echo8 scripts read
+  dumps made in the stage 4 session scratchpad (absolute paths in `common.py`, `echo8.py`, `duetti_schedule.py`), so
+  `annex/*.json` and `echo8/*.json` cannot be rebuilt from the repository alone: the loaded database (or the data
+  archive) is the record.
 - Loader: `npm run mvp:load -w @erp/backend -- <step> [--apply]` (or `npx tsx packages/backend/scripts/mvp/load.ts
   <step> [--apply]`). Dry run by default; steps: `labels`, `tracks`, `normalise-dates`, `splits`, `participations`,
   `exclusions`, `echo8`, `main`, `terms`, `contracts`, `pairs`, `label-fixes`, `lunar`, `b17-holders`, `carves`
-  (D-135, reworked by D-137), `settlement-prestart`, `assumption-rows`, `hygiene` (D-137), `all`. Every step is idempotent (marker `mvp:<step>:<key>` in a
+  (D-135, reworked by D-137), `settlement-prestart`, `assumption-rows`, `hygiene` (D-137; `settlement-prestart` pro rata since D-138), `all`. Every step is idempotent (marker `mvp:<step>:<key>` in a
   note, or by title/alias): after `--apply` the same step in dry run must report only `already_done`. Logs:
   `data/mvp-load/log/`.
 - B17: `npx tsx packages/backend/scripts/mvp/load-b17.ts <statement.xlsx>` (the call of the upload route); `--reconcile`
@@ -150,4 +165,9 @@ facade, and print counts only (no names). Inputs live in git-ignored `data/mvp-l
 - Compares (read-only, one `calculate()`): `compare-annex.ts` (net label share per ISRC and month vs the Annex
   workbook; `--refresh` rereads the workbook) and `compare-main.ts` (owner earned / paid / payable vs `0to8 Main.xlsx`),
   reports in `data/mvp-load/verify/`. `scripts/reconcile-erp.ts` (July 2026 vs the old ERP) still exists.
+- Owner decomposition (read-only, after `compare-main.ts`): `npx tsx packages/backend/scripts/mvp/decompose-main.ts
+  [--top N]` reads `data/mvp-load/verify/main_owners.csv`, the Main JSON and the database and prints, for the owners
+  whose payable differs from the Main balance by more than 1.00, the explained / not explained counts at
+  max(1.00, 2 %) and at 1.00 and the Σ per cause (`14` §9.3, §10). A warning names owners whose diff no longer
+  matches the CSV (re-run `compare-main.ts`).
 - After any load: `GET /api/v1/reconciliation` must show discrepancy 0 on every row.

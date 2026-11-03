@@ -276,7 +276,7 @@ for r in typed:
                 e['why'] = '"штраф за Sleeping City Funk": MC Denny\'s 5,000 fee charged to the artist; reduces the balance, no cash to the nickname'
             elif r['rowNo'] == 10387:
                 e['load'] = 'carve_pair'; e['role'] = 'artist_deduction'; e['carveLike'] = True; e['carve'] = parse_carve('вычет доли ' + c)
-                e['why'] = 'not worded "вычет доли" but "taken from royalty and passed to ural gaisin" (Holy War releases): the carve form; outside the 104 rows of the plan'
+                e['why'] = 'not worded "вычет доли" but "taken from royalty and passed to the participant of the third held payout (owner 7129f35a)" (Holy War releases): the carve form; outside the 104 rows of the plan'
                 carve_rows.append(e)
             elif r['rowNo'] == 20494:
                 e['load'] = 'payout'; e['pairedRow'] = find_pair(r, 'Sample', 'Income'); e['requiresCredit'] = e['pairedRow']

@@ -38,6 +38,10 @@ state (the end state, what stage 6 starts from). §8 compares the headline numbe
   compute what the data says. Golden cases for stage 6 in §6.
 - Stage 6 rework (D-137, §9): E1–E4 fixed through the loader; B −120,902.12 → C on account 1052428, ours unchanged;
   Main explained owners 633 → 640 (2 % tolerance), Σ|residual| not explained 430,254.18 → 346,014.05.
+- Stage 7 closing (D-138, §10): the E1 settlement share before 2026-02 spread pro rata over the legacy rows (Main's
+  payment fact): DJ Ikeraus +7,886.93, RD12 and DJ MRCL +136.56 each, ours +165.80, LDRR −8,325.86; Main explained
+  owners 640 → 641 (2 % tolerance), Σ|residual| not explained 346,014.05 → 337,982.01; the decomposition is now
+  `scripts/mvp/decompose-main.ts`.
 - Performance: balance 6.6–6.9 s, reconciliation 7.3–7.8 s; the layers dominate (3.9–4.3 s of 721,975 units); the
   B17 part is the publishing snapshot, 1.05–1.08 s (SQL aggregation of 1,162,586 lines into 8,660).
 
@@ -318,8 +322,9 @@ The 169 by size: above 10,000: 8; 1,000–10,000: 54; 100–1,000: 32; below 100
 - **Single Main months without a report counterpart** (DJ DYLANFK 2025-10 −16,500; MGD 2025-08 −5,011; hwungii
   2025-08 −4,667; DJ FANGZ 2026-08 −3,823; DJ JBK, SoulFusi, HXVSAGE: Main rows without a report month): manual Main
   income rows; report only unless a document is found.
-- **ERP above Main** (Zachz Winner +21,353.95 in 2025-05…12, partly the D-135 second-UPC pairs that Main never paid,
-  about 13,000; MC BM OFICIAL +5,279.50 in 2024-08…2025-02; Lyke +6,401.60 in months Main paid nothing; MC ROBA CENA
+- **ERP above Main** (Zachz Winner +21,353.95 in 2025-05…12: 21,225.40 of it is UPC 3617396033894 in 2025-05…12,
+  the second UPC registered by D-135, which Main did not pay (Main pays it from 2026-01); a reference error, the
+  artist is owed it (stage 7 product verdict §3); MC BM OFICIAL +5,279.50 in 2024-08…2025-02; Lyke +6,401.60 in months Main paid nothing; MC ROBA CENA
   +4,218.72): Main underpaid or paid another nickname; check per ISRC.
 
 The full list (owner prefix, stage name, residual), largest first:
@@ -656,3 +661,96 @@ ads +2,699.39. The 162 not explained: above 10,000: 8 (DJ MH −24,390.47, Zachz
 −19,462.64, UdieNnx −19,082.59, DJ Ikeraus −15,034.41, DJ ZENITE −13,741.85, DJ Raulipues −13,174.60, MC Fera
 owner +10,430.87); 1,000–10,000: 53; 100–1,000: 30; below 100: 71; ERP higher on 90, lower on 72. E1 is no longer a
 cause of any owner's difference.
+
+## 10. Stage 7 closing: E1 pro rata (D-138)
+
+2026-11-03, dev database `erp`, no other writer. The product verdict of the stage 7 council (`reviews/stage7_product.md`
+finding 1) showed that Main paid the settlement participant's legacy 15 % before 2026-02 **pro rata to the co-artists**
+(DJ Ikeraus and LDRR +7.5 each where both held 17.5; LDRR's monthly ERP − Main excess equals the pro rata candidate,
+2024-06 to the cent), not all to LDRR as D-137 entered it. "Before" is the end state of §9; "after" the end state of
+this rework. Loader: `load.ts settlement-prestart` (dry run, `--apply`, idempotent dry run), then `hygiene` (logs
+`data/mvp-load/log/{settlement-prestart,hygiene}-2026-11-02T23-5*`). Compares: `compare-main.ts`, `compare-annex.ts`
+(reports in `data/mvp-load/verify/`), `decompose-main.ts` (new, recipe 9), the reconciliation by
+`facade.reconciliation({from: 2024-01, to: 2026-08})` (the same code as `GET /reconciliation`).
+
+**The step.** On the 30 settlement ISRC the participant's percent in the ISRC's first legacy split (15) is spread over
+that split's other rows pro rata to their percents: LDRR 35 → 50 where it is the only other row (unchanged); 17.5 /
+17.5 → 25 / 25 (DJ Ikeraus, LDRR; 8 ISRC); 14 / 10.5 / 10.5 → 20 / 15 / 15 (LDRR, RD12, DJ MRCL; DGA0L2423523…526).
+After the DJ Ikeraus buy-out of 2025-12 his row is 0 and takes nothing: LDRR keeps 25 and the bought-out 7.5 stays
+with the label (the buy-out moved his whole row to the label). The D-137 splits (marker `mvp:settlement-prestart:`)
+were re-entered from the same date under the same approved document "Owner decision 6 …" (marker
+`mvp:settlement-prorata:<isrc>:<from>`): 20 changed (12 before the buy-out, 8 in the buy-out period); 18 single-row
+splits already have the pro rata rows and keep their D-137 record; `hygiene` deleted the 20 replaced splits left as
+empty periods. A second dry run: `already_done=12 already_pro_rata=18`; `hygiene` `already_done=1`. Golden case G47.
+
+**The five totals, report months 2024-06 … 2026-01, the 30 settlement ISRC** (one read-only `calculate()`):
+
+| Owner | Before (D-137) | After (D-138) | Change | Product verdict |
+|---|---:|---:|---:|---:|
+| DJ Ikeraus (e2d3baf4), B | 18,402.84 | 26,289.77 | +7,886.93 | +7,886.93 |
+| RD12 (9670a62d), B | 318.66 | 455.22 | +136.56 | +136.57 |
+| DJ MRCL (6a80e64c), C `owner_unconfirmed` | 318.66 | 455.22 | +136.56 | +136.57 |
+| ours | 458,112.59 | 458,278.39 | +165.80 | +178.18 |
+| LDRR (68583cad), B | 438,298.73 | 429,972.87 | −8,325.86 | −8,325.87 |
+| settlement participant (7c6a567e) | 0 | 0 | 0 | 0 |
+
+The changes sum to 0.00 (net 915,451.48 unchanged). Ours is 7.5 % of the net 2,210.58 of the 8 DJ Ikeraus ISRC in
+2025-12 … 2026-01. The verdict's +178.18 is LDRR's whole reduction in those two months (86.83 + 91.35), which
+includes the 12.38 that goes to RD12 and DJ MRCL on the four DGA0L ISRC; its five figures did not sum to zero by that
+amount. The cent differences are rounding (the verdict summed rounded months).
+
+**Headline before / after:**
+
+| Headline | Before (§9) | After (D-138) | Change |
+|---|---|---|---|
+| Reconciliation rows with discrepancy ≠ 0 | 0 of 52 | 0 of 52 (`fileDiscrepancy` 0 on 45 Believe rows) | — |
+| 1052428: B / C / ours | 6,622,334.45 / 869,880.94 / 7,788,578.04 | 6,622,032.09 / 870,017.51 / 7,788,743.83 | −302.36 / +136.57 / +165.79 |
+| 1052428 C owner_unconfirmed | 591,391.69 | 591,528.25 | +136.56 (DJ MRCL) |
+| 1055956, B17 | as §9 | same | — |
+| Annex: cells within 0.01 (of 107,006) | 91,364 | 91,348 | −16 |
+| Annex: receipts whose label share matches | 92.37 % (92.81 % without "no share") | 92.35 % (92.80 %) | −0.02 pp |
+| Annex: Σ ERP label share − Σ Annex NLS | 411,847.85 | 412,013.64 | +165.79 |
+| Main: Σ ERP B / C (matched owners) | 6,656,398.37 / 984,739.93 | 6,656,096.01 / 984,876.50 | −302.36 / +136.57 |
+| Main: Σ ERP payable / Σ Main balance | −627,471.16 / 584,418.47 | −627,773.52 / 584,418.47 | −302.36 |
+| Main: owners with \|diff\| > 1.00 (Σ\|diff\|) | 802 (2,124,352.00) | 802 (2,140,428.23) | 0 (+16,076.23) |
+| Main: explained / not explained, max(1.00, 2 %) (Σ\|not explained\|) | 640 / 162 (346,014.05) | 641 / 161 (337,982.01) | +1 (−8,032.04) |
+| Main: explained / not explained, 1.00 | 513 / 289 (373,414.03) | 513 / 289 (363,535.47) | 0 (−9,878.56) |
+| Golden suite | 32 files, 360 tests | 32 files, 361 tests (G47) | +1 |
+
+The 16 Annex cells are the 8 DJ Ikeraus buy-out ISRC in 2025-12 (cause `m52_month`, the buy-out dated 2025-12-16) and
+2026-01 (`split_differs`): Annex keeps the label share at 67.5 % after the buy-out, the ERP now gives the label 75 %
+(the bought-out 7.5 of the pro rata). Main's LDRR credit in those months is at the 25 % reading (verdict §3), so the
+ERP follows Main, the payment fact; the 165.80 is listed for the owner (`15` §3). Σ|diff| of the Main compare grows
+because LDRR's diff (−124,680.07 → −133,005.93, mostly its B17 holder) grows by more than DJ Ikeraus' falls; the
+residuals, which are what the decomposition judges, fall: LDRR +5,022.15 → −3,303.71, DJ Ikeraus −15,034.41 →
+−7,147.48, RD12 −789.52 → −652.95, DJ MRCL −145.10 → −8.53.
+
+**Owner decomposition** (`npx tsx packages/backend/scripts/mvp/decompose-main.ts`, after `compare-main.ts`; the
+same method as `decomp2.py` of §9.3 without the E1 constant, which is gone; on the same state both give the same
+counts). Owners with |diff| > 1.00, Σ by cause (ERP − Main):
+
+| Cause | Owners | Σ |
+|---|---:|---:|
+| B17 holder separate (ERP publishing B + C − Main publishing income) | 260 | −855,784.09 |
+| C master owner_unconfirmed | 500 | −558,345.35 |
+| Main expense not loaded: buy-out price / fee (document only) | 19 | 277,000.00 |
+| **not explained: master earned (B + C) vs Main royalties** | 649 | −170,757.73 |
+| advance unrecouped (scope any) | 48 | 156,162.36 |
+| C master assumption | 6 | −127,354.74 |
+| Main expense not loaded: carve row covered or replaced by a participation | 29 | 112,958.02 |
+| carve participation taken from the rows (Main: a deduction row) | 34 | −106,485.79 |
+| C master split_unconfirmed | 336 | −78,135.52 |
+| advance unrecouped (scope publishing) | 13 | 58,500.00 |
+| Echo8 account 1055956 B (Main keeps it on the Echo8 sheet) | 12 | 53,363.50 |
+| deduction (carve row) unrecouped | 7 | 19,017.11 |
+| **not explained: ops vs Main expense mismatch** | 1 | 5,000.00 |
+| Main expense not loaded: ads | 7 | 2,699.39 |
+
+Explained within max(1.00, 2 %): 641, not explained 161 (Σ 337,982.01; ≥ 10,000: 7, 1,000–10,000: 54, 100–1,000: 29,
+below 100: 71; ERP higher on 90, lower on 71). Within 1.00: 513 / 289 (363,535.47). The seven above 10,000: DJ MH
+−24,390.47, Zachz Winner +21,353.95, DJ DYLANFK −19,462.64, UdieNnx −19,082.59, DJ ZENITE −13,741.84, DJ Raulipues
+−13,174.60, the MC Fera owner +10,430.87. DJ Ikeraus (−7,147.48) left that group. The product verdict §3 reads most of
+them as Main practice against the owner's registry (Main paid the MC shares to the main artist and caught up later:
+DJ MH, UdieNnx, DJ ZENITE, DJ Raulipues, DJ SILVER ZN, the MC Fera owner, MC Denny), Zachz Winner as Main's
+underpayment of UPC 3617396033894 in 2025-05…12 (21,225.40, §4.3) and DJ DYLANFK as a single Main credit without a
+report (16,325.00): reference differences, no ERP error.

@@ -1209,6 +1209,50 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G47 (M35, M33, owner decision 6; D-138): the settlement share before its start goes to the co-artists pro rata', async () => {
+    const c = await Case.start();
+    await c.person('A', 'B', 'S');
+    await c.track(I(1));
+    // legacy registry rows under one appendix before the settlement window, the window from 2026-02-01
+    await c.split(
+      I(1),
+      [
+        ['A', '17.5'],
+        ['B', '17.5'],
+        ['S', '15'],
+      ],
+      { to: '2026-02-01' },
+    );
+    await c.split(
+      I(1),
+      [
+        ['A', '17.5'],
+        ['B', '17.5'],
+      ],
+      { from: '2026-02-01' },
+    );
+    const settlement = (await approvedDoc(c.f, 'contract')).id;
+    await c.part(I(1), 'S', '15', 'net', 'label_share', { validFrom: '2026-02-01', doc: settlement });
+    // the loader step settlement-prestart (D-138): S's 15 spread over A and B pro rata to 17.5 : 17.5
+    const decision = (await approvedDoc(c.f, 'other')).id;
+    await c.f.changeSplit({
+      isrc: I(1),
+      from: '2026-01-01',
+      shares: [
+        { artistId: c.id('A'), percent: '25' },
+        { artistId: c.id('B'), percent: '25' },
+      ],
+      documentId: decision,
+    });
+    await c.load('2026-01', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-02', [{ isrc: I(1), net: '100' }]);
+    expect((await c.amounts(I(1), '2026-01')).amounts).toEqual({ A: '25', B: '25' });
+    expect(await c.row('2026-01')).toMatchObject({ A: '100', B: '50', C: '0', ours: '50' });
+    expect((await c.amounts(I(1), '2026-02')).amounts).toEqual({ A: '17.5', B: '17.5', S: '15' });
+    expect(await c.row('2026-02')).toMatchObject({ A: '100', B: '50', C: '0', ours: '50' });
+    await c.verify();
+  });
+
   describe('G46 (M13, M43; D-137): a Main carve "16.66 % (8.33 %/8.33 %)" from the first month', () => {
     async function world(entry: 'per_source' | 'pool') {
       const c = await Case.start();

@@ -40,7 +40,7 @@ Written 2026-11-01 (D-120), extended 2026-11-03 (D-123…D-135) after reading al
 | `docs/08` (publishing) | the publishing module computes the author share | It returns lines (with `operation_type`), writers and terms; the facade layers compute the share and B/C (D-128) |
 | `docs/02`, `07` | no labels module; documents without `assumption` | Module `labels` (D-125); document kind `assumption`; `tracks.note` |
 | `docs/agents/01` (before 2026-11-03) | "one idea" diagram with `unknown_pair`/`no_isrc`/split in one function; `settlements` owns recoup; D-067 waits | Replaced by the layered pipeline; D-067 closed by D-123/D-127 |
-| `HANDOVER.md` demo sections | `npm run demo`, `data/demo` | Outdated (D-112); the working data set is the dev database loaded by `scripts/mvp/load.ts` (D-131…D-134) |
+| `HANDOVER.md` demo sections | `npm run demo`, `data/demo` | Outdated (D-112); the working data set is the dev database loaded by `scripts/mvp/load.ts` (D-131…D-138) |
 | D-067 (⚠ in the old index) | sub-label rule waits for the owner | Owner decision 2 implemented as sublabel rules (`modules/labels`); other imprints use the half rule under an `assumption` document (D-123 Q12) |
 
 The architecture documents and `context_data/` are not edited (README §6); this table is the correction layer.

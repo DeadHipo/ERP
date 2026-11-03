@@ -1,5 +1,5 @@
 /**
- * Stage 6 rework steps (D-137): settlement-prestart (E1), assumption-rows (E3), hygiene (E4). The carves rework (E2)
+ * Stage 6 rework steps (D-137): settlement-prestart (E1, pro rata since D-138), assumption-rows (E3), hygiene (E4). The carves rework (E2)
  * is in steps-main.ts (`stepCarves`). Same conventions as the other steps: facade calls, markers in the split note,
  * a dry run against the in-memory model, no personal data in the log (owners by id prefix, stage names only where
  * they are not a person's name).
@@ -32,12 +32,36 @@ interface SettlementPart {
 }
 
 /**
- * Owner decision 6 and the Main payment fact (14 §6 E1): before the settlement window (2026-02-01) the participant's
- * legacy split row is removed and its percent goes to the artist row Main paid it to. Main pays that 15 % before
- * 2026-02 to the artist LDRR on all 30 recordings (Main ledger; the stage 5 settlement measurement), so the payee is that pseudonym.
+ * Owner decision 6 and the Main payment fact (D-137, reworked by D-138): before the settlement window (2026-02-01)
+ * the participant's legacy split row is removed and its percent is spread over the other rows of the legacy split
+ * **pro rata to their percents** (Main paid DJ Ikeraus and LDRR +7.5 each where both held 17.5; G47). The weights
+ * are the rows of the ISRC's first split that holds the participant (the legacy appendix). A row that is 0 in a later
+ * split (bought out) takes nothing: its part stays with the label, as the buy-out moved the whole row to the label.
+ * Every split before the window is changed from max(its `valid_from`, the ISRC's first report month).
+ *
+ * Re-entry of the D-137 form: a split with the old marker `mvp:settlement-prestart:` carries the whole percent on the
+ * D-137 payee row (LDRR). It is re-entered from the same date under the same document (the splits service keeps the
+ * replaced split as an empty period `[d, d)`, which `hygiene` deletes); the legacy rows are its rows with the base
+ * percent taken back from the payee row. A D-137 split whose rows are already the pro rata rows (the payee is the only
+ * other row) is left as it is.
  */
-const SETTLEMENT_PAYEE = 'LDRR';
+const D137_PAYEE = 'LDRR';
 const WINDOW = '2026-02-01';
+const OLD_MARK = 'mvp:settlement-prestart:';
+const MARK = 'mvp:settlement-prorata:';
+
+/** `total` spread over the weights pro rata, 6 decimals (the precision of a split row); the remainder to the last. */
+function spread(total: Decimal, weights: { artistId: string; percent: string }[]): Map<string, Decimal> {
+  const sum = weights.reduce((t, w) => t.add(w.percent), new Decimal(0));
+  const out = new Map<string, Decimal>();
+  let left = total;
+  weights.forEach((w, i) => {
+    const v = i === weights.length - 1 ? left : total.mul(w.percent).div(sum).toDecimalPlaces(6, Decimal.ROUND_DOWN);
+    out.set(w.artistId, v);
+    left = left.sub(v);
+  });
+  return out;
+}
 
 export async function stepSettlementPrestart(ctx: Ctx) {
   const { log } = ctx;
@@ -45,14 +69,14 @@ export async function stepSettlementPrestart(ctx: Ctx) {
     (p) => p.group === 'settlement_15',
   );
   const participant = ctx.knownArtist(parts[0]?.recipient.artistId)?.id;
-  const payee = ctx.resolveArtist({ pseudonym: SETTLEMENT_PAYEE });
-  if (!participant || payee.status !== 'ok' || !payee.id) {
-    log.event('unresolved', `participant ${short(participant)} payee ${payee.status}: nothing done`);
+  if (!participant) {
+    log.event('unresolved', 'settlement participant not found: nothing done');
     return;
   }
-  const payeeId = payee.id;
+  const oldPayee = ctx.resolveArtist({ pseudonym: D137_PAYEE });
+  const oldPayeeId = oldPayee.status === 'ok' ? oldPayee.id : null;
   log.p(
-    `Settlement participant artist ${short(participant)} (owner ${short(ctx.ownerOfArtist(participant))}); payee artist ${SETTLEMENT_PAYEE} ${short(payeeId)} (owner ${short(ctx.ownerOfArtist(payeeId))}); ${parts.length} ISRC; window from ${WINDOW} unchanged.`,
+    `Settlement participant artist ${short(participant)} (owner ${short(ctx.ownerOfArtist(participant))}); ${parts.length} ISRC; window from ${WINDOW} unchanged; the participant's legacy percent is spread pro rata over the other legacy rows (D-138). D-137 payee ${D137_PAYEE} ${short(oldPayeeId)} (only to re-enter the splits of the D-137 form).`,
   );
   const doc = await ctx.ensureDoc({
     kind: 'other',
@@ -61,52 +85,86 @@ export async function stepSettlementPrestart(ctx: Ctx) {
     ref: 'mvp-load:annex/participations#settlement',
   });
   const first = await firstReportMonths(ctx);
+  const gt0 = (p: string) => new Decimal(p).gt(0);
+  const holds = (s: SplitRec) => s.rows.some((r) => r.artistId === participant && gt0(r.percent));
+  const label = (id: string) => (id === participant ? 'S' : id === oldPayeeId ? D137_PAYEE : short(id));
   log.h('Splits changed before the window');
-  let moved = new Decimal(0);
   for (const p of parts) {
     const fm = first.get(p.isrc);
     if (!fm) {
       log.event('no_report_month', `${p.isrc}: not in the loaded reports, nothing to change`);
       continue;
     }
-    // the splits before the window that still carry the participant as a row (oldest first)
-    const todo = ctx.model
-      .of(p.isrc)
-      .filter((s) => !isEmptyPeriod(s) && s.from < WINDOW)
-      .filter((s) => s.rows.some((r) => r.artistId === participant && new Decimal(r.percent).gt(0)))
-      .filter((s) => later(s.from, fm) < earlier(s.to, WINDOW));
+    const list = ctx.model.of(p.isrc).filter((s) => !isEmptyPeriod(s));
+    const base = list.find(holds);
+    if (!base) {
+      log.event('no_legacy_split', `${p.isrc}: no split holds the participant, nothing to change`);
+      continue;
+    }
+    const legacyPart = new Decimal((base.rows.find((r) => r.artistId === participant) as { percent: string }).percent);
+    const weights = base.rows.filter((r) => r.artistId !== participant && gt0(r.percent));
+    if (weights.length === 0) {
+      log.event('no_other_rows', `${p.isrc}: the legacy split has no other row, left as is`);
+      continue;
+    }
+    const inc = spread(legacyPart, weights);
+    // the splits before the window still in a legacy form: holding the participant, or the D-137 form (oldest first)
+    const todo = list
+      .filter((s) => s.from < WINDOW && later(s.from, fm) < earlier(s.to, WINDOW))
+      .filter((s) => holds(s) || (s.note ?? '').startsWith(OLD_MARK));
     if (todo.length === 0) {
       log.count('already_done');
       continue;
     }
     for (const s of todo) {
       const start = later(s.from, fm);
-      const part = s.rows.find((r) => r.artistId === participant) as { percent: string };
-      const target = s.rows.find((r) => r.artistId === payeeId);
-      if (!target) {
-        log.event('payee_not_a_row', `${p.isrc} ${s.from}..${s.to ?? 'open'}: ${SETTLEMENT_PAYEE} is not a row, left as is`);
+      let legacy: { artistId: string; percent: string }[];
+      if (holds(s)) legacy = s.rows.filter((r) => r.artistId !== participant);
+      else {
+        const payeeRow = s.rows.find((r) => r.artistId === oldPayeeId);
+        if (!payeeRow || new Decimal(payeeRow.percent).lt(legacyPart)) {
+          log.event('d137_form_unexpected', `${p.isrc} ${s.from}: no ${D137_PAYEE} row carrying ${legacyPart.toFixed()}, left as is`);
+          continue;
+        }
+        legacy = s.rows.map((r) =>
+          r.artistId === oldPayeeId ? { artistId: r.artistId, percent: new Decimal(r.percent).sub(legacyPart).toFixed() } : r,
+        );
+      }
+      let kept = new Decimal(0);
+      const rows = ctx.keepRowDocs(s, legacy, 'always').map((r) => {
+        const add = inc.get(r.artistId);
+        if (!add) return r;
+        if (!gt0(r.percent)) {
+          kept = kept.add(add);
+          return r;
+        }
+        return { artistId: r.artistId, percent: new Decimal(r.percent).add(add).toFixed(), docId: doc };
+      });
+      const same =
+        rows.length === s.rows.length &&
+        rows.every((r) => s.rows.some((x) => x.artistId === r.artistId && new Decimal(x.percent).eq(r.percent) && x.docId === r.docId));
+      if (same) {
+        // a D-137 split whose only other row is the payee: the pro rata rows are the same, nothing to change
+        log.count('already_pro_rata');
         continue;
       }
-      const rows = ctx
-        .keepRowDocs(s, s.rows.filter((r) => r.artistId !== participant), 'always')
-        .map((r) =>
-          r.artistId === payeeId
-            ? { artistId: r.artistId, percent: new Decimal(r.percent).add(part.percent).toFixed(), docId: doc }
-            : r,
-        );
-      const before = s.rows.map((r) => `${r.artistId === participant ? 'S' : r.artistId === payeeId ? SETTLEMENT_PAYEE : short(r.artistId)} ${r.percent}`).join(', ');
-      const after = rows.map((r) => `${r.artistId === payeeId ? SETTLEMENT_PAYEE : short(r.artistId)} ${r.percent}`).join(', ');
+      const before = s.rows.map((r) => `${label(r.artistId)} ${new Decimal(r.percent).toFixed()}`).join(', ');
+      const after = rows.map((r) => `${label(r.artistId)} ${new Decimal(r.percent).toFixed()}`).join(', ');
       try {
         const rec = await ctx.changeSplit({
           isrc: p.isrc,
           from: start,
           rows,
           docId: doc,
-          note: `mvp:settlement-prestart:${p.isrc}:${start}`,
+          note: `${MARK}${p.isrc}:${start}`,
         });
-        moved = moved.add(part.percent);
         log.count('splits_changed');
-        log.event('split_changed', `${p.isrc} ${rec.from}..${rec.to ?? 'open'}: [${before}] -> [${after}]`);
+        if (!holds(s)) log.count('d137_form_reentered');
+        if (kept.gt(0)) log.count('splits_with_bought_out_part_to_label');
+        log.event(
+          'split_changed',
+          `${p.isrc} ${rec.from}..${rec.to ?? 'open'}: [${before}] -> [${after}]${kept.gt(0) ? ` (${kept.toFixed()} of a bought-out row stays with the label)` : ''}`,
+        );
       } catch (e) {
         log.event('change_error', `${p.isrc} from ${start}: ${errText(e)}`);
       }

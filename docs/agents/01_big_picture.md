@@ -1,6 +1,6 @@
 # The big picture (read this first)
 
-Written 2026-11-01 for AI agents (D-120), refreshed 2026-11-03 for the layered architecture (D-123…D-135). This is a summary: the architecture documents (`docs/01`…`09`, Russian)
+Written 2026-11-01 for AI agents (D-120), refreshed 2026-11-03 for the layered architecture (D-123…D-138). This is a summary: the architecture documents (`docs/01`…`09`, Russian)
 and the decision log (`docs/97_принятые_решения.md`) stay the source of truth. If this file disagrees with them,
 they win; fix this file.
 
@@ -106,10 +106,11 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
 
 - Iteration 1 is done (`README.md` §2, §5, §8; D-096, D-098). Believe is in PostgreSQL + ClickHouse (D-102…D-114),
   the other modules are PostgreSQL schemas (D-121).
-- **The MVP goal, stages 3–6, is built:** layered calculation (D-123, D-127), `labels` module (D-125), participations
-  and per-row documents (D-126), publishing by operation type (D-128), API and pages (D-129), council fixes (D-130);
-  stage 4 loaded the reference data (D-131…D-134); stage 5 compares with the owner's workbooks
-  (`scripts/mvp/compare-*.ts`); stage 6 is the verification (`14`). Stage 7 writes the report.
+- **The MVP goal, stages 3–7, is built (D-123 … D-138):** layered calculation (D-123, D-127), `labels` module
+  (D-125), participations and per-row documents (D-126), publishing by operation type (D-128), API and pages (D-129),
+  council fixes (D-130); stage 4 loaded the reference data (D-131…D-134); stage 5 is the verification against the
+  owner's workbooks (`scripts/mvp/compare-*.ts`, `decompose-main.ts`; `14`); stage 6 the rework of the errors it
+  found (D-135 … D-137); stage 7 the completeness check (`13`), the closing fixes (D-138) and the report (`15`).
 - **Loaded in the dev database `erp`** (local, git-ignored data): 17 labels (0to8, Echo8 and 15 sublabels) with aliases
   and sublabel rules; ~24 k splits (Annex 14 registered splits, legacy mid-month dates normalised) and the
   participations; Echo8 tracks and splits; the payment history and advances of `0to8 Main.xlsx` (D-132); B17 for 7
@@ -117,7 +118,7 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   discrepancy 0 on every row. Real data stays local: never copy values into the repo.
 - **Open for the product owner:** the list of items (negative payables before stage 5 analysis, B17 payees without a
   contract, ambiguous Echo8 names, XENO XID, a second statement for a loaded quarter, …) is in `15_mvp_report.md`
-  (written at the end of stage 7) and `13_completeness_check.md`.
+  (the stage 7 report) and `13_completeness_check.md`.
 - **Out of scope until asked:** ASCAP, authentication and roles, a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,

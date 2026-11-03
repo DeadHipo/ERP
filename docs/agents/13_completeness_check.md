@@ -11,35 +11,35 @@ Purpose: prove that every data element of every source falls into a catalogue ca
 
 ## 1. Share of net 2024-01 … 2026-08 through the layers and in C by reason
 
-**Final, 2026-11-03, after D-137** (the D-135 data fixes and the stage 6 rework D-137 are in; the stage 5 and stage 6
-measurements are in `14_verification.md` §0 … §9). Units are (account, ISRC, UPC, report month, sales month, label string). Accounts: 1052428 = 0to8 (master), 1055956 = Echo8. USD net from the 47 loaded files (34 + 13). The accounting identity `sum of allocations + label share - net = 0.00` holds on every unit of both accounts. The measuring script compares the report month with `2024-01-01`, so report month 2024-01 of account 1052428 (net 28,124.94, C 10.99) is outside the tables of 1.1 … 1.4; the reconciliation totals of `14_verification.md` §9 include it.
+**Final, 2026-11-03, after D-138** (the D-135 data fixes, the stage 6 rework D-137 and the stage 7 E1 pro rata D-138
+are in; the stage 5, 6 and 7 measurements are in `14_verification.md` §0 … §10). Units are (account, ISRC, UPC, report month, sales month, label string). Accounts: 1052428 = 0to8 (master), 1055956 = Echo8. USD net from the 47 loaded files (34 + 13). The accounting identity `sum of allocations + label share - net = 0.00` holds on every unit of both accounts. Report months 2024-01 … 2026-08 inclusive (one read-only `calculate()`); every total equals the reconciliation rows of `GET /reconciliation?from=2024-01&to=2026-08` (`14_verification.md` §10).
 
 ### 1.1 Headline
 
 | | net | B (confirmed, to owners) | ours (label of record) | C |
 |---|---:|---:|---:|---:|
-| ALL | 16,303,613.59 | 6,674,320.42 (40.94 %) | 8,429,068.58 (51.70 %) | 1,200,224.58 (7.36 %) |
-| 1052428 (0to8) | 15,252,668.48 | 6,620,956.92 (43.41 %) | 7,761,841.62 (50.89 %) | 869,869.95 (5.70 %) |
+| ALL | 16,331,738.52 | 6,675,395.59 (40.87 %) | 8,455,970.79 (51.78 %) | 1,200,372.14 (7.35 %) |
+| 1052428 (0to8) | 15,280,793.42 | 6,622,032.09 (43.34 %) | 7,788,743.83 (50.97 %) | 870,017.51 (5.69 %) |
 | 1055956 (Echo8) | 1,050,945.10 | 53,363.50 (5.08 %) | 667,226.96 (63.49 %) | 330,354.64 (31.43 %) |
 
-Ours by label of record (ALL): 0to8 7,629,993.33 (46.80 %), Echo8 799,075.25 (4.90 %; of which 131,848.28 are `Echo8` strings inside the 0to8 account).
+Ours by label of record (ALL): 0to8 7,656,895.54 (46.88 %), Echo8 799,075.25 (4.89 %; of which 131,848.28 are `Echo8` strings inside the 0to8 account).
 
 ### 1.2 Unit status (net of the unit)
 
 | status | ALL net | share | 1052428 | 1055956 |
 |---|---:|---:|---:|---:|
-| allocated (a split by ISRC applied) | 15,704,527.04 | 96.33 % | 14,805,888.92 (97.07 %) | 898,638.12 (85.51 %) |
-| no_split (ISRC and UPC known, no split in force; whole net is the label of record's share, D-029) | 596,724.70 | 3.66 % | 444,506.72 (2.91 %) | 152,217.98 (14.48 %) |
+| allocated (a split by ISRC applied) | 15,707,328.22 | 96.18 % | 14,808,690.10 (96.91 %) | 898,638.12 (85.51 %) |
+| no_split (ISRC and UPC known, no split in force; whole net is the label of record's share, D-029) | 622,047.62 | 3.81 % | 469,829.64 (3.07 %) | 152,217.98 (14.48 %) |
 | unknown_pair (known ISRC, unregistered UPC) | 0 | 0 | 0 (the 44 pairs registered by D-135) | 0 |
-| no_isrc | 2,361.85 | 0.01 % | 2,272.85 | 89.00 |
+| no_isrc | 2,362.68 | 0.01 % | 2,273.68 | 89.00 |
 
 ### 1.3 Money that passed through each layer (allocations, not distinct units)
 
 | layer kind | ALL allocations | ALL amount | share of net | 1052428 amount | 1055956 amount |
 |---|---:|---:|---:|---:|---:|
-| row (split) | 1,085,511 | 7,664,485.50 | 47.01 % | 7,286,779.20 | 377,706.31 |
+| row (split) | 1,085,695 | 7,665,707.40 | 46.94 % | 7,288,001.09 | 377,706.31 |
 | top (remixer off the top, M4) | 14 | 6,625.38 | 0.04 % | 6,625.38 | 0 |
-| artist_pool (M3b, M13, Q1 LUNAR, M43 Main carves) | 9,727 | 136,268.18 | 0.84 % | 136,268.18 | 0 |
+| artist_pool (M3b, M13, Q1 LUNAR, M43 Main carves) | 9,727 | 136,268.18 | 0.83 % | 136,268.18 | 0 |
 | artist_share | 0 | 0.00 | 0 | 0 | 0 |
 | label_share (M12, M35) | 4,192 | 19,575.24 | 0.12 % | 19,575.24 | 0 |
 | sublabel (M5, Q12) | 17,578 | 45,228.85 | 0.28 % | 39,306.02 | 5,922.83 |
@@ -50,28 +50,28 @@ Ours by label of record (ALL): 0to8 7,629,993.33 (46.80 %), Echo8 799,075.25 (4.
 
 | C reason | ALL | share of net | 1052428 | 1055956 | What it is | Case / mechanism | Disposition (section 3) |
 |---|---:|---:|---:|---:|---|---|---|
-| owner_unconfirmed | 594,153.22 | 3.64 % | 591,383.06 | 2,770.16 | Split document is approved, the pseudonym's owner has no approved contract. By document: appendix 525,427.05, other 40,086.93, contract 21,360.41 + 2,770.16, buyout 4,508.67; includes sublabel halves (NoGhost / 77 / R2R pseudonyms) | owner-confirmation rule (D-043, D-057) | data gap, C07, C09 and stage 6 contract registry (D-133 already moved 525 k from `split_unconfirmed` into this reason) |
-| split_unconfirmed | 454,217.47 | 2.79 % | 133,581.25 | 320,636.21 | Split exists, no document at all. Echo8 account 320,636.21 | `split_unconfirmed`; M8, M42 | C02 (M55 data gap: only four Echo8 RSAs exist); 133,581.25 are legacy splits whose rows differ from the Annex registry or have no label-share-only confirmation |
-| assumption | 144,195.41 | 0.88 % | 138,272.57 | 5,922.83 | Not-approved `assumption` documents: Main carve participations 107,914.94 (M43, D-137), Q1 FUNK DO SURPRISE licensor row 19,169.49 (D-137), LUNAR MEDIA licence 5,543.73 (Q1, D-135), sublabel halves 5,374.09 + 5,922.83 (Q12, NoGhost before 2026-06, R1), Q5 Lost Label rows 270.31 (D-137) | Q1, Q5, Q11, Q12, M43, R1 | C24 (owner's list of imprints); owner confirmation of the carve, Q1 and Q5 documents |
+| owner_unconfirmed | 594,298.41 | 3.64 % | 591,528.25 | 2,770.16 | Split document is approved, the pseudonym's owner has no approved contract. By document: appendix 525,117.01, other 40,542.15 (includes the DJ MRCL row under owner decision 6 before 2026-02, D-138), contract 21,360.41 + 2,770.16, buyout 4,508.67; includes sublabel halves (NoGhost / 77 / R2R pseudonyms) | owner-confirmation rule (D-043, D-057) | data gap, C07, C09 and stage 6 contract registry (D-133 already moved 525 k from `split_unconfirmed` into this reason) |
+| split_unconfirmed | 454,219.01 | 2.78 % | 133,582.80 | 320,636.21 | Split exists, no document at all. Echo8 account 320,636.21 | `split_unconfirmed`; M8, M42 | C02 (M55 data gap: only four Echo8 RSAs exist); 133,582.80 are legacy splits whose rows differ from the Annex registry or have no label-share-only confirmation |
+| assumption | 144,195.41 | 0.88 % | 138,272.57 | 5,922.83 | Not-approved `assumption` documents: Main carve participations 107,914.94 (M43, D-137), Q1 FUNK DO SURPRISE licensor row 19,169.49 (D-137), LUNAR MEDIA licence 5,543.73 (Q1, D-135), sublabel halves 5,310.79 + 5,922.83 (Q12, of them NoGhost before 2026-06 4,840.35, R1), the Q11 meeting of a label-share carve and the NoGhost half 63.30 (approved contract, marked assumption), Q5 Lost Label rows 270.31 (D-137) | Q1, Q5, Q11, Q12, M43, R1 | C24 (owner's list of imprints); owner confirmation of the carve, Q1 and Q5 documents |
 | unknown_pair | 0.00 | 0 | 0 | 0 | the 44 (ISRC, UPC) pairs were registered by D-135 (150,057.35 left this reason) | M54 (E9 against D-023) | closed |
 | artist_without_owner | 5,296.64 | 0.03 % | 4,360.20 | 936.43 | Pseudonym without owner: `top` 4,328.45, rows 968.19 | M31 convention (every recipient has an owner) | data; stage 6 owner linking |
-| no_isrc | 2,361.85 | 0.01 % | 2,272.85 | 89.00 | 1,444 lines, all `Download`, 1,019 units | M41 out, D-035 | C37 |
+| no_isrc | 2,362.68 | 0.01 % | 2,273.68 | 89.00 | all `Download`, 1,020 units | M41 out, D-035 | C37 |
 | label_unmapped | 0.00 | 0 | 0 | 0 | 25 distinct label strings, all mapped (17 labels, 25 aliases, 16 rules) | M8, Q12 | none |
-| **Total C** | **1,200,224.58** | **7.36 %** | 869,869.95 | 330,354.64 | | | |
+| **Total C** | **1,200,372.14** | **7.35 %** | 870,017.51 | 330,354.64 | | | |
 
-Cross-check: 594,153.22 + 454,217.47 + 144,195.41 + 5,296.64 + 2,361.85 = 1,200,224.59 (0.01 rounding of the per-reason sums).
+Cross-check: 594,298.41 + 454,219.01 + 144,195.41 + 5,296.64 + 2,362.68 = 1,200,372.15 (0.01 rounding of the per-reason sums).
 
-Not in C but a gap in the answer to "whose is it": `no_split` 596,724.70 stays in ours by rule D-029 (2,497 ISRC; it grew by the second-UPC units of no-split ISRC that left `unknown_pair`); 79 ISRC above 1,000 = 495,276.03. Whether that money is really ours is disposition C11.
+Not in C but a gap in the answer to "whose is it": `no_split` 622,047.62 of net stays in ours by rule D-029 (ours 620,565.88; the rest is the R1 sublabel half in C; 2,500 ISRC: 1,238 in account 1052428, 1,397 in 1055956; it grew by the second-UPC units of no-split ISRC that left `unknown_pair`); 81 ISRC above 1,000 = 519,882.96. The earlier 596,724.70 left out report month 2024-01 (25,322.92). Whether that money is really ours is disposition C11.
 
 C by account, reason and document state:
 
 | account / reason / document state | amount |
 |---|---:|
-| 1052428 / owner_unconfirmed / approved appendix | 525,427.05 |
+| 1052428 / owner_unconfirmed / approved appendix | 525,117.01 |
 | 1055956 / split_unconfirmed / no document | 320,636.21 |
 | 1052428 / assumption / not approved assumption | 138,209.27 |
-| 1052428 / split_unconfirmed / no document | 133,581.25 |
-| 1052428 / owner_unconfirmed / approved other | 40,086.93 |
+| 1052428 / split_unconfirmed / no document | 133,582.80 |
+| 1052428 / owner_unconfirmed / approved other | 40,542.15 |
 | 1052428 / owner_unconfirmed / approved contract | 21,360.41 |
 | 1055956 / assumption / not approved assumption | 5,922.83 |
 | 1052428 / owner_unconfirmed / approved buyout | 4,508.67 |
@@ -87,7 +87,7 @@ Top 40 ISRC hold 414,108.17 of the C (34.5 %): owner_unconfirmed behind approved
 
 | group | strings | net | case |
 |---|---|---:|---|
-| Own labels | `0to8` (14,763,621.44), `Echo8` in the 0to8 account (222,129.81) and in the Echo8 account (1,038,631.23), `0to8/Echo8` (6,025.57), `0to8, Echo8` (1.64) | 16,031,409.69 | M8, owner answer 1 |
+| Own labels | `0to8` (14,791,746.38), `Echo8` in the 0to8 account (222,129.81) and in the Echo8 account (1,038,631.23), `0to8/Echo8` (6,025.57), `0to8, Echo8` (1.64) | 16,059,534.63 | M8, owner answer 1 |
 | Ahh Music family | `Ahh Music` (110,127.59), `0to8 / Ahh Music` (0.11): alias of 0to8, no deduction | 110,127.70 | M8, owner decision 3 |
 | Sublabels with a rule | NoGhost (4 strings, 56,159.51 + 31,075.33 + 49.25 + ...), `77 Records` (2 strings), R2R PRODUCTION | about 147,800 | M5, owner decision 2 |
 | Sublabel strings, Q12 assumption | qaraqshy, fate, CATCORE, SF (Echo8 account); Enarma (2 strings), lost, odds, VBR, PCR, Bear catalogues, Hoboshrine, no job records (0to8 account) | about 15,300 | Q12 |
@@ -260,13 +260,13 @@ Counts (group rows of the source's section C, Main part): covered 2, partial 3, 
 | Buy-out prices "выкуп" 24 / 273,000.00; bonuses and fees 9,000.00; netting of the pre-buy-out balance (33 Income rows 24,900.82) | | M20, M47 | document only, no operation | partial |
 | Routed payouts "Send to fl / customer / echo" | 10 / 10,560.91 + 2,000 document-only | M50 later | route in the comment only | partial |
 | Expense Advertising | 7 / 2,699.39 | M21 later | not loaded | **NOT COVERED** (PROMO posted 1,090,737.65 and Advertising Summary also not used) |
-| Held payouts (MC 7belo, MC JHonny, ural gaisin) | 3 / 25,764.11 | M12 | wait for a participant credit no participation provides | **NOT COVERED** |
+| Held payouts (MC 7belo, MC JHonny, the third held payout (owner 7129f35a)) | 3 / 25,764.11 | M12 | wait for a participant credit no participation provides | **NOT COVERED** |
 | Ambiguous nicknames DJ VETA3 (25 Expense rows 28,402.51; Income 32,336.34), DSHZS (21 Income rows 13,034.81), MC FLYXO (16 Income rows 4.02) | | owner/merge decision | skipped | **NOT COVERED** |
 | Sheet "выплаты саблейблам": 15,000 to one artist, 25,000 to NoGhost through that artist's Tipalti account on 2026-09-09 | 40,000 | M50 | not operations | **NOT COVERED** |
 | Income (16,565 rows, 8,499,624.88), FINANCE, NEW СВОДКА, Echo8 sheet, Tipalti, Contracts (28 term dates), PRO IMRO, technical sheets | | comparison only; ERP earns from reports | not loaded | not used (stage 5 comparison) |
 | Nicknames 1,230 | matched 1,018, created from Main 18, unmatched without cash 191, ambiguous 3 | | | covered for 1,036 |
 
-Reconciliation: 2,659 operations = 2,397 plain payouts + 158 advances + 104 deductions; Σ out 7,482,325.50, Σ in 212,650.11. Expense rows with a cash class but no operation: 25 payouts (22 DJ VETA3 ambiguous, MC 7belo, MC JHonny, ural gaisin) 53,577.26; 5 carve rows 11,494.55; 1 advance 500.00; 29 documents 277,000.00 (+5,000.00); 62 not loaded 2,699.39.
+Reconciliation: 2,659 operations = 2,397 plain payouts + 158 advances + 104 deductions; Σ out 7,482,325.50, Σ in 212,650.11. Expense rows with a cash class but no operation: 25 payouts (22 DJ VETA3 ambiguous, MC 7belo, MC JHonny, the third held payout (owner 7129f35a)) 53,577.26; 5 carve rows 11,494.55; 1 advance 500.00; 29 documents 277,000.00 (+5,000.00); 62 not loaded 2,699.39.
 
 Source's NOT COVERED list, Main part: (5) Advertising 2,699.39 and PROMO ads 1,090,737.65 posted; (6) held payouts 25,764.11; (7) ambiguous nicknames, cash 28,402.51; (8) "выплаты саблейблам" 15,000 + 25,000.
 
@@ -370,7 +370,7 @@ Raw NOT COVERED rows before de-duplication: contracts 5, Annex 14 5, Believe 3, 
 | C07 | `0to8/lost` mapped to a sublabel `lost` by the Q12 half rule although Lost Label (M7) is a label representative with its own schedules | net 248.14, our half 41.44 in C `assumption` | D-135 0to8/lost | Believe |
 | C08 | LUNAR MEDIA 10 % of income received (Sch3A row 4, "Tem que tirar o chapeu"; 34 recordings): no pseudonym, participation or split row | Annex receipts 60,412.11 (34 recordings by title, retroactive) | D-135 LUNAR MEDIA: participation to a licensor pseudonym (M11, M33, M40); the publishing 20 % stays M34 later | Annex, contracts |
 | C09 | B17 holders: 32 rights-holders are owners created from the statements, 0 approved contracts, 1 with terms; payees are matched by the legal name of the party, the index by stage name | author part 1,365,867.46 (measured set), plus the three D-134 quarters 162,471.15 (1,528,338.61 in all); 31 holders at default 50 = 475,070.36 | D-135 B17 holders; the merge into legacy confirmed owners is C18 | B17 |
-| C10 | Carve pairs and held rows of Main: 3 payouts (MC 7belo 19,660.71, MC JHonny 4,010.83, ural gaisin 2,092.57 = 25,764.11) wait for a participant credit, and 3 carve rows 11,405.19 are covered by a participation but not loaded; the ambiguous pairs below are separate (C14) | 25,764.11 + 11,405.19 | D-135 carve pairs | Main |
+| C10 | Carve pairs and held rows of Main: 3 payouts (MC 7belo 19,660.71, MC JHonny 4,010.83, the third held payout (owner 7129f35a) 2,092.57 = 25,764.11) wait for a participant credit, and 3 carve rows 11,405.19 are covered by a participation but not loaded; the ambiguous pairs below are separate (C14) | 25,764.11 + 11,405.19 | D-135 carve pairs | Main |
 
 ### (c) Open items for the owner (16)
 
@@ -440,4 +440,4 @@ Counts by disposition: (a) 6, (b) 4 (plus C01 which is both (a) and (b)), (c) 16
 
 ## 5. Acceptance statement (map section 8)
 
-Every uncovered element has a disposition: 40 consolidated items, 6 closed as catalogue cases M53…M58, 4 fixed by stage 6 data steps (D-135), 16 open for the owner with the dependent money named, 14 consciously out or deferred. The share in C by reason is explained line by line in section 1.4: 1,216,961.92 (7.46 % of net 16,303,613.59) = owner_unconfirmed 596,745.48 + split_unconfirmed 454,504.72 + unknown_pair 146,717.75 + assumption 11,335.48 + artist_without_owner 5,296.64 + no_isrc 2,361.85, each tied to a case and to a disposition; the B17 quarters are explained in section 1.6 (all `owner_unconfirmed`). Residual caveats: the numbers in sections 1.1 to 1.6 predate the D-135 data fixes and the B17 columns of the D-134 quarters were not re-measured. **The refreshed numbers, the effect of D-135 on `unknown_pair`, the LUNAR MEDIA, carve and B17 holder items, and the acceptance by the council are in `14_verification.md`.**
+Every uncovered element has a disposition: 40 consolidated items, 6 closed as catalogue cases M53…M58, 4 fixed by stage 6 data steps (D-135), 16 open for the owner with the dependent money named, 14 consciously out or deferred. The share in C by reason is explained line by line in section 1.4 (final state after D-138, report months 2024-01 … 2026-08): 1,200,372.14 (7.35 % of net 16,331,738.52) = owner_unconfirmed 594,298.41 + split_unconfirmed 454,219.01 + assumption 144,195.41 + artist_without_owner 5,296.64 + no_isrc 2,362.68, each tied to a case and to a disposition; the B17 quarters are explained in section 1.6. Section 2 keeps the checkers' counts of their own run (before D-135), as section 0 says. **The before / after measurements of D-135, D-137 and D-138 and the acceptance by the council are in `14_verification.md`.**

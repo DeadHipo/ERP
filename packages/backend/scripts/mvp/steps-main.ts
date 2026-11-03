@@ -164,7 +164,8 @@ export async function stepMain(ctx: Ctx) {
     if (!create) return null;
     const h = await ctx.ownerWithPseudonym(r.nickname, 'person', 'mvp:main');
     holders.set(r.nickname, h);
-    log.event('owner_created_for_nickname', `${r.nickname} (origin mvp:main)`, 300);
+    // counts every holder nickname resolved to its owner (found or created); the creations are `owners_created`
+    log.event('holder_owner_for_nickname', `${r.nickname} (origin mvp:main)`, 300);
     return h;
   };
 
