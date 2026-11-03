@@ -1,4 +1,4 @@
-Verdict: no
+Verdict: yes
 
 # Frontend goal, stage 6: product review of completeness and the final report (D-139 … D-152)
 
@@ -158,3 +158,26 @@ Nothing in the report misstates money.
    owner (⚠ D-035, D-123); P3 lists those decisions.
 5. Every write is in the History tab of the entity, with the operator name. Nothing can be undone from the screen
    except the operation flags (deferred, return, deactivate).
+
+## Revision 2 (HEAD `b426d6a`, after D-153)
+
+I re-read `20` §1 and §4 at HEAD:
+- **Finding 1 is fixed.** §1 now reads "the only change under `facade/layers/` is the shape of a shortfall signal,
+  which gained `salesMonth` in D-152: no amount, condition or order". `git diff a00ea1a HEAD --stat --
+  packages/backend/src/facade/layers` still shows only those 5 added lines in `types.ts`, `carve.ts` and
+  `off-the-top.ts`, so the statement is now true.
+- **Finding 4 is recorded** as open item 7 of §4. The item covers the out-of-memory crash under ten concurrent
+  track-money calls and says that A2 holds for time, not memory. The cap or heap size is left as a decision for the
+  next goal.
+- **Findings 2, 3, 5 (ordering), 7 and 8 (large payout) are recorded** as open item 8 of §4. That covers the row
+  re-measure, the truncated key columns, the dialogs without amounts, the oldest-first order and the large-payout
+  mark. Each is described accurately.
+- Findings 6 (the "(B)" mark of the split layer) and 9 (environment) are not in the report. Both are notes and do
+  not affect acceptance.
+
+I did not re-run the stands for this revision. D-153 changed the report, the assumption marks and a warning toast,
+and no screen number I checked depends on them. The real-data and stand evidence above stands.
+
+No "Готово" condition is unmet and report `20` makes no false claim, so my verdict is **yes**. Before the operator's
+first session I still recommend fixing finding 2 (the grid row re-measure), since it puts the wrong row's button
+under the cursor.
