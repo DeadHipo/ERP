@@ -52,6 +52,10 @@ queries to `api/queries/<domain>.ts` and strings to `i18n/ru/<domain>.ts` (regis
   Rows `signal-row-<name>-<key>` (keys in D-145), the actions of 16 §2.7 through the same dialogs.
 - **P3 Решения руководителя** `/questions`: which open items wait for the head of the label? The static `OPEN_QUESTIONS` of
   `@erp/shared/open-questions` (rows `question-<id>`, chips `decision-<D-nnn>`, `question-link`).
+- **P5 Треки** `/tracks?account&month&hasSplit&q` (`pages/catalog/TracksPage.tsx`, one `GET /tracks/summary`, rows filtered on the client): which ISRCs earn, how much is B, C and ours per ISRC (optionally for one account and month), and which have no split? Rows `track-<isrc>`, `action-create-track`.
+- **P6 Трек** `/tracks/:isrc?tab=money|rules|documents|history|lines` (`pages/catalog/track/`, one `GET /tracks/:isrc/money`): whose is every dollar of this ISRC, by month, by layer and by rule, with the document and the C reason? A month row `month-<account>-<upc>-<month>` expands (`action-expand-month`) into `alloc-<ruleId>-<artistId>`, `layer-<name>` and `action-breakdown`; the rules tab (`split-<id>`, `participation-<id>`, `label-rule-<month>`) creates, changes, buys out and confirms splits and creates and closes participations; the header edits the note (`action-edit-note`).
+- **P7 Релизы** `/releases?q` (`pages/catalog/ReleasesPage.tsx`, `GET /releases`, no calculation): which UPCs earn and what do they contain? Rows `release-<upc>`.
+- **P8 Релиз** `/releases/:upc` (`pages/catalog/ReleasePage.tsx`, `GET /releases/:upc`): whose is the money of this release, track by track (`release-track-<isrc>`) and month by month (`release-month-<month>`)?
 
 ## Components (`src/components/`) and their test hooks
 | Component | Hooks |

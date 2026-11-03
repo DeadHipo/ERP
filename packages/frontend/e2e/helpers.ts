@@ -23,7 +23,8 @@ export const apiError = (code: string, message: string, statusCode: number) => (
 export function trackErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+    // a 404 of a detail route with a made-up id is the page's error state, not a defect
+    if (m.type() === 'error' && !/Failed to load resource.*404/.test(m.text())) errors.push(`console: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   return errors;
