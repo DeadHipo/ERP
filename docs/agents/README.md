@@ -6,6 +6,7 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | File | Read when |
 |---|---|
 | [../обзор_системы.html](../обзор_системы.html) | Для владельца: одна HTML-страница со схемами, как система работает после слоёв (данные, модули, шесть слоёв, A = B + C + наше, баланс) |
+| [../схемы_uml.html](../схемы_uml.html) | Для владельца: семь UML-схем на Mermaid (контекст, ER по модулям, sequence расчёта и выплаты, слои, жизнь доллара, развёртывание); нужен интернет для библиотеки |
 | [01_big_picture.md](01_big_picture.md) | Always, first: what the system does, the money pipeline, modules, state, what is next |
 | [02_glossary.md](02_glossary.md) | Reading the Russian documents or grepping the code for a domain term |
 | [03_decision_index.md](03_decision_index.md) | Before changing behaviour: which D-entries are in force, replaced or waiting for the owner |

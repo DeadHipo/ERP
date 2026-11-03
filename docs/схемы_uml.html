@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Схемы ERP (Mermaid)</title>
+<meta name="description" content="UML-схемы роялти-ERP на Mermaid: контекст, модель данных по модулям, последовательность расчёта, слои, жизнь доллара, выплата, развёртывание.">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6b66;--line:#d9d6ce;--card:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15161a;--fg:#ececea;--muted:#a3a39d;--line:#34363d;--card:#1e2026}}
+:root[data-theme="dark"]{--bg:#15161a;--fg:#ececea;--muted:#a3a39d;--line:#34363d;--card:#1e2026}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,"Segoe UI",Inter,Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:19px;margin:40px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:6px 0}.lead,.note{color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,Menlo,monospace;background:var(--line);padding:1px 5px;border-radius:4px}
+.d{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0;overflow-x:auto}
+.d svg{max-width:100%;height:auto}
+.fail{color:#c93b3b;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>Схемы ERP на Mermaid</h1>
+<p class="lead">Семь UML-схем: контекст, модель данных по модулям, последовательность расчёта, слои, жизнь доллара, выплата, развёртывание. Текст схем лежит прямо в этом файле: те же блоки <code>mermaid</code> рендерит GitHub в markdown. Нужен интернет для загрузки библиотеки (одна строка внизу файла). Снимок на 2026-11-03.</p>
+
+<h2>1. Контекст: откуда данные и куда идут</h2>
+<div class="d"><pre class="mermaid">
+flowchart LR
+  subgraph EXT[Внешние источники]
+    BEL[/Believe CSV<br>месячные отчёты мастера/]
+    B17[/B17 xlsx<br>квартальные стейтменты/]
+    DOCS[/Контракты, Annex 14,<br>0to8 Main.xlsx/]
+  end
+  subgraph LOAD[Загрузка]
+    API_UP[POST /sources/believe<br>POST /publishing/b17]
+    MVP[scripts/mvp/load.ts<br>один раз, через фасад]
+  end
+  subgraph STORE[Хранилища]
+    CH[(ClickHouse<br>believe.rows + views)]
+    PG[(PostgreSQL<br>схема на модуль)]
+  end
+  subgraph MOD[Модули: не знают друг о друге]
+    SRC[sources]
+    PUB[publishing]
+    OWN[owners]
+    LAB[labels]
+    SPL[splits]
+    SET[settlements]
+    AUD[audit]
+  end
+  FAC{{facade<br>читает всё одним snapshot,<br>считает слоями, ничего не хранит}}
+  REST[API /api/v1<br>OpenAPI, X-Operator]
+  UI[React: очередь C, сигналы,<br>треки, владельцы, справочники]
+
+  BEL --> API_UP --> SRC --> CH
+  B17 --> API_UP --> PUB --> PG
+  DOCS --> MVP --> FAC
+  OWN & LAB & SPL & SET & AUD --> PG
+  SRC & PUB & OWN & LAB & SPL & SET --> FAC
+  FAC --> REST --> UI
+  REST -. запись после 2xx .-> AUD
+</pre></div>
+
+<h2>2. Модель данных: таблицы по модулям</h2>
+<p class="note">Сплошная линия — связь внутри модуля. Пунктир — логическая ссылка по id через фасад: внешних ключей между схемами нет (D-121). Поля — только ключевые.</p>
+<div class="d"><pre class="mermaid">
+erDiagram
+  OWNERS["owners.owners"] {
+    text id PK
+    text name
+    text kind "label | person"
+    text merged_into
+  }
+  ARTISTS["owners.artists (псевдонимы)"] {
+    text id PK
+    text pseudonym
+    text owner_id
+  }
+  TRACKS["owners.tracks"] {
+    text id PK
+    text isrc
+    text upc
+    text note
+  }
+  DOCUMENTS["owners.documents"] {
+    text id PK
+    text kind "contract | appendix | assumption | ..."
+    text owner_id
+    bool requires_approval
+    text approved_by
+  }
+  CONTRACTS["owners.contracts"] {
+    text id PK
+    text owner_id
+    text document_id
+  }
+  LABELS["labels.labels"] {
+    text id PK
+    text name
+    text kind "own | sublabel"
+    text own_label_id
+  }
+  ALIASES["labels.label_aliases"] {
+    text alias_norm PK
+    text label_id
+  }
+  RULES["labels.label_rules"] {
+    text id PK
+    text label_id
+    numeric percent
+    text recipient_artist_id
+    date valid_from
+    date valid_to
+    text document_id
+  }
+  SPLITS["splits.splits"] {
+    text id PK
+    text isrc
+    date valid_from
+    date valid_to
+    text document_id
+  }
+  SHARES["splits.split_shares"] {
+    text split_id
+    text artist_id
+    numeric percent
+    text document_id "на строку"
+  }
+  PARTS["splits.participations"] {
+    text id PK
+    text isrc
+    text artist_id
+    numeric percent
+    text base "net | bucket"
+    text funded_from "top | artist_pool | artist_share | label_share"
+    text from_artist_id
+    date valid_from
+    date valid_to
+    text document_id
+  }
+  OPS["settlements.operations"] {
+    text id PK
+    text direction "in | out"
+    bigint amount_cents
+    text owner_id
+    text artist_id
+    text scope
+    text document_id
+    text payment_proof_id
+    bool deferred
+  }
+  SNAP["settlements.payout_snapshots"] {
+    text operation_id PK
+    text payload
+  }
+  FILES["public.source_files"] {
+    uuid id PK
+    text source
+    text account
+    date reporting_month
+    text status "loading | loaded | ..."
+  }
+  ROWS["ClickHouse believe.rows"] {
+    uuid file_id
+    date reporting_month
+    date sales_month
+    string label_name
+    string isrc
+    string upc
+    decimal net_revenue
+  }
+  PLINES["publishing.pub_lines"] {
+    text statement_id
+    text writer_norm "payee"
+    text songwriters
+    text operation_type
+    bigint payable_pico
+  }
+  PWRITERS["publishing.pub_writers"] {
+    text writer_norm PK
+    text owner_id
+    text role
+  }
+  PTERMS["publishing.pub_terms"] {
+    text id PK
+    text owner_id
+    numeric percent
+    text operation_type
+    date valid_from
+    date valid_to
+    text document_id
+  }
+
+  OWNERS ||--o{ ARTISTS : "владеет"
+  OWNERS ||--o{ DOCUMENTS : "его документы"
+  OWNERS ||--o{ CONTRACTS : ""
+  CONTRACTS }o--|| DOCUMENTS : "подтверждает"
+  ARTISTS }o--o{ TRACKS : "artist_tracks"
+  LABELS ||--o{ ALIASES : "строки из отчётов"
+  LABELS ||--o{ RULES : "доля саблейбла"
+  LABELS |o--o{ LABELS : "own_label_id"
+  SPLITS ||--|{ SHARES : "строки"
+  OPS ||--o| SNAP : "снимок расчёта"
+  FILES ||--o{ ROWS : "file_id"
+  PWRITERS ||--o{ PLINES : "writer_norm"
+
+  SHARES }o..|| ARTISTS : "artist_id"
+  PARTS }o..|| ARTISTS : "artist_id"
+  RULES }o..|| ARTISTS : "recipient_artist_id"
+  OPS }o..|| ARTISTS : "artist_id"
+  SPLITS }o..o| DOCUMENTS : "document_id"
+  PARTS }o..o| DOCUMENTS : "document_id"
+  RULES }o..o| DOCUMENTS : "document_id"
+  PTERMS }o..o| DOCUMENTS : "document_id"
+  OPS }o..o| DOCUMENTS : "аванс: scope"
+  SPLITS }o..|| TRACKS : "isrc"
+  PARTS }o..|| TRACKS : "isrc"
+  ROWS }o..o| TRACKS : "isrc + upc"
+  ROWS }o..o| ALIASES : "label_name"
+  PWRITERS }o..o| OWNERS : "owner_id"
+  PTERMS }o..|| OWNERS : "owner_id"
+</pre></div>
+
+<h2>3. Последовательность: запрос баланса владельца</h2>
+<div class="d"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Оператор
+  participant UI as React
+  participant API as API /owners/:id/balance
+  participant F as facade.balance
+  participant C as facade.calculate
+  participant S as sources (ClickHouse)
+  participant M as модули (PostgreSQL)
+  participant L as layers (чистые функции)
+
+  Оператор->>UI: открыть владельца
+  UI->>API: GET balance
+  API->>F: ownerBalance(id)
+  F->>C: calculate()
+  C->>S: snapshot(): loaded files → units
+  S-->>C: единицы ISRC+UPC+месяц+лейбл, net
+  C->>M: db.snapshot(): owners, labels, splits, publishing
+  M-->>C: контекст (сплиты, участия, правила, документы, владельцы)
+  loop для каждой единицы
+    C->>L: allocateUnit(unit, ctx)
+    L-->>C: allocations {artist, amount, B|C, reason}, label share
+  end
+  C-->>F: все allocations + публишинг
+  F->>M: операции владельца (авансы, выплаты, возвраты)
+  F->>L: recoup(income, positions)
+  L-->>F: recouped
+  F-->>API: earned, waiting(по причинам), recouped, paid, payable
+  API-->>UI: JSON (деньги строками)
+  Note over F,C: ничего не сохраняется: следующий запрос считает заново
+</pre></div>
+
+<h2>4. Слои расчёта одной единицы</h2>
+<div class="d"><pre class="mermaid">
+flowchart TD
+  U([Единица: ISRC+UPC, месяц отчёта, строка лейбла, net]) --> L1
+  L1[1 Лейбл записи<br>строка → алиас → наш лейбл / саблейбл + правило] --> P{2 Периметр}
+  P -- нет ISRC --> C1[C no_isrc<br>стоп]
+  P -- пары нет в треках --> C2[C unknown_pair<br>стоп]
+  P -- ок --> L3[3 Сверху<br>участия с базой net<br>scaledNet = net − Σ top]
+  L3 --> L4{4 Сплит на месяц}
+  L4 -- есть --> R[строки × scaledNet<br>доля лейбла = остаток]
+  L4 -- нет --> N[no_split: всё в доле лейбла]
+  R --> L5
+  N --> L5
+  L5[5 Вырезки, порядок фиксирован<br>pool → artist_share → label_share → саблейбл<br>больше корзины → берёт корзину, сигнал unfunded] --> L6
+  L6[6 Категория, первая причина побеждает] --> A{документ assumption?}
+  A -- да --> CA[C assumption]
+  A -- нет --> D{документ одобрен?}
+  D -- нет --> CD[C split_unconfirmed / rule_unconfirmed]
+  D -- да --> O{у псевдонима владелец?}
+  O -- нет --> CO[C artist_without_owner]
+  O -- да --> K{владелец подтверждён?}
+  K -- нет --> CK[C owner_unconfirmed]
+  K -- да --> B[B: чужое, подтверждено]
+  L1 -. строка без алиаса .-> CL[наша доля: C label_unmapped,<br>строки и вырезки считаются]
+</pre></div>
+
+<h2>5. Жизнь одного доллара</h2>
+<div class="d"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> A: строка отчёта загружена (file loaded)
+  A --> Ours: доля лейбла нашего лейбла
+  A --> C: получатель без одобренного документа / владельца
+  A --> B: получатель с одобренным документом и подтверждённым владельцем
+  C --> B: документ одобрен / владелец привязан (на следующем запросе)
+  C --> C: assumption, ждёт решения владельца
+  B --> Recouped: гасит аванс того же псевдонима в scope
+  B --> Payable: earned − recouped − выплачено + возвраты + кредиты
+  Payable --> Paid: кнопка «Выплатить» (снимок, центы вниз)
+  Paid --> Payable: возврат
+  note right of C
+    Не потеряно: посчитано по артисту,
+    держится до документа.
+    Причины — split_unconfirmed, rule_unconfirmed,
+    assumption, artist_without_owner, owner_unconfirmed,
+    label_unmapped, unknown_pair, no_isrc,
+    writer_unmapped, publishing_terms_unconfirmed
+  end note
+</pre></div>
+
+<h2>6. Последовательность: выплата</h2>
+<div class="d"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Оператор
+  participant API as POST /owners/:id/payouts
+  participant P as facade.payouts
+  participant F as facade.balance
+  participant T as db.transaction (advisory lock)
+  participant S as settlements
+  participant PS as payment-service (заглушка)
+  participant AU as audit
+
+  Оператор->>API: Выплатить (X-Operator)
+  API->>P: createPayout(ownerId)
+  P->>F: ownerBalance → payable, snapshot расчёта
+  alt payable ≤ 0
+    P-->>API: 409, нечего платить
+  else
+    P->>T: begin
+    T->>S: операция out, deferred, amount = floor(payable, центы)
+    T->>S: payout_snapshots: по артистам, хэши файлов
+    T-->>P: commit
+    P->>PS: pay(operation)
+    PS-->>P: ok (stub)
+    P-->>API: операция
+    API->>AU: recordAction после 2xx
+  end
+  Note over S: обычный POST /settlements/operations<br>выплату заработанного отвергает (D-051)
+</pre></div>
+
+<h2>7. Развёртывание (локально)</h2>
+<div class="d"><pre class="mermaid">
+flowchart LR
+  subgraph DOCKER[docker compose]
+    PG[(PostgreSQL<br>erp: owners, labels, splits,<br>settlements, publishing, audit, public.source_files)]
+    CH[(ClickHouse<br>believe.rows, units, lines, units_by_label)]
+    MIG[миграции<br>migrate:pg, migrate:ch]
+  end
+  NODE[Node: packages/backend<br>main.ts &lt;dir&gt; :3000<br>Express + Drizzle + facade]
+  VITE[Vite: packages/frontend :5173<br>proxy /api] --> NODE
+  DIST[frontend/dist<br>отдаёт сам API] --- NODE
+  FILES[/data/&lt;set&gt;: оригиналы<br>отчётов и стейтментов/] --> NODE
+  NODE --> PG
+  NODE --> CH
+  MIG -.-> PG
+  MIG -.-> CH
+  TESTS[vitest: приватные базы<br>erp_t_*, believe_t_* на файл] -.-> PG
+  TESTS -.-> CH
+</pre></div>
+
+<p class="note" id="status"></p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.0/mermaid.min.js"></script>
+<script>
+(function(){
+  var s=document.getElementById('status');
+  if(!window.mermaid){s.className='fail';s.textContent='Mermaid не загрузился: нужен интернет. Текст схем виден в исходнике страницы.';return;}
+  var dark=document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
+  mermaid.initialize({startOnLoad:true,theme:dark?'dark':'neutral',securityLevel:'loose',flowchart:{htmlLabels:true,curve:'basis'},er:{useMaxWidth:true}});
+})();
+</script>
+</main>
+</body>
+</html>
