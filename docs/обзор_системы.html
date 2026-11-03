@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Как работает ERP</title>
+<meta name="description" content="Обзор роялти-ERP после перехода на слои: откуда данные, какие модули, как считается каждый доллар, баланс и выплата.">
+<style>
+:root{
+  --bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6b66;--line:#d9d6ce;--card:#ffffff;
+  --src:#3b6fd6;--src-bg:#e8efff;      /* источники, сырые строки */
+  --ref:#8a5cc9;--ref-bg:#f1e9fb;      /* справочники, модули */
+  --fac:#c7761a;--fac-bg:#fdf0e0;      /* фасад, расчёт */
+  --b:#2b8a4a;--b-bg:#e4f5e9;          /* категория B */
+  --c:#c93b3b;--c-bg:#fbe6e6;          /* категория C */
+  --ours:#5a5a5a;--ours-bg:#ececec;    /* наша доля */
+  --ui:#1f8a8a;--ui-bg:#e2f4f4;        /* страницы, API */
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15161a;--fg:#ececea;--muted:#a3a39d;--line:#34363d;--card:#1e2026;
+    --src:#7ea2ff;--src-bg:#1d2a4a;--ref:#c3a0f0;--ref-bg:#2d2340;--fac:#f0a654;--fac-bg:#3e2d16;
+    --b:#6bd18c;--b-bg:#173a24;--c:#ff8a8a;--c-bg:#4a1f1f;--ours:#bdbdbd;--ours-bg:#2c2c30;--ui:#6fd3d3;--ui-bg:#143636;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15161a;--fg:#ececea;--muted:#a3a39d;--line:#34363d;--card:#1e2026;
+  --src:#7ea2ff;--src-bg:#1d2a4a;--ref:#c3a0f0;--ref-bg:#2d2340;--fac:#f0a654;--fac-bg:#3e2d16;
+  --b:#6bd18c;--b-bg:#173a24;--c:#ff8a8a;--c-bg:#4a1f1f;--ours:#bdbdbd;--ours-bg:#2c2c30;--ui:#6fd3d3;--ui-bg:#143636;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,"Segoe UI",Inter,Roboto,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:19px;margin:40px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:6px 0}
+.lead{color:var(--muted)}
+.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:14px 0}
+.q{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.q b{display:block;font-size:16px;margin-bottom:2px}
+.q small{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--muted);margin:8px 0 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+/* схемы на div */
+.flow{display:grid;gap:10px;align-items:start;margin:12px 0}
+.cols3{grid-template-columns:1fr 36px 1fr 36px 1fr}
+.cols2{grid-template-columns:1fr 36px 1fr}
+.box{border:1.5px solid;border-radius:10px;padding:8px 10px;background:var(--card);font-size:13.5px}
+.box h4{margin:0 0 4px;font-size:14px}
+.box ul{margin:4px 0 0;padding-left:16px}
+.box li{margin:1px 0}
+.src{border-color:var(--src);background:var(--src-bg)}
+.ref{border-color:var(--ref);background:var(--ref-bg)}
+.fac{border-color:var(--fac);background:var(--fac-bg)}
+.ui{border-color:var(--ui);background:var(--ui-bg)}
+.cb{border-color:var(--b);background:var(--b-bg)}
+.cc{border-color:var(--c);background:var(--c-bg)}
+.co{border-color:var(--ours);background:var(--ours-bg)}
+.stack{display:grid;gap:8px}
+.arrow{align-self:center;justify-self:center;color:var(--muted);font-size:22px;line-height:1;padding-top:40px}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--line);padding:1px 5px;border-radius:4px}
+/* конвейер слоёв */
+.pipe{display:grid;grid-template-columns:40px 1fr 1fr;gap:0 12px;margin:14px 0}
+.pipe>div{padding:9px 0;border-bottom:1px dashed var(--line)}
+.pipe .n{font-weight:700;color:var(--fac);font-size:18px}
+.pipe .what b{display:block}
+.pipe .what small{color:var(--muted)}
+.pipe .ex{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
+.pipe .head{font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line)}
+.tag{display:inline-block;border-radius:5px;padding:0 6px;font-size:12px;font-weight:600;margin-left:4px}
+.tB{background:var(--b-bg);color:var(--b)} .tC{background:var(--c-bg);color:var(--c)} .tO{background:var(--ours-bg);color:var(--ours)}
+/* полоска A = B + C + ours */
+.bar{display:flex;height:40px;border-radius:8px;overflow:hidden;margin:10px 0 4px;font-size:13px;font-weight:600}
+.bar div{display:flex;align-items:center;justify-content:center;color:#fff}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.diff td:first-child{color:var(--muted);width:38%}
+.formula{font:15px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0}
+svg{max-width:100%;height:auto;display:block}
+svg text{font:13px -apple-system,"Segoe UI",Inter,sans-serif;fill:var(--fg)}
+svg .m{fill:var(--muted);font-size:12px}
+svg .ln{stroke:var(--muted);stroke-width:1.5;fill:none;marker-end:url(#ar)}
+@media (max-width:720px){
+  .cols3,.cols2{grid-template-columns:1fr}
+  .arrow{padding:0;transform:rotate(90deg)}
+  .pipe{grid-template-columns:32px 1fr}
+  .pipe .ex{grid-column:2}
+  .pipe .head.ex{display:none}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Как теперь работает ERP</h1>
+<p class="lead">Одна страница вместо тридцати коммитов. Снимок на 2026-11-03 (решения D-123 … D-154). Источник истины по-прежнему <code>docs/97</code> и <code>docs/agents/10_target_model.md</code>.</p>
+
+<div class="three">
+  <div class="q"><b>Чей это доллар?</b><small>по сплиту, участию и правилу лейбла на месяц отчёта</small></div>
+  <div class="q"><b>Подтверждён ли он?</b><small>есть ли одобренный документ у каждого получателя</small></div>
+  <div class="q"><b>Сколько можно выплатить сегодня?</b><small>баланс владельца, пересчитанный с нуля</small></div>
+</div>
+<p>Ничего не хранится как начисление. Каждый ответ пересчитывается из сырых строк отчётов и текущих справочников. Выплата замораживает снимок расчёта.</p>
+<div class="legend">
+  <span><i style="background:var(--src)"></i>источники денег</span>
+  <span><i style="background:var(--ref)"></i>справочники (модули)</span>
+  <span><i style="background:var(--fac)"></i>фасад: расчёт</span>
+  <span><i style="background:var(--b)"></i>B — чужое, подтверждено</span>
+  <span><i style="background:var(--c)"></i>C — ждёт документа</span>
+  <span><i style="background:var(--ours)"></i>наша доля</span>
+  <span><i style="background:var(--ui)"></i>API и экраны</span>
+</div>
+
+<h2>1. Откуда берутся данные</h2>
+<div class="flow cols3">
+  <div class="stack">
+    <div class="box src"><h4>Believe (мастер)</h4>Месячные CSV отчёты дистрибьютора. Загружаются через API, строки как есть, ничего не склеивается.</div>
+    <div class="box src"><h4>B17 (паблишинг)</h4>Квартальные xlsx. Payee = rights-holder, авторы = songwriters.</div>
+    <div class="box ref"><h4>Контракты, Annex 14, 0to8 Main.xlsx</h4>Прочитаны один раз загрузчиком <code>scripts/mvp/load.ts</code> и превращены в справочники: сплиты, участия, правила лейблов, авансы, история выплат (факт).</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="stack">
+    <div class="box src"><h4>sources</h4>Реестр файлов в PostgreSQL, строки в ClickHouse <code>believe.rows</code>. Считаются только файлы со статусом loaded.</div>
+    <div class="box ref"><h4>publishing</h4>Строки B17, писатели ↔ владельцы, условия (terms) по типу операции.</div>
+    <div class="box ref"><h4>owners · labels · splits · settlements</h4>PostgreSQL, одна схема на модуль, без внешних ключей между ними.</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="stack">
+    <div class="box fac"><h4>facade</h4>Единственное место, где модули встречаются. Один snapshot на запрос, чистые функции слоёв, ничего не пишет кроме выплат и операций.</div>
+    <div class="box ui"><h4>API /api/v1 · React</h4>Очередь C, сигналы, треки, артисты, владельцы, сплиты, участия, лейблы, документы, источники, операции.</div>
+  </div>
+</div>
+<p class="note">Приватные данные (имена авторов B17, псевдонимы участников) живут только в локальном архиве и в <code>data/mvp-load/</code> (git-ignored). В коде, тестах и документации их нет.</p>
+
+<h2>2. Модули: что каждый знает</h2>
+<table>
+<tr><th>Модуль</th><th>Хранит</th><th>Не знает</th></tr>
+<tr><td><b>owners</b></td><td>владельцы, псевдонимы (artists), треки ISRC+UPC, документы и контракты. Вид документа <code>assumption</code> — решение совета, никогда не одобряется.</td><td>деньги, сплиты</td></tr>
+<tr><td><b>labels</b> <span class="tag tB">новый</span></td><td>наши лейблы (0to8, Echo8) и саблейблы, алиасы строк из отчётов, правила: сколько % доли лейбла получает саблейбл и через какой псевдоним.</td><td>треки, владельцев</td></tr>
+<tr><td><b>splits</b></td><td>сплиты по ISRC на период (строки артист + %, документ на строку) и <b>участия</b> <span class="tag tB">новое</span>: %, база (net / bucket), откуда берётся (top, artist_pool, artist_share, label_share), от какого артиста, период, документ.</td><td>кто владелец артиста</td></tr>
+<tr><td><b>publishing</b></td><td>строки B17, маппинг писателей, условия по владельцу, периоду и типу операции.</td><td>мастер</td></tr>
+<tr><td><b>settlements</b></td><td>операции: выплаты со снимком, авансы (recoupable), возвраты, кредиты.</td><td>как посчитан баланс</td></tr>
+<tr><td><b>audit</b></td><td>кто и что изменил (заголовок X-Operator).</td><td>всё остальное</td></tr>
+</table>
+<p class="note">Правило: каждый получатель денег — псевдоним под владельцем. Саблейбл, покупатель каталога, продюсер — тоже псевдонимы (владелец вида <code>label</code>). Имена из отчётов никогда не решают, чьи деньги.</p>
+
+<h2>3. Расчёт одной единицы: шесть слоёв</h2>
+<p>Единица = ISRC + UPC + месяц отчёта + месяц продаж + строка лейбла, сумма net. Для каждой единицы фасад прогоняет фиксированную цепочку (<code>facade/layers/index.ts</code>, порядок записан в одном месте). Пример справа: net = 100.</p>
+
+<div class="pipe">
+  <div class="head"></div><div class="head">слой</div><div class="head ex">пример, net 100</div>
+
+  <div class="n">1</div>
+  <div class="what"><b>Лейбл записи</b><small>строка лейбла → алиас → наш лейбл или саблейбл с правилом на месяц. Неизвестная строка: наша доля уходит в C <code>label_unmapped</code>, остальное считается.</small></div>
+  <div class="ex">"Echo8 Records" → саблейбл Echo8 Records
+правило: 50 % доли лейбла → псевдоним саблейбла</div>
+
+  <div class="n">2</div>
+  <div class="what"><b>Периметр</b><small>нет ISRC → C <code>no_isrc</code>; пары ISRC+UPC нет в треках → C <code>unknown_pair</code>. Цепочка останавливается.</small></div>
+  <div class="ex">пара известна → идём дальше</div>
+
+  <div class="n">3</div>
+  <div class="what"><b>Сверху (off the top)</b><small>участия с базой net: ремиксер, фичеринг. scaledNet = net − Σ top. Сумма % &gt; 100 отвергается на входе.</small></div>
+  <div class="ex">ремиксер 10 % от net = 10.00
+scaledNet = 90.00</div>
+
+  <div class="n">4</div>
+  <div class="what"><b>Сплит</b><small>строки сплита на месяц отчёта × scaledNet. Доля лейбла = остаток вычитанием. Нет сплита — всё в доле лейбла, статус <code>no_split</code>.</small></div>
+  <div class="ex">артист A 50 % = 45.00
+доля лейбла = 90 − 45 = 45.00</div>
+
+  <div class="n">5</div>
+  <div class="what"><b>Вырезки (carves)</b><small>в фиксированном порядке: pool → artist_share → label_share → саблейбл. Одна общая база на вид, порядок участий внутри вида не влияет. Вырезка больше корзины берёт корзину, недостача — сигнал <code>unfunded</code>.</small></div>
+  <div class="ex">продюсер 20 % из доли A = 9.00  (A → 36.00)
+саблейбл 50 % из доли лейбла = 22.50
+наша доля = 22.50</div>
+
+  <div class="n">6</div>
+  <div class="what"><b>Категория</b><small>для каждого получателя, первая причина побеждает: assumption → документ не одобрен (<code>split_unconfirmed</code> / <code>rule_unconfirmed</code>) → псевдоним без владельца → владелец не подтверждён → иначе <b>B</b>.</small></div>
+  <div class="ex">ремиксер 10.00 <span class="tag tB">B</span>
+A        36.00 <span class="tag tB">B</span>
+продюсер  9.00 <span class="tag tC">C rule_unconfirmed</span>
+саблейбл 22.50 <span class="tag tB">B</span>
+мы       22.50 <span class="tag tO">ours</span></div>
+</div>
+<p class="note">Точность: каждое произведение квантуется до 12 знаков сразу после умножения, каждый остаток получается вычитанием, остаток пропорции уходит на наибольшую сумму. Поэтому Σ получателей + доля лейбла = net после любого слоя, и ни одна сумма не меняет знак (D-127, D-130). Это проверяет случайный seeded-тест и 46 золотых кейсов.</p>
+
+<h2>4. Паблишинг (B17): три слоя</h2>
+<div class="flow cols3">
+  <div class="box fac"><h4>1 · Части писателей</h4>Строка идёт равными частями нашим сопоставленным писателям из songwriters; если ни одного — держателю (rights-holder).</div>
+  <div class="arrow">→</div>
+  <div class="box fac"><h4>2 · Доля автора</h4>Условия по владельцу, дате и типу операции (Performance, Mechanical…). По умолчанию 50 %. Остальное — лейблу.</div>
+  <div class="arrow">→</div>
+  <div class="box fac"><h4>3 · Категория</h4><code>writer_unmapped</code>, <code>owner_unconfirmed</code>, <code>publishing_terms_unconfirmed</code>, иначе B.</div>
+</div>
+
+<h2>5. Сходимость: A = B + C + наше</h2>
+<div class="bar">
+  <div style="flex:68.5;background:var(--b)">B 68.50</div>
+  <div style="flex:9;background:var(--c)">C 9.00</div>
+  <div style="flex:22.5;background:var(--ours)">наше 22.50</div>
+</div>
+<p class="note">A = 100.00 — пример из §3. Проверяется на каждый источник, счёт и месяц; наша доля берётся из состояния слоёв, а не как A − B − C, поэтому потерянные деньги видны как расхождение ≠ 0. На реальных данных 2024-01 … 2026-08 расхождение 0 во всех 52 строках.</p>
+
+<table>
+<tr><th>Причина C</th><th>Что это</th><th>Что закрывает</th></tr>
+<tr><td><code>split_unconfirmed</code></td><td>строка сплита без одобренного документа</td><td>одобрить документ</td></tr>
+<tr><td><code>rule_unconfirmed</code></td><td>участие или правило саблейбла без одобренного документа</td><td>одобрить документ</td></tr>
+<tr><td><code>assumption</code></td><td>деньги держатся на решении совета, не на документе</td><td>владелец подтверждает или исправляет, документ заменяется</td></tr>
+<tr><td><code>artist_without_owner</code></td><td>у псевдонима нет владельца</td><td>привязать владельца</td></tr>
+<tr><td><code>owner_unconfirmed</code></td><td>у владельца нет подтверждения (контракта)</td><td>подтвердить владельца</td></tr>
+<tr><td><code>label_unmapped</code></td><td>строка лейбла из отчёта без алиаса</td><td>добавить алиас в labels</td></tr>
+<tr><td><code>unknown_pair</code> · <code>no_isrc</code></td><td>единица вне периметра каталога</td><td>завести трек / ручной разбор</td></tr>
+<tr><td><code>writer_unmapped</code> · <code>publishing_terms_unconfirmed</code></td><td>B17: писатель или условия не привязаны</td><td>маппинг писателя, условия</td></tr>
+</table>
+
+<h2>6. Баланс владельца и выплата</h2>
+<div class="formula">payable = earned (B) − recouped − выплаты с подтверждением + возвраты + кредиты</div>
+<div class="flow cols2">
+  <div class="box fac"><h4>balance.ts</h4><ul>
+    <li>earned и waiting — суммы B и C владельца по всем псевдонимам, мастер + паблишинг, отдельно по лейблу записи</li>
+    <li>recoup (<code>layers/recoup.ts</code>): аванс гасится доходом в своём scope, только если его документ одобрен; сам аванс не вычитается</li>
+    <li>отрицательный payable хранится, на экране 0 с пометкой</li>
+  </ul></div>
+  <div class="arrow">→</div>
+  <div class="box ui"><h4>Кнопка «Выплатить»</h4><ul>
+    <li>единственный путь оплаты заработанного (<code>createPayout</code>); endpoint операций обычную выплату отвергает</li>
+    <li>платит весь payable, округлённый вниз до центов</li>
+    <li>записывает снимок: по артистам, хэши файлов — того самого расчёта</li>
+    <li>платёжный сервис — заглушка</li>
+  </ul></div>
+</div>
+
+<h2>7. Что изменилось относительно первой итерации</h2>
+<table class="diff">
+<tr><th>Было</th><th>Стало</th></tr>
+<tr><td>Плоский сплит на 100 %, всё остальное — наше</td><td>Шесть слоёв с явной базой (net, корзина артиста, доля лейбла) и плательщиком (мы, саблейбл, артист)</td></tr>
+<tr><td>Лейбл — просто строка в отчёте</td><td>Модуль labels: алиасы, саблейблы, правила по периоду с документом; наша доля считается по лейблу записи</td></tr>
+<tr><td>Ремиксер, продюсер, покупатель каталога — вручную в Excel</td><td>Участия в splits с документом, периодом и источником денег; загружены из Annex 14 и Main</td></tr>
+<tr><td>Один документ на сплит</td><td>Документ на каждую строку; вид <code>assumption</code> для решений совета, деньги по нему — в C</td></tr>
+<tr><td>Условия B17 одни на владельца</td><td>Условия по типу операции</td></tr>
+<tr><td>Recoup в модуле settlements</td><td>Recoup — слой фасада; модули денег не считают</td></tr>
+<tr><td>Сходимость по источнику и месяцу</td><td>По источнику, счёту и месяцу, с нашей долей по лейблам</td></tr>
+<tr><td>Проверка руками</td><td>46 + 5 золотых кейсов с ответами, посчитанными до кода; 361 тест; сверка с Annex 14 по ячейкам (92 % совпадений, остальные объяснены)</td></tr>
+</table>
+
+<h2>8. Где смотреть</h2>
+<table>
+<tr><th>Вопрос</th><th>Файл</th></tr>
+<tr><td>Порядок и логика слоёв</td><td><code>packages/backend/src/facade/layers/</code> (один файл на слой), дизайн в <code>docs/agents/10_target_model.md</code></td></tr>
+<tr><td>Как собирается контекст и сходимость</td><td><code>facade/calculation.ts</code> — <code>calculate()</code>, <code>reconcile()</code></td></tr>
+<tr><td>Баланс, recoup, выплата</td><td><code>facade/balance.ts</code>, <code>facade/layers/recoup.ts</code>, <code>facade/payouts.ts</code></td></tr>
+<tr><td>Примеры с числами</td><td><code>docs/agents/12_golden_cases.md</code>, тесты <code>tests/golden.test.ts</code></td></tr>
+<tr><td>Что сошлось с Annex и Main, что нет</td><td><code>docs/agents/14_verification.md</code>, итог и открытые вопросы владельца — <code>15_mvp_report.md</code> §3</td></tr>
+<tr><td>Каждое решение</td><td><code>docs/97_принятые_решения.md</code> D-123 … D-154, индекс <code>docs/agents/03_decision_index.md</code></td></tr>
+<tr><td>Экраны</td><td><code>docs/agents/17_frontend_model.md</code>, отчёт <code>20_frontend_report.md</code></td></tr>
+</table>
+</main>
+</body>
+</html>
