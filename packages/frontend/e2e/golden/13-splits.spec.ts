@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { isrc, openAs, sc } from '../helpers';
 
 // P15 «Сплиты» / P16 «Участия» (17 §3): server paging in the URL with `total`, the isrc / artist / status filters,
-// the rows with their document status. Reads only: every scenario's actions belong to the queue / rules specs.
+// the rows with their document status. Reads only: every scenario's actions belong to the queue / rules specs; this
+// file runs before 20-queue (19 §6), so the S12 split is still unconfirmed here.
 
 test('P15 the S01 split row: period, shares, document status, our share', async ({ page }) => {
   const k = sc(1);
@@ -41,19 +42,13 @@ test('P15 server paging: limit and offset in the URL, the range follows the tota
   }
 });
 
-test('P15 the unconfirmed filter lists only rows without an approved document', async ({ page, request }) => {
+test('P15 the unconfirmed filter lists only rows without an approved document (S12 is listed: 20-queue confirms it later)', async ({ page, request }) => {
   const un = (await (await request.get('/api/v1/splits?status=unconfirmed&limit=5000')).json()) as { total: number };
+  expect(un.total).toBeGreaterThan(0);
   await openAs(page, '/splits?status=unconfirmed&limit=500');
-  if (un.total === 0) {
-    await expect(page.getByTestId('page-state-empty')).toBeVisible();
-    return;
-  }
   await expect(page.getByTestId('splits-total')).toContainText(`Всего сплитов: ${un.total}`);
   await expect(page.locator('[data-testid^="split-"][row-id] [data-testid="chip-approved"]')).toHaveCount(0);
-  // S12's split is unconfirmed before the queue spec and confirmed after it: its presence follows the chip
-  const s12 = page.getByTestId(`split-${sc(12).splits[isrc(12, 1, 1)]?.[0]}`);
-  const filtered = (await (await request.get(`/api/v1/splits?isrc=${isrc(12, 1, 1)}&status=unconfirmed`)).json()) as { total: number };
-  await expect(s12).toHaveCount(filtered.total);
+  await expect(page.getByTestId(`split-${sc(12).splits[isrc(12, 1, 1)]?.[0]}`)).toHaveCount(1);
 });
 
 test('P16 the participations list: base, funding, period, document status', async ({ page }) => {

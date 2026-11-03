@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectOverview, openAs, sc, settled, toastOk } from '../helpers';
 
 // The payout (19 §4 S22: G27, G27b and the deferred flag): the gate of the balance, the Pay dialog, the operation
 // deferred until its proof, the proof, the deferred toggle on P20, the snapshot; the second press per 19 §5.
@@ -27,6 +27,12 @@ let payoutId = '';
 test('S22/1 before: earned 15, recouped 10, remaining 0, payable 5; Pay → the dialog → the payout is recorded', async ({ page, request }) => {
   const k = sc(22, 1);
   const ownerId = k.owners.P ?? '';
+  await expectOverview(page, [
+    [account(22, 1), '2026-03', '100 / 57.5 / 0 / 42.5'],
+    [account(22, 1), '2026-04', '100 / 57.5 / 0 / 42.5'],
+    [account(22, 2), '2026-03', '100 / 57.5 / 0 / 42.5'],
+    [account(22, 2), '2026-04', '-100 / -57.5 / 0 / -42.5'],
+  ]);
   await openOwner(page, ownerId);
   await expectTotals(page, { earned: '15', recouped: '10', paid: '0', payable: '5', payableShown: '5' });
   const position = page.getByTestId(`position-${k.extra['advance-operation']}`);

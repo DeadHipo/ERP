@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-138 by topic)
+# Decision index (D-001 … D-150 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add

@@ -1,8 +1,32 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, choose, confirm, expectP1, isrc, openAs, pick, sc, seedKeys, settled, toastOk } from '../helpers';
+import {
+  account,
+  apiPost,
+  choose,
+  confirm,
+  expectMoneyCalls,
+  expectOverview,
+  expectOwner,
+  expectP1,
+  isrc,
+  newDocument,
+  openAs,
+  openSignalList,
+  overviewRow,
+  pick,
+  sc,
+  seedKeys,
+  settled,
+  signalRow,
+  toastOk,
+  upc,
+} from '../helpers';
 
-// P2 «Очередь ожидания (C)» (19 §4: S12–S20, S32): each group before, the action through the UI, the group gone and
-// the P1 row after; the second press of 19 §5 sent directly with the operator header. Each scenario owns its data.
+// P2 «Очередь ожидания (C)» (19 §4: S12–S20, S32): each scenario is asserted before (P1 row, the owner's balance, the P21
+// row where 19 gives one), the action through the UI, the group gone and the same places after; the second press of
+// 19 §5 sent directly with the operator header. Each scenario owns its data; this file is the only one acting on
+// S12–S19 and S32 and runs after 12-track, 13-splits, 14-documents and 15-publishing (19 §6: the file order), which
+// assert the before states.
 
 const M = '2026-03';
 test.describe.configure({ mode: 'serial' });
@@ -20,28 +44,32 @@ async function expectGone(page: Page, kind: string, id: string) {
   await settled(page);
   await expect(group(page, kind, id)).toHaveCount(0);
 }
+/** P6 of an ISRC: the exact amount of one pseudonym's allocation in the month of the (single) account. */
+async function expectAlloc(page: Page, nn: number, k: number, pseudonym: string, amount: string) {
+  await openAs(page, `/tracks/${isrc(nn, k, 1)}`);
+  await settled(page);
+  await page.getByTestId(`month-${account(nn, k)}-${upc(nn, k, 1)}-${M}`).getByTestId('action-expand-month').click();
+  const detail = page.getByTestId(`month-detail-${account(nn, k)}-${upc(nn, k, 1)}-${M}`);
+  await expect(detail.locator(`[data-pseudonym="${pseudonym}"] [data-col="amount"]`).getByTestId('money')).toHaveAttribute('title', amount);
+}
+/** The publishing lines of a P10 writer: `[title, amount, percent, category]`, exact strings; the owner's earned total. */
+async function expectPublishing(page: Page, ownerId: string, lines: [string, string, string, string][]) {
+  await openAs(page, `/owners/${ownerId}?tab=publishing`);
+  await settled(page);
+  const tab = page.getByTestId('publishing-tab');
+  await expect(tab).toBeVisible();
+  for (const [title, amount, percent, category] of lines) {
+    const row = tab.locator('tr', { hasText: title });
+    await expect(row.locator('td').nth(2).getByTestId('money'), `${title} amount`).toHaveAttribute('title', amount);
+    await expect(row.locator('td').nth(3), `${title} percent`).toHaveText(`${percent} %`);
+    await expect(row.locator('td').nth(4), `${title} category`).toHaveText(category);
+  }
+}
 async function p1(page: Page, acct: string, month: string, abco: string, source: 'believe' | 'b17' = 'believe') {
   await page.getByTestId('nav-overview').click();
   await settled(page);
   await expectP1(page, acct, month, abco, source);
 }
-/** The document part of a dialog: create with a file reference, approve (confirmation); returns the new document id. */
-async function newDocument(page: Page, fileRef: string, waiting?: string): Promise<string> {
-  const dialog = page.getByTestId('form-dialog');
-  await dialog.getByTestId('field-document-file').fill(fileRef);
-  const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/documents') && r.request().method() === 'POST');
-  await dialog.getByTestId('action-document-create').click();
-  const id = ((await (await created).json()) as { id: string }).id;
-  await toastOk(page, 'Документ создан');
-  await dialog.getByTestId('action-document-approve').click();
-  // the approve dialog states the money waiting for this very document (N13, 19 §1)
-  await expect(page.getByTestId('confirm-dialog')).toContainText(`ждёт этого документа: ${waiting ?? ''}`);
-  await confirm(page);
-  await toastOk(page, 'Документ утверждён');
-  await expect(dialog.getByTestId('document-ready')).toBeVisible();
-  return id;
-}
-
 test('the summary lists every reason with its action sentence and links to the groups', async ({ page }) => {
   await openAs(page, '/queue');
   await settled(page);
@@ -56,7 +84,10 @@ test('S12 split_unconfirmed → create and approve a document, confirm the split
   const k = sc(12);
   const i = isrc(12, 1, 1);
   const splitId = k.splits[i]?.[0] ?? '';
+  await expectOverview(page, [[account(12, 1), M, '100 / 5 / 50 / 45']]);
+  await expectOwner(page, k.owners.A ?? '', { earned: '0', payable: '0' });
   await openReason(page, 'split_unconfirmed');
+  expectMoneyCalls(page, 1);
   await expectAmount(page, 'split', splitId, '50');
   await expect(group(page, 'split', splitId)).toContainText('2026-03 – 2026-03');
   await group(page, 'split', splitId).getByTestId('action-confirm-split').click();
@@ -67,6 +98,7 @@ test('S12 split_unconfirmed → create and approve a document, confirm the split
   await toastOk(page, `Сплит ${i} подтверждён`);
   await expectGone(page, 'split', splitId);
   await p1(page, account(12, 1), M, '100 / 55 / 0 / 45');
+  await expectOwner(page, k.owners.A ?? '', { earned: '50', payable: '50' });
   // second press: the same document is a no-op, another one is refused
   expect((await apiPost(request, `/splits/${splitId}/confirm`, { documentId: docId })).status).toBe(200);
   const other = await apiPost(request, `/splits/${splitId}/confirm`, { documentId: k.documents.appendix });
@@ -77,6 +109,13 @@ test('S13 assumption on a row → replace by a document from 2026-03 (the 05 gro
   const k = sc(13);
   const i = isrc(13, 1, 1);
   const splitId = k.splits[i]?.[0] ?? '';
+  const q1 = signalRow(page, 'assumptions', `${k.documents.Q1}|document`);
+  await expectOverview(page, [
+    [account(13, 1), M, '100 / 30 / 20 / 50'],
+    [account(13, 1), '2026-05', '100 / 7 / 20 / 73'],
+  ]);
+  await openSignalList(page, 'assumptions');
+  await expect(q1.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '40');
   await openReason(page, 'assumption');
   await expectAmount(page, 'split', splitId, '20');
   await group(page, 'split', splitId).getByTestId('action-replace-assumption').click();
@@ -95,6 +134,8 @@ test('S13 assumption on a row → replace by a document from 2026-03 (the 05 gro
   await expect(page.locator('[data-testid^="queue-group-split-"]').filter({ hasText: i })).toHaveCount(1);
   await p1(page, account(13, 1), M, '100 / 50 / 0 / 50');
   await expectP1(page, account(13, 1), '2026-05', '100 / 7 / 20 / 73');
+  await openSignalList(page, 'assumptions');
+  await expect(q1.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '20');
   // the assumption document itself is never approved
   const forced = await apiPost(request, `/documents/${k.documents.Q1}/approve`, { by: 'e2e-operator' });
   expect([forced.status, forced.code]).toEqual([422, 'assumption_not_approvable']);
@@ -118,6 +159,7 @@ test('S08 Q11 and R1 groups are read-only with the decision', async ({ page }) =
 test('S32 rule_unconfirmed → approve the rule document', async ({ page, request }) => {
   const k = sc(32);
   const id = k.participations.P ?? '';
+  await expectOverview(page, [[account(32, 1), M, '100 / 50 / 5 / 45']]);
   await openReason(page, 'rule_unconfirmed');
   await expectAmount(page, 'participation', id, '5');
   await group(page, 'participation', id).getByTestId('action-approve').click();
@@ -134,6 +176,10 @@ test('S32 rule_unconfirmed → approve the rule document', async ({ page, reques
 test('S14 owner_unconfirmed → contract with a new approved document', async ({ page, request }) => {
   const k = sc(14);
   const ownerId = k.owners.A ?? '';
+  await expectOverview(page, [[account(14, 1), M, '100 / 0 / 50 / 50']]);
+  await expectOwner(page, ownerId, { earned: '0', waiting: '50', payable: '0' });
+  await expect(page.getByTestId('entity-card').getByTestId('chip-waiting_documents')).toBeVisible();
+  await expect(page.getByTestId('payout-gate').getByTestId('gate-owner_not_confirmed')).toBeVisible();
   await openReason(page, 'owner_unconfirmed');
   await expectAmount(page, 'owner', ownerId, '50');
   await group(page, 'owner', ownerId).getByTestId('action-create-contract').click();
@@ -144,29 +190,19 @@ test('S14 owner_unconfirmed → contract with a new approved document', async ({
   await toastOk(page, 'Договор создан');
   await expectGone(page, 'owner', ownerId);
   await p1(page, account(14, 1), M, '100 / 50 / 0 / 50');
+  await expectOwner(page, ownerId, { earned: '50', waiting: '0', payable: '50' });
+  await expect(page.getByTestId('entity-card').getByTestId('chip-confirmed')).toBeVisible();
+  await expect(page.getByTestId('payout-gate').getByTestId('gate-allowed')).toBeVisible();
+  const gate = (await (await request.get(`/api/v1/owners/${ownerId}/balance`)).json()) as { payout: { allowed: boolean; amountCents: number } };
+  expect([gate.payout.allowed, gate.payout.amountCents]).toEqual([true, 5000]);
   const again = await apiPost(request, '/contracts', { ownerId, documentId: docId, artistIds: [k.artists.A] });
   expect(again.status).toBe(201);
-});
-
-test('owner_unconfirmed: the merge dialog asks for the target and the reason (not sent here: S33 belongs to P10)', async ({ page }) => {
-  const ownerId = sc(33).owners.Y ?? '';
-  await openReason(page, 'owner_unconfirmed');
-  await settled(page);
-  // S33 is merged by merge.spec.ts, which runs before this file; then the group is gone and there is nothing to open.
-  test.skip((await group(page, 'owner', ownerId).count()) === 0, 'S33 Y already merged by merge.spec.ts');
-  await group(page, 'owner', ownerId).getByTestId('action-merge').click();
-  const dialog = page.getByTestId('form-dialog');
-  await expect(dialog.getByTestId('action-merge-submit')).toBeDisabled();
-  await pick(page, 'merge-into', 'Owner X-331');
-  await dialog.getByTestId('field-merge-reason').fill('e2e');
-  await expect(dialog.getByTestId('action-merge-submit')).toBeEnabled();
-  await dialog.getByTestId('form-dialog-close').click();
-  await expect(dialog).toBeHidden();
 });
 
 test('S15 artist_without_owner → assign the owner', async ({ page, request }) => {
   const k = sc(15);
   const artistId = k.artists.A ?? '';
+  await expectOverview(page, [[account(15, 1), M, '100 / 0 / 50 / 50']]);
   await openReason(page, 'artist_without_owner');
   await expectAmount(page, 'artist', artistId, '50');
   await group(page, 'artist', artistId).getByTestId('action-assign-owner').click();
@@ -175,12 +211,17 @@ test('S15 artist_without_owner → assign the owner', async ({ page, request }) 
   await toastOk(page, 'A-151 привязан');
   await expectGone(page, 'artist', artistId);
   await p1(page, account(15, 1), M, '100 / 50 / 0 / 50');
+  await expectOwner(page, k.owners.A ?? '', { earned: '50', payable: '50' });
   expect((await apiPost(request, `/artists/${artistId}/owner`, { ownerId: k.owners.A })).status).toBe(200);
   const other = await apiPost(request, `/artists/${artistId}/owner`, { ownerId: sc(14).owners.A });
   expect([other.status, other.code]).toEqual([422, 'artist_owner_fixed']);
 });
 
 test('S16 label_unmapped → alias of 0to8', async ({ page, request }) => {
+  await expectOverview(page, [[account(16, 1), M, '100 / 50 / 50 / 0']]);
+  await expect(overviewRow(page, 'believe', account(16, 1), M).getByTestId('c-reason-label_unmapped').getByTestId('money')).toHaveAttribute('title', '50');
+  await openSignalList(page, 'labelUnmapped');
+  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records').locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
   await openReason(page, 'label_unmapped');
   await expectAmount(page, 'labelString', 'Mystery Records', '50');
   await group(page, 'labelString', 'Mystery Records').getByTestId('action-label-alias').click();
@@ -189,11 +230,17 @@ test('S16 label_unmapped → alias of 0to8', async ({ page, request }) => {
   await toastOk(page, 'Алиас «Mystery Records» добавлен');
   await expectGone(page, 'labelString', 'Mystery Records');
   await p1(page, account(16, 1), M, '100 / 50 / 0 / 50');
+  await expect(overviewRow(page, 'believe', account(16, 1), M).getByTestId('by-label-0to8').getByTestId('money')).toHaveAttribute('title', '50');
+  await openSignalList(page, 'labelUnmapped');
+  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records')).toHaveCount(0);
   const again = await apiPost(request, `/labels/${seedKeys().shared['label:0to8']}/aliases`, { alias: 'Mystery Records' });
   expect([again.status, again.code]).toEqual([409, 'alias_taken']);
 });
 
 test('S17 label_unmapped → sublabel of 0to8 with a rule 50 → NG-171', async ({ page, request }) => {
+  await expectOverview(page, [[account(17, 1), M, '100 / 50 / 50 / 0']]);
+  await openSignalList(page, 'labelUnmapped');
+  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records B').locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
   await openReason(page, 'label_unmapped');
   await expectAmount(page, 'labelString', 'Mystery Records B', '50');
   await group(page, 'labelString', 'Mystery Records B').getByTestId('action-sublabel-rule').click();
@@ -209,6 +256,15 @@ test('S17 label_unmapped → sublabel of 0to8 with a rule 50 → NG-171', async 
   await toastOk(page, 'Сублейбл создан');
   await expectGone(page, 'labelString', 'Mystery Records B');
   await p1(page, account(17, 1), M, '100 / 75 / 0 / 25');
+  await openSignalList(page, 'labelUnmapped');
+  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records B')).toHaveCount(0);
+  // P17 shows the new rule, P6 the carve of NG-171
+  await openAs(page, `/labels/${labelId}`);
+  const rule = page.locator('[data-testid^="label-rule-"]');
+  await expect(rule).toHaveCount(1);
+  await expect(rule).toContainText('NG-171');
+  await expect(rule.locator('[data-col="percent"]')).toHaveText('50');
+  await expectAlloc(page, 17, 1, 'NG-171', '25');
   const again = await apiPost(request, `/labels/${labelId}/rules`, {
     percent: '50',
     recipientArtistId: sc(17).artists.NG,
@@ -220,6 +276,19 @@ test('S17 label_unmapped → sublabel of 0to8 with a rule 50 → NG-171', async 
 test('S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01', async ({ page, request }) => {
   const k = sc(18);
   const ownerId = k.owners.W3 ?? '';
+  const [w1, w2] = [k.owners.W1 ?? '', k.owners.W2 ?? ''];
+  await expectOverview(page, [['b17', M, '400 / 170 / 50 / 180']], 'b17');
+  // G26a-c: the publishing lines per writer (amount / percent / category) and the earned total
+  await expectPublishing(page, w1, [['T-A-181', '25', '50', 'B'], ['T-B-181', '25', '50', 'B'], ['T-C-181', '50', '50', 'B']]);
+  await expectOwner(page, w1, { earned: '100' });
+  await expectPublishing(page, w2, [['T-A-181', '45', '90', 'B'], ['T-B-181', '25', '50', 'B']]);
+  await expectOwner(page, w2, { earned: '70' });
+  await expectPublishing(page, ownerId, [['T-D-181', '50', '50', 'C']]);
+  await expectOwner(page, ownerId, { earned: '0', waiting: '50' });
+  // earnedPublishing is not on the card: the API carries it (17 N1 balance), the screen shows the same earned
+  const earnedPublishing = async (id: string) =>
+    ((await (await request.get(`/api/v1/owners/${id}/balance`)).json()) as { period: { earnedPublishing: string } }).period.earnedPublishing;
+  expect([await earnedPublishing(w1), await earnedPublishing(w2)]).toEqual(['100', '70']);
   await openReason(page, 'publishing_terms_unconfirmed');
   await expectAmount(page, 'ownerTerms', ownerId, '50');
   await group(page, 'ownerTerms', ownerId).getByTestId('action-publishing-terms').click();
@@ -231,6 +300,10 @@ test('S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01', async (
   await toastOk(page, 'Условия паблишинга 50 % с 2020-01-01');
   await expectGone(page, 'ownerTerms', ownerId);
   await p1(page, 'b17', M, '400 / 220 / 0 / 180', 'b17');
+  await expectPublishing(page, ownerId, [['T-D-181', '50', '50', 'B']]);
+  await expectOwner(page, ownerId, { earned: '50', waiting: '0', payable: '50' });
+  await expectOwner(page, w1, { earned: '100' });
+  await expectOwner(page, w2, { earned: '70' });
   const again = await apiPost(request, '/publishing/terms', {
     ownerId,
     percent: '50',
@@ -241,6 +314,11 @@ test('S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01', async (
 });
 
 test('S19 writer_unmapped → map the ambiguous holder to W4a', async ({ page, request }) => {
+  const w4a = sc(19).owners.W4a ?? '';
+  await expectOverview(page, [['b17', '2025-12', '100 / 0 / 100 / 0']], 'b17');
+  await openSignalList(page, 'ambiguousWriters');
+  await expect(signalRow(page, 'ambiguousWriters', 'holder w4')).toContainText('HOLDER W4');
+  await expectOwner(page, w4a, { earned: '0' });
   await openReason(page, 'writer_unmapped');
   await expectAmount(page, 'writer', 'HOLDER W4', '100');
   await group(page, 'writer', 'HOLDER W4').getByTestId('action-map-writer').click();
@@ -249,12 +327,16 @@ test('S19 writer_unmapped → map the ambiguous holder to W4a', async ({ page, r
   await toastOk(page, 'Автор связан');
   await expectGone(page, 'writer', 'HOLDER W4');
   await p1(page, 'b17', '2025-12', '100 / 50 / 0 / 50', 'b17');
+  await openSignalList(page, 'ambiguousWriters');
+  await expect(signalRow(page, 'ambiguousWriters', 'holder w4')).toHaveCount(0);
+  await expectOwner(page, w4a, { earned: '50' });
   // second press (19 §8 point 6, verified here): the same owner again is accepted
   const again = await apiPost(request, `/publishing/writers/${encodeURIComponent('holder w4')}/map`, { ownerId: sc(19).owners.W4a });
   expect(again.status).toBe(200);
 });
 
 test('S20 perimeter: unknown_pair offers the track, no_isrc is read-only (⚠ D-035)', async ({ page }) => {
+  await expectOverview(page, [[account(20, 1), M, '9 / 0 / 9 / 0']]);
   await openReason(page, 'unknown_pair');
   const pair = `${isrc(20, 1, 9)}|2720100000009`;
   await expectAmount(page, 'pair', pair, '7');

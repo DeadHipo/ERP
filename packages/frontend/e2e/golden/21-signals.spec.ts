@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, confirm, expectP1, isrc, openAs, pick, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, confirm, expectMoneyCalls, expectOverview, expectP1, isrc, openAs, pick, sc, settled, toastOk, upc } from '../helpers';
 
 // P21 «Сигналы» (19 §4: S20, S21, S35 and the P21 rows of other scenarios): the lists with their counts, the rows by
 // key, and the actions: register the track of a pair with ISRC, close and re-create an unfunded participation, set and
-// clear a track note, assign the owner of a participant.
+// clear a track note, assign the owner of a participant. Runs after 20-queue (S20 is asserted before there) and before
+// 22-duplicates (the S30 candidate is still listed in isrcsWithoutSplit, 19 §6).
 
 const M = '2026-03';
 test.describe.configure({ mode: 'serial' });
@@ -12,6 +13,7 @@ const row = (page: Page, name: string, key: string) => page.getByTestId(`signal-
 async function openList(page: Page, name: string) {
   await openAs(page, `/signals/${name}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
 }
 const money = (page: Page, name: string, key: string, col: string) =>
   row(page, name, key).locator(`[data-col="${col}"]`).getByTestId('money');
@@ -44,6 +46,11 @@ test('rows of other scenarios: unfunded S03/8, isrcsWithoutSplit S08/4 and S30, 
   await expect(money(page, 'assumptions', `${s081.documents.appendix}|q11`, 'amount')).toHaveAttribute('title', '4.25');
   await expect(money(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`, 'amount')).toHaveAttribute('title', '19.125');
   await expect(row(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`).getByTestId('read-only')).toContainText('⚠ Q11');
+  // S08/4: the label rule without a split, basis r1, 50 (the only r1 row of the seed)
+  const r1 = page.locator('[data-testid^="signal-row-assumptions-"][data-testid$="|r1"]');
+  await expect(r1).toHaveCount(1);
+  await expect(r1.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
+  await expect(r1.getByTestId('read-only')).toContainText('⚠ R1');
 });
 
 test('S20 unallocated: the pair with ISRC → register the track; the pair without ISRC stays read-only', async ({ page, request }) => {
@@ -143,6 +150,7 @@ test('S35/3 a track note: set it (the row appears), clear it (the row goes); mon
 test('S35/4 a participant without an owner → assign Owner P-354', async ({ page }) => {
   const k = sc(35, 4);
   const key = k.participations.P ?? '';
+  await expectOverview(page, [[account(35, 4), M, '100 / 50 / 5 / 45']]);
   await openList(page, 'participantsWithoutOwner');
   await expect(money(page, 'participantsWithoutOwner', key, 'amount')).toHaveAttribute('title', '5');
   await expect(row(page, 'participantsWithoutOwner', key)).toContainText('P-354');
@@ -153,4 +161,11 @@ test('S35/4 a participant without an owner → assign Owner P-354', async ({ pag
   await settled(page);
   await expect(row(page, 'participantsWithoutOwner', key)).toHaveCount(0);
   await p1(page, account(35, 4), '100 / 55 / 0 / 45');
+  // P6: the participant P-354 is paid (B) now
+  await openAs(page, `/tracks/${isrc(35, 4, 1)}`);
+  await settled(page);
+  await page.getByTestId(`month-${account(35, 4)}-${upc(35, 4, 1)}-${M}`).getByTestId('action-expand-month').click();
+  await expect(
+    page.getByTestId(`month-detail-${account(35, 4)}-${upc(35, 4, 1)}-${M}`).locator('[data-pseudonym="P-354"] [data-col="amount"]').getByTestId('money'),
+  ).toHaveAttribute('title', '5');
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the stack for the Playwright run (one command: `npm run e2e` from the repo root):
-# checks Docker, seeds the private stores `erp_e2e` / `believe_e2e`, builds the client, serves it with the API on :3100.
+# checks Docker, seeds the private stores `erp_e2e` / `believe_e2e`, verifies the seed (verify-seed.ts), builds the client, serves it with the API on :3100.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -18,6 +18,8 @@ done
 SEED=packages/backend/scripts/e2e/seed.ts
 if [ -f "$SEED" ]; then
   npx tsx "$SEED" e2e
+  # fail fast: a seed that disagrees with docs/agents/19 would show up as many red specs; this is one clear failure
+  npx tsx packages/backend/scripts/e2e/verify-seed.ts e2e
 else
   echo "e2e: $SEED is missing; the stores will be empty (the smoke specs still run)" >&2
 fi

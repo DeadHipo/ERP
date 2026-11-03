@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { account, apiError, expectP1, json, openAs, overviewRow, settled, trackErrors } from '../helpers';
+import { account, apiError, expectMoneyCalls, expectP1, json, openAs, overviewRow, settled, trackErrors } from '../helpers';
 
 // P1 «Обзор» (19 §4, S01–S11): the read-only rows of the reconciliation, keyed by source, account and month.
 // Every number is the exact API string in `title`; the page never sums (no totals row).
@@ -68,6 +68,7 @@ test('P1 rows of S01–S11: A / B / C / ours exact, discrepancy 0', async ({ pag
   const errors = trackErrors(page);
   await openAs(page, '/');
   await settled(page);
+  expectMoneyCalls(page, 1);
   for (const [nn, k, a, month, abco] of ROWS) await expectP1(page, account(nn, k, a), month, abco);
   for (const [nn, k, a, label, amount] of BY_LABEL)
     await expect(overviewRow(page, 'believe', account(nn, k, a), M).getByTestId(`by-label-${label}`).getByTestId('money')).toHaveAttribute('title', amount);

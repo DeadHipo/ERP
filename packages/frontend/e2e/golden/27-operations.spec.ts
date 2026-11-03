@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, choose, confirm, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, choose, confirm, expectOverview, isrc, openAs, sc, settled, toastOk } from '../helpers';
 
 // S31 (19 §4; G43 (i)–(iii), G48, G49): advances with a scope created through the owner's «Аванс / вычет / кредит»
 // dialog, their proof, the P20 needsProof filter; k4: deduction 10 → 40, credit −5 → 45, deactivate the deduction → 55,
@@ -136,9 +136,11 @@ test('S31/3 (iii) read-only: the migration payout 20 → paid 20, payable 60', a
 
 let deduction = '';
 let deductionBody: Record<string, unknown> = {};
+let creditBody: Record<string, unknown> = {};
 
 test('S31/4 deduction 10 → recouped 10, payable 40; credit −5 → credits 5, payable 45', async ({ page }) => {
   const ownerId = sc(31, 4).owners.A ?? '';
+  await expectOverview(page, [[account(31, 4), '2026-03', '100 / 50 / 0 / 50']]);
   await openOwner(page, ownerId);
   await expectTotals(page, { earned: '50', payable: '50' });
   await tab(page, 'operations');
@@ -160,6 +162,7 @@ test('S31/4 deduction 10 → recouped 10, payable 40; credit −5 → credits 5,
     { direction: 'in', amount: '-5', date: '2026-03-01', file: 'dummy://e2e-adjustment-314b.pdf' },
     ['Сумма: -5,00'],
   );
+  creditBody = lastBody;
   await expect(row(page, credit).locator('[data-col="meaning"]')).toContainText('зачисление');
   await tab(page, 'balance');
   await expectTotals(page, { credits: '5', payable: '45' });
@@ -236,5 +239,13 @@ test('S31/4 second press of the deduction: 201, a second operation (two deductio
   const again = await apiPost(request, '/settlements/operations', deductionBody);
   expect(again.status).toBe(201);
   await openAs(page, `/operations?ownerId=${ownerId}&meaning=deduction`);
+  await expect(page.locator('[data-testid^="operation-"][row-id]')).toHaveCount(2);
+});
+
+test('S31/4 second press of the credit (19 §5): 201, a second operation (two credits in P20)', async ({ page, request }) => {
+  const ownerId = sc(31, 4).owners.A ?? '';
+  const again = await apiPost(request, '/settlements/operations', creditBody);
+  expect(again.status).toBe(201);
+  await openAs(page, `/operations?ownerId=${ownerId}&meaning=credit`);
   await expect(page.locator('[data-testid^="operation-"][row-id]')).toHaveCount(2);
 });

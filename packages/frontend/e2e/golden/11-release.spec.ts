@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { isrc, openAs, settled, upc } from '../helpers';
+import { expectMoneyCalls, isrc, openAs, settled, upc } from '../helpers';
 
 // P7 «Релизы» and P8 «Релиз» (19 §4 S11, G24): one ISRC under two UPCs; each release shows its own share of the
 // unit (UPC1 net 100, UPC2 net 50), track by track and month by month, exact strings in `title`.
@@ -18,6 +18,7 @@ async function openRelease(page: Page, u: string) {
   await openAs(page, `/releases/${u}`);
   await settled(page);
   await expect(page.getByTestId('release-upc')).toHaveText(u);
+  expectMoneyCalls(page, 1);
 }
 
 test('S11 G24: UPC1 and UPC2 of one ISRC, tracks and months', async ({ page }) => {

@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { apiPost, isrc, openAs, pick, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectOverview, isrc, newDocument, openAs, pick, sc, settled, toastOk, upc } from '../helpers';
 
 // P11 «Псевдонимы» / дубликаты (19 §4 S30): a pseudonym carried by two artists, one with an owner; assign the owner
-// to the second through the UI; the candidate ISRC without a split stays listed (the numbers do not change).
+// to the second through the UI; the candidate ISRC without a split stays listed (the numbers do not change); then the
+// split is created from the candidate row: the candidate goes, P6 shows the allocation, P1 the new row. Runs after
+// 21-signals, which asserts the S30 candidate in isrcsWithoutSplit (19 §6).
 
 test.describe.configure({ mode: 'serial' });
 
@@ -29,10 +31,6 @@ test('S30 the group shows two artists, one with an owner, and the candidate ISRC
   await expect(group.getByTestId(`duplicate-artist-${k.artists.DUP2}`)).toContainText('без владельца');
   const candidate = group.getByTestId(`candidate-${isrc(30, 1, 1)}`);
   await expect(candidate.getByTestId('money')).toHaveAttribute('title', '100');
-  // the split dialog opens for the candidate (not submitted: S30's numbers belong to the signals spec)
-  await candidate.getByTestId('action-create-split').click();
-  await expect(page.getByTestId('form-dialog')).toContainText(isrc(30, 1, 1));
-  await page.getByTestId('form-dialog-close').click();
 });
 
 test('S30 assign the owner to the second artist: the group shows it, the candidate stays; second press', async ({ page, request }) => {
@@ -57,6 +55,29 @@ test('S30 assign the owner to the second artist: the group shows it, the candida
   expect([other.status, other.code]).toEqual([422, 'artist_owner_fixed']);
 });
 
+test('S30 create the split DUP-301 50 % from the candidate: the candidate goes, P6 shows 50 B, P1 100 / 50 / 0 / 50', async ({ page }) => {
+  const i = isrc(30, 1, 1);
+  await expectOverview(page, [[account(30, 1), '2026-03', '100 / 0 / 0 / 100']]);
+  await openAs(page, '/artists/duplicates');
+  const candidate = page.getByTestId(`candidate-${i}`);
+  await candidate.getByTestId('action-create-split').click();
+  const dialog = page.getByTestId('form-dialog');
+  await expect(dialog).toContainText(i);
+  await dialog.getByTestId('field-split-percent-0').fill('50');
+  await dialog.getByTestId('field-split-from').fill('2020-01-01');
+  await newDocument(page, 'dummy://e2e-appendix-301.pdf', '0,00');
+  await dialog.getByTestId('action-split-submit').click();
+  await toastOk(page, 'Сплит создан');
+  await settled(page);
+  await expect(page.getByTestId(`candidate-${i}`)).toHaveCount(0);
+  await openAs(page, `/tracks/${i}`);
+  await settled(page);
+  await page.getByTestId(`month-${account(30, 1)}-${upc(30, 1, 1)}-2026-03`).getByTestId('action-expand-month').click();
+  const detail = page.getByTestId(`month-detail-${account(30, 1)}-${upc(30, 1, 1)}-2026-03`);
+  await expect(detail.locator('[data-pseudonym="DUP-301"] [data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
+  await expect(page.getByTestId(`month-${account(30, 1)}-${upc(30, 1, 1)}-2026-03`).locator('[data-col="ours"]').getByTestId('money').first()).toHaveAttribute('title', '50');
+  await expectOverview(page, [[account(30, 1), '2026-03', '100 / 50 / 0 / 50']]);
+});
 test('P12 lists the split rows of an artist with a link to the track', async ({ page }) => {
   const k = sc(1);
   await openAs(page, `/artists/${k.artists.A}`);

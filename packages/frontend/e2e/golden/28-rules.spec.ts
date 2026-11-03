@@ -1,10 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { account, apiPost, choose, confirm, expectP1, isrc, openAs, pick, sc, settled, toastOk, upc } from '../helpers';
+import { account, apiPost, choose, confirm, expectOverview, expectOwner, expectP1, isrc, openAs, pick, sc, settled, toastOk, upc } from '../helpers';
 
 // P6 «Трек», tab Правила (19 §4: S13, S21, S25–S29; 17 §6): change a split from a date, buy-out, create / close a
 // participation, the month-start rule (M52: the toast and the rules tab show the stored date), the backend refusals
 // as toasts with their codes, the track note; the numbers after each action on P6 and on the P1 row; the second press
-// of 19 §5 sent with `request`. Each scenario owns its data; this file is the only one acting on S25–S29.
+// of 19 §5 sent with `request`. Each scenario owns its data; this file is the only one acting on S25–S29. It runs after 20-queue (19 §6), which
+// replaces the assumption of S13: the S13 test below asserts the state after that action.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -49,6 +50,13 @@ const toastCode = (page: Page, code: string) => expect(page.locator(`[data-testi
 test('S25 buy-out (G09): change from 2026-03-15 → A 25, then buy-out from 2026-05-10; dates floored to the month start', async ({ page, request }) => {
   const k = sc(25);
   const i = isrc(25, 1, 1);
+  const owner = k.owners.A ?? '';
+  await expectOverview(page, [
+    [account(25, 1), '2026-02', '100 / 50 / 0 / 50'],
+    [account(25, 1), '2026-03', '100 / 50 / 0 / 50'],
+    [account(25, 1), '2026-05', '100 / 50 / 0 / 50'],
+  ]);
+  await expectOwner(page, owner, { earned: '150' });
   await openTrack(page, 25, 1);
   for (const m of ['2026-02', '2026-03', '2026-05']) await expectMonth(page, 25, 1, m, ['A-251 50'], '50');
 
@@ -71,6 +79,8 @@ test('S25 buy-out (G09): change from 2026-03-15 → A 25, then buy-out from 2026
   await expectMonth(page, 25, 1, '2026-02', ['A-251 50'], '50');
   await expectMonth(page, 25, 1, '2026-03', ['A-251 25'], '75');
   await expectMonth(page, 25, 1, '2026-05', ['A-251 25'], '75');
+  await expectOwner(page, owner, { earned: '100' });
+  await openTrack(page, 25, 1, 'rules');
   // second press: an identical change is accepted (19 §8 open point 1), money unchanged
   const again = await apiPost(request, '/splits/change', {
     isrc: i,
@@ -80,7 +90,6 @@ test('S25 buy-out (G09): change from 2026-03-15 → A 25, then buy-out from 2026
   });
   expect(again.status).toBe(201);
 
-  await toTab(page, 'rules');
   await page.getByTestId('action-buyout').click();
   await choose(page, 'buyout-seller', 'A-251');
   await dialog.getByTestId('field-buyout-from').fill('2026-05-10');
@@ -100,6 +109,7 @@ test('S25 buy-out (G09): change from 2026-03-15 → A 25, then buy-out from 2026
     ['2026-03', '100 / 25 / 0 / 75'],
     ['2026-05', '100 / 0 / 0 / 100'],
   ]);
+  await expectOwner(page, owner, { earned: '75' });
   // second press: the seller is already 0 in every affected split, nothing changes
   const second = await apiPost(request, '/splits/buyout', {
     isrcs: [i],
@@ -112,6 +122,9 @@ test('S25 buy-out (G09): change from 2026-03-15 → A 25, then buy-out from 2026
 });
 
 test('S26 assignment (G13): from 2026-06-01 the row of A goes to A2; G17 read-only', async ({ page }) => {
+  const k = sc(26);
+  await expectOwner(page, k.owners.A ?? '', { earned: '100' });
+  await expectOwner(page, k.owners.A2 ?? '', { earned: '0' });
   await openTrack(page, 26, 1);
   await expectMonth(page, 26, 1, '2026-05', ['A-261 50'], '50');
   await expectMonth(page, 26, 1, '2026-06', ['A-261 50'], '50');
@@ -136,6 +149,8 @@ test('S26 assignment (G13): from 2026-06-01 the row of A goes to A2; G17 read-on
     ['2026-05', '100 / 50 / 0 / 50'],
     ['2026-06', '100 / 50 / 0 / 50'],
   ]);
+  await expectOwner(page, k.owners.A ?? '', { earned: '50' });
+  await expectOwner(page, k.owners.A2 ?? '', { earned: '50' });
   await openTrack(page, 26, 2);
   await expectMonth(page, 26, 2, '2026-05', ['A-262 50'], '50');
   await expectMonth(page, 26, 2, '2026-06', ['DU-262 100'], '0');
@@ -143,6 +158,8 @@ test('S26 assignment (G13): from 2026-06-01 the row of A goes to A2; G17 read-on
 
 test('S27 close a participation (G14) at 2026-04-20: stored 2026-04-01; 03 keeps P 7.5, 04 has none', async ({ page, request }) => {
   const p = sc(27).participations.P ?? '';
+  const pOwner = sc(27).owners.P ?? '';
+  await expectOwner(page, pOwner, { earned: '15' });
   await openTrack(page, 27, 1);
   await expectMonth(page, 27, 1, '2026-03', ['A-271 50', 'P-271 7.5'], '42.5');
   await expectMonth(page, 27, 1, '2026-04', ['A-271 50', 'P-271 7.5'], '42.5');
@@ -164,6 +181,7 @@ test('S27 close a participation (G14) at 2026-04-20: stored 2026-04-01; 03 keeps
     ['2026-03', '100 / 57.5 / 0 / 42.5'],
     ['2026-04', '100 / 50 / 0 / 50'],
   ]);
+  await expectOwner(page, pOwner, { earned: '7.5' });
   // second press: closing at the same date changes nothing
   expect((await apiPost(request, `/participations/${p}/close`, { validTo: '2026-04-01' })).status).toBe(200);
 });
@@ -279,32 +297,8 @@ test('S21 (acted on in the signals spec): A 0, P 10, ours 90 in both states', as
   await expectMonth(page, 21, 1, '2026-03', ['A-211 0', 'P-211 10'], '90');
 });
 
-test('S13 assumption on a row: replace it by a document from 2026-03 through the change (if the queue spec has not)', async ({ page }) => {
+test('S13 after the queue action: L 20 is B from 2026-03 (the change was made in 20-queue); 05 keeps L 20 in C', async ({ page }) => {
   await openTrack(page, 13, 1);
-  const lWaits = (await money(page.getByTestId('track-totals'), 'C').getAttribute('title')) === '40';
-  if (lWaits) {
-    await expectMonth(page, 13, 1, '2026-03', ['A-131 23', 'L-131 20', 'D-131 7'], '50');
-    await toTab(page, 'rules');
-    await page.getByTestId('action-change-split').click();
-    const dialog = page.getByTestId('form-dialog');
-    await dialog.getByTestId('field-split-from').fill('2026-03-01');
-    // the prefilled rows are the newest (buy-out) split: A 0, L 20 with Q1, D 7 -> A 23, L 20 without Q1, D 7
-    await expect(dialog.getByTestId('split-row-0')).toContainText('A-131');
-    await dialog.getByTestId('field-split-percent-0').fill('23');
-    await expect(dialog.getByTestId('split-row-1')).toContainText('L-131');
-    await dialog.getByTestId('action-split-row-drop-document-1').click();
-    await dialog.getByTestId('field-document-file').fill('dummy://e2e-appendix-131-rules.pdf');
-    await dialog.getByTestId('action-document-create').click();
-    await toastOk(page, 'Документ создан');
-    await dialog.getByTestId('action-document-approve').click();
-    await confirm(page);
-    await expect(dialog.getByTestId('document-ready')).toBeVisible();
-    await dialog.getByTestId('action-split-submit').click();
-    await confirm(page);
-    await toastOk(page, 'Сплит изменён: новые строки с 2026-03-01');
-    await settled(page);
-    await toTab(page, 'money');
-  }
   await expectMonth(page, 13, 1, '2026-03', ['A-131 23', 'L-131 20', 'D-131 7'], '50');
   const d = page.getByTestId(`month-detail-${account(13, 1)}-${upc(13, 1, 1)}-2026-03`);
   await expect(d.getByTestId('allocations').locator('[data-col="category"] [data-testid="chip-C"]')).toHaveCount(0);

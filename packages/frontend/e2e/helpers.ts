@@ -52,10 +52,28 @@ export function sc(nn: number, k = 1): CaseKeys {
   return c;
 }
 
-/** Opens a page with the operator set (19 §1: `e2e-operator` before every spec). */
+/** The money endpoints of 17 §7 (every one runs a recalculation): R2 allows one request per page load. */
+const MONEY_PATH =
+  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|documents\/[^/]+\/uses)$/;
+const moneyCalls = new WeakMap<Page, string[]>();
+
+/** Opens a page with the operator set (19 §1: `e2e-operator` before every spec). Restarts the money request count. */
 export async function openAs(page: Page, path: string): Promise<void> {
+  if (!moneyCalls.has(page)) {
+    const calls: string[] = [];
+    moneyCalls.set(page, calls);
+    page.on('request', (r) => {
+      if (r.method() === 'GET' && MONEY_PATH.test(new URL(r.url()).pathname)) calls.push(new URL(r.url()).pathname);
+    });
+  }
   await page.addInitScript((name) => localStorage.setItem('erp.operator', name), OPERATOR);
+  moneyCalls.get(page)!.length = 0;
   await page.goto(path);
+}
+
+/** R2 (17 §1): after `openAs` + `settled`, the page asked the money endpoints exactly `n` times (its one calculation). */
+export function expectMoneyCalls(page: Page, n: number): void {
+  expect(moneyCalls.get(page) ?? [], 'money requests since openAs').toHaveLength(n);
 }
 
 /** Every money page waits for the recalculation to finish (19 §5.5). */
@@ -115,4 +133,50 @@ export async function apiPost(request: APIRequestContext, path: string, body: un
   const res = await request.post(`/api/v1${path}`, { data: body, headers: { 'X-Operator': OPERATOR } });
   const json = (await res.json().catch(() => undefined)) as { error?: { code?: string } } | undefined;
   return { status: res.status(), code: json?.error?.code, body: json };
+}
+
+/** The balance facts of an owner card (P10 Баланс): `{ earned: '50', payable: '50' }` as exact strings in `title`. */
+export async function expectOwner(page: Page, ownerId: string, totals: Record<string, string>): Promise<void> {
+  await openAs(page, `/owners/${ownerId}?tab=balance`);
+  await settled(page);
+  await expect(page.getByTestId('balance-tab')).toBeVisible();
+  for (const [name, value] of Object.entries(totals))
+    await expect(page.getByTestId(`balance-${name}`).getByTestId('money'), `${name} of ${ownerId}`).toHaveAttribute('title', value);
+}
+
+/** A P1 row read from the overview page: opens P1, waits, asserts `A / B / C / ours` of every `[account, month, abco]`. */
+export async function expectOverview(
+  page: Page,
+  rows: [acct: string, month: string, abco: string][],
+  source: 'believe' | 'b17' = 'believe',
+): Promise<void> {
+  await openAs(page, '/');
+  await settled(page);
+  for (const [acct, month, abco] of rows) await expectP1(page, acct, month, abco, source);
+}
+
+/** A P21 row (`signal-row-<list>-<key>`) of a list page. */
+export async function openSignalList(page: Page, name: string): Promise<void> {
+  await openAs(page, `/signals/${name}`);
+  await settled(page);
+}
+export const signalRow = (page: Page, name: string, key: string) => page.getByTestId(`signal-row-${name}-${key}`);
+
+/**
+ * The document part of an action dialog: a new document with a file reference, then its approval (the confirmation states
+ * the money waiting for this very document, N13). Returns the new document id.
+ */
+export async function newDocument(page: Page, fileRef: string, waiting?: string): Promise<string> {
+  const dialog = page.getByTestId('form-dialog');
+  await dialog.getByTestId('field-document-file').fill(fileRef);
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/documents') && r.request().method() === 'POST');
+  await dialog.getByTestId('action-document-create').click();
+  const id = ((await (await created).json()) as { id: string }).id;
+  await toastOk(page, 'Документ создан');
+  await dialog.getByTestId('action-document-approve').click();
+  await expect(page.getByTestId('confirm-dialog')).toContainText(`ждёт этого документа: ${waiting ?? ''}`);
+  await confirm(page);
+  await toastOk(page, 'Документ утверждён');
+  await expect(dialog.getByTestId('document-ready')).toBeVisible();
+  return id;
 }

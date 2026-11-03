@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { apiPost, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import { expectMoneyCalls, isrc, openAs, sc, settled, toastOk } from '../helpers';
 
 // P13 «Документы» / P14 «Документ» (17 §3, 19 §4 S32): the filters in the URL, the row actions, what a document confirms
-// and the money that waits for it. This file runs before queue.spec (alphabetical), which approves the S32 document:
-// the S32 assertions hold for both states.
+// and the money that waits for it. This file runs before 20-queue (19 §6: the file order), which approves the S32
+// document: the S32 test asserts the state before the approval.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -62,23 +62,20 @@ test('P13 create a document, attach a file, approve it from the list', async ({ 
   await expect(row.getByTestId('action-approve')).toHaveCount(0);
 });
 
-test('P14 the S32 document: what it confirms and the money waiting for it (either side of the approval)', async ({ page, request }) => {
+test('P14 the S32 document before its approval: what it confirms and the 5 waiting for it', async ({ page }) => {
   const k = sc(32);
   const doc = k.documents['unapproved-contract'] ?? '';
   await openAs(page, `/documents/${doc}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
   await expect(page.getByTestId('document-page')).toBeVisible();
   await expect(page.getByTestId(`participation-${k.participations.P}`)).toBeVisible();
-  const approved = await page.getByTestId('document-header').getByTestId('chip-approved').count();
-  // 19 §4 S32: before the approval 5 wait for this document, after it nothing
-  await expect(page.getByTestId('waiting-amount').getByTestId('money')).toHaveAttribute('title', approved ? '0' : '5');
-  if (!approved) {
-    await page.getByTestId('action-approve').click();
-    await expect(page.getByTestId('confirm-dialog')).toContainText('ждёт этого документа: 5,00');
-    await page.getByTestId('confirm-dialog-cancel').click();
-  }
-  // the approval itself belongs to queue.spec; the second press is sent only when it is already approved (200, first approval kept)
-  if (approved) expect((await apiPost(request, `/documents/${doc}/approve`, { by: 'e2e-operator' })).status).toBe(200);
+  await expect(page.getByTestId('document-header').getByTestId('chip-approved')).toHaveCount(0);
+  await expect(page.getByTestId('waiting-amount').getByTestId('money')).toHaveAttribute('title', '5');
+  await page.getByTestId('action-approve').click();
+  await expect(page.getByTestId('confirm-dialog')).toContainText('ждёт этого документа: 5,00');
+  await page.getByTestId('confirm-dialog-cancel').click();
+  // the approval itself belongs to 20-queue (S32)
 });
 
 test('P14 an assumption document: the note, the wizard link, no approve', async ({ page }) => {

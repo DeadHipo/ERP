@@ -8,6 +8,7 @@ describe('privacy patterns', () => {
     ...filesUnder('e2e', /\.(tsx?|json)$/),
     ...filesUnder('tests', /\.tsx?$/),
     ...filesUnder('scripts', /\.(sh|ts)$/),
+    ...filesUnder('../backend/scripts/e2e', /\.(tsx?|json)$/), // the seed of the golden screens
   ].filter((f) => !f.endsWith('privacy.test.ts') && !/\/\.[^/]+$/.test(f)); // generated dot-files (the seed keys) are git-ignored
 
   it('scans files', () => {

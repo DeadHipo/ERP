@@ -50,3 +50,19 @@ test('S36 «новый» repeats with force: a second owner of that name; P9 sho
   await expect(page.getByTestId(`owner-${existing}`)).toBeVisible();
   await expect(page.getByTestId(`owner-${id}`)).toBeVisible();
 });
+
+test('S36 artists: «новый» repeats POST /artists with force → a second pseudonym A-361; the list shows two', async ({ page }) => {
+  const existing = sc(36).artists.A ?? '';
+  await openAs(page, '/artists');
+  await page.getByTestId('action-create-artist').click();
+  await page.getByTestId('field-artist-pseudonym').fill('A-361');
+  await page.getByTestId('action-create-artist-submit').click();
+  await expect(page.locator('[data-testid="toast"][data-code="possible_duplicate"]').first()).toBeVisible();
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/artists') && r.request().method() === 'POST' && r.status() === 201);
+  await page.getByTestId('form-dialog').getByTestId('action-duplicate-new').click();
+  const id = ((await (await created).json()) as { id: string }).id;
+  expect(id).not.toBe(existing);
+  await openAs(page, '/artists?q=A-361');
+  await expect(page.getByTestId(`artist-${existing}`)).toBeVisible();
+  await expect(page.getByTestId(`artist-${id}`)).toBeVisible();
+});

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { account, apiPost, expectP1, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectOwner, expectP1, openAs, openSignalList, sc, settled, signalRow, toastOk } from '../helpers';
 
 // P17 «Лейблы» (19 §4 S37): close the label rule of «Close Label 37» at 2026-04-01 through the page; the month 04 loses the
 // NG carve (ours 25 → 50), 03 stays. The second close at the same date is a 200 without change.
@@ -35,6 +35,10 @@ test('S37 close the rule at 2026-04-01: 04 loses the carve, 03 stays; the period
   await settled(page);
   await expectP1(page, acct, '2026-03', '100 / 75 / 0 / 25');
   await expectP1(page, acct, '2026-04', '100 / 75 / 0 / 25');
+  await expectOwner(page, k.owners.NG ?? '', { earned: '50' });
+  await openAs(page, `/signals/sublabelWithoutRule`);
+  await settled(page);
+  await expect(signalRow(page, 'sublabelWithoutRule', `${NAME}|2026-04`)).toHaveCount(0);
   await openAs(page, `/labels/${id}`);
   await page.getByTestId(`label-rule-${ruleId}`).getByTestId('action-close-rule').click();
   await page.getByTestId('field-close-at').fill('2026-04-01');
@@ -48,6 +52,9 @@ test('S37 close the rule at 2026-04-01: 04 loses the carve, 03 stays; the period
   await settled(page);
   await expectP1(page, acct, '2026-04', '100 / 50 / 0 / 50');
   await expectP1(page, acct, '2026-03', '100 / 75 / 0 / 25');
+  await expectOwner(page, k.owners.NG ?? '', { earned: '25' });
+  await openSignalList(page, 'sublabelWithoutRule');
+  await expect(signalRow(page, 'sublabelWithoutRule', `${NAME}|2026-04`).locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
   // second press: the same date is a 200 and changes nothing
   const again = await apiPost(request, `/labels/rules/${ruleId}/close`, { validTo: '2026-04-01' });
   expect(again.status).toBe(200);

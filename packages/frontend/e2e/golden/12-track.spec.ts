@@ -1,9 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { account, isrc, norm, openAs, sc, settled, upc } from '../helpers';
+import { account, expectMoneyCalls, isrc, norm, openAs, sc, settled, upc } from '../helpers';
 
 // P6 «Трек» (19 §4, read-only S01–S11 and the stable parts of S13 / S16): every month row of an ISRC, its allocations
 // with the exact API strings in `title`, the label of record, the layer-by-layer table and the breakdown of a month.
-// P5 «Треки» once: the summary row of an ISRC and its filters.
+// P5 «Треки» once: the summary row of an ISRC and its filters. This file runs before 20-queue (19 §6: the file order) and
+// asserts the BEFORE state of S16 (the alias of «Mystery Records» is added by the queue spec).
 
 const M = '2026-03';
 
@@ -11,6 +12,7 @@ async function openTrack(page: Page, i: string) {
   await openAs(page, `/tracks/${i}`);
   await settled(page);
   await expect(page.getByTestId('entity-card')).toBeVisible();
+  expectMoneyCalls(page, 1);
 }
 const monthRow = (page: Page, acct: string, u: string, month = M) => page.getByTestId(`month-${acct}-${u}-${month}`);
 /** Expands a month row and returns its detail panel. */
@@ -62,6 +64,7 @@ const CASES: [string, number, number, Alloc[], string][] = [
   ['G12', 3, 4, [['A-034', '45', 'B'], ['E-034', '5', 'B']], '50'],
   ['G32', 3, 5, [['R-035', '15', 'B'], ['A-035', '85', 'B']], '0'],
   ['G35', 3, 6, [['A-036', '50', 'B'], ['P1-036', '5', 'B'], ['P2-036', '7.5', 'B']], '37.5'],
+  ['G36', 3, 7, [['A-037', '25', 'B'], ['B-037', '25', 'B'], ['S-037', '15', 'B']], '35'],
   ['G37', 3, 8, [['A-038', '50', 'B'], ['P-038', '50', 'B']], '0'],
   ['G05a', 5, 1, [['A-051', '50', 'B'], ['NG', '25', 'B']], '25'],
   ['G05b', 5, 2, [['A-052', '70', 'B'], ['NG', '15', 'B']], '15'],
@@ -218,24 +221,15 @@ test('G10a (S13 month 05, untouched by the queue action): L 20 C assumption, D 7
   await expect(d.getByTestId('allocations').locator('[data-pseudonym="L-131"] [data-col="basis"]')).toHaveText('документ');
 });
 
-test('G08c (S16): the label share of an unmapped string waits in C; after the alias of the queue spec it is ours (0to8)', async ({ page, request }) => {
-  // The queue spec adds the alias `Mystery Records` (S16) and runs before this file, so the state depends on the order:
-  // the page is checked against the golden numbers of the state the API reports (before: 19 §4 S16 before; after: after).
+test('G08c (S16, before the alias of the queue spec): the label share of an unmapped string waits in C', async ({ page }) => {
   const i = isrc(16, 1, 1);
-  const api = (await (await request.get(`/api/v1/tracks/${i}/money`)).json()) as { months: { labelShareCategory: string }[] };
-  const mapped = api.months[0]?.labelShareCategory === 'ours';
   await openTrack(page, i);
   const row = monthRow(page, account(16, 1), upc(16, 1, 1));
   await expect(row.getByTestId('label-string')).toHaveText('Mystery Records');
   await expect(cell(row, 'labelShare')).toHaveAttribute('title', '50');
-  if (mapped) {
-    await expect(cell(row, 'ours')).toHaveAttribute('title', '50');
-    await expect(row.getByTestId('label-of-record')).toHaveText('0to8');
-  } else {
-    await expect(cell(row, 'ours')).toHaveAttribute('title', '0');
-    await expect(row.locator('[data-col="ours"]').getByTestId('chip-label_unmapped')).toBeVisible();
-    await expect(page.getByTestId('track-totals').getByTestId('c-reason-label_unmapped').getByTestId('money')).toHaveAttribute('title', '50');
-  }
+  await expect(cell(row, 'ours')).toHaveAttribute('title', '0');
+  await expect(row.locator('[data-col="ours"]').getByTestId('chip-label_unmapped')).toBeVisible();
+  await expect(page.getByTestId('track-totals').getByTestId('c-reason-label_unmapped').getByTestId('money')).toHaveAttribute('title', '50');
   const d = await expand(page, account(16, 1), upc(16, 1, 1));
   await expectAllocs(d, [['A-161', '50', 'B']]);
 });
@@ -293,6 +287,7 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   const i = isrc(11, 1, 1);
   await openAs(page, `/tracks?q=${i}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
   const row = page.getByTestId(`track-${i}`);
   await expect(row).toBeVisible();
   await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');

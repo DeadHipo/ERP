@@ -21,7 +21,7 @@ arithmetic in §7), `packages/backend/tests/golden.test.ts` (how each case is se
 | Report month, net | 2026-03, one unit of net `100`, label string `Test Label`, unless the case says otherwise |
 | Pseudonyms, owners | the letter of 12 plus `-<nn><k>`: `A-011`, `M1-031`; owner `Owner A-011` (person, confirmed: approved contract). Tables write the bare letter. `Case.ordered` artists (S09) and the default approved appendix are created per scenario. Shared read-only: `NG` (owner `Company NG`, kind label) as recipient of `NoGhost Records`, `QQ` of `qaraqshy records`, brand pseudonym `0to8` |
 | Labels (seeded once) | own `0to8` (aliases `Test Label`, `0to8`, `Ahh Music`), own `Echo8` (alias `Echo8`); sublabel `NoGhost Records` of 0to8, rule 50 → NG from 2020-01-01 (approved contract); sublabel `qaraqshy records` of Echo8, rule 50 → QQ under an `assumption` document. A case whose queue group, balance or action touches a sublabel has its own string and recipient: `NoGhost Records 08a/08b/08d` → `NG-081/082/084` (S08), `NoGhost Records 23` → `NG-231`, `Mystery Records` (S16), `Mystery Records B` (S17), `Ghost Label 35` (S35), `Close Label 37` (S37) |
-| Shared mutation | the only allowed one: S16 adds the alias `Mystery Records` to 0to8 (fresh stores per run, so idempotent per run); no spec asserts the alias list of 0to8 |
+| Shared mutations | the exact list of what a spec may change outside its own scenario (fresh stores per run); no spec asserts a list these touch (the alias list or sublabels of 0to8, the document list totals): (1) `20-queue` S16 adds the alias `Mystery Records` to 0to8; (2) `29-labels` creates the sublabel `Ref Spec Sublabel` under 0to8; (3) `14-documents` creates, attaches and approves the document `Ref spec doc` (no owner, nothing uses it); (4) `15-publishing` adds the terms `Print` 20 % from 2021-01-01 to W1 of S18 (an operation type the statement does not use, so no S18 number moves). Anything else a spec creates belongs to a scenario's own entities (the alias `Close Label 37 Alt` of S37, the second `Owner DUP-361` and artist `A-361` of S36) |
 | B17 | one statement for the whole seed, loaded last (after every owner and alias), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
 | Isolation | every scenario owns its ISRCs, UPCs, accounts, owners, pseudonyms, documents. **Never asserted**: queue reason totals, signal counts, P1 totals, P3 items, queue groups keyed by a shared entity (the NoGhost rule, QQ rule, 0to8), and N3 has no `isrc` filter (a spec finds its group by key, `ownerId` or `month`) |
 | Operator | `e2e-operator` in `localStorage` before every spec; every write sends `X-Operator: e2e-operator` |
@@ -414,24 +414,46 @@ and `isrcsWithoutSplit` (`7`); S08/4 `isrcsWithoutSplit` `QZTST2708401` `100`; S
 | create track | same ISRC + UPC | refused; code to verify in 3.x |
 | upload Believe | same file | 409 `duplicate_period`; same bytes under another account: 409 `duplicate_file` |
 
-## 6. Spec files (`packages/frontend/e2e/golden/`)
+## 6. Spec files (`packages/frontend/e2e/golden/`) and the file order
 
-| File | Scenarios |
-|---|---|
-| `master-rows.spec.ts` | S01, S02, S03, S04 |
-| `labels-and-signs.spec.ts` | S05, S06, S07 |
-| `assumptions-exactness.spec.ts` | S08, S09 |
-| `overview-release.spec.ts` | S10, S11 |
-| `queue-documents.spec.ts` | S12, S13, S32 |
-| `queue-owners.spec.ts` | S14, S15, S30, S33, S36 |
-| `queue-labels.spec.ts` | S16, S17, S37 |
-| `publishing.spec.ts` | S18, S19 |
-| `perimeter-signals.spec.ts` | S20, S21, S35 |
-| `payouts.spec.ts` | S22, S23, S24 |
-| `operations.spec.ts` | S31 |
-| `rules-dates.spec.ts` | S25, S26, S27, S28, S29 |
-| `sources.spec.ts` | S34 |
-| `states.spec.ts` | SS1–SS7 |
+Playwright runs the files of one worker (`workers: 1`) in alphabetical order of their path: `e2e/golden/*` first, then
+`e2e/smoke.spec.ts` and `e2e/states.spec.ts`. The golden files carry an order number so the order is the name, and
+**the order is part of the design**: a spec that acts on a scenario is the only one that asserts its after state, and
+every spec that reads such a scenario runs before it and asserts the before state only (no spec reads the state and
+branches). Within a file the tests run in order (`serial` where they share state).
+
+| Order | File | Scenarios | Role |
+|---|---|---|---|
+| 10 | `10-overview.spec.ts` | S01–S11 on P1; SS1–SS3 on the real P1 | reads |
+| 11 | `11-release.spec.ts` | S11 (P7, P8) | reads |
+| 12 | `12-track.spec.ts` | S01–S11 on P6, G36, S13 month 05, S16 **before**, P5 | reads |
+| 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
+| 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before** | reads (creates `Ref spec doc`) |
+| 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous) | reads (adds W1 terms `Print`) |
+| 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
+| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30 | acts |
+| 22 | `22-duplicates.spec.ts` | S30 (assign owner, create split from the candidate) | acts |
+| 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
+| 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
+| 25 | `25-merge.spec.ts` | S33 | acts |
+| 26 | `26-payout.spec.ts` | S22 | acts |
+| 27 | `27-operations.spec.ts` | S31 | acts |
+| 28 | `28-rules.spec.ts` | S25–S29, S13 **after**, S21 (read) | acts |
+| 29 | `29-labels.spec.ts` | S37 (and P17) | acts |
+| 30 | `30-sources.spec.ts` | S34 | acts |
+| 31 | `31-questions.spec.ts` | the 14 open items | reads |
+| – | `smoke.spec.ts` | the shell, every route renders | reads |
+| – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
+
+The dependencies the numbers encode: 12, 13, 14, 15 before 20 (the before states of S12, S13, S16, S19, S32); 20 before
+21 (S20 is asserted before in the queue and acted on in the signals page); 21 before 22 (the S30 candidate is in
+`isrcsWithoutSplit` until 22 creates the split); 20 before 28 (S13 after); 23 before 24 (the S36 owner is confirmed in
+24). Adding a spec: pick a number between the files it must follow and precede, and say so here.
+
+Request counts (17 R2): `openAs` restarts a per-page count of the money endpoints (overview, reconciliation, signals,
+queue, balance, owners/payables, tracks/summary, tracks/:isrc/money, releases/:upc, documents/:id/uses);
+`expectMoneyCalls(page, 1)` after `settled` is asserted for P1 (10), the queue (20), P21 (21), the owner card and the
+owners list (24), the track card and the track list (12), the release card (11) and the document card (14).
 
 ## 7. Derivation notes (numbers not stated in 12)
 

@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectMoneyCalls, expectOverview, isrc, openAs, sc, settled, toastOk } from '../helpers';
 
 // P10 Владелец and P9 Владельцы, read-only scenarios and the G39 change made through the API (19 §4: S24, S23).
-// The merge (S33) is merge.spec.ts, the duplicate dialog (S36) duplicate-dialog.spec.ts, the payout (S22) payout.spec.ts.
+// The merge (S33) is 25-merge, the duplicate dialog (S36) 23-duplicate-dialog, the payout (S22) 26-payout. Runs after
+// 23-duplicate-dialog (the S36 owner is confirmed here).
 
 test.describe.configure({ mode: 'serial' });
 
@@ -10,6 +11,7 @@ const fact = (page: Page, name: string) => page.getByTestId(`balance-${name}`).g
 async function openOwner(page: Page, ownerId: string, tab = 'balance') {
   await openAs(page, `/owners/${ownerId}?tab=${tab}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
   await expect(page.getByTestId('balance-tab')).toBeVisible();
 }
 async function expectTotals(page: Page, totals: Record<string, string>) {
@@ -20,6 +22,7 @@ async function openOwners(page: Page, name: string, view?: 'payouts') {
   const grid = JSON.stringify({ f: { name: { filterType: 'text', type: 'contains', filter: name } } });
   await openAs(page, `/owners?${view ? `view=${view}&` : ''}grid=${encodeURIComponent(grid)}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
 }
 const cell = (page: Page, ownerId: string, col: string) =>
   page.getByTestId(`owner-${ownerId}`).locator(`[data-col="${col}"]`).getByTestId('money');
@@ -62,6 +65,7 @@ test('S24/2 G28: payable -20 is shown as 0 with the warning; gate nothing_to_pay
 test('S24/3 G39: a retroactive top participation R 15 turns payable 0 into -7.5 (shown 0, warning)', async ({ page, request }) => {
   const k = sc(24, 3);
   const ownerId = k.owners.A ?? '';
+  await expectOverview(page, [[account(24, 3), '2026-03', '100 / 50 / 0 / 50']]);
   await openOwner(page, ownerId);
   await expectTotals(page, { earned: '50', paid: '50', payable: '0', payableShown: '0' });
   await expect(page.getByTestId('payable-negative')).toHaveCount(0);
@@ -82,11 +86,13 @@ test('S24/3 G39: a retroactive top participation R 15 turns payable 0 into -7.5 
   await expect(page.getByTestId('payable-negative').getByTestId('money')).toHaveAttribute('title', '-7.5');
   await expect(page.getByTestId('payout-gate').getByTestId('gate-nothing_to_pay')).toBeVisible();
   await expect(page.getByTestId(`balance-track-${k.artists.A}-${isrc(24, 3, 1)}`).locator('[data-col="earned"]').getByTestId('money')).toHaveAttribute('title', '42.5');
+  await expectOverview(page, [[account(24, 3), '2026-03', '100 / 57.5 / 0 / 42.5']]);
 });
 
 test('S23 G29: the sublabel recipient NG-231 earned 25, recouped 25, position remaining 25, payable 0', async ({ page }) => {
   const k = sc(23);
   const ownerId = k.owners.NG ?? '';
+  await expectOverview(page, [[account(23, 1), '2026-03', '100 / 75 / 0 / 25']]);
   await openOwner(page, ownerId);
   await expectTotals(page, { earned: '25', recouped: '25', payable: '0' });
   const position = page.getByTestId(`position-${k.extra['advance-operation']}`);
