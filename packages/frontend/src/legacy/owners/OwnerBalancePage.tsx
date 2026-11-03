@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api/client';
-import { Card, ErrorBox, Money, Stat, Status, Table, reasonLabel, useAction, useApi } from '../components/ui';
+import { api } from '../client';
+import { Card, ErrorBox, Money, Stat, Status, Table, reasonLabel, useAction, useApi } from '../ui';
 
 /** Facade view of an owner: period filter, report/sales date switch, A/B/C, payable, per-artist and per-track. */
 export function OwnerBalancePage() {
@@ -27,7 +27,7 @@ export function OwnerBalancePage() {
   return (
     <>
       <h1>
-        <Link to={`/owners/${id}`}>{b.owner.name}</Link>: balance <Status value={b.owner.status} />
+        <Link to={`/legacy/owners/${id}`}>{b.owner.name}</Link>: balance <Status value={b.owner.status} />
       </h1>
       <div className="row filters">
         <label>
@@ -81,7 +81,7 @@ export function OwnerBalancePage() {
           </button>
           {!b.confirmed && <span className="warning">No approved contract: payout is not possible.</span>}
           {b.confirmed && Number(b.total.payable) < 0.01 && <span className="muted">Nothing to pay.</span>}
-          {blocked && <span className="warning">Blocked: a payout has no payment proof yet ({b.blockingPayouts.length}). <Link to="/settlements">settlements →</Link></span>}
+          {blocked && <span className="warning">Blocked: a payout has no payment proof yet ({b.blockingPayouts.length}). <Link to="/legacy/settlements">settlements →</Link></span>}
         </div>
         {done && <p className="ok">{done}</p>}
         <ErrorBox error={action.error} />

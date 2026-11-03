@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { api, type ReconciliationRow, type Signals, type SourceFile } from '../api/client';
-import { Card, ErrorBox, Money, Table, reasonLabel, useAction, useApi } from '../components/ui';
+import { api, type ReconciliationRow, type Signals, type SourceFile } from '../client';
+import { Card, ErrorBox, Money, Table, reasonLabel, useAction, useApi } from '../ui';
 import { SourcesTabs } from './SourcesTabs';
 
 /** Uploaded Believe and B17 files, upload, duplicate-period error, completeness check and unallocated amount. */

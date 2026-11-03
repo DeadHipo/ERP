@@ -15,11 +15,22 @@ export class ApiError extends Error {
 }
 
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, headers: {} };
+  const headers: Record<string, string> = {};
+  if (method !== 'GET') {
+    // Every write carries the operator name typed in the new shell (R5); the key is shared with src/components/OperatorField.
+    let operator = '';
+    try {
+      operator = localStorage.getItem('erp.operator') ?? '';
+    } catch {
+      /* storage unavailable */
+    }
+    headers['X-Operator'] = encodeURIComponent(operator);
+  }
+  const init: RequestInit = { method, headers };
   if (body instanceof FormData) init.body = body;
   else if (body !== undefined) {
     init.body = JSON.stringify(body);
-    init.headers = { 'Content-Type': 'application/json' };
+    headers['Content-Type'] = 'application/json';
   }
   const res = await fetch(`/api/v1${url}`, init);
   const json = (await res.json().catch(() => ({}))) as {

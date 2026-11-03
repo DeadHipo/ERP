@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, type ParticipationListItem } from '../api/client';
-import { Card, ErrorBox, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type ParticipationListItem } from '../client';
+import { Card, ErrorBox, Status, Table, useAction, useApi } from '../ui';
 
 type Base = 'net' | 'bucket';
 type Funded = 'top' | 'artist_pool' | 'artist_share' | 'label_share';

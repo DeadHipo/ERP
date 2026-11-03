@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, type SplitView } from '../api/client';
-import { Card, ErrorBox, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type SplitView } from '../client';
+import { Card, ErrorBox, Status, Table, useAction, useApi } from '../ui';
 
 interface ShareRow {
   artistId: string;

@@ -19,3 +19,8 @@ __pycache__/
 # Reference material with personal data: only the README is tracked
 /context_data/*
 !/context_data/README.md
+
+# Frontend e2e (Playwright)
+packages/frontend/test-results/
+packages/frontend/playwright-report/
+packages/frontend/e2e/.auth/

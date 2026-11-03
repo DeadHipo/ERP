@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { api, type DocumentView } from '../api/client';
-import { Card, ErrorBox, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type DocumentView } from '../client';
+import { Card, ErrorBox, Status, Table, useAction, useApi } from '../ui';
 
 const KINDS = ['contract', 'appendix', 'buyout', 'advance_basis', 'adjustment_basis', 'payment_proof', 'return_proof', 'other'] as const;
 

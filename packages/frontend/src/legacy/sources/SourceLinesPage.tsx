@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type SourceFile, type SourceLine, type SourceLinesPage as Page } from '../api/client';
-import { Card, ErrorBox, Money, Table, useApi } from '../components/ui';
+import { api, type SourceFile, type SourceLine, type SourceLinesPage as Page } from '../client';
+import { Card, ErrorBox, Money, Table, useApi } from '../ui';
 import { SourcesTabs } from './SourcesTabs';
 
 const PAGE_SIZES = ['50', '100', '250', '500'];

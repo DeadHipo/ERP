@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Surface variables used by the AG Grid theme (components/grid/theme.ts). They follow the HeroUI tokens, so
+   `html.dark` switches the grids together with the rest of the page. */
+:root {
+  --grid-bg: var(--surface);
+  --grid-chrome: var(--surface-secondary);
+  --grid-border: var(--border);
+  --grid-row-hover: color-mix(in srgb, var(--accent) 8%, transparent);
+  --grid-selected: color-mix(in srgb, var(--accent) 14%, transparent);
+  --shell-sidebar-width: 15rem;
+  --shell-sidebar-width-collapsed: 3.5rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

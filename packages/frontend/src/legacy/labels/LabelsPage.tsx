@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { api, type LabelListItem } from '../api/client';
-import { Card, ErrorBox, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type LabelListItem } from '../client';
+import { Card, ErrorBox, Status, Table, useAction, useApi } from '../ui';
 
 type Rule = LabelListItem['rules'][number];
 

@@ -4,10 +4,10 @@ import { NavLink } from 'react-router-dom';
 export function SourcesTabs() {
   return (
     <div className="tabs">
-      <NavLink to="/sources" end>
+      <NavLink to="/legacy/sources" end>
         Files and checks
       </NavLink>
-      <NavLink to="/sources/lines">Lines of the reports</NavLink>
+      <NavLink to="/legacy/sources/lines">Lines of the reports</NavLink>
     </div>
   );
 }

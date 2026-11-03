@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { REASON_LABELS } from '@erp/shared/reasons';
-import { ApiError } from '../api/client';
+import { ApiError } from './client';
 
 /** Loads data from the API; `reload` re-runs the request. */
 export function useApi<T>(load: () => Promise<T>, deps: unknown[]) {

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Operation } from '../api/client';
-import { Card, ErrorBox, Money, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type Operation } from '../client';
+import { Card, ErrorBox, Money, Status, Table, useAction, useApi } from '../ui';
 
 const SCOPES = ['any', 'master', 'publishing', 'master_publishing', 'isrcs'] as const;
 
@@ -61,7 +61,7 @@ export function SettlementsPage() {
             </option>
           ))}
         </select>
-        {ownerId && <Link to={`/owners/${ownerId}/balance`}>balance and payout button →</Link>}
+        {ownerId && <Link to={`/legacy/owners/${ownerId}/balance`}>balance and payout button →</Link>}
       </div>
       {blocking.length > 0 && (
         <p className="warning">

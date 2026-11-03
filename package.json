@@ -15,6 +15,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build:client": "npm run build -w @erp/frontend",
+    "e2e": "npm run e2e -w @erp/frontend",
     "import:legacy": "npm run import:legacy -w @erp/backend",
     "migrate:ch": "npm run migrate:ch -w @erp/backend",
     "migrate:pg": "docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm postgres-migrate",

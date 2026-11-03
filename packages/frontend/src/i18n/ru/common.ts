@@ -1,0 +1,16 @@
+export const common = {
+  appName: 'ERP',
+  loading: 'Загрузка…',
+  retry: 'Повторить',
+  cancel: 'Отмена',
+  confirm: 'Подтвердить',
+  close: 'Закрыть',
+  save: 'Сохранить',
+  create: 'Создать',
+  search: 'Поиск',
+  noData: 'нет данных',
+  yes: 'да',
+  no: 'нет',
+  notFound: 'Страница не найдена',
+  backHome: 'На главную',
+} as const;

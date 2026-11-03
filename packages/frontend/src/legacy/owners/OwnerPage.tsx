@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, type DocumentView } from '../api/client';
-import { Card, ErrorBox, Status, Table, useAction, useApi } from '../components/ui';
+import { api, type DocumentView } from '../client';
+import { Card, ErrorBox, Status, Table, useAction, useApi } from '../ui';
 
 /** The owner, its artists (pseudonyms), their tracks with ISRC, documents and their status. */
 export function OwnerPage() {
@@ -63,7 +63,7 @@ export function OwnerPage() {
         {owner.name} <Status value={owner.status} />
       </h1>
       <p>
-        {owner.kind} · origin {owner.origin} · <Link to={`/owners/${owner.id}/balance`}>balance and payout →</Link>
+        {owner.kind} · origin {owner.origin} · <Link to={`/legacy/owners/${owner.id}/balance`}>balance and payout →</Link>
       </p>
       <ErrorBox error={action.error} />
       <Card title={`Artists (pseudonyms): ${artists.length}`}>
@@ -84,7 +84,7 @@ export function OwnerPage() {
                 { title: 'ISRC', render: (t) => <code>{t.isrc ?? '—'}</code> },
                 { title: 'UPC', render: (t) => <code>{t.upc ?? '—'}</code> },
                 { title: 'Title', render: (t) => t.title },
-                { title: '', render: (t) => (t.isrc ? <Link to={`/splits?isrc=${t.isrc}`}>split</Link> : null) },
+                { title: '', render: (t) => (t.isrc ? <Link to={`/legacy/splits?isrc=${t.isrc}`}>split</Link> : null) },
               ]}
             />
           </div>
@@ -117,7 +117,7 @@ export function OwnerPage() {
           ]}
         />
         <p>
-          Contracts: {contracts.length} · <Link to="/documents">document registry →</Link>
+          Contracts: {contracts.length} · <Link to="/legacy/documents">document registry →</Link>
         </p>
         <form className="row" onSubmit={addContract}>
           <select value={contract.documentId} onChange={(e) => setContract({ ...contract, documentId: e.target.value })} required>

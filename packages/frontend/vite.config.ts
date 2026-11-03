@@ -1,12 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   root,
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     host: true, // все интерфейсы: нужно для доступа с роутера (KeenDNS)
@@ -14,5 +15,24 @@ export default defineConfig({
     proxy: { '/api': 'http://localhost:3000' },
     fs: { allow: ['../..'] },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // The vendor chunk holds HeroUI, React Aria and AG Grid (about 1.5 MB); it is loaded once and cached.
+    chunkSizeWarningLimit: 1700,
+    rolldownOptions: {
+      output: {
+        // react and react-dom are never put into a chunk of their own (React 19 fails at load when they are split);
+        // the heavy libraries share one vendor chunk, everything else stays in the entry and the lazy chunks.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules[\\/](@heroui|react-aria|react-aria-components|react-stately|@react-aria|@react-stately|@react-types|@internationalized|ag-grid-community|ag-grid-react|@tanstack|tailwind-variants|tailwind-merge)/,
+            },
+          ],
+        },
+      },
+    },
+  },
 });
