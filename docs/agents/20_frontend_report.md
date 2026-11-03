@@ -140,8 +140,8 @@ is in place at no cost, D-142).
    real data crashed the API with "JavaScript heap out of memory"; the assumption A2 (one operator, calls serialised
    by the CPU) holds for time, not for memory. Before a second operator or a script hammers the API: cap the
    concurrent calculations in the server (a queue of one) or raise the Node heap; a decision for the next goal.
-8. **UI polish left** (stage 6 product and QA notes): a grid row does not re-measure when its action buttons change
-   (two rows can overlap until a reload); ISRC/UPC on the unfunded list, «Месяцы» on the queue and «Выплачено» on the
+8. **UI polish left** (stage 6 product and QA notes; the row re-measure the product asked for is done after the
+   verdict: `DataGrid` resets the row heights when the operator name or the rows change): ISRC/UPC on the unfunded list, «Месяцы» on the queue and «Выплачено» on the
    payouts view can still truncate at narrow widths; the confirm-split and close dialogs state no amount; the
    overview and the track months are listed oldest first; no extra mark on a very large payout.
 

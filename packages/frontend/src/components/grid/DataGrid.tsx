@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
 import { useSearchParams } from 'react-router-dom';
 import { GRID_THEME } from './theme';
 import { AG_GRID_LOCALE_RU } from './locale-ru';
+import { useOperator } from '../../lib/operator';
 
 /** Page sizes of every list (the largest list is 26 k tracks, loaded once and paged on the client). */
 export const PAGE_SIZES = [50, 100, 500];
@@ -89,6 +90,16 @@ export function DataGrid<T>(props: {
     [key, defaultSort],
   );
 
+  // A cell with action buttons changes its height when the operator name appears or a row's state changes after an
+  // action; AG Grid measures auto-height cells only when told, else two rows overlap (stage 6 product finding 2).
+  const { operator } = useOperator();
+  useEffect(() => {
+    apiRef.current?.resetRowHeights();
+  }, [operator, props.rowData]);
+  const onRowDataUpdated = useCallback(() => {
+    apiRef.current?.resetRowHeights();
+  }, []);
+
   const getRowIdFn = useCallback((p: { data: T }) => props.getRowId(p.data), [props]);
   const localeText = useMemo(() => AG_GRID_LOCALE_RU, []);
   const pageSize = props.pageSize ?? PAGE_SIZES[0];
@@ -120,6 +131,7 @@ export function DataGrid<T>(props: {
         domLayout={props.autoHeight ? 'autoHeight' : 'normal'}
         processRowPostCreate={processRowPostCreate}
         onGridReady={onGridReady}
+        onRowDataUpdated={onRowDataUpdated}
         onSortChanged={save}
         onFilterChanged={save}
         onRowClicked={(e) => {
