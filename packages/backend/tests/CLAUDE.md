@@ -16,6 +16,11 @@
   - `test-sources.ts`: one private pair of PostgreSQL + ClickHouse databases per test file (all migrations, so the
     module schemas too), created on first use, emptied for each new facade, dropped after the file (`setup.ts`).
     `testQuery` reads ClickHouse directly; `testStack()` gives the PostgreSQL pool and `db`.
+  - `writer.ts`: `writer(app)` is `request(app)` whose writes carry `X-Operator` (the API refuses a write without it, D-140);
+    use it in every test that writes through supertest. `golden-case.ts`: the `Case` builder of `golden.test.ts`, shared with
+    the e2e seed scenarios.
+  - `sources-stack.ts` sits on `src/shared/private-stores.ts` (`createPrivateStores(name, { dropFirst })`: PostgreSQL
+    `erp_<name>` + ClickHouse `believe_<name>` and `_stage`, all migrations; the e2e uses a fixed name).
   - `tmp-root.ts`: every test file writes under its own `data/test-tmp/run-*`, removed after the file.
 - Layer tests: `layers/*.test.ts` are pure (no stack) over the hand-built world in `layers/world.ts`; one file per
   layer, `index.test.ts` pins the order, `exactness.test.ts` is the seeded random exactness test (12 decimals).

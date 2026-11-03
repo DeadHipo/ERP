@@ -15,6 +15,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"],
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "include": ["src", "tests", "scripts", "vitest.config.ts"]

@@ -75,6 +75,7 @@ services:
       MIGRATIONS_DIR: /app/migrations/clickhouse
     volumes:
       - ./packages/backend/scripts/migrate-clickhouse.ts:/app/scripts/migrate-clickhouse.ts:ro
+      - ./packages/backend/src/shared/clickhouse-sql.ts:/app/src/shared/clickhouse-sql.ts:ro
       - ./packages/backend/migrations/clickhouse:/app/migrations/clickhouse:ro
     depends_on:
       clickhouse:

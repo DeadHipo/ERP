@@ -31,3 +31,4 @@
   snapshot of the very calculation it used, D-053) before calling `payment-service.ts` (a stub, D-013).
 - Recoupment itself is in `layers/recoup.ts` (moved from the settlements module, D-127; the shapes `Scope`, `IncomeItem`,
   `Position` stay in `modules/settlements`); `balance.ts` feeds it income items and positions.
+- `audit.ts`: `recordAction(input)`, `auditOf(entityId, limit)`, `recentActions(limit)` over the `audit` module (D-140). The API hook `api/audit.ts` calls `recordAction` after every successful write (needs `X-Operator`); a facade method never records by itself.

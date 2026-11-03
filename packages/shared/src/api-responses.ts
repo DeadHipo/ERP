@@ -585,3 +585,18 @@ export const operationSchema = z.object({
   meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']),
 });
 export type Operation = z.infer<typeof operationSchema>;
+
+// ---- audit (D-140) ----
+
+export const auditActionSchema = z.object({
+  id: z.string(),
+  at: timestamp,
+  operator: z.string(),
+  method: z.string(),
+  route: z.string().describe('Route template, e.g. /documents/:id/approve'),
+  entityIds: z.array(z.string()),
+  summary: z.record(z.string(), z.unknown()).describe('Ids, amounts and dates of the write; never names or free text'),
+});
+export const auditListSchema = z.object({ items: z.array(auditActionSchema) });
+export type AuditAction = z.infer<typeof auditActionSchema>;
+export type AuditList = z.infer<typeof auditListSchema>;

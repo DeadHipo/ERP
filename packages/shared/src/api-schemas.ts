@@ -222,3 +222,11 @@ export const createParticipationBody = z.object({
   documentId: z.string().nullish(),
   note: z.string().nullish(),
 });
+
+// ---- audit (D-140) ----
+
+export const auditQuery = z.object({
+  entityId: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+export type AuditQuery = z.infer<typeof auditQuery>;

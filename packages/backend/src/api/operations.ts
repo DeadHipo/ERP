@@ -20,6 +20,8 @@ export interface ApiOperation {
   /** Success status (default 200). */
   status?: 200 | 201;
   response: z.ZodType;
+  /** Request headers the operation reads (`X-Operator` on every write, D-140). */
+  headers?: { name: string; required: boolean; description: string }[];
   /** Error codes worth knowing, as `status code: meaning`. */
   errors?: string[];
 }
@@ -29,7 +31,13 @@ const free = (what: string) => z.looseObject({}).describe(`${what} (free-form, s
 
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
-export const API_OPERATIONS: ApiOperation[] = [
+const OPERATOR_HEADER = {
+  name: 'X-Operator',
+  required: true,
+  description: 'Name of the operator, URI-encoded (1-200 characters); a write without it is refused: 400 operator_required',
+};
+
+const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/health',
@@ -461,7 +469,21 @@ export const API_OPERATIONS: ApiOperation[] = [
     summary: 'Snapshot stored with a payout (per-artist breakdown, file hashes)',
     response: free('Payout snapshot'),
   },
+
+  {
+    method: 'get',
+    path: '/audit',
+    tag: 'system',
+    summary: 'The trail of writes that touched an entity (newest first); without entityId the latest writes',
+    query: S.auditQuery,
+    response: R.auditListSchema,
+  },
 ];
+
+/** Every write (post, patch) declares the `X-Operator` header (D-140). */
+export const API_OPERATIONS: ApiOperation[] = operations.map((o) =>
+  o.method === 'get' ? o : { ...o, headers: [OPERATOR_HEADER, ...(o.headers ?? [])] },
+);
 
 export const operationKey = (o: Pick<ApiOperation, 'method' | 'path'>) =>
   `${o.method.toUpperCase()} ${o.path}`;

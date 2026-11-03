@@ -5,6 +5,7 @@ import { type LabelsService } from '../modules/labels';
 import type { SourcesService } from '../modules/sources';
 import { type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
+import { type AuditService } from '../modules/audit';
 import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
 import { stubPaymentService, type PaymentService } from './payment-service';
@@ -52,9 +53,10 @@ export function createFacadeContext(
     sources: SourcesService;
     settlements: SettlementsService;
     publishing: PublishingService;
+    audit: AuditService;
   },
 ) {
-  const { db, owners, splits, labels, sources, settlements, publishing } = m;
+  const { db, owners, splits, labels, sources, settlements, publishing, audit } = m;
   const payments = config.paymentService ?? stubPaymentService;
   const modules = { db, owners, splits, labels, sources, publishing };
 
@@ -172,6 +174,7 @@ export function createFacadeContext(
     sources,
     settlements,
     publishing,
+    audit,
     payments,
     modules,
     blockingPayoutsOf,

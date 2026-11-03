@@ -42,6 +42,18 @@ describe('API contract', () => {
     app = createApp(f, { tmpDir: join(TMP, 'contract-uploads') });
   });
 
+  const OPERATOR = 'contract-test';
+  let auditRows = 0;
+  /** Every successful write leaves exactly one audit row, newest first, with the route template (R5, D-140). */
+  async function expectOneAuditRow(method: string, template: string, params?: Record<string, string>) {
+    const res = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    const items = res.body.items as { operator: string; method: string; route: string; entityIds: string[] }[];
+    expect(items.length, `audit rows after ${method} ${template}`).toBe(auditRows + 1);
+    auditRows = items.length;
+    expect(items[0]).toMatchObject({ operator: OPERATOR, method: method.toUpperCase(), route: template });
+    for (const id of Object.values(params ?? {})) expect(items[0]?.entityIds).toContain(id);
+  }
+
   /** Calls an operation by its template path and checks status and response body against the contract. */
   async function call(
     method: 'get' | 'post' | 'patch',
@@ -59,6 +71,7 @@ describe('API contract', () => {
       '/api/v1' +
       template.replace(/:([A-Za-z]+)/g, (_m, n: string) => encodeURIComponent(o.params?.[n] ?? ''));
     let req = request(app)[method](url);
+    if (method !== 'get') req = req.set('X-Operator', OPERATOR);
     if (o.query) req = req.query(o.query);
     if (o.file) req = req.attach('file', o.file.path, o.file.fileName);
     else if (o.body !== undefined) req = req.send(o.body as object);
@@ -70,6 +83,7 @@ describe('API contract', () => {
       `${operationKey(op)} response does not fit its schema`,
     ).toBeNull();
     covered.add(operationKey(op));
+    if (method !== 'get') await expectOneAuditRow(method, template, o.params);
     return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
@@ -248,6 +262,28 @@ describe('API contract', () => {
     await call('post', '/owners/merge', {
       body: { fromId: other.id, intoId: owner.id, reason: 'same person' },
     });
+
+    // the trail of one entity: the merge, newest first, with ids and no free text
+    const trail = await call('get', '/audit', { query: { entityId: owner.id, limit: '3' } });
+    expect(trail.items[0]).toMatchObject({ method: 'POST', route: '/owners/merge', operator: OPERATOR });
+    expect(trail.items[0].entityIds).toEqual(expect.arrayContaining([other.id, owner.id]));
+    expect(trail.items[0].summary.body).toEqual({ reason: 'same person' });
+    expect(trail.items.length).toBeLessThanOrEqual(3);
+  });
+
+  it('a write without the X-Operator header is refused and leaves no trace', async () => {
+    const before = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    for (const header of [undefined, '', '   ', 'x'.repeat(201)]) {
+      let req = request(app).post('/api/v1/owners');
+      if (header !== undefined) req = req.set('X-Operator', header);
+      const res = await req.send({ name: 'No Operator Synthetic', kind: 'person' });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatchObject({ code: 'operator_required', statusCode: 400 });
+    }
+    const after = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    expect(after.body.items.length).toBe(before.body.items.length);
+    const owners = await request(app).get('/api/v1/owners').expect(200);
+    expect(JSON.stringify(owners.body)).not.toContain('No Operator Synthetic');
   });
 
   it('the scenario touched every operation of the contract', async () => {
@@ -272,6 +308,11 @@ describe('API contract', () => {
     expect(count(doc.body)).toBe(API_OPERATIONS.length);
     expect(count(built)).toBe(API_OPERATIONS.length);
     expect(doc.body.paths['/owners/{id}/balance'].get.parameters.length).toBeGreaterThan(1);
+    const header = (doc.body.paths['/owners'].post.parameters as { name: string; in: string; required: boolean }[]).find(
+      (p) => p.in === 'header',
+    );
+    expect(header).toMatchObject({ name: 'X-Operator', required: true });
+    expect(doc.body.paths['/owners'].get.parameters ?? []).toEqual([]);
     const ui = await request(app).get('/api/v1/docs/').expect(200);
     expect(ui.text).toContain('swagger');
   });

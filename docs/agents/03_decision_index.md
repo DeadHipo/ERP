@@ -34,6 +34,8 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-119 API contract as data, OpenAPI, Swagger · in force
 - D-120 Agent guides in `docs/agents/`, nested CLAUDE.md files · in force
 
+- D-140 Operator trace: `X-Operator` required on writes, the `audit` module and `GET /audit`; private stores shared by tests and e2e; `CLICKHOUSE_DATABASE` honoured by `connectSources` (corrects D-121) · in force; допущение: one operator role
+
 ## Money and consistency
 - D-002 Exact decimals, cents for operations, round only at payout · *refined by* D-010
 - D-010 Pico-USD integers for source amounts · in force (ClickHouse stores `Decimal(38,12)`, D-102)
@@ -47,6 +49,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-100 Flows shown in the UI on data/real · in force
 - D-113 Lines page `/sources/lines` · in force
 - D-129 API and pages for labels, participations, terms by type, track notes; shared `REASON_LABELS` · in force (the pages are replaced by the frontend goal, D-139 …)
+- D-144 The frontend foundation: shell, components with test hooks, the client contract (schema.parse, X-Operator), the money text rule, eslint money bans and guard tests, `npm run e2e` on private stores, legacy pages under `/legacy/*` · in force; допущения A4, A7, A8
 - D-139 Frontend goal design: rules R1–R8 with machine checks, the stack pinned, operator trace, payout gate as a field, e2e on private stores; the event loop and the money text as допущения · in force; changes D-119 (the client parses responses), corrects D-121 (ClickHouse database name, N20)
 
 ## Module 1: owners, artists, tracks, documents

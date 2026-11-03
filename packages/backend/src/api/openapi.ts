@@ -32,6 +32,18 @@ export function buildOpenApiDocument() {
           ? { params: z.object(Object.fromEntries(params.map((p) => [p, z.string()]))) }
           : {}),
         ...(op.query ? { query: op.query } : {}),
+        ...(op.headers?.length
+          ? {
+              headers: z.object(
+                Object.fromEntries(
+                  op.headers.map((h) => {
+                    const t = z.string().describe(h.description);
+                    return [h.name, h.required ? t : t.optional()];
+                  }),
+                ),
+              ),
+            }
+          : {}),
         ...(op.body ? { body: { content: { 'application/json': { schema: op.body } } } } : {}),
         ...(op.upload
           ? {

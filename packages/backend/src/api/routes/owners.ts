@@ -96,7 +96,10 @@ export function ownersRouter(facade: Facade) {
     res.json(await owners.attachFile(param(req, 'id'), parse(S.attachFileBody, req.body).fileRef)),
   );
   r.post('/documents/:id/approve', async (req, res) =>
-    res.json(await owners.approveDocument(param(req, 'id'), parse(S.approveBody, req.body ?? {}).by)),
+    res.json(await owners.approveDocument(
+        param(req, 'id'),
+        (res.locals.operator as string | undefined) ?? parse(S.approveBody, req.body ?? {}).by,
+      )),
   );
   r.post('/contracts', async (req, res) =>
     res.status(201).json(await owners.createContract(parse(S.createContractBody, req.body))),

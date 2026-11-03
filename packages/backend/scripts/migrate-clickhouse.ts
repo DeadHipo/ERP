@@ -20,6 +20,9 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { splitStatements } from '../src/shared/clickhouse-sql.ts';
+
+export { splitStatements };
 
 export interface Migration {
   version: number;
@@ -33,42 +36,6 @@ interface AppliedRow {
   version: number;
   name: string;
   checksum: string;
-}
-
-/**
- * Splits a SQL file into statements on `;`. `--` line comments and 'single quoted' strings (with backslash
- * and doubled-quote escapes) are respected, so a `;` inside them does not split. Comments are dropped.
- */
-export function splitStatements(sql: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  for (let i = 0; i < sql.length; i++) {
-    const c = sql[i] as string;
-    if (c === '-' && sql[i + 1] === '-') {
-      while (i < sql.length && sql[i] !== '\n') i++;
-      cur += '\n';
-    } else if (c === "'") {
-      cur += c;
-      for (i++; i < sql.length; i++) {
-        const s = sql[i] as string;
-        cur += s;
-        if (s === '\\') {
-          i++;
-          cur += sql[i] ?? '';
-        } else if (s === "'") {
-          if (sql[i + 1] === "'") {
-            i++;
-            cur += "'";
-          } else break;
-        }
-      }
-    } else if (c === ';') {
-      if (cur.trim()) out.push(cur.trim());
-      cur = '';
-    } else cur += c;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
 }
 
 /** Reads NNNN_name.sql files sorted by version. Any other .sql file or a repeated version is an error. */

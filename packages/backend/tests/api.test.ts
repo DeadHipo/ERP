@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import request from 'supertest';
 import { join } from 'node:path';
 import { createApp } from '../src/api/app';
+import { writer } from './helpers/writer';
 import { approvedAppendix, confirmedOwner, newFacade, TMP, writeBelieve } from './helpers/fixtures';
 
 const I1 = 'QZTST2600001';
@@ -17,7 +17,7 @@ describe('JSON API', () => {
   it('streams a Believe upload and returns 409 with a clear message for a second file of the same period', async () => {
     const { app } = await setup();
     const file = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10.5' }]);
-    const ok = await request(app)
+    const ok = await writer(app)
       .post('/api/v1/sources/believe')
       .attach('file', file.path, file.fileName)
       .field('generatedAt', '2026-08-09T10:00:00Z');
@@ -25,7 +25,7 @@ describe('JSON API', () => {
     expect(ok.body.reportingMonth).toBe('2026-07');
     expect(ok.body.sha256).toMatch(/^[0-9a-f]{64}$/);
     const again = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '11' }], { reportId: '9999' });
-    const dup = await request(app).post('/api/v1/sources/believe').attach('file', again.path, again.fileName);
+    const dup = await writer(app).post('/api/v1/sources/believe').attach('file', again.path, again.fileName);
     expect(dup.status).toBe(409);
     expect(dup.body.error.code).toBe('duplicate_period');
     expect(dup.body.error.message).toMatch(/already loaded/);
@@ -37,9 +37,9 @@ describe('JSON API', () => {
       { isrc: I1, upc: UPC, net: '10.5', platform: 'Spotify' },
       { isrc: I1, upc: UPC, net: '2', platform: 'Deezer' },
     ]);
-    const up = await request(app).post('/api/v1/sources/believe').attach('file', file.path, file.fileName);
+    const up = await writer(app).post('/api/v1/sources/believe').attach('file', file.path, file.fileName);
     expect(up.status).toBe(201);
-    const all = await request(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&limit=1`);
+    const all = await writer(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&limit=1`);
     expect(all.status).toBe(200);
     expect(all.body.total).toMatchObject({ keys: '2', net: '12.5' });
     expect(all.body.items).toHaveLength(1);
@@ -49,33 +49,33 @@ describe('JSON API', () => {
       net: '10.5',
       account: '1052428',
     });
-    const one = await request(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&platform=Deezer`);
+    const one = await writer(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&platform=Deezer`);
     expect(one.body.items.map((l: { net: string }) => l.net)).toEqual(['2']);
-    const facets = await request(app).get(`/api/v1/sources/lines/facets?fileId=${up.body.id}`);
+    const facets = await writer(app).get(`/api/v1/sources/lines/facets?fileId=${up.body.id}`);
     expect(facets.body.platforms).toEqual(['Deezer', 'Spotify']);
-    expect((await request(app).get('/api/v1/sources/lines?limit=0')).status).toBe(400);
-    expect((await request(app).get('/api/v1/sources/lines?sort=drop')).status).toBe(400);
-    const bad = await request(app).get('/api/v1/sources/lines?fileId=11111111-1111-1111-1111-111111111111');
+    expect((await writer(app).get('/api/v1/sources/lines?limit=0')).status).toBe(400);
+    expect((await writer(app).get('/api/v1/sources/lines?sort=drop')).status).toBe(400);
+    const bad = await writer(app).get('/api/v1/sources/lines?fileId=11111111-1111-1111-1111-111111111111');
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe('validation_error');
   });
 
   it('validates input with zod and returns the error envelope', async () => {
     const { app } = await setup();
-    const bad = await request(app).post('/api/v1/owners').send({ name: '', kind: 'x' });
+    const bad = await writer(app).post('/api/v1/owners').send({ name: '', kind: 'x' });
     expect(bad.status).toBe(400);
     expect(bad.body.error.code).toBe('validation_error');
-    const limit = await request(app).get('/api/v1/splits?limit=abc');
+    const limit = await writer(app).get('/api/v1/splits?limit=abc');
     expect(limit.status).toBe(400);
   });
 
   it('warns about possible duplicates instead of creating them', async () => {
     const { app } = await setup();
-    await request(app).post('/api/v1/owners').send({ name: 'Ivan Synthetic', kind: 'person' }).expect(201);
-    const dup = await request(app).post('/api/v1/owners').send({ name: 'ivan synthetic', kind: 'person' });
+    await writer(app).post('/api/v1/owners').send({ name: 'Ivan Synthetic', kind: 'person' }).expect(201);
+    const dup = await writer(app).post('/api/v1/owners').send({ name: 'ivan synthetic', kind: 'person' });
     expect(dup.status).toBe(409);
     expect(dup.body.error.details.similar).toHaveLength(1);
-    await request(app)
+    await writer(app)
       .post('/api/v1/owners')
       .send({ name: 'ivan synthetic', kind: 'person', force: true })
       .expect(201);
@@ -97,21 +97,21 @@ describe('JSON API', () => {
         { isrc: I1, upc: UPC, net: '300', country: 'Peru' },
       ]),
     );
-    const bal = await request(app)
+    const bal = await writer(app)
       .get(`/api/v1/owners/${a.owner.id}/balance?from=2026-07&to=2026-07&basis=report`)
       .expect(200);
     expect(bal.body.total.payable).toBe('150.000000001');
     expect(bal.body.period.received).toBe('300.000000002');
-    const payout = await request(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({}).expect(201);
+    const payout = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({}).expect(201);
     expect(payout.body.amountCents).toBe(15000);
-    const blocked = await request(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
+    const blocked = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
     expect(blocked.status).toBe(422);
     expect(blocked.body.error.code).toBe('payout_blocked');
   });
 
   it('labels, participations and assumption documents: business errors keep their codes', async () => {
     const { app } = await setup();
-    const post = (url: string, body: object) => request(app).post(`/api/v1${url}`).send(body);
+    const post = (url: string, body: object) => writer(app).post(`/api/v1${url}`).send(body);
     const own = (await post('/labels', { name: 'Own Synthetic', kind: 'own' }).expect(201)).body;
     const sub = (await post('/labels', { name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: own.id }).expect(201))
       .body;
@@ -173,7 +173,7 @@ describe('JSON API', () => {
     const approve = await post(`/documents/${doc.id}/approve`, {});
     expect(approve.status).toBe(422);
     expect(approve.body.error.code).toBe('assumption_not_approvable');
-    const emptyPatch = await request(app).patch('/api/v1/tracks/x').send({});
+    const emptyPatch = await writer(app).patch('/api/v1/tracks/x').send({});
     expect(emptyPatch.status).toBe(400);
   });
 });
