@@ -175,3 +175,56 @@ guides `01`, `04`, `05`, the README of `docs/agents`, root `CLAUDE.md` and `pack
   the seed `packages/backend/scripts/e2e/`; the specs `packages/frontend/e2e/`.
 - Verdicts: `reviews/frontend_stage{1,2,3,6}_{architect,product,qa}.md`, the walk `reviews/frontend_stage4_walk.md`.
 - Decisions: D-139 … D-153.
+
+## 8. Evidence: every C reason, every signal and every item of `15` §3 closed by an action on the screen
+
+The actions below are performed THROUGH THE INTERFACE by the Playwright specs on the seeded golden screens (the test
+names are the `test(...)` titles of `packages/frontend/e2e/golden/`), and the numbers before and after each one are
+asserted as exact strings. On the real data the same controls exist (stage 4 walk §E); they are not pressed there
+because the dev database is read-only for agents.
+
+| C reason | Action on the screen | Spec test | Before → after |
+|---|---|---|---|
+| `owner_unconfirmed` | create and approve a contract document, create the contract | `20-queue` "S14 owner_unconfirmed → contract with a new approved document" | C 50 → B 50, gate allowed |
+| `split_unconfirmed` | create and approve a document, confirm the split | `20-queue` "S12 split_unconfirmed → create and approve a document, confirm the split" | 100/50/5/45 → 100/55/0/45 |
+| `publishing_terms_unconfirmed` | set the terms of the owner | `20-queue` "S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01" | W3 C 50 → B 50 |
+| `assumption` | replace the row's assumption document by a real one (split change from a month) | `20-queue` "S13 assumption on a row → replace by a document from 2026-03" | L 20 C → B from 2026-03 |
+| `artist_without_owner` | assign an owner to the pseudonym | `20-queue` "S15 artist_without_owner → assign the owner" | C 50 → B 50 |
+| `label_unmapped` | alias of an own label; or a sublabel with a rule | `20-queue` "S16 label_unmapped → alias of 0to8", "S17 … sublabel of 0to8 with a rule 50 → NG-171" | ours C 50 → ours 50; → NG 25 |
+| `rule_unconfirmed` | approve the rule's document | `20-queue` "S32 rule_unconfirmed → approve the rule document" | P 5 C → B |
+| `unknown_pair` | register the track (ISRC + UPC) | `21-signals` "S20 unallocated: the pair with ISRC → register the track" | C 7 → ours 7 |
+| `writer_unmapped` | map the writer to an owner | `20-queue` "S19 writer_unmapped → map the ambiguous holder to W4a" | b17 C 100 → B 50, ours 50 |
+| `no_isrc` | none: read-only with ⚠ D-035 (the owner's decision) | `20-queue` "S20 perimeter: … no_isrc is read-only (⚠ D-035)" | stays C 2 |
+
+| Signal | Action on the screen | Spec test |
+|---|---|---|
+| `unallocated` | register the track / read-only without ISRC | `21-signals` S20 |
+| `isrcsWithoutSplit` | create the split | `22-duplicates` "S30 create the split DUP-301 50 % from the candidate" (the same dialog as the list's `action-create-split`) |
+| `ambiguousWriters` | map the writer | `20-queue` S19 (the P18 dialog: `15-publishing` "the map dialog opens…") |
+| `unfunded` | close the participation and re-create it | `21-signals` "S21 unfunded → close the participation at 2026-03 and re-create it at 10 %" |
+| `labelUnmapped` | alias or sublabel rule | `20-queue` S16, S17 |
+| `sublabelWithoutRule` | set the rule | `29-labels` S37 (the rule dialog) and `21-signals` S35/1 (the row and the action) |
+| `ruleRecipientIsRow` | change the split or close the rule | `21-signals` S35/1 (the row), `29-labels` "S37 close the rule at 2026-04-01" |
+| `twoRowsOneOwner` | information with links | `21-signals` S35/2 |
+| `tracksWithNote` | set / clear the note | `21-signals` "S35/3 a track note: set it, clear it" |
+| `participantsWithoutOwner` | assign an owner | `21-signals` "S35/4 a participant without an owner → assign Owner P-354" |
+| `assumptions` | replace by a document | `20-queue` S13 (the wizard), `14-documents` "P14 an assumption document: the note, the wizard link" |
+
+| `15` §3 item | On the screen | Closed by |
+|---|---|---|
+| 1 B17 holders vs stage-name owners | queue `owner_unconfirmed` (holder owners), P3 15.3.1 | the contract or merge action (S14, S33); the merge of a holder into a legacy owner is ⚠ D-083 |
+| 2 documents the owner owes | queue `split_unconfirmed` / `assumption` by owner, P3 15.3.2 | document + confirm split (S12), replace (S13) |
+| 3 ambiguous pseudonyms | Псевдонимы → дубликаты, P3 15.3.3 | assign owner, create the split per ISRC (S30) |
+| 4 imprint list (Q12) | queue `assumption` (rule documents), Лейблы, P3 15.3.4 | replace the rule's document (close + re-create) or alias (S16, S17) |
+| 5 Main carve pairs | queue `assumption` (participation documents), P3 15.3.5 | replace (close + re-create the participation with the document) |
+| 6 sublabel money in C | queue `owner_unconfirmed` (sublabel owners), `assumption`, P3 15.3.6 | contract for the sublabel owner (S14 pattern), replace |
+| 7 buy-outs (M51 …) | P3 15.3.7, the rules tab of the tracks | an owner's decision: entered as a split change / buy-out when it comes (S25) |
+| 8 Updated Q2 statement, D-087, D-045, D-096 | P3 15.3.8 (⚠) | the owner's decisions; no screen action by design |
+| 9 77 Records exception (M58) | P3 15.3.9 (⚠) | not expressible; no screen action by design |
+| 10 unexplained owner balances | Владельцы with payable, the negative-payable banner, P3 15.3.10 | operations (deduction / credit / return, S31) when the owner decides |
+| 11 no-split money (C11) | signal `isrcsWithoutSplit`, P3 15.3.11 | create the split (S30) or a "fully ours" decision ⚠ |
+| 12 administration terms from 2026-01 | queue `publishing_terms_unconfirmed`, P3 15.3.12 | set the terms (S18) |
+| 13 licensor terms (MC ROBA CENA row) | queue `assumption` (that row's document), P3 15.3.13 | replace (S13) |
+| 14 the 165.80 after the buy-out | P3 15.3.14 | the owner's check; no screen action by design |
+
+Items 7, 8, 9 and 14 wait for the owner's decision and show their decision id; every other item has its action.
