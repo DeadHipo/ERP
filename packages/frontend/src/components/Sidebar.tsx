@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bars3Icon, ClockIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 import { NAV, isItemActive } from '../nav';
 import { readStorage, writeStorage } from '../lib/storage';
 import { ru } from '../i18n/ru';
@@ -68,17 +68,6 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-border p-2">
-        <Link
-          to="/legacy"
-          data-testid="nav-legacy"
-          title={collapsed ? ru.shell.legacyLink : undefined}
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted hover:bg-default"
-        >
-          <ClockIcon className="size-4 shrink-0" />
-          {collapsed ? null : <span>{ru.shell.legacyLink}</span>}
-        </Link>
-      </div>
     </aside>
   );
 }

@@ -3,9 +3,8 @@ import { Modal, SearchField, Button } from '@heroui/react';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import type { z } from 'zod';
 import { ApiError } from '../api/client';
-import type { searchResponseSchema } from '../api/search-schema';
+import type { SearchResult } from '@erp/shared/api-responses';
 import { searchQueries } from '../api/queries/search';
 import { entityPath } from './EntityLink';
 import { HiddenRacDialogAnchor } from './HiddenRacDialogAnchor';
@@ -17,7 +16,7 @@ const MIN_CHARS = 2;
 type Hit = { kind: keyof typeof ru.search.kinds; key: string; label: string; to: string };
 
 /** The result groups of `GET /search` (17 N10) as one flat, ordered list of links. */
-function toHits(data: z.output<typeof searchResponseSchema>): Hit[] {
+function toHits(data: SearchResult): Hit[] {
   return [
     ...data.owners.map((o): Hit => ({ kind: 'owners', key: o.id, label: o.name, to: entityPath('owner', o.id) })),
     ...data.artists.map((a): Hit => ({ kind: 'artists', key: a.id, label: a.pseudonym, to: entityPath('artist', a.id) })),
@@ -59,7 +58,6 @@ export function GlobalSearch() {
   const enabled = open && debounced.length >= MIN_CHARS;
   const query = useQuery({ ...searchQueries.query(debounced), enabled });
   const hits = useMemo(() => (query.data ? toHits(query.data) : []), [query.data]);
-  const unavailable = query.error instanceof ApiError && query.error.status === 404;
 
   const go = (hit: Hit | undefined) => {
     if (!hit) return;
@@ -118,11 +116,7 @@ export function GlobalSearch() {
                   </SearchField>
                 </div>
                 <div className="mt-3 max-h-96 overflow-y-auto text-sm" data-testid="global-search-results">
-                  {unavailable ? (
-                    <p data-testid="global-search-unavailable" className="text-muted">
-                      {ru.search.unavailable}
-                    </p>
-                  ) : debounced.length < MIN_CHARS ? (
+                  {debounced.length < MIN_CHARS ? (
                     <p className="text-muted">{ru.search.hint}</p>
                   ) : query.isPending ? null : query.isError ? (
                     <p className="text-danger">

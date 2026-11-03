@@ -40,6 +40,8 @@ Written 2026-11-01 (D-120), extended 2026-11-03 (D-123…D-135) after reading al
 | `docs/08` (publishing) | the publishing module computes the author share | It returns lines (with `operation_type`), writers and terms; the facade layers compute the share and B/C (D-128) |
 | `docs/02`, `07` | no labels module; documents without `assumption` | Module `labels` (D-125); document kind `assumption`; `tracks.note` |
 | `docs/agents/01` (before 2026-11-03) | "one idea" diagram with `unknown_pair`/`no_isrc`/split in one function; `settlements` owns recoup; D-067 waits | Replaced by the layered pipeline; D-067 closed by D-123/D-127 |
+| `README.md` §3, §8 | minimal frontend, plain CSS, no UI kit (D-007, D-062) | Superseded by D-139: HeroUI + Tailwind, AG Grid, TanStack Query, 21 pages; the truth is `packages/frontend/CLAUDE.md` |
+| `CLAUDE.md` (root, before D-149) | pages in `packages/frontend/src/<domain>/<Page>.tsx`; "no frontend tests" | Pages are in `src/pages/<domain>/`, routes in `src/routes/`, guard tests in `packages/frontend/tests/`, Playwright specs in `packages/frontend/e2e/` (`npm run e2e`); see `packages/frontend/CLAUDE.md` |
 | `HANDOVER.md` demo sections | `npm run demo`, `data/demo` | Outdated (D-112); the working data set is the dev database loaded by `scripts/mvp/load.ts` (D-131…D-138) |
 | D-067 (⚠ in the old index) | sub-label rule waits for the owner | Owner decision 2 implemented as sublabel rules (`modules/labels`); other imprints use the half rule under an `assumption` document (D-123 Q12) |
 
@@ -53,5 +55,5 @@ The architecture documents and `context_data/` are not edited (README §6); this
 - **The data archive (D-093) predates the move (D-110).** If it contains only `data/real/*.sqlite`, the Believe
   history must be reloaded through the API (`POST /api/v1/sources/believe`, ~11 min for 47 files, D-111) into
   the local stack before the real numbers appear.
-- **No frontend tests** (`packages/frontend` has none; `npm test` passes there with `--passWithNoTests`). UI checks
-  are manual or through the API contract test.
+- **Frontend tests exist since D-139/D-144:** vitest guard tests in `packages/frontend/tests/` and Playwright specs in
+  `packages/frontend/e2e/` (`npm run e2e`, needs the stack and `npx playwright install chromium` once).

@@ -12,7 +12,7 @@ Build rule: react and react-dom are never split into a chunk of their own (`vite
 TanStack into one `vendor` chunk and nothing else).
 
 ## Rules R1-R8 (17 section 1) and how they are checked here
-- R1 the frontend computes nothing: eslint (`eslint.config.js`, block for `packages/frontend/src`, `src/legacy` exempt) bans
+- R1 the frontend computes nothing: eslint (`eslint.config.js`, block for `packages/frontend/src`) bans
   `Number(`, `parseFloat`, `parseInt`, unary `+`, `Math.*`, `decimal.js`, `big.js`. Money is a decimal string; the only formatter is
   `src/lib/money.ts` (`Intl.NumberFormat('ru-RU', ... roundingMode: 'halfExpand', signDisplay: 'negative')` applied to the string).
 - R2 one money call per screen, no server cache: money queries have `staleTime: 0` and keys in `MONEY_KEYS`
@@ -22,25 +22,21 @@ TanStack into one `vendor` chunk and nothing else).
   `isDisabled` + `reason`); API errors are shown as they are (`code`, `message`).
 - R5 every write has a trace: `X-Operator` (URI-encoded) comes from the operator field (`localStorage` key `erp.operator`,
   `useOperator()`); `call()` refuses a write without it (`operator_required`), `ActionButton` and `ConfirmDialog` are disabled while it
-  is empty. The legacy client sends the same header.
+  is empty.
 - R6 types from `@erp/shared` only: `src/api/client.ts` has the one `call()` (fetch + `schema.parse`; a mismatch is
   `ApiError('contract_mismatch', status 0)`) and one function per API operation (`owners.list`, `owners.balance`, `splits.change`, ...). No
-  hand-written body types in `src/api/` (`tests/no-dto.test.ts`). `src/api/search-schema.ts` is a temporary local schema for
-  `GET /search` until the shared one lands (step 3.3b).
+  hand-written body types in `src/api/` (`tests/no-dto.test.ts`).
 - R7 simplicity: a page answers one operator question; the same components everywhere; strings in `src/i18n/ru/*.ts` merged in
   `src/i18n/ru.ts` (`ru.reasons` and `ru.signals` are typed against the shared enums: a missing label does not compile; `tests/reasons-labels.test.ts`).
 - R8 privacy: synthetic data only; `tests/privacy.test.ts` greps `src/`, `e2e/`, `tests/`, `scripts/` for e-mails and `/Users/`.
 
 ## Folder layout (`src/`)
 `main.tsx` (providers) / `App.tsx` (route table) / `nav.ts` (sidebar, breadcrumbs, active item) / `routes/{work,catalog,rules,money,dev}.tsx`
-(arrays of `<Route>`; a page not built yet is a `PlaceholderPage` "Страница в разработке (шаг 3.x)"; later steps replace the element
-only) / `pages/` / `components/` (shell and shared parts, `fields/`, `grid/`) / `api/` (`client.ts`, `queries/<domain>.ts`) / `i18n/` /
-`lib/` (`money`, `operator`, `storage`, `theme`) / `legacy/` (the pre-3.4 pages with their own client, `ui.tsx` and stylesheet,
-mounted under `/legacy/*`, loaded lazily, removed in step 3.9).
-New pages go in their own folder (`catalog/`, `owners/`, ...) and replace the placeholder element in the route file; add their
-queries to `api/queries/<domain>.ts` and strings to `i18n/ru/<domain>.ts` (register a new file in `i18n/ru.ts`).
-
-## Pages built so far (one sentence each: the operator question)
+(arrays of `<Route>`; the path patterns are the one list `routes/paths.ts`: `ROUTE_PATHS`, `ROUTES`) / `pages/` / `components/` (shell and shared parts, `fields/`, `grid/`) / `api/` (`client.ts`, `queries/<domain>.ts`) / `i18n/` /
+`lib/` (`money`, `operator`, `storage`, `theme`). `api/coverage.ts` maps every API operation to a page or a refusal.
+New pages: recipe "Add a page" in `docs/agents/04_recipes.md` (own folder, route in `routes/paths.ts` and its route file, queries in `api/queries/<domain>.ts`,
+strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golden/`).
+## Pages (P4 of revision 1 is the payouts view of P9) (one sentence each: the operator question)
 - **P1 Обзор** `/` (`pages/work/OverviewPage.tsx`, one `GET /overview`, period in the URL): did every dollar of each account and month land
   in B, C or ours, and what waits by reason? A plain table (rows `overview-row-<source>-<account>-<month>`, cells `data-col="A|B|C|ours|noSplit|discrepancy|fileDiscrepancy"`,
   `c-reason-<reason>`, `by-label-<name>`), the queue strip (`queue-chip-<reason>`) and signal counts (`signal-chip-<name>`); no totals row.
@@ -71,13 +67,13 @@ queries to `api/queries/<domain>.ts` and strings to `i18n/ru/<domain>.ts` (regis
 ## Components (`src/components/`) and their test hooks
 | Component | Hooks |
 |---|---|
-| `AppShell`, `Sidebar` (collapsible, `sessionStorage` `erp.sidebar`), `Breadcrumbs` (from `nav.ts`; a detail page calls `useBreadcrumbLabel(name)`), `GlobalSearch` (Cmd/Ctrl+K, `GET /search?q=`, 404 shows "поиск появится на шаге 3.3b"), `OperatorField`, `RecalcIndicator`, `ThemeToggle` (`html.dark`, `localStorage` `erp.theme`) | `sidebar`, `sidebar-toggle`, `nav-<id>`, `breadcrumbs`, `global-search`, `global-search-dialog`, `global-search-input`, `global-search-results`, `operator-field`, `operator-hint`, `recalc-indicator`, `theme-toggle` |
+| `AppShell`, `Sidebar` (collapsible, `sessionStorage` `erp.sidebar`), `Breadcrumbs` (from `nav.ts`; a detail page calls `useBreadcrumbLabel(name)`), `GlobalSearch` (Cmd/Ctrl+K, `GET /search?q=`), `OperatorField`, `RecalcIndicator`, `ThemeToggle` (`html.dark`, `localStorage` `erp.theme`) | `sidebar`, `sidebar-toggle`, `nav-<id>`, `breadcrumbs`, `global-search`, `global-search-dialog`, `global-search-input`, `global-search-results`, `operator-field`, `operator-hint`, `recalc-indicator`, `theme-toggle` |
 | `DataGrid` (AG Grid, one theme on HeroUI variables, `locale-ru.ts`, pagination 50/100/500, required `getRowId`, `onRowClicked`, sort/filter in the URL under `gridStateKey`; `rowTestId` puts a `data-testid` on the row, `autoHeight` keeps every row of the page in the DOM) | `data-grid`; rows are `[row-id="<key>"]` (AG Grid's own attribute on `.ag-row`, from `getRowId`) |
 | `Money` (`formatMoney`; exact string in `title`; negative red) | `money` with `title` |
 | `StatusChip` (kinds: documentStatus, documentKind, ownerStatus, artistStatus, category, cReason, operationMeaning, fileStatus, signal) | `chip-<value>` |
 | `EntityLink`, `entityPath` | |
 | `EntityCard` + `CardTabs` (tabs in `?tab=`) | `entity-card`, `tab-<id>` |
-| `fields/TextField`, `SelectField` (max 50 options), `DateField` (native date input in HeroUI styles), `EntityPicker` (debounced `/search` restricted to one kind, shows at most 10; `accept` filters the matches; on a 404 of `/search` it searches the reference list of the kind) | `field-<name>`, `picker-list-<name>` |
+| `fields/TextField`, `SelectField` (max 50 options), `DateField` (native date input in HeroUI styles), `EntityPicker` (debounced `/search` restricted to one kind, shows at most 10; `accept` filters the matches) | `field-<name>`, `picker-list-<name>` |
 | `ConfirmDialog` (HeroUI AlertDialog + `HiddenRacDialogAnchor`; operator shown; OK disabled while pending) | `confirm-dialog`, `confirm-dialog-ok`, `confirm-dialog-cancel` |
 | `PageState` (`empty`, `long`, `error`), `StaleBadge`, `QueryView` (applies the states to a query) | `page-state-empty`, `page-state-long`, `page-state-error`, `error-code`, `error-message`, `action-retry`, `stale-badge` |
 | `toast.tsx` (`notifySuccess`, `notifyError(ApiError)`) | `toast` with `data-code` (`ok` or the API code) |
@@ -94,15 +90,13 @@ HeroUI's Toast cannot take attributes on its root, so the hooks sit on a `<span>
 - **The states fixture page** `/dev/states?case=<ss1..ss7|action>` (`src/pages/dev/StatesPage.tsx`, not in the sidebar) hosts the checks SS1-SS7 of `19` until the real pages
   exist: `e2e/states.spec.ts` mocks the API with `page.route` and asserts the empty/long/error/contract-mismatch/stale states, a 26,000-row grid, the picker over 2,100 mocked owners, the
   confirm dialog, the double click and the toasts. Keep it working when pages arrive: the specs of the real pages come in `e2e/golden/`.
-- `e2e/smoke.spec.ts`: shell, search, operator, theme, every route renders without a console error (a built page by its root hook, the rest as
-  placeholders: the `BUILT` map), legacy pages work.
+- Guard tests (vitest): `coverage.test.ts` (every operation of `operations.ts` is in `src/api/coverage.ts` with a page whose route exists in `routes/paths.ts`, or a refusal with its reason; every page P1-P21 is covered
+  except P3 and P4, documented in `PAGES_WITHOUT_OPERATIONS`), `actions-table.test.ts` (every C reason and every signal list has an entry in
+  `pages/work/actions/action-table.ts`, and an action names an existing exported dialog), `cents.test.ts`, `routes-no-names`, `no-dto`, `privacy`, `reasons-labels`.
+- `e2e/smoke.spec.ts`: shell, search, operator, theme, every route renders a page without a console error.
 - `e2e/golden/*.spec.ts`: the golden screens on the seeded stores. `e2e/helpers.ts` reads the seed keys (`e2e/.seed-keys.json`, written by the seed; `E2E_KEYS=<file>`
   for another one) and re-exports the naming of `packages/backend/scripts/e2e/keys.ts` (`isrc`, `upc`, `account`, ...); `openAs` sets the operator, `settled` waits for
   the recalculation and the stale badge, `expectP1` asserts a P1 row as `A / B / C / ours`, `pick` / `choose` fill pickers and selects, `apiPost` sends the second press.
   The specs of step 3.5: `overview` (S01–S11 rows, drill-down, P1 states by mocks), `queue` (S12–S19, S32, S08 read-only, S20 before), `signals` (S20, S21, S35 and
   the P21 rows of other scenarios), `questions` (the 14 items and their links). Files run in alphabetical order on one seed and every scenario owns its data, so an action
   spec never changes another spec's numbers; a spec that acts on a scenario is the only one that asserts its after state.
-
-## Legacy
-`src/legacy/` keeps the old pages (`/legacy/*`), `legacy/client.ts` (sends `X-Operator` from `erp.operator` on writes), `legacy/ui.tsx` and `legacy/styles.css` (scoped under `.legacy`). They are exempt from the money lint
-rules and are deleted in step 3.9.

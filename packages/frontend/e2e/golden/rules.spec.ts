@@ -271,7 +271,7 @@ test('S29 refusals (G23): double_participation (participation and split change),
   await toastCode(page, 'top_above_100');
   const direct = await apiPost(request, '/participations', body);
   expect(direct.code).toBe('top_above_100');
-  expect([409, 422]).toContain(direct.status);
+  expect(direct.status).toBe(422); // RuleViolationError (backend shared/errors.ts)
 });
 
 test('S21 (acted on in the signals spec): A 0, P 10, ours 90 in both states', async ({ page }) => {

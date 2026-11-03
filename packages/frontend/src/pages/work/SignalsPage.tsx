@@ -24,6 +24,7 @@ import {
   SetRuleDialog,
   SublabelRuleDialog,
 } from './actions/dialogs';
+import { SIGNAL_ACTIONS } from './actions/action-table';
 
 const t = ru.signalsPage;
 const c = t.cols;
@@ -314,7 +315,7 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
               headerName: c.owner,
               cellRenderer: (p: { data?: R }) => (p.data ? <EntityLink kind="owner" id={p.data.ownerId} label="→" /> : null),
             },
-            actionCol(() => info(t.info)),
+            actionCol(() => (SIGNAL_ACTIONS.twoRowsOneOwner.information ? info(t.info) : null)),
           ]}
         />
       );

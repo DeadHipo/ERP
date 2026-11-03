@@ -37,9 +37,7 @@ export default tseslint.config(
   {
     // R1 of docs/agents/17_frontend_model.md: the frontend computes nothing. Money arrives as decimal strings and is only
     // formatted (Intl.NumberFormat on the string, lib/money.ts); no number parsing, no arithmetic helpers, no decimal libs.
-    // src/legacy/ (the pre-3.4 pages, removed in step 3.9) is exempt.
     files: ['packages/frontend/src/**/*.{ts,tsx}'],
-    ignores: ['packages/frontend/src/legacy/**'],
     rules: {
       'no-restricted-syntax': [
         'error',

@@ -29,6 +29,7 @@ import {
   ReplaceDocumentDialog,
   SublabelRuleDialog,
 } from './actions/dialogs';
+import { REASON_ACTIONS } from './actions/action-table';
 
 const t = ru.queue;
 const a = ru.actions;
@@ -319,6 +320,7 @@ function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; ope
     </span>
   );
   const items = (() => {
+    if (REASON_ACTIONS[reason].information) return [readOnly(t.noIsrc, t.noIsrcText)];
     switch (reason) {
       case 'owner_unconfirmed':
         return [btn('create-contract', a.createContract), btn('merge', a.mergeOwner)];

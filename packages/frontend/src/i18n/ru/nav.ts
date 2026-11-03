@@ -27,7 +27,6 @@ export const nav = {
     sourceLines: 'Строки отчётов',
     artistDuplicates: 'Дубликаты',
     states: 'Состояния (стенд)',
-    legacy: 'Старые страницы',
   },
   collapse: 'Свернуть меню',
   expand: 'Развернуть меню',

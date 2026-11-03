@@ -126,6 +126,7 @@ test('SS7: the picker shows at most 10 matches per typed query, never the 2,100 
     id: `own-${i + 1}`,
     name: `Owner ${String(i + 1).padStart(4, '0')}`,
     status: 'confirmed',
+    kind: 'person',
   }));
   const requests: string[] = [];
   await page.route('**/api/v1/search*', (route) => {

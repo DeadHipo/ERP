@@ -35,7 +35,7 @@ Without the stack the facade/sources tests are **skipped**, not failed: always u
    from `src/shared/errors.ts`; `api/http.ts` turns them into `{ error: { code, message, statusCode, details } }`.
 4. Entry in `src/api/operations.ts` (method, Express-style path, tag, summary, body/query, status, response, errors).
 5. Call it in the scenario of `tests/api-contract.test.ts`, plus a behaviour test where the rule lives.
-6. Client: method in `packages/frontend/src/api/client.ts` (typed by the shared schemas).
+6. Client: a function in `packages/frontend/src/api/<domain>.ts` (or `client.ts`) parsed with the shared schema; the operation must appear in `packages/frontend/src/api/coverage.ts` (page + route, or a refusal with the reason), or `tests/coverage.test.ts` fails.
 
 ## 2a. Add a layer or a C reason
 
@@ -104,13 +104,16 @@ Not started; this is the shape the existing code suggests, not a decision:
   `PublishingResult` and `Reconciliation.source` types grow; the payout snapshot must store the new file hashes (D-100).
 - Decide and log: duplicate-period rule, amount column, period → report month mapping, unknown writer handling.
 
-## 6. Add a UI page
+## 6. Add a page
 
-- One folder per domain in `packages/frontend/src/<domain>/<Page>.tsx`; route in `packages/frontend/src/App.tsx`;
-  shared bits in `components/ui.tsx`; plain CSS in `styles.css`; no UI kit (README §3).
-- Data only via `api/client.ts`. Money arrives as decimal strings: format, do not parse to float for arithmetic.
-- Check: `npm run build:client`, then open the page on the running server (`PORT=3001 npx tsx
-  packages/backend/src/main.ts data/real` or an empty dir) and look at it.
+1. Folder `packages/frontend/src/pages/<domain>/` with the page component (root hook `data-testid="<name>-page"`); reuse `components/` (`QueryView`, `DataGrid`, `ActionButton`, `FormDialog`, `Money`); the frontend computes nothing (R1).
+2. Route: add the pattern to `ROUTE_PATHS` in `src/routes/paths.ts` (params only `isrc`, `upc`, `id`, `reason`, `name`) and a `<Route path={ROUTE_PATHS.x}>` in the route file of its section; a sidebar item in `src/nav.ts` if it has one.
+3. Data: queries in `src/api/queries/<domain>.ts` over a client function parsed with a shared schema (no hand-written types in `src/api/`); money queries use the money keys and `staleTime: 0`.
+4. Strings in `src/i18n/ru/<domain>.ts` (register a new file in `i18n/ru.ts`); code and comments in English.
+5. `src/api/coverage.ts`: an entry for every operation the page calls (page id and route). New C reason or signal: its row in `pages/work/actions/action-table.ts`.
+6. Spec in `packages/frontend/e2e/golden/` on the seeded stores (select by `data-testid` and roles, no `waitForTimeout`); a row in `19_golden_screens.md` if it shows numbers.
+7. One sentence in `packages/frontend/CLAUDE.md` (the page's operator question and its hooks).
+8. Check: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build:client`, `npm run e2e`.
 
 ## 7. Change a money rule
 

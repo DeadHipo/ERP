@@ -10,6 +10,4 @@ export const shell = {
   theme: { toDark: 'Тёмная тема', toLight: 'Светлая тема' },
   searchButton: 'Поиск',
   searchShortcut: 'Ctrl+K',
-  pageInProgress: (step: string) => `Страница в разработке (шаг ${step})`,
-  legacyLink: 'Старые страницы',
 } as const;

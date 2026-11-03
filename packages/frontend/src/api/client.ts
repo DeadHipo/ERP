@@ -2,7 +2,6 @@ import { z } from 'zod';
 import * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
 import { getOperator } from '../lib/operator';
-import { searchKinds, searchResponseSchema } from './search-schema';
 
 // The one typed client (R6). Every request body type comes from `@erp/shared/api-schemas`, every response is parsed
 // with its zod schema from `@erp/shared/api-responses`; there is no hand-written response type in `src/api/`
@@ -214,10 +213,10 @@ export const settlements = {
     call('GET', `/settlements/operations/${id(operationId)}/snapshot`, { schema: free }),
 };
 
-/** `GET /search` (step 3.3b). Optional `kinds` restricts the result to one or more kinds (EntityPicker). */
+/** `GET /search`. Optional `kinds` restricts the result to one or more kinds (EntityPicker). */
 export const search = {
-  query: (q: string, kinds?: readonly (typeof searchKinds)[number][]) =>
-    call('GET', '/search', { query: { q, kinds: kinds?.join(',') }, schema: searchResponseSchema }),
+  query: (q: string, kinds?: readonly (typeof R.SEARCH_KINDS)[number][]) =>
+    call('GET', '/search', { query: { q, kinds: kinds?.join(',') }, schema: R.searchResultSchema }),
 };
 
 function fileForm(file: File): FormData {

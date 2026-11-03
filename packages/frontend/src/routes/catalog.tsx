@@ -1,4 +1,5 @@
 import { Route } from 'react-router-dom';
+import { ROUTE_PATHS } from './paths';
 import { TracksPage } from '../pages/catalog/TracksPage';
 import { TrackPage } from '../pages/catalog/track/TrackPage';
 import { ReleasesPage } from '../pages/catalog/ReleasesPage';
@@ -9,11 +10,11 @@ import { ArtistPage } from '../pages/reference/artists/ArtistPage';
 
 /** Каталог: tracks and releases (step 3.6), pseudonyms (step 3.8); owners live in routes/owners.tsx. */
 export const catalogRoutes = [
-  <Route key="tracks" path="tracks" element={<TracksPage />} />,
-  <Route key="track" path="tracks/:isrc" element={<TrackPage />} />,
-  <Route key="releases" path="releases" element={<ReleasesPage />} />,
-  <Route key="release" path="releases/:upc" element={<ReleasePage />} />,
-  <Route key="artists" path="artists" element={<ArtistsPage />} />,
-  <Route key="artist-duplicates" path="artists/duplicates" element={<DuplicatesPage />} />,
-  <Route key="artist" path="artists/:id" element={<ArtistPage />} />,
+  <Route key="tracks" path={ROUTE_PATHS.tracks} element={<TracksPage />} />,
+  <Route key="track" path={ROUTE_PATHS.track} element={<TrackPage />} />,
+  <Route key="releases" path={ROUTE_PATHS.releases} element={<ReleasesPage />} />,
+  <Route key="release" path={ROUTE_PATHS.release} element={<ReleasePage />} />,
+  <Route key="artists" path={ROUTE_PATHS.artists} element={<ArtistsPage />} />,
+  <Route key="artist-duplicates" path={ROUTE_PATHS.artistDuplicates} element={<DuplicatesPage />} />,
+  <Route key="artist" path={ROUTE_PATHS.artist} element={<ArtistPage />} />,
 ];

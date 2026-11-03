@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ALL_ITEMS, NAV } from '../src/nav';
-import { norm, setOperator, trackErrors } from './helpers';
+import { setOperator, trackErrors } from './helpers';
 
 // S-smoke: the shell renders, search opens, the operator is saved, a write control is gated, every route renders.
 
@@ -30,11 +30,8 @@ test('Ctrl+K opens the global search modal', async ({ page }) => {
   await page.keyboard.press('Control+k');
   await expect(page.getByTestId('global-search-dialog')).toBeVisible();
   await page.getByTestId('global-search-input').fill('abc');
-  // GET /search is built in step 3.3b: until then the shell says so; afterwards it lists results.
   await expect(page.getByTestId('global-search-results')).toBeVisible();
-  await expect(
-    page.getByTestId('global-search-unavailable').or(page.getByTestId('global-search-results').getByText(/Ничего не найдено|Владельцы|Треки/)),
-  ).toBeVisible();
+  await expect(page.getByTestId('global-search-results').getByText(/Ничего не найдено|Владельцы|Треки|Псевдонимы|Документы|Лейблы/).first()).toBeVisible();
   // The first Escape clears the typed text (SearchField), the second closes the dialog.
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
@@ -87,7 +84,7 @@ const DETAIL_ROUTES = [
   '/sources/lines',
 ];
 
-/** Routes whose page is built (step 3.5 on): the page's own root hook instead of the placeholder. */
+/** Routes with a known root hook; every other page is found by the `<name>-page` suffix. */
 const BUILT: Record<string, string> = {
   '/': 'overview-page',
   '/queue': 'queue-page',
@@ -104,9 +101,9 @@ test('every route of nav.ts and every detail route renders a page without a cons
     const built = BUILT[path.split('?')[0] ?? path];
     if (built) await expect(page.getByTestId(built), path).toBeVisible();
     else {
-      // a built page carries a root hook `<name>-page`; a page not built yet is the placeholder
+      // every page carries a root hook `<name>-page`
       await expect(
-        page.locator('[data-testid="placeholder-page"], [data-testid$="-page"]').first(),
+        page.locator('[data-testid$="-page"]').first(),
         path,
       ).toBeVisible();
     }
@@ -134,18 +131,4 @@ test('an unknown path shows the not-found page inside the shell', async ({ page 
   await page.goto('/no-such-page');
   await expect(page.getByTestId('not-found')).toBeVisible();
   await expect(page.getByTestId('sidebar')).toBeVisible();
-});
-
-test('the legacy pages still work under /legacy and send the operator on writes', async ({ page }) => {
-  const errors = trackErrors(page);
-  await page.goto('/legacy/owners');
-  await expect(page.getByText('Royalty ERP (legacy)')).toBeVisible();
-  await expect(page.getByRole('heading').first()).toBeVisible();
-  await page.goto('/legacy/sources');
-  await expect(page.getByText('Royalty ERP (legacy)')).toBeVisible();
-  // The legacy stylesheet is scoped: the new shell keeps its own look after visiting a legacy page.
-  await page.goto('/');
-  await expect(page.getByTestId('sidebar')).toBeVisible();
-  expect(norm(await page.title())).toBe('ERP');
-  expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
 });

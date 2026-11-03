@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { readStorage, writeStorage } from './storage';
 
-/** The key is shared with the legacy client, which reads it too. */
+/** The storage key of the operator field. */
 export const OPERATOR_KEY = 'erp.operator';
 const EVENT = 'erp:operator';
 

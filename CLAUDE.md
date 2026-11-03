@@ -21,6 +21,7 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 - `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` first: PostgreSQL, ClickHouse and the one-shot migrations (`npm run migrate:ch`, `npm run migrate:pg` by hand)
 - `npm run typecheck` (all workspaces: backend, frontend, shared). The repo is an npm workspaces monorepo: `packages/{backend,frontend,shared}` (D-116); install only from the root
 - `REQUIRE_STACK=1 npm test` (vitest, 361 tests on 2026-11-03; the ones that need the stack create their own private databases and drop them; without `REQUIRE_STACK=1` they are silently skipped when the stack is down)
+- `npm run e2e` (Playwright on private stores `erp_e2e` / `believe_e2e`; needs the stack and, once, `npx playwright install chromium`)
 - `npm run lint` (eslint over the whole repo)
 - `npm run build:client` (vite build)
 - `LOG_TIMINGS=1` before `npm run dev` (or `main.ts`) prints a tree of step timings per request: balance, `calculate()`, every ClickHouse read (D-122)
@@ -29,7 +30,7 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 - `npm run mvp:load -w @erp/backend -- <step> [--apply]` (stage 4 loader, dry run by default, idempotent; steps in `scripts/mvp/load.ts`), `npx tsx packages/backend/scripts/mvp/load-b17.ts <file.xlsx>`; read-only compares `npx tsx packages/backend/scripts/mvp/compare-annex.ts` / `compare-main.ts` (reports in `data/mvp-load/verify/`), then `decompose-main.ts` (owner decomposition); recipe 9 in `docs/agents/04_recipes.md`
 - `npx tsx packages/backend/scripts/reconcile-erp.ts data/real` (July 2026 vs old ERP; needs erp.db)
 
-Definition of done for any change: typecheck clean, lint clean, `REQUIRE_STACK=1 npm test` passes, decision logged in 97 (and indexed in `docs/agents/03_decision_index.md`).
+Definition of done for any change: typecheck clean, lint clean, `REQUIRE_STACK=1 npm test` passes, `npm run build:client`, `npm run e2e` green (frontend changes), decision logged in 97 (and indexed in `docs/agents/03_decision_index.md`).
 
 Git: when a stage or step is finished and meets the definition of done, commit it (no need to ask). Never push; the owner pushes.
 
@@ -45,7 +46,7 @@ Git: when a stage or step is finished and meets the definition of done, commit i
   - `layers/`: the money as pure functions, one file each; the order is the list `MASTER_LAYERS` in `layers/index.ts`: label of record → perimeter → off the top → split → carves (pool, artist share, label share, sublabel) → categorise; publishing: writer parts → author share → categorise; `recoup.ts` too. Tests in `tests/layers/` and `tests/golden.test.ts`; design in `docs/agents/10_target_model.md`;
   - `balance.ts`: owner balance (earned/waiting also per label of record), payable;
 - `src/api/app.ts` assembles the app; the routes are in `src/api/routes/` (one router per topic: owners, labels, splits incl. participations, sources, publishing, reports, settlements, joined in `routes/index.ts`; new: `/labels`, `/labels/:id/aliases`, `/labels/:id/rules`, `/labels/rules/:id/close`, `/participations`, `/participations/:id/close`) under `/api/v1`; shared helpers (`parse`, error handler) in `api/http.ts`. It serves `packages/frontend/dist`. Request schemas are in `packages/shared/src/api-schemas.ts` (`@erp/shared/api-schemas`), response schemas in `api-responses.ts`; the frontend uses both. Every route must have an entry in `src/api/operations.ts`: the OpenAPI document (`/api/v1/openapi.json`, UI at `/api/v1/docs`) is built from it and `tests/api-contract.test.ts` checks it against the real routes and responses and requires its scenario to call every operation (D-119).
-- `packages/frontend/src/<domain>/<Page>.tsx` holds the React pages. `packages/frontend/src/api/client.ts` is the typed fetch client.
+- `packages/frontend/src/`: `pages/<domain>/` the React pages (21, D-139…D-149), `routes/` (path patterns in `routes/paths.ts`), `components/`, `api/client.ts` the typed fetch client and `api/coverage.ts` (every API operation → a page or a refusal), `i18n/ru/` the strings. Details: `packages/frontend/CLAUDE.md`.
 - Data scripts: `packages/backend/scripts/mvp/` (stage 4 loader `load.ts`, `load-b17.ts`, stage 5 `compare-*.ts` and `decompose-main.ts`); the loader writes through the facade except three documented migration-only bypasses: the `normalise-dates` SQL update of split dates (D-131), the two splits-module deletes `deleteEmptySplits` / `deleteParticipations` (D-137) and the run-cached `owners.artistIndex` (D-131). The read-only Python extractors (`scripts/mvp/*.py`, stdlib only) read the workbooks, ClickHouse and `owners.*` directly (recipe 9).
 - Money: source amounts are pico-USD integers (BigInt sums), calculations use decimal.js, operations are integer cents, and JSON money is decimal strings. `tests/rules-coverage.test.ts` allows `Number(` in `src` only from a fixed list.
 
