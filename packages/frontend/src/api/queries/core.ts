@@ -21,6 +21,8 @@ export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['releases', 'list'],
   ['releases', 'detail'],
   ['documents', 'uses'],
+  ['ads', 'list'],
+  ['ads', 'summary'],
 ];
 
 export function isMoneyKey(queryKey: readonly unknown[]): boolean {

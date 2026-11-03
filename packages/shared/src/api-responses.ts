@@ -507,6 +507,7 @@ export const balanceSchema = z.object({
     earned: money,
     waiting: money,
     recouped: money,
+    adsRecouped: money.describe('The part of recouped taken by advertising expenses (D-156)'),
     paid: money,
     returns: money,
     credits: money,
@@ -552,6 +553,21 @@ export const balanceSchema = z.object({
       date,
     }),
   ),
+  ads: z
+    .array(
+      z.object({
+        adId: z.string(),
+        isrc: z.string().nullable(),
+        month,
+        artistId: z.string(),
+        role: z.enum(['artist', 'sublabel']),
+        amount: money,
+        recouped: money,
+        remaining: money,
+        scope: z.object({ kind: z.string() }),
+      }),
+    )
+    .describe('Advertising debts of the owner (D-156), recouped with the operations, largest first'),
   pendingOperations: z.array(z.object({ operationId: z.string(), why: z.string() })),
   blockingPayouts: z.array(z.string()),
 });
@@ -840,7 +856,7 @@ export const payoutSnapshotSchema = z.object({
   ownerId: z.string(),
   amountCents: z.number().int(),
   payableExact: money,
-  total: balanceSchema.shape.total,
+  total: balanceSchema.shape.total.extend({ adsRecouped: money.optional() }),
   payoutByArtist: z.array(z.object({ key: z.string(), label: z.string(), net: money, shareOfPayout: money })),
   perArtist: z.array(
     z.object({
@@ -855,6 +871,7 @@ export const payoutSnapshotSchema = z.object({
   ),
   publishing: balanceSchema.shape.publishing,
   positions: balanceSchema.shape.positions,
+  ads: balanceSchema.shape.ads.optional().describe('Advertising debts at the payout (absent in snapshots before D-156)'),
   files: z.object({
     believe: z.array(
       z.object({ id: z.string(), sha256: z.string(), reportingMonth: month, fileName: z.string() }),
@@ -931,3 +948,77 @@ export const duplicatesSchema = z.object({
   ),
 });
 export type DuplicateGroups = z.infer<typeof duplicatesSchema>;
+
+// ---- advertising expenses (D-155, D-156) ----
+
+const adPartSchema = z.object({
+  artistId: z.string(),
+  pseudonym: z.string(),
+  ownerId: z.string().nullable(),
+  weight: money.describe('split percent of the artist (100 for an allocated expense)'),
+  amount: money,
+  recovered: money.describe('part × recovery percent: the debt on the artist'),
+});
+
+export const adExpenseSchema = z.object({
+  id: z.string(),
+  isrc: z.string().nullable(),
+  month,
+  amountCents: z.number().int(),
+  recoveryPercent: money,
+  scope: z.enum(['any', 'publishing', 'isrc']),
+  artistId: z.string().nullable(),
+  externalRef: z.string().nullable(),
+  source: z.string(),
+  migration: z.boolean(),
+  comment: z.string(),
+  createdAt: timestamp,
+  active: z.boolean(),
+  deactivatedReason: z.string().nullable(),
+});
+export type AdExpense = z.infer<typeof adExpenseSchema>;
+
+export const adViewSchema = adExpenseSchema.extend({
+  allocation: z
+    .object({
+      isrc: z.string().nullable(),
+      month,
+      amount: money,
+      recoveryPercent: money,
+      scope: z.enum(['any', 'publishing', 'isrc']),
+      status: z.enum(['allocated', 'pre_allocated', 'no_split', 'no_artist']),
+      ourLabelId: z.string().nullable(),
+      ourLabelName: z.string().nullable(),
+      sublabelName: z.string().nullable(),
+      parts: z.array(adPartSchema),
+      unrecovered: money,
+      borneBy: z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('sublabel'), artistId: z.string(), ownerId: z.string().nullable(), amount: money }),
+        z.object({ kind: z.literal('ours'), amount: money }),
+      ]),
+    })
+    .nullable()
+    .describe('What the calculation decides for the record (null when it is deactivated)'),
+});
+export type AdView = z.infer<typeof adViewSchema>;
+
+export const adListSchema = z.object({ count: z.number().int(), items: z.array(adViewSchema) });
+export const adsCreatedSchema = z.object({
+  created: z.array(adExpenseSchema),
+  skipped: z.array(z.string()).describe('External refs already known: not recorded again'),
+});
+export const adSummarySchema = z.object({
+  rows: z.array(
+    z.object({
+      month,
+      label: z.string().describe("our label of record ('?' when the ISRC has no mapped line)"),
+      count: z.number().int(),
+      amount: money,
+      recoveredFromArtists: money,
+      borneBySublabels: money,
+      borneByUs: money,
+      noSplit: money,
+    }),
+  ),
+});
+export type AdSummary = z.infer<typeof adSummarySchema>;

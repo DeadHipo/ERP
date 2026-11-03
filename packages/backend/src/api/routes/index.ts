@@ -12,6 +12,7 @@ import { settlementsRouter } from './settlements';
 import { labelsRouter } from './labels';
 import { participationsRouter } from './participations';
 import { auditRouter } from './audit';
+import { adsRouter } from './ads';
 
 /** Version 1 of the JSON API: one router per topic, all mounted at the root of the version. */
 export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
@@ -30,5 +31,6 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.use(labelsRouter(facade));
   r.use(participationsRouter(facade));
   r.use(auditRouter(facade));
+  r.use(adsRouter(facade));
   return r;
 }

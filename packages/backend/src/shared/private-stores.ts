@@ -13,7 +13,7 @@ const sql = (dir: string) =>
     .map((f) => readFileSync(join(MIGRATIONS, dir, f), 'utf8'));
 
 /** Schemas whose tables `resetModules()` empties (every PostgreSQL module). */
-const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'audit'];
+const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'audit', 'ads'];
 
 /**
  * A private PostgreSQL database `erp_<name>` and private ClickHouse databases `believe_<name>` and `believe_<name>_stage`

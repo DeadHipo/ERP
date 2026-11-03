@@ -1,6 +1,6 @@
 /**
  * Where every operation of `packages/backend/src/api/operations.ts` is used on a screen, or why it is not.
- * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P21`
+ * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P22`
  * (see `docs/agents/17_frontend_model.md` section 3) or `shell` (the global search and the pickers on every page), and its `route`
  * is a pattern of `src/routes/paths.ts`. A `refusal` says in words why no screen calls the operation.
  */
@@ -93,6 +93,11 @@ export const OPERATION_COVERAGE: Record<
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },
   'POST /settlements/operations/:id/deactivate': { page: 'P20', route: '/operations', note: 'action-deactivate; shared with P10' },
   'POST /settlements/operations/:id/return': { page: 'P20', route: '/operations', note: 'action-return; shared with P10' },
+  'GET /ads': { page: 'P22', route: '/ads', note: 'the records grid with the URL filters (isrc, status, from, to)' },
+  'POST /ads': { page: 'P22', route: '/ads', note: 'action-create-ad: one record per dialog (the API takes a batch)' },
+  'GET /ads/summary': { page: 'P22', route: '/ads', note: 'the summary by month and label of record' },
+  'PATCH /ads/:id': { page: 'P22', route: '/ads', note: 'action-ad-edit: recovery percent and scope' },
+  'POST /ads/:id/deactivate': { page: 'P22', route: '/ads', note: 'action-ad-deactivate' },
   'GET /settlements/operations/:id/snapshot': { page: 'P20', route: '/operations', note: 'action-snapshot; also the balance tab of P10' },
 
   'GET /audit': { page: 'P6', route: '/tracks/:isrc', note: 'history tab; also the history tab of P10' },

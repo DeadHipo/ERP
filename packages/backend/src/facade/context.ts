@@ -6,6 +6,7 @@ import type { SourcesService } from '../modules/sources';
 import { type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
 import { type AuditService } from '../modules/audit';
+import { type AdsService } from '../modules/ads';
 import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
 import { payoutGate } from './payout-gate';
@@ -56,11 +57,12 @@ export function createFacadeContext(
     settlements: SettlementsService;
     publishing: PublishingService;
     audit: AuditService;
+    ads: AdsService;
   },
 ) {
-  const { db, owners, splits, labels, sources, settlements, publishing, audit } = m;
+  const { db, owners, splits, labels, sources, settlements, publishing, audit, ads } = m;
   const payments = config.paymentService ?? stubPaymentService;
-  const modules = { db, owners, splits, labels, sources, publishing };
+  const modules = { db, owners, splits, labels, sources, publishing, ads };
 
   /**
    * Payouts of an owner that block new money going out: no payment proof, a deferred one, or a proof that is not
@@ -185,6 +187,7 @@ export function createFacadeContext(
     settlements,
     publishing,
     audit,
+    ads,
     payments,
     modules,
     blockingPayoutsOf,

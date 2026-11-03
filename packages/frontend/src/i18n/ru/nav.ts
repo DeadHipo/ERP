@@ -22,6 +22,7 @@ export const nav = {
     documents: 'Документы',
     sources: 'Отчёты',
     operations: 'Операции',
+    ads: 'Реклама',
   },
   subpages: {
     sourceLines: 'Строки отчётов',

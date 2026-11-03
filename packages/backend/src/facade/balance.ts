@@ -34,6 +34,19 @@ export interface PositionView {
   date: string;
 }
 
+/** A debt position made by an advertising expense (D-155): an artist's recovered part or a sublabel's unrecovered part. */
+export interface AdPositionView {
+  adId: string;
+  isrc: string | null;
+  month: string;
+  artistId: string;
+  role: 'artist' | 'sublabel';
+  amount: Decimal;
+  recouped: Decimal;
+  remaining: Decimal;
+  scope: unknown;
+}
+
 export interface OwnerBalance {
   ownerId: string;
   confirmed: boolean;
@@ -59,6 +72,8 @@ export interface OwnerBalance {
     earned: Decimal;
     waiting: Decimal;
     recouped: Decimal;
+    /** The part of `recouped` taken by advertising expenses. */
+    adsRecouped: Decimal;
     paid: Decimal;
     returns: Decimal;
     credits: Decimal;
@@ -85,6 +100,8 @@ export interface OwnerBalance {
     reason: string | null;
   }[];
   positions: PositionView[];
+  /** Advertising debts of the owner's pseudonyms, recouped together with the operations (largest first). */
+  ads: AdPositionView[];
   pendingOperations: { operationId: string; why: string }[];
   blockingPayouts: string[];
   /** Part of the owner's publishing income consumed by recoupment. */
@@ -315,12 +332,18 @@ export function ownerBalance(
     }
   }
 
-  const results = recoup(positions, income);
+  const adPositions = calc.adPositions.get(ownerId) ?? [];
+  const adById = new Map(adPositions.map((p) => [p.id, p]));
+  const results = recoup([...positions, ...adPositions], income);
+  let tAdsRecouped = ZERO;
+  const adViews: AdPositionView[] = [];
   let tRecouped = ZERO;
   let publishingRecouped = ZERO;
   let pRecouped = ZERO;
-  const positionViews: PositionView[] = results.map((r) => {
-    const p = positions.find((x) => x.id === r.positionId) as Position;
+  const positionViews: PositionView[] = [];
+  for (const r of results) {
+    const ad = adById.get(r.positionId);
+    const p = ad ?? (positions.find((x) => x.id === r.positionId) as Position);
     tRecouped = tRecouped.add(r.recouped);
     for (const c of r.consumed) {
       if (itemInPeriod.has(c.itemId)) pRecouped = pRecouped.add(c.amount);
@@ -335,8 +358,23 @@ export function ownerBalance(
       artist.recouped = artist.recouped.add(r.recouped);
       artist.unrecouped = artist.unrecouped.add(r.remaining);
     }
+    if (ad) {
+      tAdsRecouped = tAdsRecouped.add(r.recouped);
+      adViews.push({
+        adId: ad.adId,
+        isrc: ad.isrc,
+        month: ad.adMonth,
+        artistId: ad.artistId,
+        role: ad.role,
+        amount: r.amount,
+        recouped: r.recouped,
+        remaining: r.remaining,
+        scope: ad.scope,
+      });
+      continue;
+    }
     const op = ops.find((o) => o.id === r.positionId) as OperationView;
-    return {
+    positionViews.push({
       operationId: r.positionId,
       artistId: p.artistId,
       amount: r.amount,
@@ -344,8 +382,9 @@ export function ownerBalance(
       remaining: r.remaining,
       scope: p.scope,
       date: op.date,
-    };
-  });
+    });
+  }
+  adViews.sort((a, b) => (a.month !== b.month ? (a.month < b.month ? 1 : -1) : a.adId.localeCompare(b.adId)));
 
   const payable = tEarned.sub(tRecouped).sub(tPaid).add(tReturns).add(tCredits);
   return {
@@ -371,6 +410,7 @@ export function ownerBalance(
       earned: tEarned,
       waiting: tWaiting,
       recouped: tRecouped,
+      adsRecouped: tAdsRecouped,
       paid: tPaid,
       returns: tReturns,
       credits: tCredits,
@@ -383,6 +423,7 @@ export function ownerBalance(
     publishingRecouped,
     publishing,
     positions: positionViews,
+    ads: adViews,
     pendingOperations: pending,
     blockingPayouts: ops // the same rule as the facade's payout gate: no proof, deferred, or proof not approved
       .filter(

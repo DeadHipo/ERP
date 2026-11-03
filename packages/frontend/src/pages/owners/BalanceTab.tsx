@@ -46,6 +46,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
         <Section title={t.formula} testId="balance-formula">
           <Fact testId="balance-earned" label={t.earned} value={b.total.earned} />
           <Fact testId="balance-recouped" label={t.recouped} value={b.total.recouped} />
+          <Fact testId="balance-adsRecouped" label={ru.ads.balance.adsRecouped} value={b.total.adsRecouped} />
           <Fact testId="balance-paid" label={t.paid} value={b.total.paid} />
           <Fact testId="balance-returns" label={t.returns} value={b.total.returns} />
           <Fact testId="balance-credits" label={t.credits} value={b.total.credits} />
@@ -190,7 +191,42 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
           </SimpleTable>
         )}
       </Section>
+      <AdsSection balance={b} />
     </div>
+  );
+}
+
+/** P10 Реклама: the advertising debts of the owner's pseudonyms (`balance.ads`), recouped with the positions (D-156). */
+function AdsSection(props: { balance: Balance }) {
+  const b = props.balance;
+  const a = ru.ads.balance;
+  return (
+    <Section title={a.title} testId="balance-ads">
+      {b.ads.length === 0 ? (
+        <span className="text-sm text-muted">{a.none}</span>
+      ) : (
+        <SimpleTable head={[a.month, a.isrc, a.pseudonym, a.role, a.amount, a.recouped, a.remaining, a.scope]}>
+          {b.ads.map((p) => (
+            <tr key={`${p.adId}-${p.artistId}-${p.role}`} data-testid={`ad-position-${p.adId}-${p.role}`}>
+              <Td>{p.month}</Td>
+              <Td>{p.isrc ? <EntityLink kind="isrc" id={p.isrc} label={p.isrc} /> : '—'}</Td>
+              <Td>{b.artists.find((x) => x.artistId === p.artistId)?.pseudonym ?? p.artistId}</Td>
+              <Td col="role">{a.roles[p.role]}</Td>
+              <Td col="amount">
+                <Money value={p.amount} />
+              </Td>
+              <Td col="recouped">
+                <Money value={p.recouped} />
+              </Td>
+              <Td col="remaining">
+                <Money value={p.remaining} />
+              </Td>
+              <Td>{ru.money.actions.scopes[p.scope.kind as keyof typeof ru.money.actions.scopes] ?? p.scope.kind}</Td>
+            </tr>
+          ))}
+        </SimpleTable>
+      )}
+    </Section>
   );
 }
 

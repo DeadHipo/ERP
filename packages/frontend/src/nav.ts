@@ -8,6 +8,7 @@ import {
   ClockIcon,
   DocumentTextIcon,
   FolderOpenIcon,
+  MegaphoneIcon,
   MusicalNoteIcon,
   QuestionMarkCircleIcon,
   ReceiptPercentIcon,
@@ -77,6 +78,7 @@ export const NAV: readonly NavSection[] = [
     items: [
       { id: 'sources', label: items.sources, icon: ArchiveBoxIcon, path: '/sources' },
       { id: 'operations', label: items.operations, icon: FolderOpenIcon, path: '/operations' },
+      { id: 'ads', label: items.ads, icon: MegaphoneIcon, path: '/ads' },
     ],
   },
 ];

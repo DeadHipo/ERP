@@ -34,6 +34,8 @@ const SUMMARY_FIELDS = [
   'kind',
   'status',
   'direction',
+  'recoveryPercent',
+  'scope',
 ];
 
 const asRecord = (v: unknown): Record<string, unknown> =>
@@ -56,7 +58,11 @@ function createdIdsOf(body: unknown): string[] {
     const id = asRecord(v).id;
     return typeof id === 'string' && id ? [id] : [];
   };
-  return Array.isArray(body) ? body.flatMap(one) : one(body);
+  if (Array.isArray(body)) return body.flatMap(one);
+  // a batch (POST /ads): the ids of the created records
+  const created = asRecord(body).created;
+  if (Array.isArray(created)) return created.flatMap(one);
+  return one(body);
 }
 
 function summaryOf(params: Record<string, unknown>, body: Record<string, unknown>) {

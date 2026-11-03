@@ -214,6 +214,17 @@ export const settlements = {
 };
 
 /** `GET /search`. Optional `kinds` restricts the result to one or more kinds (EntityPicker). */
+/** Advertising expenses (D-155, D-156): records with their allocation, the summary, batch create, percent/scope, deactivate. */
+export const ads = {
+  list: (query: z.input<typeof S.adsQuery> = {}) => call('GET', '/ads', { query, schema: R.adListSchema }),
+  summary: (query: z.input<typeof S.adsSummaryQuery> = {}) => call('GET', '/ads/summary', { query, schema: R.adSummarySchema }),
+  create: (body: z.input<typeof S.createAdsBody>) => call('POST', '/ads', { body, schema: R.adsCreatedSchema }),
+  update: (adId: string, body: z.input<typeof S.updateAdBody>) =>
+    call('PATCH', `/ads/${id(adId)}`, { body, schema: R.adExpenseSchema }),
+  deactivate: (adId: string, body: z.input<typeof S.deactivateAdBody>) =>
+    call('POST', `/ads/${id(adId)}/deactivate`, { body, schema: R.adExpenseSchema }),
+};
+
 export const search = {
   query: (q: string, kinds?: readonly (typeof R.SEARCH_KINDS)[number][]) =>
     call('GET', '/search', { query: { q, kinds: kinds?.join(',') }, schema: R.searchResultSchema }),

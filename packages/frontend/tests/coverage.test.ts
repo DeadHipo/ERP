@@ -19,14 +19,14 @@ describe('operation coverage', () => {
     expect(bad).toEqual([]);
   });
 
-  it('uses only page ids P1..P21 or shell', () => {
-    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2[01])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
+  it('uses only page ids P1..P22 or shell', () => {
+    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2[0-2])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
     expect(bad).toEqual([]);
   });
 
-  it('covers every page P1..P21 at least once, except the documented ones', () => {
+  it('covers every page P1..P22 at least once, except the documented ones', () => {
     const covered = new Set(withPage.map((e) => e.page));
-    const missing = Array.from({ length: 21 }, (_, i) => `P${i + 1}`).filter((p) => !covered.has(p) && !(p in PAGES_WITHOUT_OPERATIONS));
+    const missing = Array.from({ length: 22 }, (_, i) => `P${i + 1}`).filter((p) => !covered.has(p) && !(p in PAGES_WITHOUT_OPERATIONS));
     expect(missing).toEqual([]);
     for (const p of Object.keys(PAGES_WITHOUT_OPERATIONS)) expect(covered.has(p), `${p} has operations after all`).toBe(false);
   });

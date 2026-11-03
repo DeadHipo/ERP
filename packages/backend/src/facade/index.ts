@@ -6,6 +6,7 @@ import type { SourcesService } from '../modules/sources';
 import { openSettlementsModule, type SettlementsService } from '../modules/settlements';
 import { openPublishingModule, type PublishingService } from '../modules/publishing';
 import { openAuditModule, type AuditService } from '../modules/audit';
+import { openAdsModule, type AdsService } from '../modules/ads';
 import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
@@ -15,6 +16,7 @@ import { payoutsApi } from './payouts';
 import { auditApi } from './audit';
 import { aggregatesApi } from './aggregates';
 import { searchApi } from './search';
+import { adsApi } from './ads-api';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -36,6 +38,7 @@ export function openFacade(config: FacadeConfig) {
     join(config.dataDir, 'files', 'publishing'),
   ).service;
   const audit: AuditService = openAuditModule(db).service;
+  const ads: AdsService = openAdsModule(db).service;
   const ctx = createFacadeContext(config, {
     db,
     owners,
@@ -45,12 +48,13 @@ export function openFacade(config: FacadeConfig) {
     settlements,
     publishing,
     audit,
+    ads,
   });
 
   const splitsPart = splitsApi(ctx);
   return {
     db,
-    modules: { owners, splits, labels, sources, settlements, publishing, audit },
+    modules: { owners, splits, labels, sources, settlements, publishing, audit, ads },
 
     ...splitsPart,
     ...aggregatesApi(ctx, splitsPart),
@@ -60,6 +64,7 @@ export function openFacade(config: FacadeConfig) {
     ...payoutsApi(ctx),
     ...auditApi(ctx),
     ...searchApi(ctx),
+    ...adsApi(ctx),
   };
 }
 

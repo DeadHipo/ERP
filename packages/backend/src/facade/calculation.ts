@@ -5,6 +5,7 @@ import type { LabelsService } from '../modules/labels';
 import type { SplitsService } from '../modules/splits';
 import type { ActiveFile, SourcesService } from '../modules/sources';
 import type { PublishingService } from '../modules/publishing';
+import type { AdExpense, AdsService } from '../modules/ads';
 import type { Db } from '../shared/pg-db';
 import { timed, timedStep, timedSync } from '../shared/timing';
 import {
@@ -27,6 +28,7 @@ import {
 } from './layers';
 import { cItems } from './queue';
 import { pubInPeriod, unitInPeriod, type PeriodFilter } from './period';
+import { adPositionsByOwner, allocateAd, type AdPosition, type AdResult } from './ads';
 
 export type { CReason, Category };
 
@@ -89,6 +91,10 @@ export interface Calculation {
   confirmedOwners: Set<string>;
   documentStatus: (id: string | null | undefined) => 'approved' | 'not_approved' | 'not_attached' | 'missing';
   documentKind: (id: string | null | undefined) => string | undefined;
+  /** Every active advertising expense with who bears it (D-155, D-156). */
+  ads: AdResult[];
+  /** The debt positions the expenses make, by owner (artists' parts and sublabels' unrecovered parts). */
+  adPositions: Map<string, AdPosition[]>;
 }
 
 export interface CalculateOptions {
@@ -106,6 +112,8 @@ export interface Modules {
   labels: LabelsService;
   sources: SourcesService;
   publishing: PublishingService;
+  /** Advertising expenses (D-156). */
+  ads: AdsService;
 }
 
 /**
@@ -130,6 +138,7 @@ export async function calculate(
     docs,
     pubData,
     resolveOwner,
+    adExpenses,
   } = await timed('pg snapshot: reference data', () =>
     m.db.snapshot(async () => {
       const artistIndex = await timed('owners.artistIndex', () => m.owners.artistIndex());
@@ -157,7 +166,9 @@ export async function calculate(
       ];
       const docs = await timed('owners.documentInfo', () => m.owners.documentInfo(docIds));
       const resolveOwner = await m.owners.ownerResolver();
+      const adExpenses: AdExpense[] = await timed('ads.list', () => m.ads.list({ active: true }));
       return {
+        adExpenses,
         artistIndex,
         confirmedOwners,
         labelOwners,
@@ -267,6 +278,38 @@ export async function calculate(
     }),
   );
 
+  // Advertising (D-155, D-156): the label string of an ISRC at a month is the one of its line that month (the largest
+  // net if several), else of the nearest earlier month, else of the earliest later one.
+  const ads = timedSync('ads (JS)', () => {
+    if (adExpenses.length === 0) return [];
+    const byIsrc = new Map<string, Map<string, { label: string; net: Decimal }>>();
+    for (const u of units) {
+      let months = byIsrc.get(u.isrc);
+      if (!months) byIsrc.set(u.isrc, (months = new Map()));
+      const cur = months.get(u.reportingMonth);
+      if (!cur || u.net.abs().gt(cur.net.abs())) months.set(u.reportingMonth, { label: u.labelName, net: u.net });
+    }
+    const labelStringOf = (isrc: string, month: string) => {
+      const months = byIsrc.get(isrc);
+      if (!months) return undefined;
+      const exact = months.get(month);
+      if (exact) return exact.label;
+      const keys = [...months.keys()].sort();
+      const earlier = keys.filter((k) => k < month).pop();
+      return months.get(earlier ?? (keys[0] as string))?.label;
+    };
+    return adExpenses.map((ad) =>
+      allocateAd(ad, {
+        splitAt: ctx.splitAt,
+        labelOf: ctx.labelOf,
+        labelName: ctx.labelName,
+        artistIndex,
+        labelOwners,
+        labelStringOf,
+      }),
+    );
+  });
+
   return {
     units,
     believeFiles: snapshot.files,
@@ -275,6 +318,8 @@ export async function calculate(
     confirmedOwners,
     documentStatus,
     documentKind,
+    ads,
+    adPositions: adPositionsByOwner(ads),
   };
 }
 

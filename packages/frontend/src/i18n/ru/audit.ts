@@ -36,6 +36,9 @@ export const audit = {
     'POST /settlements/operations/:id/proof': 'приложено подтверждение выплаты',
     'POST /settlements/operations/:id/deferred': 'изменена отложенность операции',
     'POST /settlements/operations/:id/deactivate': 'операция отменена',
+    'POST /ads': 'записан рекламный расход',
+    'PATCH /ads/:id': 'изменён процент или область рекламы',
+    'POST /ads/:id/deactivate': 'рекламный расход отменён',
     'POST /settlements/operations/:id/return': 'возврат выплаты',
   } as Record<string, string>,
   fields: {

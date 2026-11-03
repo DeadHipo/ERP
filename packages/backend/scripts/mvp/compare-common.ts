@@ -31,8 +31,8 @@ export async function bootstrap() {
   const dataDir = resolve(process.env.DATA_DIR ?? join(ROOT, 'data', 'real'));
   const stack = connectSources(join(dataDir, 'files', 'sources'));
   const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 0, sources: stack.sources });
-  const { owners, splits, labels, sources, settlements, publishing } = f.modules;
-  const modules = { db: stack.db, owners, splits, labels, sources, publishing };
+  const { owners, splits, labels, sources, settlements, publishing, ads } = f.modules;
+  const modules = { db: stack.db, owners, splits, labels, sources, publishing, ads };
   return { stack, f, modules, settlements, owners, close: () => stack.close() };
 }
 

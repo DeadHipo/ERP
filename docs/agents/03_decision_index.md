@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-155 by topic)
+# Decision index (D-001 … D-156 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -138,7 +138,8 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-072 Recoupment capped by net income in scope · in force
 - D-073 Operations follow merged artists; document kinds; deferral checks · in force
 - D-094 Negative lines use up the income they cancel · in force
-- D-155 Advertising expenses: the owner's model (ISRC, recovery percent 0–100, artist shares, scope like an advance, no documents); design only, not implemented · accepted
+- D-155 Advertising expenses: the owner's model (ISRC, recovery percent 0–100, artist shares, scope like an advance, no documents); implemented by D-156 · accepted
+- D-156 Advertising expenses implemented: module `ads`, allocation in `calculate()` (no MC / label rows, sublabel bears the unrecovered part), debt recouped in the balance like an advance, `/ads` API and page, Main history loaded (2,686 records); ⚠ debt above income waits (Main took it at once) · in force
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)
@@ -180,5 +181,5 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 
 ## Waiting for the product owner (do not change silently)
 D-018, D-032 (stored fields), D-035, D-041, D-043, D-045, D-049 ("largest"), D-068 (override),
-D-083 (writer merge), D-087 (equal parts), D-096 (company payee). Cross-module open questions: `docs/98_*.md`
+D-083 (writer merge), D-087 (equal parts), D-096 (company payee), D-156 (an ad debt above the income waits for income). Cross-module open questions: `docs/98_*.md`
 (M2, M5, M7, M8, M10…M13); module 1: `docs/99_*.md`.

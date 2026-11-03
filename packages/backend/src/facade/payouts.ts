@@ -175,6 +175,7 @@ export function payoutsApi(ctx: FacadeContext) {
           })),
           publishing: balance.publishing,
           positions: balance.positions,
+          ads: balance.ads,
           files: { believe: believeFiles, b17: await publishing.activeStatements() },
         };
         const op = await settlements.recordPayout({

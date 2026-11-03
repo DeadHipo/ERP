@@ -305,6 +305,24 @@ describe('API contract', () => {
       body: { fromId: other.id, intoId: owner.id, reason: 'same person' },
     });
 
+    // advertising expenses (D-156): a batch, the list with the allocation, the summary, a percent change, a rollback
+    const ads = await call('post', '/ads', {
+      body: {
+        items: [
+          { isrc: I1, month: '2026-07', amount: '12.50', recoveryPercent: '50', externalRef: 'contract-ad-1' },
+          { month: '2026-07', amount: '3', artistId: a1.id, scope: 'any' },
+        ],
+      },
+    });
+    expect(ads.created).toHaveLength(2);
+    const adList = await call('get', '/ads', { query: { isrc: I1, limit: '10' } });
+    expect(adList.items[0].allocation.status).toBe('allocated');
+    await call('get', '/ads/summary', { query: { from: '2026-01', to: '2026-12' } });
+    const patched = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { recoveryPercent: '0' } });
+    expect(patched.recoveryPercent).toBe('0');
+    await call('post', '/ads/:id/deactivate', { params: { id: ads.created[1].id }, body: { reason: 'contract test' } });
+    await call('get', '/owners/:id/balance', { params: { id: owner.id } });
+
     // the trail of one entity: the merge, newest first, with ids and no free text
     const trail = await call('get', '/audit', { query: { entityId: owner.id, limit: '3' } });
     expect(trail.items[0]).toMatchObject({ method: 'POST', route: '/owners/merge', operator: OPERATOR });

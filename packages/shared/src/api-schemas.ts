@@ -286,3 +286,37 @@ export const trackSummaryQuery = z.object({
 });
 
 export const releasesQuery = z.object({ q: z.string().optional() });
+
+// ---- advertising expenses (D-155, D-156) ----
+
+export const adScope = z.enum(['any', 'publishing', 'isrc']);
+const recoveryPercent = z.string().regex(/^\d+(\.\d{1,2})?$/, 'expected 0..100 with up to 2 decimals');
+
+export const adExpenseInput = z.object({
+  isrc: z.string().nullish().describe('The track the expense is bound to (its split and label of record)'),
+  month,
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'expected a positive USD amount with up to 2 decimals'),
+  recoveryPercent: recoveryPercent.optional().describe('0..100, default 100: the share returned from the artists'),
+  scope: adScope.optional().describe('any (default) | publishing | isrc: where the recovered part is recouped from'),
+  artistId: z.string().nullish().describe('An expense already allocated to one pseudonym (no split)'),
+  externalRef: z.string().nullish().describe('A post link or a source row; a known one is skipped'),
+  source: z.string().optional(),
+  comment: z.string().optional(),
+});
+export const createAdsBody = z.object({ items: z.array(adExpenseInput).min(1).max(20000) });
+export const updateAdBody = z
+  .object({ recoveryPercent: recoveryPercent.optional(), scope: adScope.optional() })
+  .refine((b) => b.recoveryPercent !== undefined || b.scope !== undefined, 'recoveryPercent or scope');
+export const deactivateAdBody = z.object({ reason: z.string().min(1) });
+export const adsQuery = z.object({
+  isrc: z.string().optional(),
+  artistId: z.string().optional(),
+  ownerId: z.string().optional(),
+  from: month.optional(),
+  to: month.optional(),
+  status: z.enum(['allocated', 'pre_allocated', 'no_split', 'no_artist']).optional(),
+  includeInactive: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+export const adsSummaryQuery = z.object({ from: month.optional(), to: month.optional() });

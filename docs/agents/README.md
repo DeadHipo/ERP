@@ -7,6 +7,7 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 |---|---|
 | [../решения_и_вопросы_владельцу.md](../решения_и_вопросы_владельцу.md) | Для владельца: продуктовые решения и открытые вопросы по приоритету (важное / среднее / менее важно / снять), цифры с API на 2026-11-03, кто решил и почему; читать вместе с владельцем и закрывать пункты |
 | [../рекламные_расходы_вопросы_владельцу.md](../рекламные_расходы_вопросы_владельцу.md) | Для владельца: рекламные расходы (M21, не реализовано): как это работает в Main и конвейере, что не загружено в ERP (803 890.68 удержанной рекламы), предлагаемая модель и вопросы по приоритету |
+| [../реклама_тз.md](../реклама_тз.md) | ТЗ рекламных расходов (D-156): запись, расчёт одной записи, где видно, API, история из Main |
 | [../обзор_системы.html](../обзор_системы.html) | Для владельца: одна HTML-страница со схемами, как система работает после слоёв (данные, модули, шесть слоёв, A = B + C + наше, баланс) |
 | [../схемы_uml.html](../схемы_uml.html) | Для владельца: семь UML-схем на Mermaid (контекст, ER по модулям, sequence расчёта и выплаты, слои, жизнь доллара, развёртывание); нужен интернет для библиотеки |
 | [01_big_picture.md](01_big_picture.md) | Always, first: what the system does, the money pipeline, modules, state, what is next |
@@ -29,7 +30,7 @@ they do not replace the architecture documents (`docs/01`…`09`) or the decisio
 | [reviews/](reviews/) | Council verdicts per stage of the MVP goal (architect, product, QA) and of the frontend goal (`frontend_stage{1,2,3}_{architect,product,qa}.md`, the stage 4 walk on the real data `frontend_stage4_walk.md`, later stages as they are written) |
 
 Folder-specific notes are in nested `CLAUDE.md` files (Claude Code loads them when it works in that folder):
-`packages/backend/src/modules/*/` (six modules), `packages/backend/src/facade/`, `packages/backend/tests/`, `packages/frontend/`.
+`packages/backend/src/modules/*/` (eight modules), `packages/backend/src/facade/`, `packages/backend/tests/`, `packages/frontend/`.
 
 Keeping them current: when you add a D-entry, add its line to `03_decision_index.md`; when you notice a stale
 statement elsewhere, add a row to `05_doc_drift.md` instead of editing the architecture documents.

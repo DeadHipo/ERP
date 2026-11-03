@@ -28,6 +28,7 @@ export const ROUTE_PATHS = {
   sources: 'sources',
   sourceLines: 'sources/lines',
   operations: 'operations',
+  ads: 'ads',
   devStates: 'dev/states',
 } as const;
 

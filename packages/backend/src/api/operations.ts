@@ -567,6 +567,49 @@ const operations: ApiOperation[] = [
     query: S.auditQuery,
     response: R.auditListSchema,
   },
+
+  {
+    method: 'get',
+    path: '/ads',
+    tag: 'ads',
+    summary: 'Advertising expenses with who bears them (split of the month, recovered and unrecovered parts), newest first',
+    query: S.adsQuery,
+    response: R.adListSchema,
+  },
+  {
+    method: 'post',
+    path: '/ads',
+    tag: 'ads',
+    summary: 'Record a batch of advertising expenses (every arrival is a new record; a known external ref is skipped)',
+    body: S.createAdsBody,
+    status: 201,
+    response: R.adsCreatedSchema,
+    errors: ['404 not_found: an artistId', '400 validation_error: item N'],
+  },
+  {
+    method: 'get',
+    path: '/ads/summary',
+    tag: 'ads',
+    summary: 'Advertising per month and label of record: total, returned from artists, borne by sublabels, borne by us',
+    query: S.adsSummaryQuery,
+    response: R.adSummarySchema,
+  },
+  {
+    method: 'patch',
+    path: '/ads/:id',
+    tag: 'ads',
+    summary: 'Change the recovery percent and/or the scope of an expense (at any time, D-155)',
+    body: S.updateAdBody,
+    response: R.adExpenseSchema,
+  },
+  {
+    method: 'post',
+    path: '/ads/:id/deactivate',
+    tag: 'ads',
+    summary: 'Deactivate an expense (it takes part in nothing)',
+    body: S.deactivateAdBody,
+    response: R.adExpenseSchema,
+  },
 ];
 
 /** Every write (post, patch) declares the `X-Operator` header (D-140). */
