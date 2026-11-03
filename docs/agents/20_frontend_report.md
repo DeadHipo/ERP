@@ -4,7 +4,7 @@ Goal (`notes/goal_prompt_frontend.md`): the operator's workplace at the level of
 operator answered on a screen and every unblocking action taken there, without SQL or scripts; the numbers on the
 screen equal the API to the cent. Six stages, each accepted by a council of three independent read-only reviewers
 (`docs/agents/reviews/frontend_stage{1,2,3,6}_*.md`, the stage 4 walk in `frontend_stage4_walk.md`). Branch
-`feature/fable-001`, HEAD after D-152; nothing pushed. This file says what is closed, what is open, and which
+`feature/fable-001`, HEAD after D-153; nothing pushed. This file says what is closed, what is open, and which
 assumptions the screens depend on.
 
 ## 1. What was built (closed)
@@ -29,8 +29,9 @@ assumptions the screens depend on.
   (`GET /overview`), the owners' payables with the gate (`GET /owners/payables`), the money of a track by month with
   the layer states and the breakdown of a month, the releases, the uses of a document, the search (`pg_trgm`), the
   duplicate pseudonyms, the list filters, the signals with counts and limits; 63 operations in `operations.ts`, each
-  with a schema, a contract-test call and a D-entry; no money rule (D-123 … D-138) changed (the diff of
-  `facade/layers/` is empty; `ownerBalance()` and `reconcile()` are pinned by the golden tests, +G48, G49).
+  with a schema, a contract-test call and a D-entry; no money rule (D-123 … D-138) changed (the only change under
+  `facade/layers/` is the shape of a shortfall signal, which gained `salesMonth` in D-152: no amount, condition or
+  order; `ownerBalance()` and `reconcile()` are pinned by the golden tests, +G48, G49).
 - **The 21 pages** (D-144 … D-149, D-151): Обзор, Очередь ожидания (C), Сигналы, Решения руководителя, Треки, Трек,
   Релизы, Релиз, Владельцы (with the payouts view), Владелец, Псевдонимы and Псевдоним, Документы and Документ,
   Сплиты, Участия, Лейблы, Паблишинг, Отчёты and the lines, Операции; one question per page
@@ -48,7 +49,7 @@ assumptions the screens depend on.
 - **The e2e harness** (D-144, D-151): `npm run e2e` creates private PostgreSQL and ClickHouse stores, seeds the 37
   scenarios through the facade (`scripts/e2e/seed.ts`, self-checked by `verify-seed.ts`: 131 PASS), builds and serves
   the client with the API on `:3100`, runs 20 spec files in a fixed order and drops the stores: **132 tests, 0 skipped,
-  about 2.7 minutes**, identical on two consecutive runs (stage 3 QA). The dev database `erp` is never touched.
+  about 2.7 minutes**, identical on two consecutive runs (the stage 6 QA verdict; the stage 3 QA measured 130 with 1 skipped before the stage 5 rework). The dev database `erp` is never touched.
 - **Verification on the real data** (stage 4, `reviews/frontend_stage4_walk.md`, GET only): 0 mismatches between the
   screen and the API on 10 tracks × 4 totals, 10 owners × 8 balance fields, all 1,151 rows of the owners list, 54
   overview rows × 7 cells, 6 queue totals, 11 signal counts, 14 open questions; 0 dead ends; 0 console errors; every
@@ -105,7 +106,7 @@ participantsWithoutOwner 3, the other three 0. The four reasons and three signal
 
 | Page | Money call | Time to first byte |
 |---|---|---|
-| Обзор | `GET /overview` | 9.7–11.8 s (one calculation instead of two: the old page cost 16–20 s) |
+| Обзор | `GET /overview` | 9.7–11.8 s (one calculation instead of two: the old page cost 16–20 s, `16` §4.2) |
 | Очередь, Сигналы | `GET /queue/:reason`, `GET /signals` | 7.4–8.5 s |
 | Владелец | `GET /owners/:id/balance` | 6.4–7.0 s |
 | Владельцы | `GET /owners/payables` | 9.5 s (1,151 balances from one calculation) |
@@ -136,7 +137,7 @@ is in place at no cost, D-142).
    runs through that host.
 6. **Documentation figures**: `14` §3.2 "ERP net" means B + ours; the screen's net is the raw net (§2).
 
-## 5. Assumptions the screens depend on (each marked "допущение" in its D-entry)
+## 5. Assumptions the screens depend on (each marked "допущение" in its D-entry; the ones first recorded without the mark in D-143, D-146, D-147 and D-150 are marked by D-153)
 
 | # | Assumption | D-entry |
 |---|---|---|
@@ -149,13 +150,13 @@ is in place at no cost, D-142).
 | A7 | Money text: `Intl.NumberFormat('ru-RU')` on the decimal string, two decimals half-expand, the exact string in `title` | D-144 |
 | A8 | The e2e seed gives every golden case its own Believe account and ISRC range; `PAYOUT_THRESHOLD_CENTS=0` on the e2e stand | D-144 |
 | A9 | An identical split change is accepted by the backend today | D-146 |
-| — | An audit record that fails after a committed write is logged and the write answers 2xx with `X-Audit: failed` | D-150 |
+| A10 | An audit record that fails after a committed write is logged and the write answers 2xx with `X-Audit: failed`; the client shows a warning toast | D-150, D-153 |
 
 ## 6. The definition of done at HEAD
 
 `npm run typecheck`, `npm run lint` (the widened R1 rules, `no-floating-promises`), `REQUIRE_STACK=1 npm test`
-(406 backend tests in 36 files; 65 frontend vitest tests: the guards and the helpers), `npm run build:client`, `npm run e2e` (132 passed,
-0 skipped). Decisions D-139 … D-152 in `docs/97_принятые_решения.md`, indexed in `03_decision_index.md`; the
+(406 backend tests in 38 files; 65 frontend vitest tests: the guards and the helpers), `npm run build:client`, `npm run e2e` (132 passed,
+0 skipped). Decisions D-139 … D-153 in `docs/97_принятые_решения.md`, indexed in `03_decision_index.md`; the
 guides `01`, `04`, `05`, the README of `docs/agents`, root `CLAUDE.md` and `packages/frontend/CLAUDE.md` refreshed.
 
 ## 7. Where everything is
@@ -165,4 +166,4 @@ guides `01`, `04`, `05`, the README of `docs/agents`, root `CLAUDE.md` and `pack
   `packages/backend/src/{modules/audit,facade/{queue,aggregates,payout-gate,search,audit,period}.ts,api/audit.ts}`;
   the seed `packages/backend/scripts/e2e/`; the specs `packages/frontend/e2e/`.
 - Verdicts: `reviews/frontend_stage{1,2,3,6}_{architect,product,qa}.md`, the walk `reviews/frontend_stage4_walk.md`.
-- Decisions: D-139 … D-152.
+- Decisions: D-139 … D-153.

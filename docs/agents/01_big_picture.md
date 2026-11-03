@@ -72,6 +72,7 @@ Three consequences that surprise newcomers:
 | `sources` | Believe file registry and report lines | PostgreSQL `source_files` + ClickHouse `believe.rows` | 03, 06 | D-031…D-038, D-102…D-114 |
 | `publishing` | B17 statements, writers, terms by owner, period and operation type; computes no money | PostgreSQL schema `publishing` | 08 | D-039…D-046, D-083, D-087, D-128 |
 | `settlements` | operations in/out, payouts, scope shape; the recoup algorithm moved to the facade | PostgreSQL schema `settlements` | 07 | D-047…D-056, D-072, D-094, D-127 |
+| `audit` | the trace of every API write (operator from `X-Operator`, route template, entity ids, a summary without free text); decides nothing | PostgreSQL schema `audit` | 17 §7 N16 | D-140, D-150 |
 | `facade` | nothing stored; composes all modules, runs the layers, recoup, balance, pays | — | 09, 10 | D-012, D-057…D-061, D-127 |
 
 Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never imports another module, the facade

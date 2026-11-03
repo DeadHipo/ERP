@@ -35,6 +35,12 @@ function queryString(query?: QueryParams): string {
   return text ? `?${text}` : '';
 }
 
+/** Set by the app: shown when a write answered with `X-Audit: failed` (the trace of the action was not recorded). */
+let onAuditFailed: (() => void) | undefined;
+export function setAuditFailedHandler(fn: () => void): void {
+  onAuditFailed = fn;
+}
+
 /** Every call of the app goes through here: fetch, the operator header on writes, error mapping, schema parse. */
 export async function call<Schema extends z.ZodType>(
   method: 'GET' | 'POST' | 'PATCH',
@@ -60,6 +66,8 @@ export async function call<Schema extends z.ZodType>(
     throw new ApiError(e instanceof Error ? e.message : String(e), 0, 'network_error');
   }
   const json: unknown = await res.json().catch(() => undefined);
+  // D-150: the write happened but its audit record failed; the operator must know the trace is missing.
+  if (res.ok && method !== 'GET' && res.headers.get('X-Audit') === 'failed') onAuditFailed?.();
   if (!res.ok) {
     const parsed = R.errorBody.safeParse(json);
     if (parsed.success) {

@@ -6,7 +6,10 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { Toast } from '@heroui/react';
 import { App } from './App';
 import { createQueryClient } from './api/queries/core';
-import { TOAST_PLACEMENT, TOAST_WIDTH } from './components/toast';
+import { TOAST_PLACEMENT, TOAST_WIDTH, notifyAuditFailed } from './components/toast';
+import { setAuditFailedHandler } from './api/client';
+
+setAuditFailedHandler(notifyAuditFailed);
 import './index.css';
 
 ModuleRegistry.registerModules([AllCommunityModule]);

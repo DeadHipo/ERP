@@ -58,7 +58,7 @@ The architecture documents and `context_data/` are not edited (README §6); this
 - **Frontend tests exist since D-139/D-144:** vitest guard tests in `packages/frontend/tests/` and Playwright specs in
   `packages/frontend/e2e/` (`npm run e2e`, needs the stack and `npx playwright install chromium` once; take the lock
   `mkdir data/test-tmp/e2e.lock` first, see `packages/frontend/CLAUDE.md`).
-- **Test counts in older guides are stale.** `04_recipes.md`, `14_verification.md` and `15_mvp_report.md` quote 360/361
+- **Test counts in older guides are stale.** `14_verification.md` and `15_mvp_report.md` quote 360/361
   tests (the 2026-11-03 MVP state); after D-152 the suites are 406 backend + 65 frontend (vitest) and 132 Playwright specs.
 - **`unfunded` rows have a sales month since D-152.** `18_frontend_plan.md`, `19_golden_screens.md` and D-145/D-151 describe the
   hook `signal-row-unfunded-<isrc>|<month>|<ruleId>`; it is now `...|<ruleId>|<salesMonth>` (the last segment).

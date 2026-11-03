@@ -21,6 +21,15 @@ export function notifySuccess(text: string = ru.toast.done): void {
   );
 }
 
+/** The write happened, but its audit record failed (D-150): the operator must know the trace is missing. */
+export function notifyAuditFailed(): void {
+  toast.warning(
+    <span data-testid="toast" data-code="audit_failed">
+      {ru.toast.auditFailed}
+    </span>,
+  );
+}
+
 /**
  * Failure: the Russian sentence of the code (`i18n/ru/errors.ts`), `data-code="<api code>"`; the code and the API's own
  * message follow in small print (also the tooltip), so nothing of the answer is hidden (R4).

@@ -103,7 +103,7 @@ function artistShare(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate
           isrc: s.unit.isrc,
           upc: s.unit.upc,
           month: s.unit.reportingMonth,
-        salesMonth: s.unit.salesMonth,
+          salesMonth: s.unit.salesMonth,
           ruleId: p.id,
           missing: ZERO,
           why: 'no_source_row',

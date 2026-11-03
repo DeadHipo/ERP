@@ -6,7 +6,7 @@ import { notifyError, notifySuccess } from '../../components/toast';
 /**
  * Query keys are `[domain, name, ...params]`. A key is a MONEY key when its first two elements are in this list:
  * the answer comes from one recalculation (D-012, R2). The recalc indicator watches these, and every mutation
- * invalidates them. Prefixes of endpoints that do not exist yet (steps 3.2/3.3) are listed already.
+ * invalidates them.
  */
 export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['owners', 'balance'],

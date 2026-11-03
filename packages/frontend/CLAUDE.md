@@ -6,7 +6,7 @@ The operator's workplace (design: `docs/agents/17_frontend_model.md`, plan: `18_
 ## Stack (versions pinned exactly in `package.json`)
 React 19 + Vite 8 + TypeScript; HeroUI 3 (`@heroui/react`, `@heroui/styles`) on Tailwind 4 (`@tailwindcss/vite`, no config
 file); TanStack Query 5; AG Grid Community 36 (modules registered once in `main.tsx`: `AllCommunityModule`);
-`react-router-dom` 7; Heroicons; zod from `@erp/shared`; Playwright for e2e, vitest for the pure helpers and guard tests.
+`react-router-dom` 7; Heroicons; zod (a direct dependency, the same version `@erp/shared` uses); Playwright for e2e, vitest for the pure helpers and guard tests.
 Install only from the repo root: `npm i -w @erp/frontend --save-exact <pkg>@<version>`.
 Build rule: react and react-dom are never split into a chunk of their own (`vite.config.ts` puts HeroUI/React Aria/AG Grid/
 TanStack into one `vendor` chunk and nothing else).
