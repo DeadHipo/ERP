@@ -1,4 +1,4 @@
-Verdict: no
+Verdict: yes
 
 # Frontend stage 6 review: architect (2026-11-03)
 
@@ -134,3 +134,34 @@ those two fixed, I would say yes without another code review.
   audit module and the `X-Operator` requirement.
 - Known and accepted: the 4 s synchronous fold that serialises money calls (A2), the client-side lists up to 26 k rows
   (A4), the two remaining duplicate dialog pairs, and the manual e2e lock.
+
+## Revision 2 (HEAD `a208aa5`, D-153)
+
+Verdict changed from **no** to **yes**. I re-read `20_frontend_report.md`, D-153, its index line and every file the
+commit touched (`git diff 12e6e08..a208aa5`). I re-ran `npm run typecheck` (exit 0), `npm run lint` (exit 0) and
+`npm test -w @erp/frontend` (11 files, 65 tests, passed). I did not run e2e, the stack tests or any server.
+
+| # | Revision 1 finding | Status | Evidence |
+|---|---|---|---|
+| 1 | blocker: 20 §1 "diff of `facade/layers/` is empty" | fixed | §1 now says the only change under `facade/layers/` is `salesMonth` on a shortfall (D-152), with no change to any amount, condition or order. That matches the diff. Since `12e6e08` the only change to `layers/` is the indentation of `carve.ts:106` |
+| 2 | blocker: assumptions not marked «допущение» | fixed | D-153 marks A3 and A6 (D-143), A9 (D-146), A5 (D-147) and A10 (D-150) as «допущение» and leaves the old entries as written. The §5 header says this, and the table now has an A10 row. Every row of §5 now points to an entry that carries the mark |
+| 3 | should-fix: lost trace invisible | fixed | `call()` reads `X-Audit` on a successful non-GET (`client.ts:69-70`) and calls the handler, which `main.tsx` sets to `notifyAuditFailed`. That shows a warning toast (`data-code="audit_failed"`, Russian text, no retry). The header is same-origin, so it is readable. No test covers this path (note A) |
+| 4 | should-fix: stale guides | fixed | Root `CLAUDE.md` now carries the `X-Operator` rule and the audit hook. `01` §3 has an `audit` row. `05` no longer names `04`. The frontend `CLAUDE.md` describes zod as a direct dependency. The `core.ts` comment is cleaned up. The D-140 index line says "refined by D-150". The index header and line for D-153 are present. Root `CLAUDE.md` still lists none of the new facade files or routes (note B) |
+| 5 | note: action table is declarative | open, accepted | Unchanged; the assumptions signal links to the queue |
+| 6 | note: `NoteDialog` loads `GET /tracks` | open, recorded | D-153 lists it as a known limit |
+| 7 | note: report figures | fixed | 20 §6 now says 38 files. The 16–20 s figure cites `16` §4.2. The e2e figure cites the stage 6 QA verdict |
+| 8 | note: `/dev/states` in the bundle | open, recorded | D-153 lists it as a known limit |
+| 9 | note: cosmetics | mostly fixed | The indentation is fixed and the plugin-react 6.1.2 pin is recorded in D-153. The unused `parseInt` override stays, which is harmless |
+| 10 | note: P17 deviation | fixed | Recorded in D-153 |
+
+Every "Готово" condition on the architecture side is met. R1–R8 hold at HEAD: the new client code compares a header
+string and does no arithmetic or gating. The money rules D-123 … D-138 are unchanged, and the report matches the code.
+
+New notes, not blockers:
+- **A.** No test covers the `X-Audit: failed` → toast path. A vitest test of `call()` with a stubbed `fetch` that
+  returns 201 with the header would pin it. The backend half is already tested (D-150).
+- **B.** Root `CLAUDE.md` "Architecture in one screen" still names neither the facade additions (`queue`,
+  `aggregates`, `payout-gate`, `search`, `audit`, `period`) nor the screen routes (`/overview`, `/queue`, `/search`,
+  `/audit`). `01` and the facade `CLAUDE.md` cover them, so this is only a convenience for the next agent.
+- **C.** In `main.tsx`, the handler call sits between two imports. ES modules hoist imports, so it works, but put the
+  call below the imports for readability.

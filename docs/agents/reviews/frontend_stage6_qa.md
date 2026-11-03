@@ -1,4 +1,4 @@
-Verdict: no
+Verdict: yes
 
 # Frontend stage 6 council: QA (2026-11-03)
 
@@ -181,3 +181,26 @@ pages without re-counting, which is enough for R2 (it is a property of the page,
   the only flakiness check there is: one worker, no retries.
 - A test-store sweep before the stack is handed over, and the owner should hear about the `host: true` dev server
   (`20` §4.5) before a real-data session.
+
+## Revision 2 (HEAD `a208aa5`, D-153)
+
+**Verdict: yes.** Blocker 1 is fixed and the definition of done is green at the new HEAD.
+
+- **Blocker 1 is closed.** `20:52` now says the two identical 132 / 0-skipped runs come from this verdict, and that
+  stage 3 QA measured 130 tests with 1 skipped. `20:158` says "406 backend tests in 38 files".
+- **The D-153 code edits** (the `X-Audit: failed` warning toast in `api/client.ts`, `main.tsx`, `toast.tsx`,
+  `i18n/ru/toast.ts`, and the `carve.ts` indentation) are committed. I re-ran the definition of done on them:
+
+| Check at `a208aa5` | Result | Time |
+|---|---|---|
+| `npm run typecheck` / `npm run lint` | exit 0 / exit 0 | 9 s / 6 s |
+| `REQUIRE_STACK=1 npm test` | backend 38 files / 406 passed; frontend 11 files / 65 passed | 32 s |
+| `npm run build:client` | exit 0 | 1 s |
+| `npm run e2e` run 3 (under the lock, taken and released) | `verify-seed` 131 PASS, 0 FAIL; **132 passed, 0 skipped**; outcome list identical to runs 1 and 2 (diffed); stores dropped | 166 s (2.8 m tests) |
+| Stores and git after | no `erp_e2e` / `believe_e2e*`; `git status`: `.claude/` and another member's review edit only | |
+
+- **Should-fixes 2–5 are not fixed in this stage.** They are the unasserted sub-rows, the weak second presses,
+  SS4–SS7 on real pages and the lint gaps. They stay handover follow-ups. None of them weakens a golden screen,
+  because every number they concern is either asserted elsewhere (P1) or absent from the code (the lint gaps; my
+  grep of `src/` found none in use).
+- **Notes 6–9 stand as written.**

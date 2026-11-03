@@ -136,6 +136,14 @@ is in place at no cost, D-142).
    with no authentication the write API is reachable through it; the owner should know before a real-data session
    runs through that host.
 6. **Documentation figures**: `14` §3.2 "ERP net" means B + ours; the screen's net is the raw net (§2).
+7. **Memory under concurrent money calls** (stage 6 product verdict): ten track-money calls fired at once on the
+   real data crashed the API with "JavaScript heap out of memory"; the assumption A2 (one operator, calls serialised
+   by the CPU) holds for time, not for memory. Before a second operator or a script hammers the API: cap the
+   concurrent calculations in the server (a queue of one) or raise the Node heap; a decision for the next goal.
+8. **UI polish left** (stage 6 product and QA notes): a grid row does not re-measure when its action buttons change
+   (two rows can overlap until a reload); ISRC/UPC on the unfunded list, «Месяцы» on the queue and «Выплачено» on the
+   payouts view can still truncate at narrow widths; the confirm-split and close dialogs state no amount; the
+   overview and the track months are listed oldest first; no extra mark on a very large payout.
 
 ## 5. Assumptions the screens depend on (each marked "допущение" in its D-entry; the ones first recorded without the mark in D-143, D-146, D-147 and D-150 are marked by D-153)
 
