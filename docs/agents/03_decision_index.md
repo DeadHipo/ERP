@@ -41,12 +41,13 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 
 ## UI
 - ~~D-003 Server-rendered pages~~ → D-007
-- D-007 Minimal React app · in force
-- D-062 UI scope · in force
+- D-007 Minimal React app · *refined by* D-139 (HeroUI + Tailwind, TanStack Query, AG Grid; React, Vite, TypeScript, the typed client stay)
+- ~~D-062 UI scope (minimal UI without a kit)~~ → D-139
 - D-076 Payout button disabled when nothing is payable · in force
 - D-100 Flows shown in the UI on data/real · in force
 - D-113 Lines page `/sources/lines` · in force
-- D-129 API and pages for labels, participations, terms by type, track notes; shared `REASON_LABELS` · in force
+- D-129 API and pages for labels, participations, terms by type, track notes; shared `REASON_LABELS` · in force (the pages are replaced by the frontend goal, D-139 …)
+- D-139 Frontend goal design: rules R1–R8 with machine checks, the stack pinned, operator trace, payout gate as a field, e2e on private stores; the event loop and the money text as допущения · in force; changes D-119 (the client parses responses), corrects D-121 (ClickHouse database name, N20)
 
 ## Module 1: owners, artists, tracks, documents
 - D-016 Document status · in force
