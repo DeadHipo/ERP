@@ -45,7 +45,7 @@ export const catalog = {
     noteSaved: 'Заметка сохранена',
     noteCleared: 'Заметка убрана',
     noTrackRecord: 'трек не зарегистрирован: заметку некуда сохранить',
-    tabs: { money: 'Деньги по месяцам', rules: 'Правила', documents: 'Документы', history: 'История', lines: 'Строки отчётов' },
+    tabs: { money: 'Деньги по месяцам', rules: 'Правила', ads: 'Реклама', documents: 'Документы', history: 'История', lines: 'Строки отчётов' },
     noMonths: 'Нет строк отчётов по этому ISRC.',
     cols: {
       account: 'Счёт',

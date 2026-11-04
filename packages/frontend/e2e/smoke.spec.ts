@@ -80,6 +80,7 @@ const DETAIL_ROUTES = [
   '/artists/a1',
   '/artists/duplicates',
   '/documents/d1',
+  '/ads/a1',
   '/labels/l1',
   '/sources/lines',
 ];

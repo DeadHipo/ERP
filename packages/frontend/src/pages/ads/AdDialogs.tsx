@@ -5,11 +5,14 @@ import { useAction } from '../../api/queries/core';
 import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { FormDialog } from '../../components/FormDialog';
+import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
+import { SimpleTable, Td } from '../owners/components/Fact';
+import { parseBatch } from './parse-batch';
 
 const t = ru.ads;
 export const AD_SCOPES = ['any', 'publishing', 'isrc'] as const;
@@ -23,21 +26,33 @@ const scopeOf = (v: string): AdScopeKind => AD_SCOPES.find((s) => s === v) ?? 'a
 const expenseLine = (ad: AdView) =>
   fmt(t.edit.lines.expense, { month: ad.month, isrc: ad.isrc ?? '—', amount: formatMoney(centsToText(ad.amountCents)) });
 
-/** «Добавить расход»: one record (ISRC, month, amount, recovery %, scope, comment) → ConfirmDialog → `POST /ads`. */
-export function CreateAdDialog(props: { onClose: () => void }) {
-  const [isrc, setIsrc] = useState('');
+type Target = 'split' | 'artist';
+
+/**
+ * «Добавить расход»: one record → ConfirmDialog → `POST /ads`. By the split of an ISRC, or whole on one pseudonym (the
+ * ISRC is then optional). `isrc` / `artistId` preset the dialog when it opens from a track or a pseudonym.
+ */
+export function CreateAdDialog(props: { onClose: () => void; isrc?: string; artistId?: string; pseudonym?: string }) {
+  const [target, setTarget] = useState<Target>(props.artistId ? 'artist' : 'split');
+  const [artist, setArtist] = useState<{ id: string; label: string } | null>(
+    props.artistId ? { id: props.artistId, label: props.pseudonym ?? props.artistId } : null,
+  );
+  const [isrc, setIsrc] = useState(props.isrc ?? '');
   const [month, setMonth] = useState('');
   const [amount, setAmount] = useState('');
   const [percent, setPercent] = useState('100');
   const [scope, setScope] = useState<AdScopeKind>('any');
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
+  const onArtist = target === 'artist';
+  const typedIsrc = isrc.trim();
   const run = useAction(
     () =>
       api.ads.create({
         items: [
           {
-            isrc: isrc.trim(),
+            ...(typedIsrc ? { isrc: typedIsrc } : {}),
+            ...(onArtist && artist ? { artistId: artist.id } : {}),
             month: month.trim(),
             amount: amount.trim(),
             recoveryPercent: percent.trim(),
@@ -52,8 +67,9 @@ export function CreateAdDialog(props: { onClose: () => void }) {
         r.created[0] ? fmt(t.create.toast, { amount: formatMoney(centsToText(r.created[0].amountCents)) }) : t.create.skippedToast,
     },
   );
-  const filled =
-    ISRC.test(isrc.trim()) && MONTH.test(month.trim()) && AMOUNT.test(amount.trim()) && PERCENT.test(percent.trim());
+  const whoOk = onArtist ? artist !== null && (typedIsrc === '' || ISRC.test(typedIsrc)) : ISRC.test(typedIsrc);
+  const scopeOk = scope !== 'isrc' || ISRC.test(typedIsrc);
+  const filled = whoOk && scopeOk && MONTH.test(month.trim()) && AMOUNT.test(amount.trim()) && PERCENT.test(percent.trim());
   return (
     <>
       <FormDialog
@@ -73,7 +89,32 @@ export function CreateAdDialog(props: { onClose: () => void }) {
           </ActionButton>
         }
       >
-        <TextField name="ad-isrc" label={t.create.isrc} value={isrc} onChange={setIsrc} isRequired />
+        <SelectField
+          name="ad-target"
+          label={t.create.target}
+          value={target}
+          onChange={(v) => setTarget(v === 'artist' ? 'artist' : 'split')}
+          options={[
+            { id: 'split', label: t.create.targets.split },
+            { id: 'artist', label: t.create.targets.artist },
+          ]}
+        />
+        {onArtist ? (
+          <EntityPicker
+            name="ad-artist"
+            label={t.create.artist}
+            kind="artists"
+            value={artist?.id ?? null}
+            onChange={(id, label) => setArtist(id ? { id, label } : null)}
+          />
+        ) : null}
+        <TextField
+          name="ad-isrc"
+          label={onArtist ? t.create.isrcOptional : t.create.isrc}
+          value={isrc}
+          onChange={setIsrc}
+          isRequired={!onArtist}
+        />
         <TextField name="ad-month" label={t.create.month} value={month} onChange={setMonth} isRequired placeholder="2026-10" />
         <TextField name="ad-amount" label={t.create.amount} value={amount} onChange={setAmount} isRequired placeholder="40.00" />
         <TextField name="ad-percent" label={t.create.percent} value={percent} onChange={setPercent} isRequired />
@@ -84,6 +125,7 @@ export function CreateAdDialog(props: { onClose: () => void }) {
           onChange={(v) => setScope(scopeOf(v))}
           options={AD_SCOPES.map((s) => ({ id: s, label: t.scopes[s] }))}
         />
+        <span className="text-xs text-muted">{t.create.scopeHint}</span>
         <TextField name="ad-comment" label={t.create.comment} value={comment} onChange={setComment} />
       </FormDialog>
       <ConfirmDialog
@@ -91,12 +133,103 @@ export function CreateAdDialog(props: { onClose: () => void }) {
         onOpenChange={setConfirm}
         title={t.create.confirmTitle}
         lines={[
-          fmt(t.create.lines.isrc, { isrc: isrc.trim().toUpperCase() }),
+          ...(onArtist && artist ? [fmt(t.create.lines.artist, { pseudonym: artist.label })] : []),
+          ...(typedIsrc ? [fmt(t.create.lines.isrc, { isrc: typedIsrc.toUpperCase() })] : []),
           fmt(t.create.lines.month, { month: month.trim() }),
           fmt(t.create.lines.amount, { amount: AMOUNT.test(amount.trim()) ? formatMoney(amount.trim()) : amount }),
           fmt(t.create.lines.percent, { percent: percent.trim() }),
           fmt(t.create.lines.scope, { scope: t.scopes[scope] }),
         ]}
+        isPending={run.isPending}
+        onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
+      />
+    </>
+  );
+}
+
+const PREVIEW_ROWS = 100;
+
+/** «Добавить списком»: pasted lines checked in place → ConfirmDialog → one `POST /ads` (a known link is skipped). */
+export function BatchAdDialog(props: { onClose: () => void }) {
+  const b = t.batch;
+  const [text, setText] = useState('');
+  const [confirm, setConfirm] = useState(false);
+  const rows = parseBatch(text);
+  const good = rows.filter((r) => r.error === null);
+  const bad = rows.filter((r) => r.error !== null);
+  const run = useAction(
+    () =>
+      api.ads.create({
+        items: good.map((r) => ({
+          isrc: r.isrc,
+          month: r.month,
+          amount: r.amount,
+          recoveryPercent: r.recoveryPercent,
+          source: 'batch',
+          ...(r.externalRef ? { externalRef: r.externalRef } : {}),
+          ...(r.comment ? { comment: r.comment } : {}),
+        })),
+      }),
+    {
+      invalidate: 'all',
+      success: (r) => fmt(b.toast, { created: r.created.length, skipped: r.skipped.length }),
+    },
+  );
+  const ready = good.length > 0 && bad.length === 0;
+  return (
+    <>
+      <FormDialog
+        isOpen
+        onOpenChange={(o) => (o ? null : props.onClose())}
+        title={b.title}
+        subtitle={b.subtitle}
+        footer={
+          <ActionButton
+            name="ad-batch-submit"
+            isDisabled={!ready}
+            reason={ready ? undefined : ru.actions.hints.fillFields}
+            isPending={run.isPending}
+            onPress={() => setConfirm(true)}
+          >
+            {b.submit}
+          </ActionButton>
+        }
+      >
+        <label className="flex flex-col gap-1 text-sm">
+          {b.text}
+          <textarea
+            data-testid="field-ad-batch"
+            className="min-h-32 rounded-lg border border-border bg-transparent p-2 font-mono text-xs"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={'QZTST2600001;2026-10;40.00;100;https://…;промо'}
+          />
+        </label>
+        {rows.length > 0 ? (
+          <div className="flex flex-col gap-1 text-sm">
+            <span data-testid="ad-batch-counts">
+              {fmt(b.good, { n: good.length })} · <span className={bad.length > 0 ? 'text-danger' : ''}>{fmt(b.bad, { n: bad.length })}</span>
+            </span>
+            <SimpleTable head={[b.cols.line, b.cols.isrc, b.cols.month, b.cols.amount, b.cols.percent, b.cols.error]} testId="ad-batch-preview">
+              {[...bad, ...good].slice(0, PREVIEW_ROWS).map((r) => (
+                <tr key={r.line} data-testid={`ad-batch-row-${r.line}`}>
+                  <Td>{r.line}</Td>
+                  <Td>{r.isrc}</Td>
+                  <Td>{r.month}</Td>
+                  <Td>{r.amount}</Td>
+                  <Td>{r.recoveryPercent}</Td>
+                  <Td>{r.error ? <span className="text-danger">{b.errors[r.error]}</span> : b.ok}</Td>
+                </tr>
+              ))}
+            </SimpleTable>
+          </div>
+        ) : null}
+      </FormDialog>
+      <ConfirmDialog
+        isOpen={confirm}
+        onOpenChange={setConfirm}
+        title={b.confirmTitle}
+        lines={[fmt(b.lines.count, { n: good.length }), b.lines.effect]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />

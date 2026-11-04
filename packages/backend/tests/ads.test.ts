@@ -221,6 +221,8 @@ describe('ads: the owner balance (stack)', () => {
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('60');
     expect((await f.listAds()).count).toBe(0);
     expect((await f.listAds({ includeInactive: true })).items[0]?.allocation).toBeNull();
+    expect((await f.getAd(created[0]?.id as string)).allocation).toBeNull();
+    await expect(f.getAd('nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('a sublabel bears the unrecovered part; a repeated external ref is skipped; the list and summary show it', async () => {
@@ -259,6 +261,9 @@ describe('ads: the owner balance (stack)', () => {
     expect(subBalance.total.payable.toFixed()).toBe('3'); // its sublabel share of I2 in August is 10
     expect((await f.ownerBalance(a.owner.id)).total.adsCharged.toFixed()).toBe('3');
     const summary = await f.adsSummary();
+    expect(summary.totals.count).toBe(1);
+    expect(summary.totals.amount.toFixed()).toBe('10');
+    expect((await f.getAd(first.created[0]?.id as string)).allocation?.parts[0]?.pseudonym).toBe('A1');
     expect(summary.rows.map((r) => [r.month, r.label, r.borneBySublabels.toFixed(), r.recoveredFromArtists.toFixed()])).toEqual([
       ['2026-08', '0to8', '7', '3'],
     ]);

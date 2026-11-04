@@ -1,6 +1,7 @@
 import { NotFoundError, ValidationError } from '../shared/errors';
 import type { AdExpense, AdExpenseInput, AdScope } from '../modules/ads';
-import { calculate } from './calculation';
+import { ZERO } from '../shared/money';
+import { calculate, type Calculation } from './calculation';
 import { adSummary, type AdResult, type AdStatus } from './ads';
 import type { FacadeContext } from './context';
 import { timed } from '../shared/timing';
@@ -23,6 +24,18 @@ export interface AdsQuery {
 export type AdView = AdExpense & {
   allocation: (Omit<AdResult, 'parts' | 'adId'> & { parts: (AdResult['parts'][number] & { pseudonym: string })[] }) | null;
 };
+
+function viewOf(rec: AdExpense, r: AdResult | undefined, artistIndex: Calculation['artistIndex']): AdView {
+  if (!r) return { ...rec, allocation: null };
+  const { parts, ...rest } = r;
+  return {
+    ...rec,
+    allocation: {
+      ...rest,
+      parts: parts.map((p) => ({ ...p, pseudonym: artistIndex.get(p.artistId)?.pseudonym ?? p.artistId })),
+    },
+  };
+}
 
 /** Advertising expenses (D-155, D-156): records in the ads module, allocation recalculated from scratch. */
 export function adsApi(ctx: FacadeContext) {
@@ -66,7 +79,6 @@ export function adsApi(ctx: FacadeContext) {
       const byId = new Map(calc.ads.map((r) => [r.adId, r]));
       const ownerId = q.ownerId ? await owners.resolveOwnerId(q.ownerId) : undefined;
       const artistId = q.artistId ? (calc.artistIndex.get(q.artistId)?.id ?? q.artistId) : undefined;
-      const pseudonym = (id: string) => calc.artistIndex.get(id)?.pseudonym ?? id;
       const views: AdView[] = [];
       for (const rec of records) {
         const r = byId.get(rec.id);
@@ -84,16 +96,17 @@ export function adsApi(ctx: FacadeContext) {
             (r?.borneBy.kind === 'sublabel' && r.borneBy.ownerId === ownerId);
           if (!hit) continue;
         }
-        let allocation: AdView['allocation'] = null;
-        if (r) {
-          const { parts, ...rest } = r;
-          allocation = { ...rest, parts: parts.map((p) => ({ ...p, pseudonym: pseudonym(p.artistId) })) };
-        }
-        views.push({ ...rec, allocation });
+        views.push(viewOf(rec, r, calc.artistIndex));
       }
       const offset = Math.max(q.offset ?? 0, 0);
       const limit = Math.min(Math.max(q.limit ?? 200, 1), 5000);
       return { count: views.length, items: views.slice(offset, offset + limit) };
+    },
+
+    /** One record with its allocation (null when it is deactivated). */
+    async getAd(id: string): Promise<AdView> {
+      const [rec, calc] = await Promise.all([ads.get(id), timed('calculate', () => calculate(modules))]);
+      return viewOf(rec, calc.ads.find((r) => r.adId === id), calc.artistIndex);
     },
 
     /** Per month and label of record: the expense, what artists return, what sublabels and we bear (YYYY-MM). */
@@ -101,7 +114,20 @@ export function adsApi(ctx: FacadeContext) {
       for (const m of [f.from, f.to])
         if (m && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new ValidationError(`Invalid month "${m}"`);
       const calc = await calculate(modules);
-      return { rows: adSummary(calc.ads, f.from, f.to) };
+      const rows = adSummary(calc.ads, f.from, f.to);
+      const total = (k: 'amount' | 'recoveredFromArtists' | 'borneBySublabels' | 'borneByUs' | 'noSplit') =>
+        rows.reduce((s, r) => s.add(r[k]), ZERO);
+      return {
+        rows,
+        totals: {
+          count: rows.reduce((n, r) => n + r.count, 0),
+          amount: total('amount'),
+          recoveredFromArtists: total('recoveredFromArtists'),
+          borneBySublabels: total('borneBySublabels'),
+          borneByUs: total('borneByUs'),
+          noSplit: total('noSplit'),
+        },
+      };
     },
   };
 }

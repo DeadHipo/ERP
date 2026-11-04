@@ -317,7 +317,10 @@ describe('API contract', () => {
     expect(ads.created).toHaveLength(2);
     const adList = await call('get', '/ads', { query: { isrc: I1, limit: '10' } });
     expect(adList.items[0].allocation.status).toBe('allocated');
-    await call('get', '/ads/summary', { query: { from: '2026-01', to: '2026-12' } });
+    const adSummary = await call('get', '/ads/summary', { query: { from: '2026-01', to: '2026-12' } });
+    expect(adSummary.totals.count).toBe(2);
+    const oneAd = await call('get', '/ads/:id', { params: { id: ads.created[0].id } });
+    expect(oneAd.allocation.isrc).toBe(I1);
     const patched = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { recoveryPercent: '0' } });
     expect(patched.recoveryPercent).toBe('0');
     await call('post', '/ads/:id/deactivate', { params: { id: ads.created[1].id }, body: { reason: 'contract test' } });

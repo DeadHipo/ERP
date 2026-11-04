@@ -217,6 +217,7 @@ export const settlements = {
 /** Advertising expenses (D-155, D-156): records with their allocation, the summary, batch create, percent/scope, deactivate. */
 export const ads = {
   list: (query: z.input<typeof S.adsQuery> = {}) => call('GET', '/ads', { query, schema: R.adListSchema }),
+  get: (adId: string) => call('GET', `/ads/${id(adId)}`, { schema: R.adViewSchema }),
   summary: (query: z.input<typeof S.adsSummaryQuery> = {}) => call('GET', '/ads/summary', { query, schema: R.adSummarySchema }),
   create: (body: z.input<typeof S.createAdsBody>) => call('POST', '/ads', { body, schema: R.adsCreatedSchema }),
   update: (adId: string, body: z.input<typeof S.updateAdBody>) =>

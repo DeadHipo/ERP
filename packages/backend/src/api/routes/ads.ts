@@ -27,6 +27,7 @@ export function adsRouter(facade: Facade) {
     res.status(201).json(await facade.createAds(parse(S.createAdsBody, req.body).items)),
   );
   r.get('/ads/summary', async (req, res) => res.json(await facade.adsSummary(parse(S.adsSummaryQuery, req.query))));
+  r.get('/ads/:id', async (req, res) => res.json(await facade.getAd(param(req, 'id'))));
   r.patch('/ads/:id', async (req, res) => res.json(await facade.updateAd(param(req, 'id'), parse(S.updateAdBody, req.body))));
   r.post('/ads/:id/deactivate', async (req, res) =>
     res.json(await facade.deactivateAd(param(req, 'id'), parse(S.deactivateAdBody, req.body).reason)),

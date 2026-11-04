@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
 import type { adsQuery } from '@erp/shared/api-schemas';
 import type { AdSummary, AdView } from '@erp/shared/api-responses';
 import { adQueries } from '../../api/queries/ads';
+import { artistQueries } from '../../api/queries/artists';
 import { ActionButton, OperatorNotice } from '../../components/ActionButton';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
+import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { DataGrid } from '../../components/grid/DataGrid';
@@ -18,21 +20,24 @@ import { compareDecimal, formatMoney } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { Section, SimpleTable, Td } from '../owners/components/Fact';
-import { CreateAdDialog, DeactivateAdDialog, EditAdDialog } from './AdDialogs';
+import { BatchAdDialog, CreateAdDialog, DeactivateAdDialog, EditAdDialog } from './AdDialogs';
 
 const t = ru.ads;
 const STATUSES = ['allocated', 'pre_allocated', 'no_split', 'no_artist'] as const;
-const KEYS = ['isrc', 'status', 'from', 'to'] as const;
+const KEYS = ['isrc', 'artistId', 'status', 'from', 'to'] as const;
+/** The API cap of one `GET /ads`; the grid pages on the client. */
+const LIST_LIMIT = 5000;
 type Key = (typeof KEYS)[number];
 type Filter = z.input<typeof adsQuery>;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-/** The filters of P22 from the URL (`isrc`, `status`, `from`, `to`), sent as they are; the summary takes the months. */
+/** The filters of P22 from the URL (`isrc`, `artistId`, `status`, `from`, `to`), sent as they are; the summary takes the months. */
 function useAdsFilter(): [Filter, (f: Record<Key, string>) => void] {
   const [params, setParams] = useSearchParams();
   const month = (v: string | null) => (v && MONTH.test(v) ? v : undefined);
   const filter: Filter = {
     isrc: params.get('isrc') ?? undefined,
+    artistId: params.get('artistId') ?? undefined,
     status: STATUSES.find((s) => s === params.get('status')),
     from: month(params.get('from')),
     to: month(params.get('to')),
@@ -52,24 +57,29 @@ function useAdsFilter(): [Filter, (f: Record<Key, string>) => void] {
 /** P22 Реклама `/ads`: what advertising was spent, on which ISRC, who returns it, and what sublabels and we bear? */
 export function AdsPage() {
   const [filter, apply] = useAdsFilter();
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<'one' | 'batch' | null>(null);
   const summary = useQuery(adQueries.summary({ from: filter.from, to: filter.to }));
-  const list = useQuery(adQueries.list({ ...filter, limit: 1000 }));
+  const list = useQuery(adQueries.list({ ...filter, limit: LIST_LIMIT }));
   return (
     <div data-testid="ads-page" className="flex flex-col gap-4">
       <PageHeader
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-ad" onPress={() => setCreating(true)}>
-            {t.create.open}
-          </ActionButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <ActionButton name="create-ad" onPress={() => setCreating('one')}>
+              {t.create.open}
+            </ActionButton>
+            <ActionButton name="create-ads-batch" variant="secondary" onPress={() => setCreating('batch')}>
+              {t.batch.open}
+            </ActionButton>
+          </div>
         }
       />
-      <Filters filter={filter} onApply={apply} />
+      <Filters key={JSON.stringify(filter)} filter={filter} onApply={apply} />
       <Section title={t.summary.title} testId="ads-summary">
         <QueryView query={summary} money isEmpty={(d) => d.rows.length === 0} emptyMessage={t.summary.empty}>
-          {(d) => <SummaryTable rows={d.rows} />}
+          {(d) => <SummaryTable data={d} />}
         </QueryView>
       </Section>
       <Section title={t.list.title} testId="ads-list">
@@ -78,24 +88,31 @@ export function AdsPage() {
             <>
               <div className="text-sm text-muted" data-testid="ads-count">
                 {fmt(t.list.total, { n: d.count })}
+                {d.items.length < d.count ? ` · ${fmt(t.list.shown, { shown: d.items.length, n: d.count })}` : null}
               </div>
               <AdsGrid rows={d.items} />
             </>
           )}
         </QueryView>
       </Section>
-      {creating ? <CreateAdDialog onClose={() => setCreating(false)} /> : null}
+      {creating === 'one' ? <CreateAdDialog onClose={() => setCreating(null)} /> : null}
+      {creating === 'batch' ? <BatchAdDialog onClose={() => setCreating(null)} /> : null}
     </div>
   );
 }
 
-function SummaryTable(props: { rows: AdSummary['rows'] }) {
+function SummaryTable(props: { data: AdSummary }) {
   const s = t.summary;
+  const total = props.data.totals;
   return (
     <SimpleTable head={[s.month, s.label, s.count, s.amount, s.recovered, s.sublabels, s.ours, s.noSplit]} testId="ads-summary-table">
-      {props.rows.map((r) => (
+      {props.data.rows.map((r) => (
         <tr key={`${r.month}|${r.label}`} data-testid={`ads-summary-${r.month}-${r.label}`}>
-          <Td>{r.month}</Td>
+          <Td>
+            <Link className="text-accent hover:underline" to={`/ads?from=${r.month}&to=${r.month}`}>
+              {r.month}
+            </Link>
+          </Td>
           <Td>{r.label === '?' ? s.unmapped : r.label}</Td>
           <Td col="count">{r.count}</Td>
           <Td col="amount">
@@ -115,6 +132,26 @@ function SummaryTable(props: { rows: AdSummary['rows'] }) {
           </Td>
         </tr>
       ))}
+      <tr data-testid="ads-summary-total" className="border-t border-border font-medium">
+        <Td>{s.total}</Td>
+        <Td> </Td>
+        <Td col="count">{total.count}</Td>
+        <Td col="amount">
+          <Money value={total.amount} />
+        </Td>
+        <Td col="recovered">
+          <Money value={total.recoveredFromArtists} />
+        </Td>
+        <Td col="sublabels">
+          <Money value={total.borneBySublabels} />
+        </Td>
+        <Td col="ours">
+          <Money value={total.borneByUs} />
+        </Td>
+        <Td col="noSplit">
+          <Money value={total.noSplit} />
+        </Td>
+      </tr>
     </SimpleTable>
   );
 }
@@ -122,6 +159,8 @@ function SummaryTable(props: { rows: AdSummary['rows'] }) {
 function Filters(props: { filter: Filter; onApply: (f: Record<Key, string>) => void }) {
   const f = t.filters;
   const [isrc, setIsrc] = useState(props.filter.isrc ?? '');
+  const [artistId, setArtistId] = useState(props.filter.artistId ?? '');
+  const chosen = useQuery({ ...artistQueries.detail(props.filter.artistId ?? ''), enabled: !!props.filter.artistId });
   const [status, setStatus] = useState<string>(props.filter.status ?? 'all');
   const [from, setFrom] = useState(props.filter.from ?? '');
   const [to, setTo] = useState(props.filter.to ?? '');
@@ -129,6 +168,15 @@ function Filters(props: { filter: Filter; onApply: (f: Record<Key, string>) => v
     <div className="flex flex-wrap items-end gap-2" data-testid="ads-filters">
       <div className="w-48">
         <TextField name="filter-isrc" label={f.isrc} value={isrc} onChange={setIsrc} />
+      </div>
+      <div className="w-56">
+        <EntityPicker
+          name="filter-artist"
+          label={f.artist}
+          kind="artists"
+          value={artistId || null}
+          onChange={(id) => setArtistId(id ?? '')}
+        />
       </div>
       <div className="w-44">
         <SelectField
@@ -148,7 +196,9 @@ function Filters(props: { filter: Filter; onApply: (f: Record<Key, string>) => v
       <ActionButton
         name="ads-apply"
         write={false}
-        onPress={() => props.onApply({ isrc: isrc.trim().toUpperCase(), status: status === 'all' ? '' : status, from: from.trim(), to: to.trim() })}
+        onPress={() =>
+          props.onApply({ isrc: isrc.trim().toUpperCase(), artistId, status: status === 'all' ? '' : status, from: from.trim(), to: to.trim() })
+        }
       >
         {f.apply}
       </ActionButton>
@@ -158,14 +208,21 @@ function Filters(props: { filter: Filter; onApply: (f: Record<Key, string>) => v
         variant="secondary"
         onPress={() => {
           setIsrc('');
+          setArtistId('');
           setStatus('all');
           setFrom('');
           setTo('');
-          props.onApply({ isrc: '', status: '', from: '', to: '' });
+          props.onApply({ isrc: '', artistId: '', status: '', from: '', to: '' });
         }}
       >
         {f.reset}
       </ActionButton>
+      {props.filter.artistId ? (
+        <span className="w-full text-sm" data-testid="ads-filter-artist">
+          {f.artistChosen}
+          <EntityLink kind="artist" id={props.filter.artistId} label={chosen.data?.pseudonym ?? props.filter.artistId} />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -208,7 +265,14 @@ const borneText = (ad: AdView) => {
 function adColumns(open: (d: Dialog) => void): ColDef<AdView>[] {
   const c = t.cols;
   return [
-    { colId: 'month', headerName: c.month, minWidth: 90, maxWidth: 110, valueGetter: (p) => p.data?.month },
+    {
+      colId: 'month',
+      headerName: c.month,
+      minWidth: 90,
+      maxWidth: 110,
+      valueGetter: (p) => p.data?.month,
+      cellRenderer: (p: P) => (p.data ? <EntityLink kind="ad" id={p.data.id} label={p.data.month} /> : null),
+    },
     {
       colId: 'isrc',
       headerName: c.isrc,

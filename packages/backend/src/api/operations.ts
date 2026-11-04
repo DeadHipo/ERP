@@ -595,6 +595,14 @@ const operations: ApiOperation[] = [
     response: R.adSummarySchema,
   },
   {
+    method: 'get',
+    path: '/ads/:id',
+    tag: 'ads',
+    summary: 'One advertising expense with who bears it (allocation null when it is deactivated)',
+    response: R.adViewSchema,
+    errors: ['404 not_found'],
+  },
+  {
     method: 'patch',
     path: '/ads/:id',
     tag: 'ads',

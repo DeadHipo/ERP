@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
-export type EntityKind = 'isrc' | 'upc' | 'owner' | 'artist' | 'document' | 'label';
+export type EntityKind = 'isrc' | 'upc' | 'owner' | 'artist' | 'document' | 'label' | 'ad';
 
 /** The card route of every entity kind (R3: keys only, never a name). */
 export function entityPath(kind: EntityKind, key: string): string {
   const k = encodeURIComponent(key);
   switch (kind) {
+    case 'ad':
+      return `/ads/${k}`;
     case 'isrc':
       return `/tracks/${k}`;
     case 'upc':

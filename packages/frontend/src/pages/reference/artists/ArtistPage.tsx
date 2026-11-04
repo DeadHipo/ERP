@@ -10,6 +10,7 @@ import { StatusChip } from '../../../components/StatusChip';
 import { ru } from '../../../i18n/ru';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
 import { DocumentCell, OwnerLink, period, useOwnerNames } from '../shared';
+import { AdsOfEntity } from '../../ads/AdsOfEntity';
 import { AssignOwnerAction } from './AssignOwnerAction';
 
 const t = ru.reference.artists;
@@ -83,6 +84,7 @@ export function ArtistPage() {
                 )}
               </QueryView>
             </section>
+            <AdsOfEntity artistId={a.id} pseudonym={a.pseudonym} />
           </div>
         )}
       </QueryView>

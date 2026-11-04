@@ -1017,5 +1017,15 @@ export const adSummarySchema = z.object({
       noSplit: money,
     }),
   ),
+  totals: z
+    .object({
+      count: z.number().int(),
+      amount: money,
+      recoveredFromArtists: money,
+      borneBySublabels: money,
+      borneByUs: money,
+      noSplit: money,
+    })
+    .describe('The sums of the rows of the period'),
 });
 export type AdSummary = z.infer<typeof adSummarySchema>;

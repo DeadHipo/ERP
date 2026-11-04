@@ -18,6 +18,7 @@ import { MoneyTab } from './MoneyTab';
 import { RulesTab } from './RulesTab';
 import { DocumentsTab } from './DocumentsTab';
 import { HistoryTab } from './HistoryTab';
+import { AdsOfEntity } from '../../ads/AdsOfEntity';
 
 const t = ru.catalog.track;
 const m = ru.catalog.money;
@@ -66,6 +67,7 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
       tabs={[
         { id: 'money', label: t.tabs.money, content: <MoneyTab isrc={isrc} data={data} /> },
         { id: 'rules', label: t.tabs.rules, content: <RulesTab isrc={isrc} data={data} /> },
+        { id: 'ads', label: t.tabs.ads, content: <AdsOfEntity isrc={isrc} /> },
         { id: 'documents', label: t.tabs.documents, content: <DocumentsTab data={data} /> },
         { id: 'history', label: t.tabs.history, content: <HistoryTab isrc={isrc} /> },
         {
