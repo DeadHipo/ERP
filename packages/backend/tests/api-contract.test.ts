@@ -258,7 +258,14 @@ describe('API contract', () => {
     });
     await call('get', '/reconciliation', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/signals');
-    await call('get', '/overview', { query: { from: '2026-07', to: '2026-07' } });
+    const overview = await call('get', '/overview', { query: { from: '2026-07', to: '2026-07' } });
+    // D-160: the totals are the backend's sums of the rows (the client never sums); a one-row period equals its row
+    const [oneRow] = overview.reconciliation as { A_received: string; account: string; source: string }[];
+    if (oneRow && overview.reconciliation.length === 1) {
+      expect(overview.totals.all.received).toBe(oneRow.A_received);
+      expect(overview.totals.byAccount).toEqual([expect.objectContaining({ source: oneRow.source, account: oneRow.account, received: oneRow.A_received })]);
+    }
+    expect(overview.totals.all.discrepancy).toBe('0');
     await call('get', '/queue/:reason', { params: { reason: 'split_unconfirmed' }, query: { limit: '10' } });
     await call('get', '/queue/:reason', {
       params: { reason: 'writer_unmapped' },

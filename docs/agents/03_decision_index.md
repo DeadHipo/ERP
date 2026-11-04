@@ -143,6 +143,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-157 Advertising is taken off payable at once and in full, like a payout (owner, 2026-11-04); ads charged = Main's 791,174.51; scope has no money effect · in force
 - D-158 The scope of an ad record stays as it is, stored and shown, no money effect (owner, 2026-11-04) · in force
 - D-159 The advertising pages: `GET /ads/:id`, summary totals, pasted list, expense on a pseudonym, pseudonym filter, the card, the track tab and the pseudonym section · in force
+- D-160 The KPI cards of P1: `totals` of `GET /overview` (all, per source, per account; the backend sums, R1), four cards with the identity check, the account filter picks one account, a card expands by source and account · in force
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)

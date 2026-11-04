@@ -13,6 +13,7 @@ import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatDateTime } from '../../lib/datetime';
 import { fmt, plural, ru } from '../../i18n/ru';
+import { OverviewKpis } from './OverviewKpis';
 
 type Overview = z.output<typeof overviewSchema>;
 type Row = Overview['reconciliation'][number];
@@ -94,6 +95,11 @@ export function OverviewPage() {
   return (
     <div data-testid="overview-page">
       <PageHeader title={t.title} subtitle={t.subtitle} toolbar={<PeriodFilter period={period} onApply={setPeriod} />} />
+      {query.isError && query.data === undefined ? null : (
+        <div className="mb-4">
+          <OverviewKpis data={query.data} loading={query.data === undefined} account={account} />
+        </div>
+      )}
       <QueryView
         query={query}
         money

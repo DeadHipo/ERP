@@ -1,6 +1,5 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Facade } from '../facade';
 import { operatorTrace } from './audit';
 import { errorHandler } from './http';
@@ -24,7 +23,9 @@ export function createApp(facade: Facade, opts: { tmpDir: string; clientDist?: s
   if (opts.clientDist && existsSync(opts.clientDist)) {
     const dist = opts.clientDist;
     app.use(express.static(dist));
-    app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(join(dist, 'index.html')));
+    // `root` so that only the relative path is checked for dot segments: an absolute path under a dot directory
+    // (a git worktree in `.claude/worktrees/`) is otherwise refused by `send` as a dotfile (D-160).
+    app.get(/^\/(?!api).*/, (_req, res) => res.sendFile('index.html', { root: dist }));
   }
 
   app.use(errorHandler);

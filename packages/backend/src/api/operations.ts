@@ -485,7 +485,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/overview',
     tag: 'reports',
-    summary: 'Overview in one calculation: reconciliation, C queue summary, signal counts, file counts',
+    summary: 'Overview in one calculation: reconciliation, its totals (all, per source, per account), C queue summary, signal counts, file counts',
     query: S.periodQuery,
     response: R.overviewSchema,
   },

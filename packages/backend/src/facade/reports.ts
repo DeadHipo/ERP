@@ -1,10 +1,63 @@
 import { Decimal, ZERO } from '../shared/money';
 import { inMonthRange } from '../shared/dates';
 import { assertIsrc } from '../shared/identifiers';
-import { calculate, reconcile, type Calculation, type PeriodFilter } from './calculation';
+import { calculate, reconcile, type Calculation, type PeriodFilter, type Reconciliation } from './calculation';
 import { cQueue, type QueueOptions } from './queue';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
+
+/** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
+export interface KpiSums {
+  received: Decimal;
+  notOurs: Decimal;
+  waiting: Decimal;
+  ourShare: Decimal;
+  ourShareNoSplit: Decimal;
+  discrepancy: Decimal;
+}
+
+const zeroSums = (): KpiSums => ({
+  received: ZERO,
+  notOurs: ZERO,
+  waiting: ZERO,
+  ourShare: ZERO,
+  ourShareNoSplit: ZERO,
+  discrepancy: ZERO,
+});
+
+const addRow = (s: KpiSums, r: Reconciliation): KpiSums => ({
+  received: s.received.add(r.A_received),
+  notOurs: s.notOurs.add(r.B_notOurs),
+  waiting: s.waiting.add(r.C_waiting),
+  ourShare: s.ourShare.add(r.ourShare),
+  ourShareNoSplit: s.ourShareNoSplit.add(r.ourShareNoSplit),
+  discrepancy: s.discrepancy.add(r.discrepancy),
+});
+
+/**
+ * The totals of the KPI cards of P1 over the reconciliation rows of the period (D-160): all rows, per source, and per
+ * source × account (every account of the rows, in the order of the rows). The frontend computes nothing (R1), so the
+ * sums it shows are these; a row set filtered to one account on the client picks that account's entry.
+ */
+export function overviewTotals(rows: readonly Reconciliation[]) {
+  let all = zeroSums();
+  const bySource = { believe: zeroSums(), b17: zeroSums() };
+  const byAccount = new Map<string, { source: 'believe' | 'b17'; account: string; sums: KpiSums }>();
+  for (const r of rows) {
+    all = addRow(all, r);
+    bySource[r.source] = addRow(bySource[r.source], r);
+    const k = `${r.source}|${r.account}`;
+    const a = byAccount.get(k) ?? { source: r.source, account: r.account, sums: zeroSums() };
+    byAccount.set(k, { ...a, sums: addRow(a.sums, r) });
+  }
+  return {
+    all,
+    bySource,
+    byAccount: [...byAccount.values()]
+      .sort((a, b) => (a.source !== b.source ? (a.source < b.source ? -1 : 1) : a.account < b.account ? -1 : a.account > b.account ? 1 : 0))
+      .map(({ source, account, sums }) => ({ source, account, ...sums })),
+  };
+}
 
 /** The reconciliation rows of one calculation, with the stored file totals. */
 export async function reconciliationFrom(
@@ -250,6 +303,7 @@ export function reportsApi(ctx: FacadeContext) {
       return {
         calculatedAt: new Date().toISOString(),
         reconciliation,
+        totals: overviewTotals(reconciliation),
         queue: queue.summary,
         signals: Object.entries(sg.counts).map(([name, count]) => ({ name, count })),
         files: { believe: calc.believeFiles.length, b17: statements.length },
