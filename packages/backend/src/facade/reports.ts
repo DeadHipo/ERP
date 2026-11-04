@@ -279,13 +279,9 @@ export function reportsApi(ctx: FacadeContext) {
       return reconciliationFrom(ctx, await calculate(modules), f);
     },
 
+    /** The owner balance from the units of the owner's reach (D-163, D-164). */
     async ownerBalance(ownerId: string, f: PeriodFilter = {}) {
       return (await balanceWithFiles(ownerId, f)).balance;
-    },
-
-    /** The same balance from the units of the owner's reach only (D-163); the payout keeps the full calculation. */
-    async ownerBalanceByReach(ownerId: string, f: PeriodFilter = {}) {
-      return (await balanceWithFiles(ownerId, f, { reach: true })).balance;
     },
 
     /** The reach of an owner (D-163): its pseudonyms and the ISRCs their money can come from. */

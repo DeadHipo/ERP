@@ -17,17 +17,16 @@ import type { Modules } from './calculation';
  * - `publishingLines: false` skips the B17 statement lines: for the answers that use only the master side
  *   (`calc.publishing` is then empty, never read).
  *
- * `FACADE_SCOPE=off` disables every scope (the A/B switch of the comparison on real data and of `tests/scope.test.ts`).
+ * There is one path: a scope is always applied. The guard tests and the check scripts get the full answer through the
+ * internal path (`calculate()` on the unscoped modules plus the pure function of the answer, or the test's own
+ * unfiltered reads), never through a mode of the facade (D-164).
  */
 export type UnitScope = SnapshotFilter & { publishingLines?: false };
-
-export const scopeEnabled = () => process.env.FACADE_SCOPE !== 'off';
 
 /** A service with some methods replaced; the rest are looked up on the original (a test proxy included). */
 const over = <T extends object>(service: T, methods: Partial<T>): T => Object.assign(Object.create(service) as T, methods);
 
 export function scoped(modules: Modules, scope: UnitScope): Modules {
-  if (!scopeEnabled()) return modules;
   const { publishingLines, ...filter } = scope;
   const { sources, splits, owners, publishing } = modules;
   const isrcs = filter.isrcs;

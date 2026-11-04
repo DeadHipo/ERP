@@ -68,6 +68,10 @@ export function createPublishingRepository(db: Db) {
     insertStatementPeriod: async (period: string, statementId: string) => {
       await orm().insert(pubStatementPeriods).values({ source: 'b17', period, statementId });
     },
+    /** The grouped lines of the loaded statements (D-164): run after every change of pub_lines or a statement status. */
+    async refreshLinesByKey(): Promise<void> {
+      await db.query('REFRESH MATERIALIZED VIEW publishing.pub_lines_by_key');
+    },
     /** Inserts the lines in chunks, one multi-row INSERT (unnest of column arrays) per chunk. */
     async insertLines(lines: LineInsert[]): Promise<void> {
       for (let i = 0; i < lines.length; i += LINE_CHUNK) {
@@ -127,13 +131,11 @@ export function createPublishingRepository(db: Db) {
         operation_type: string | null;
         payable: string;
       }>(
-        `SELECT l.period, l.writer_norm, MIN(l.writer_name COLLATE "C") AS writer_name, l.work_title, l.songwriters,
-                l.operation_type, SUM(l.payable_pico)::text AS payable
-         FROM publishing.pub_lines l JOIN publishing.pub_statements s ON s.id = l.statement_id
-         WHERE s.status = 'loaded'
-         GROUP BY l.period, l.writer_norm, l.songwriters, l.work_title, l.operation_type
-         ORDER BY l.period COLLATE "C", l.writer_norm COLLATE "C", l.songwriters COLLATE "C" NULLS FIRST,
-                  l.work_title COLLATE "C", l.operation_type COLLATE "C" NULLS FIRST`,
+        // the grouped lines are kept by the materialized view pub_lines_by_key (D-164), refreshed by every load
+        `SELECT period, writer_norm, writer_name, work_title, songwriters, operation_type, payable_pico::text AS payable
+         FROM publishing.pub_lines_by_key
+         ORDER BY period COLLATE "C", writer_norm COLLATE "C", songwriters COLLATE "C" NULLS FIRST,
+                  work_title COLLATE "C", operation_type COLLATE "C" NULLS FIRST`,
       );
       return r.rows.map((x) => ({
         period: x.period,

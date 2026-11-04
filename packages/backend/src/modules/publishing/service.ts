@@ -176,6 +176,7 @@ export function createPublishingService(db: Db, storageDir: string) {
             };
           });
           await repo.insertLines(rows);
+          await repo.refreshLinesByKey();
           await repo.insertWritersIfAbsent([...newWriters.values()]);
           // A name seen first as a songwriter is upgraded to holder: a holder without owner gets one (unknown author).
           await repo.upgradeToHolders([...holders]);

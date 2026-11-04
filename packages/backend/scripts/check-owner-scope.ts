@@ -1,8 +1,8 @@
 /**
  * D-163 check on real data: for every owner, the balance from the units of the owner's reach equals the balance from
  * the full calculation. One full calculation serves every owner; the reach calculation runs per owner. The facade path
- * (`ownerBalanceByReach`) is compared with `ownerBalance` for the first owners too. Prints the owners that differ (none
- * expected), the reach sizes and the times.
+ * (`ownerBalance`, by reach since D-164) is compared with the full balance for the first owners too. Prints the owners
+ * that differ (none expected), the reach sizes and the times.
  *
  *   npx tsx packages/backend/scripts/check-owner-scope.ts [dataDir] [limit]
  *
@@ -51,11 +51,10 @@ try {
     sizes.push(reach.isrcs.length);
     if (a === b) equal += 1;
     else differing.push(`${o.id} (reach ${reach.isrcs.length} ISRCs, ${reach.artistIds.length} pseudonyms)`);
-    // the facade path, for the first owners: the public method gives the very same answer as the public full one
+    // the facade path, for the first owners: the public method (by reach) gives the balance of the full calculation
     if (n < 5) {
-      const viaApi = text(await f.ownerBalanceByReach(o.id));
-      const viaFull = text(await f.ownerBalance(o.id));
-      if (viaApi !== viaFull) differing.push(`${o.id}: ownerBalanceByReach differs from ownerBalance`);
+      const viaApi = text((({ owner: _o, payout: _p, ...rest }) => rest)(await f.ownerBalance(o.id)));
+      if (viaApi !== a) differing.push(`${o.id}: ownerBalance (facade, by reach) differs from the full balance`);
     }
     if ((n + 1) % 25 === 0 || n + 1 === list.length)
       console.log(`${n + 1}/${list.length}: equal ${equal}, differing ${differing.length}; by reach ${(reachMs / (n + 1) / 1000).toFixed(2)} s per owner`);

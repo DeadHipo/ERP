@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ACC1, ACC2, Case, I, UPC } from './helpers/golden-case';
 import type { SnapshotFilter } from '../src/modules/sources';
 import { testStack } from './helpers/test-sources';
 
-// The unit scope of the facade (D-161): a method whose answer depends on a subset of the Believe units reads only
-// that subset, and the answer is byte for byte the one of the full calculation. `FACADE_SCOPE=off` is the switch.
+// The unit scope of the facade (D-161, D-162, D-163, D-164): a method whose answer depends on a subset of the Believe
+// units reads only that subset, and the answer is byte for byte the one of the full calculation. The facade has one
+// path (no switch): the full answer is obtained here by patching the test's own reads to ignore every filter.
 // Synthetic data only.
 
 const UPC2 = '1234567890124';
@@ -49,11 +50,39 @@ async function spy() {
 
 const text = (x: unknown) => JSON.stringify(x, (k, v: unknown) => (k === 'calculatedAt' ? undefined : v));
 
-describe('unit scope of the facade (D-161)', () => {
-  afterEach(() => {
-    delete process.env.FACADE_SCOPE;
-  });
+/**
+ * Runs `fn` with every read of the facade answering in full: the sources ignore the unit filters, the split index
+ * and the known pairs ignore the ISRC list, the B17 lines are always read. The scope then narrows nothing, so the
+ * public method gives the answer of the full calculation.
+ */
+async function withFullReads<T>(c: Case, fn: () => Promise<T>): Promise<T> {
+  const service = (await testStack()).service;
+  const { splits, owners, publishing } = c.f.modules;
+  const saved = {
+    snapshot: service.snapshot,
+    index: splits.index,
+    knownPairs: owners.knownPairs,
+    lines: publishing.snapshotForCalculation,
+  };
+  const snapshot = service.snapshot.bind(service);
+  const index = splits.index.bind(splits);
+  const knownPairs = owners.knownPairs.bind(owners);
+  const lines = publishing.snapshotForCalculation.bind(publishing);
+  service.snapshot = () => snapshot({});
+  splits.index = () => index({});
+  owners.knownPairs = () => knownPairs({});
+  publishing.snapshotForCalculation = () => lines({});
+  try {
+    return await fn();
+  } finally {
+    service.snapshot = saved.snapshot;
+    splits.index = saved.index;
+    owners.knownPairs = saved.knownPairs;
+    publishing.snapshotForCalculation = saved.lines;
+  }
+}
 
+describe('unit scope of the facade (D-161)', () => {
   it('every scoped method answers exactly as the full calculation and reads only its units', async () => {
     const { c, adId } = await world();
     const f = c.f;
@@ -95,11 +124,9 @@ describe('unit scope of the facade (D-161)', () => {
       const scopedAnswer = text(await run());
       expect(reads.length, name).toBe(1);
       check(reads[0] as { filter: SnapshotFilter; units: number });
-      process.env.FACADE_SCOPE = 'off';
       reads.length = 0;
-      const fullAnswer = text(await run());
-      delete process.env.FACADE_SCOPE;
-      expect(reads[0]?.units, `${name}: the switch gives the full read`).toBe(5);
+      const fullAnswer = text(await withFullReads(c, run));
+      expect(reads[0]?.units, `${name}: the full read`).toBe(5);
       expect(scopedAnswer, name).toBe(fullAnswer);
     }
   });
@@ -166,9 +193,9 @@ describe('unit scope of the facade (D-161)', () => {
     for (const name of ['A', 'B', 'R']) {
       const id = c.owners.get(name) as string;
       reads.length = 0;
-      const byReach = text(await f.ownerBalanceByReach(id));
+      const byReach = text(await f.ownerBalance(id)); // the route reads by reach (D-164)
       expect(reads.map((r) => r.units), name).toEqual([name === 'B' ? 1 : 2]); // I(1) and I(3) have two months each
-      const full = text(await f.ownerBalance(id));
+      const full = text(await withFullReads(c, () => f.ownerBalance(id)));
       expect(reads.map((r) => r.units), name).toEqual([name === 'B' ? 1 : 2, 5]);
       expect(byReach, name).toBe(full);
       const total = JSON.parse(full).total as { earned: string; waiting: string };
@@ -193,15 +220,32 @@ describe('unit scope of the facade (D-161)', () => {
     const id = (created[0] as { id: string }).id;
     const one = text(await f.getAd(id));
     expect([reads[0]?.filter.isrcs, reads[0]?.units]).toEqual([[], 0]);
-    process.env.FACADE_SCOPE = 'off';
-    expect(text(await f.getAd(id))).toBe(one);
-    delete process.env.FACADE_SCOPE;
+    expect(text(await withFullReads(c, () => f.getAd(id)))).toBe(one);
     reads.length = 0;
     await f.overview();
-    await f.ownerBalance(c.owners.get('A') as string);
     await f.ownerPayables();
     await f.signals();
     await f.reconciliation({ from: '2026-03', to: '2026-03' });
     expect(reads.map((r) => [r.filter, r.units])).toEqual(reads.map(() => [{}, 5]));
+  });
+
+  it('a payout records the snapshot of the reach calculation, which is the full balance of the owner (D-164)', async () => {
+    const { c } = await world();
+    const f = c.f;
+    const id = c.owners.get('A') as string;
+    const full = await withFullReads(c, () => f.ownerBalance(id));
+    expect(full.payout.allowed).toBe(true);
+    const reads = await spy();
+    const op = await f.createPayout(id);
+    expect(reads.map((r) => [r.filter.isrcs, r.units])).toEqual([[[I(1)], 2]]); // the payout calculated the reach only
+    const snapshot = (await f.modules.settlements.getSnapshot(op.id)) as { amountCents: number; total: unknown; perArtist: unknown; publishing: unknown; positions: unknown; files: { believe: unknown[] } };
+    expect(snapshot.amountCents).toBe(full.payout.amountCents);
+    expect(text(snapshot.total)).toBe(text(full.total));
+    expect(text(snapshot.publishing)).toBe(text(full.publishing));
+    expect(text(snapshot.positions)).toBe(text(full.positions));
+    expect(text((snapshot.perArtist as { artistId: string; earned: unknown; tracks: unknown }[]).map((a) => [a.artistId, a.earned, a.tracks]))).toBe(
+      text(full.artists.map((a) => [a.artistId, a.earned, a.tracks])),
+    );
+    expect(snapshot.files.believe.length).toBe(2); // every file in force, from the registry, not only the reach's
   });
 });

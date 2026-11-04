@@ -39,7 +39,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 ## Money and consistency
 - D-002 Exact decimals, cents for operations, round only at payout · *refined by* D-010
 - D-010 Pico-USD integers for source amounts · in force (ClickHouse stores `Decimal(38,12)`, D-102)
-- D-012 One consistent read per calculation · in force (sources read first, then all modules in one PostgreSQL REPEATABLE READ snapshot, D-121)
+- D-012 One consistent read per calculation · in force (sources read first, then all modules in one PostgreSQL REPEATABLE READ snapshot, D-121); *refined by* D-164 (the payout snapshot is the reach calculation of the owner)
 
 ## UI
 - ~~D-003 Server-rendered pages~~ → D-007
@@ -144,9 +144,10 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-158 The scope of an ad record stays as it is, stored and shown, no money effect (owner, 2026-11-04) · in force
 - D-159 The advertising pages: `GET /ads/:id`, summary totals, pasted list, expense on a pseudonym, pseudonym filter, the card, the track tab and the pseudonym section · in force
 - D-160 The KPI cards of P1: `totals` of `GET /overview` (all, per source, per account; the backend sums, R1), four cards with the identity check, the account filter picks one account, a card expands by source and account · in force
-- D-161 The unit scope of the facade: `scoped(modules, { isrcs | upcs | accounts | period })` narrows `sources.snapshot()` for track, release, summary, queue and ads methods; `calculate()` unchanged; balances, payables, overview, signals stay full; `FACADE_SCOPE=off`; answers byte-equal on real data, 2.5–4× faster · in force
+- D-161 The unit scope of the facade: `scoped(modules, { isrcs | upcs | accounts | period })` narrows `sources.snapshot()` for track, release, summary, queue and ads methods; `calculate()` unchanged; balances, payables, overview, signals stay full; answers byte-equal on real data, 2.5–4× faster · in force; its `FACADE_SCOPE=off` switch *removed by* D-164
 - D-162 The reference reads follow the unit scope (split index, known pairs, no B17 lines for master-only answers); `GET /tracks/summary?isrcs=` and `GET /tracks/catalog`; P5 asks the money of the visible rows only; every screen reviewed; real data line by line equal to the frozen summary, a track 0.23 s · in force
-- D-163 The reach of an owner (`ownerReach`: splits, participations, sublabel-rule recipients by label strings, ads of its pseudonyms): a balance over it equals the full one on every real owner; `GET /owners/payables?ids=` (≤200) from the union reach; P9 asks the money of the visible rows; `/owners/:id/balance` stays full (D-012) · in force
+- D-163 The reach of an owner (`ownerReach`: splits, participations, sublabel-rule recipients by label strings, ads of its pseudonyms): a balance over it equals the full one on every real owner; `GET /owners/payables?ids=` (≤200) from the union reach; P9 asks the money of the visible rows; `/owners/:id/balance` stays full (D-012) · in force; the balance route and the payout go by reach since D-164
+- D-164 The owner balance and the payout snapshot calculate over the reach (owner, 2026-11-05; D-012 *refined*: the snapshot is the reach calculation, the file list stays complete); no `FACADE_SCOPE` switch, one path; the B17 lines pre-grouped in `publishing.pub_lines_by_key`, refreshed on load · in force
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)

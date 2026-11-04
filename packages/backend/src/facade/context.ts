@@ -143,11 +143,12 @@ export function createFacadeContext(
   }
 
   /**
-   * The owner balance and the Believe files it was calculated from (a payout snapshot records them). With `reach`
-   * (D-163) the calculation reads only the units of the owner's reach (`ownerReach`): the same balance, since the
-   * balance reads only the units where the owner has an allocation; a payout never passes it (D-012).
+   * The owner balance and the Believe files it was calculated from (a payout snapshot records them). The calculation
+   * reads only the units of the owner's reach (`ownerReach`, D-163, D-164): the same balance, since the balance reads
+   * only the units where the owner has an allocation and the reach is a superset of them (checked for every real
+   * owner). The payout snapshot is this calculation; the file list it records comes from the registry and is complete.
    */
-  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}, o: { reach?: boolean } = {}) {
+  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}) {
     const id = await timed('owners.resolveOwnerId + getOwner', async () => {
       const id = await owners.resolveOwnerId(ownerId);
       await owners.getOwner(id);
@@ -158,8 +159,8 @@ export function createFacadeContext(
       opDocIds,
       (r) => `${r.length} ids`,
     );
-    const reach = o.reach ? await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`) : null;
-    const calc = await timed('calculate', () => calculate(reach ? scoped(modules, { isrcs: reach.isrcs }) : modules, docIds));
+    const reach = await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`);
+    const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
     // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
     const { owner, operations } = await timed(
       'pg snapshot: owner + operations',
