@@ -20,7 +20,10 @@ async function expectTotals(page: Page, totals: Record<string, string>) {
 /** P9 filtered to one owner name through the grid's URL filter state. */
 async function openOwners(page: Page, name: string, view?: 'payouts') {
   const grid = JSON.stringify({ f: { name: { filterType: 'text', type: 'contains', filter: name } } });
+  // D-163: the owners list comes without money; the money of the visible rows is one payables call of their ids
+  const asked = view ? null : page.waitForRequest((r) => r.url().includes('/api/v1/owners/payables?'));
   await openAs(page, `/owners?${view ? `view=${view}&` : ''}grid=${encodeURIComponent(grid)}`);
+  if (asked) expect(new URL((await asked).url()).searchParams.get('ids')).toBeTruthy();
   await settled(page);
   expectMoneyCalls(page, 1);
 }

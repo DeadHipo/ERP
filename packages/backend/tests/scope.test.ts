@@ -153,6 +153,38 @@ describe('unit scope of the facade (D-161)', () => {
     expect(idx).toEqual([{}, {}]);
   });
 
+  it('the balance from the units of the owner reach equals the full balance (D-163)', async () => {
+    const { c } = await world();
+    const f = c.f;
+    // A: a split of I(1); B: a split of I(2); R: the recipient of the sublabel rule of «Sub One» (I(3) carries it) and
+    // no split, so its reach comes from the label strings alone
+    const reach = async (name: string) => (await f.ownerReach(c.owners.get(name) as string)).isrcs;
+    expect(await reach('A')).toEqual([I(1)]);
+    expect(await reach('B')).toEqual([I(2)]);
+    expect(await reach('R')).toEqual([I(3)]);
+    const reads = await spy();
+    for (const name of ['A', 'B', 'R']) {
+      const id = c.owners.get(name) as string;
+      reads.length = 0;
+      const byReach = text(await f.ownerBalanceByReach(id));
+      expect(reads.map((r) => r.units), name).toEqual([name === 'B' ? 1 : 2]); // I(1) and I(3) have two months each
+      const full = text(await f.ownerBalance(id));
+      expect(reads.map((r) => r.units), name).toEqual([name === 'B' ? 1 : 2, 5]);
+      expect(byReach, name).toBe(full);
+      const total = JSON.parse(full).total as { earned: string; waiting: string };
+      expect([total.earned, total.waiting], name).not.toEqual(['0', '0']); // money reached the owner, so the check is real
+    }
+    // the payables of a list of owners (the visible rows of P9): the full list restricted to them, from their union reach
+    const ids = ['A', 'R'].map((n) => c.owners.get(n) as string);
+    reads.length = 0;
+    const part = (await f.ownerPayables({ ids: ids.join(',') })).items;
+    expect(reads.map((r) => r.units)).toEqual([4]); // I(1) and I(3): two units each
+    const everyone = (await f.ownerPayables()).items;
+    expect(text(part)).toBe(text(everyone.filter((i) => ids.includes(i.ownerId))));
+    expect(part.map((i) => i.ownerId).sort()).toEqual([...ids].sort());
+    await expect(f.ownerPayables({ ids: Array.from({ length: 201 }, (_, n) => `id-${n}`).join(',') })).rejects.toThrow(/at most 200/);
+  });
+
   it('a record on a pseudonym alone needs no unit; the full methods stay full', async () => {
     const { c } = await world();
     const f = c.f;

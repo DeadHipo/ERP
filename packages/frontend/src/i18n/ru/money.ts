@@ -9,6 +9,12 @@ export const money = {
     empty: 'Владельцев нет: создайте владельца.',
     payoutsEmpty: 'Кандидатов на выплату нет: ни у кого нет суммы к выплате.',
     create: 'Создать владельца',
+    /** D-163: in the owners list the money is asked for the rows on the screen only. */
+    visibleMoney: 'Деньги считаются для строк на экране; сортировка по деньгам после полного расчёта.',
+    computeAll: 'Посчитать все',
+    visibleOnly: 'Только видимые строки',
+    allMoney: 'Один расчёт по всем владельцам',
+    moneyPending: '…',
     cols: {
       name: 'Владелец',
       kind: 'Вид',

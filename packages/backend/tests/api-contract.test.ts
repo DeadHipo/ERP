@@ -273,6 +273,7 @@ describe('API contract', () => {
     });
     await call('get', '/tracks/:isrc/explain', { params: { isrc: I1 } });
     await call('get', '/owners/payables', { query: { from: '2026-07', to: '2026-07' } });
+    await call('get', '/owners/payables', { query: { ids: `${owner.id},${other.id}` } });
     await call('get', '/tracks/summary', { query: { month: '2026-07' } });
     await call('get', '/tracks/summary', { query: { isrcs: `${I1},${I2}` } });
     await call('get', '/tracks/catalog');

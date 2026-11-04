@@ -7,6 +7,8 @@ import { type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
 import { type AuditService } from '../modules/audit';
 import { type AdsService } from '../modules/ads';
+import { ownerReach } from './owner-scope';
+import { scoped } from './scope';
 import { calculate, type PeriodFilter } from './calculation';
 import { ownerBalance } from './balance';
 import { payoutGate } from './payout-gate';
@@ -140,8 +142,12 @@ export function createFacadeContext(
     };
   }
 
-  /** The owner balance and the Believe files it was calculated from (a payout snapshot records them). */
-  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}) {
+  /**
+   * The owner balance and the Believe files it was calculated from (a payout snapshot records them). With `reach`
+   * (D-163) the calculation reads only the units of the owner's reach (`ownerReach`): the same balance, since the
+   * balance reads only the units where the owner has an allocation; a payout never passes it (D-012).
+   */
+  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}, o: { reach?: boolean } = {}) {
     const id = await timed('owners.resolveOwnerId + getOwner', async () => {
       const id = await owners.resolveOwnerId(ownerId);
       await owners.getOwner(id);
@@ -152,7 +158,8 @@ export function createFacadeContext(
       opDocIds,
       (r) => `${r.length} ids`,
     );
-    const calc = await timed('calculate', () => calculate(modules, docIds));
+    const reach = o.reach ? await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`) : null;
+    const calc = await timed('calculate', () => calculate(reach ? scoped(modules, { isrcs: reach.isrcs }) : modules, docIds));
     // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
     const { owner, operations } = await timed(
       'pg snapshot: owner + operations',

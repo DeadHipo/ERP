@@ -85,8 +85,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners/payables',
     tag: 'owners',
-    summary:
-      'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4)',
+    summary: 'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4), or for a list of owner ids (their reach only, D-163)',
     query: S.payablesQuery,
     response: R.payablesSchema,
   },

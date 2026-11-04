@@ -193,6 +193,16 @@ export function createSourcesService(deps: SourcesDeps) {
       return (await service.snapshot(filter)).units;
     },
 
+    /** The ISRCs of the loaded files whose label string normalises to one of `normalizedAliases` (D-163). */
+    async isrcsOfLabelAliases(normalizedAliases: string[], normalize: (raw: string) => string): Promise<string[]> {
+      if (normalizedAliases.length === 0) return [];
+      const files = await registry.loaded();
+      const ids = files.map((f) => f.id);
+      const wanted = new Set(normalizedAliases);
+      const raw = (await columnar.labelStrings(ids)).filter((s) => wanted.has(normalize(s)));
+      return columnar.isrcsOfLabelStrings(ids, raw);
+    },
+
     /** Explanation of one ISRC: platforms, countries, subscription and sales types per month. */
     async breakdown(isrc: string, reportingMonth?: string) {
       const files = await registry.loaded();

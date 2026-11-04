@@ -4,6 +4,7 @@ import { assertIsrc } from '../shared/identifiers';
 import { calculate, reconcile, type Calculation, type PeriodFilter, type Reconciliation } from './calculation';
 import { cQueue, type QueueOptions } from './queue';
 import { periodScope, scoped } from './scope';
+import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
 
@@ -280,6 +281,16 @@ export function reportsApi(ctx: FacadeContext) {
 
     async ownerBalance(ownerId: string, f: PeriodFilter = {}) {
       return (await balanceWithFiles(ownerId, f)).balance;
+    },
+
+    /** The same balance from the units of the owner's reach only (D-163); the payout keeps the full calculation. */
+    async ownerBalanceByReach(ownerId: string, f: PeriodFilter = {}) {
+      return (await balanceWithFiles(ownerId, f, { reach: true })).balance;
+    },
+
+    /** The reach of an owner (D-163): its pseudonyms and the ISRCs their money can come from. */
+    async ownerReach(ownerId: string) {
+      return ownerReach(modules, await owners.resolveOwnerId(ownerId));
     },
 
     /**

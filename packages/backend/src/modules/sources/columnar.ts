@@ -266,6 +266,26 @@ export function createBelieveColumnar(
       }));
     },
 
+    /** Every distinct label string of the given files (the owner reach of the facade, D-163). */
+    async labelStrings(fileIds: string[]): Promise<string[]> {
+      if (fileIds.length === 0) return [];
+      const rows = await json<{ label: string }>(
+        `SELECT DISTINCT label_name AS label FROM ${DB}.units WHERE file_id IN {ids:Array(UUID)} ORDER BY label`,
+        { ids: fileIds },
+      );
+      return rows.map((r) => r.label);
+    },
+
+    /** The ISRCs whose units carry one of the given (raw) label strings, over the given files (D-163). */
+    async isrcsOfLabelStrings(fileIds: string[], labels: string[]): Promise<string[]> {
+      if (fileIds.length === 0 || labels.length === 0) return [];
+      const rows = await json<{ isrc: string }>(
+        `SELECT DISTINCT isrc FROM ${DB}.units WHERE file_id IN {ids:Array(UUID)} AND label_name IN {labels:Array(String)} ORDER BY isrc`,
+        { ids: fileIds, labels },
+      );
+      return rows.map((r) => r.isrc);
+    },
+
     /**
      * "Why this amount" for one ISRC: platform, country, subscription and sales type per month, over the given files.
      * Written against the rows (not the `breakdown` view) so that only the given files are counted.

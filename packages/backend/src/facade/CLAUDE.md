@@ -34,6 +34,11 @@
   `sources.pairAttributes({ isrcs | upcs })`). Never for balances, payables, the overview, the reconciliation, the
   signals or the document uses (counts over everything, D-012). `FACADE_SCOPE=off` disables every scope;
   `tests/scope.test.ts` asserts scoped = full for every scoped method and that the full ones read everything.
+- **Owner reach** (`owner-scope.ts`, D-163): `ownerReach` / `ownersReach` give the ISRCs that can carry an owner's money
+  (splits and participations of its pseudonyms, label strings of sublabels whose rule names them, its ads); a
+  calculation over them gives the same `ownerBalance()`, since the balance reads only the units where the owner has an
+  allocation. `ownerPayables({ ids })` (P9 by pages) uses the union reach; `ownerBalanceByReach` exists for the check
+  (`scripts/check-owner-scope.ts`), the balance route stays the full calculation (D-012).
 - Category C reasons are one shared enum (`C_REASONS` / `CReason` in `packages/shared/src/api-responses.ts`), used by
   `C_breakdown` and `waitingBreakdown`; a new reason goes there first, then check the pages that show them
   (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.

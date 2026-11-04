@@ -277,7 +277,12 @@ export type AuditQuery = z.infer<typeof auditQuery>;
 // ---- money aggregates (D-142) ----
 
 /** `GET /owners/payables`: the period only shapes `waitingBreakdown`; the totals are all-time like the balance. */
-export const payablesQuery = periodQuery;
+export const payablesQuery = periodQuery.extend({
+  ids: z
+    .string()
+    .optional()
+    .describe('Comma-separated owner ids (at most 500): only these owners, from a calculation of the units of their reach (D-163)'),
+});
 
 /** `GET /tracks/summary`: only the units of one Believe account and/or one report month. */
 export const trackSummaryQuery = z.object({

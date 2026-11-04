@@ -5,6 +5,18 @@ import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
+import { ownersReach } from './owner-scope';
+
+/**
+ * The owner id list of `GET /owners/payables?ids=` (comma-separated). At most 200: UUIDs are long and the request line
+ * must stay under the 16 KiB header limit of Node (a grid page of 500 asks in chunks).
+ */
+export const MAX_IDS_PER_REQUEST = 200;
+export function parseIdList(raw: string): Set<string> {
+  const list = raw.split(',').map((x) => x.trim()).filter((x) => x !== '');
+  if (list.length > MAX_IDS_PER_REQUEST) throw new ValidationError(`ids: at most ${MAX_IDS_PER_REQUEST} ids per request`);
+  return new Set(list);
+}
 
 /** The ISRC list of `GET /tracks/summary?isrcs=` (comma-separated, at most 500: the largest grid page). */
 export function parseIsrcList(raw: string): string[] {
@@ -78,12 +90,16 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * The payables list (N4): one calculation, a per-owner index of the units and publishing lines, then the very
      * `ownerBalance()` per owner. `from` / `to` / `basis` shape `waitingBreakdown` only (the totals are all-time).
      */
-    async ownerPayables(f: { from?: string; to?: string; basis?: 'report' | 'sales' } = {}) {
-      const calc = await calcWithOps();
+    async ownerPayables(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string } = {}) {
+      // `ids` (the visible rows of P9, D-163): only these owners, from a calculation of the units of their reach
+      const only = f.ids === undefined ? undefined : parseIdList(f.ids);
       const { list, ops } = await db.snapshot(async () => ({
-        list: await owners.listOwners(),
+        list: (await owners.listOwners()).filter((o) => only === undefined || only.has(o.id)),
         ops: await settlements.listOperations({}),
       }));
+      const calc = only
+        ? await calcScoped({ isrcs: (await ownersReach(modules, list.map((o) => o.id))).isrcs })
+        : await calcWithOps();
       const index = ownerIndex(calc);
       const opsOf = groupBy(
         ops.filter((o) => o.ownerId),
