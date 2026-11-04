@@ -1,10 +1,17 @@
 import { Decimal, ZERO } from '../shared/money';
-import { NotFoundError } from '../shared/errors';
+import { NotFoundError, ValidationError } from '../shared/errors';
 import { assertIsrc } from '../shared/identifiers';
 import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
+
+/** The ISRC list of `GET /tracks/summary?isrcs=` (comma-separated, at most 500: the largest grid page). */
+export function parseIsrcList(raw: string): string[] {
+  const list = raw.split(',').map((x) => x.trim()).filter((x) => x !== '');
+  if (list.length > 500) throw new ValidationError('isrcs: at most 500 ISRCs per request');
+  return [...new Set(list.map(assertIsrc))].sort();
+}
 import { ownerBalance, ownerIndex } from './balance';
 import { cItems } from './queue';
 import type { FacadeContext } from './context';
@@ -55,8 +62,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
   const calcWithOps = async () => calculate(modules, await opDocIds());
   /** The same calculation narrowed to a unit scope (D-161). */
   const calcScoped = async (scope: UnitScope) => calculate(scoped(modules, scope), await opDocIds());
-  const nameMaps = async () => {
-    const attrs = await sources.pairAttributes();
+  const nameMaps = async (filter: { isrcs?: string[]; upcs?: string[] } = {}) => {
+    const attrs = await sources.pairAttributes(filter);
     const byIsrc = new Map<string, { artistName: string; trackTitle: string }>();
     // deterministic: the first pair of an ISRC in key order
     for (const k of [...attrs.keys()].sort()) {
@@ -115,18 +122,23 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * and one report month), joined with the tracks of module 1 and the names of the report. A track without money
      * shows zeros. Units without an ISRC are not tracks and are left out (they are on the signals page).
      */
-    async trackSummary(f: { account?: string; month?: string } = {}) {
-      // one account and/or one report month: only those units can appear in the answer (D-161)
+    async trackSummary(f: { account?: string; month?: string; isrcs?: string } = {}) {
+      // one account and/or one report month, or a list of ISRCs (the visible rows of P5): only those units, splits,
+      // tracks and names can appear in the answer, and the B17 side is not read (D-161, D-162)
+      const only = f.isrcs === undefined ? undefined : parseIsrcList(f.isrcs);
       const calc = await calcScoped({
         ...(f.account !== undefined ? { accounts: [f.account] } : {}),
         ...(f.month !== undefined ? { from: f.month, to: f.month, basis: 'report' as const } : {}),
+        ...(only ? { isrcs: only } : {}),
+        publishingLines: false,
       });
+      const byIsrcs = only ? { isrcs: only } : {};
       const { tracks, splitList, partList } = await db.snapshot(async () => ({
-        tracks: await owners.listTracks(),
-        splitList: await splits.listSplits(),
-        partList: await splits.listParticipations(),
+        tracks: await owners.listTracks(byIsrcs),
+        splitList: await splits.listSplits(byIsrcs),
+        partList: await splits.listParticipations(byIsrcs),
       }));
-      const { attrs, byIsrc } = await nameMaps();
+      const { attrs, byIsrc } = await nameMaps(byIsrcs);
       const units = calc.units.filter(
         (u) =>
           u.isrc !== '' &&
@@ -140,7 +152,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       );
       const withSplit = new Set(splitList.map((s) => s.isrc));
       const withParts = new Set(partList.map((p) => p.isrc));
-      const isrcs = new Set([...unitsOf.keys(), ...tracksOf.keys()]);
+      // `only` is also a filter of the answer (not just of the read): the same rows with the scope switched off
+      const isrcs = new Set([...unitsOf.keys(), ...tracksOf.keys()].filter((i) => only === undefined || only.includes(i)));
       const items = [...isrcs].sort().map((isrc) => {
         const us = unitsOf.get(isrc) ?? [];
         const ts = tracksOf.get(isrc) ?? [];
@@ -162,19 +175,61 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     },
 
     /**
+     * The tracks without money (D-162, the first phase of P5): every ISRC that earns in the loaded files or is
+     * registered, with its UPCs, names and whether it has a split or participations. No calculation; the money of
+     * the visible rows comes from `trackSummary({ isrcs })`. The ISRC set is the one of `trackSummary()`.
+     */
+    async trackCatalog() {
+      const { tracks, splitList, partList } = await db.snapshot(async () => ({
+        tracks: await owners.listTracks(),
+        splitList: await splits.listSplits(),
+        partList: await splits.listParticipations(),
+      }));
+      const { attrs, byIsrc } = await nameMaps();
+      const upcsOf = new Map<string, Set<string>>();
+      for (const k of attrs.keys()) {
+        const [isrc, upc] = k.split('|') as [string, string];
+        if (isrc === '') continue;
+        (upcsOf.get(isrc) ?? upcsOf.set(isrc, new Set()).get(isrc))?.add(upc);
+      }
+      const tracksOf = groupBy(
+        tracks.filter((t) => t.isrc),
+        (t) => t.isrc as string,
+      );
+      const withSplit = new Set(splitList.map((s) => s.isrc));
+      const withParts = new Set(partList.map((p) => p.isrc));
+      const isrcs = new Set([...upcsOf.keys(), ...tracksOf.keys()]);
+      const items = [...isrcs].sort().map((isrc) => {
+        const ts = tracksOf.get(isrc) ?? [];
+        const upcs = [...new Set([...(upcsOf.get(isrc) ?? []), ...ts.map((t) => t.upc).filter((x): x is string => !!x)])].sort();
+        const names = upcs.map((u) => attrs.get(`${isrc}|${u}`)).find((x) => x) ?? byIsrc.get(isrc);
+        return {
+          isrc,
+          upcs,
+          title: ts[0]?.title ?? names?.trackTitle ?? '',
+          artistName: names?.artistName ?? '',
+          hasSplit: withSplit.has(isrc),
+          hasParticipations: withParts.has(isrc),
+          registered: ts.length > 0,
+        };
+      });
+      return { items };
+    },
+
+    /**
      * The money of one ISRC by month with the state after every layer (N6; no breakdown, that is N7). The trace is
      * kept for this ISRC only, so it is cheap.
      */
     async trackMoney(isrcRaw: string) {
       const isrc = assertIsrc(isrcRaw);
-      const calc = await calculate(scoped(modules, { isrcs: [isrc] }), [], { traceIsrc: isrc });
+      const calc = await calculate(scoped(modules, { isrcs: [isrc], publishingLines: false }), [], { traceIsrc: isrc });
       const [tracks, ownerList, splitList, partList] = await Promise.all([
-        owners.listTracks(),
+        owners.listTracks({ isrcs: [isrc] }),
         owners.listOwners(),
         lists.listSplits({ isrc, limit: 5000 }),
         lists.listParticipations({ isrc }),
       ]);
-      const { attrs } = await nameMaps();
+      const { attrs } = await nameMaps({ isrcs: [isrc] });
       const ownerName = new Map(ownerList.map((o) => [o.id, o.name]));
       const units = calc.units.filter((u) => u.isrc === isrc);
       const mine = tracks.filter((t) => t.isrc === isrc);
@@ -278,8 +333,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
 
     /** One release (N9): its tracks and report months with B, C and ours, from one calculation. */
     async release(upc: string) {
-      const calc = await calcScoped({ upcs: [upc] });
-      const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps()]);
+      const calc = await calcScoped({ upcs: [upc], publishingLines: false });
+      const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps({ upcs: [upc] })]);
       const mine = tracks.filter((t) => t.upc === upc);
       const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');
       if (mine.length === 0 && units.length === 0) throw new NotFoundError('Release', upc);

@@ -297,11 +297,14 @@ export function createSourcesService(deps: SourcesDeps) {
     },
 
     /** Names from the report per (ISRC, UPC): metadata only, never used to decide who gets paid. */
-    async pairAttributes(): Promise<
-      Map<string, { artistName: string; trackTitle: string; releaseTitle: string; labelName: string }>
-    > {
+    async pairAttributes(
+      filter: { isrcs?: string[]; upcs?: string[] } = {},
+    ): Promise<Map<string, { artistName: string; trackTitle: string; releaseTitle: string; labelName: string }>> {
       const files = await registry.loaded();
-      const rows = await columnar.pairNames(files.map((f) => f.id));
+      const rows = await columnar.pairNames(
+        files.map((f) => f.id),
+        filter,
+      );
       return new Map(
         rows.map((p) => [
           `${p.isrc}|${p.upc}`,

@@ -13,6 +13,7 @@ export function aggregatesRouter(facade: Facade) {
   r.get('/tracks/summary', async (req, res) =>
     res.json(await facade.trackSummary(parse(S.trackSummaryQuery, req.query))),
   );
+  r.get('/tracks/catalog', async (_req, res) => res.json(await facade.trackCatalog()));
   r.get('/tracks/:isrc/money', async (req, res) => res.json(await facade.trackMoney(param(req, 'isrc'))));
   r.get('/tracks/:isrc/breakdown/:month', async (req, res) =>
     res.json(await facade.trackBreakdown(param(req, 'isrc'), param(req, 'month'))),

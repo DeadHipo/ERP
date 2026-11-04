@@ -28,7 +28,15 @@ export function createSplitsRepository(db: Db) {
     getSplit: async (id: string) => (await orm().select().from(splits).where(eq(splits.id, id)))[0],
     splitsOfIsrc: (isrc: string) =>
       orm().select().from(splits).where(eq(splits.isrc, isrc)).orderBy(asc(splits.validFrom)),
-    allSplits: () => orm().select().from(splits).orderBy(asc(splits.isrc), asc(splits.validFrom)),
+    /** Every split, or (the unit scope of the facade, D-162) only those of the given ISRCs. */
+    allSplits: (isrcs?: string[]) =>
+      isrcs && isrcs.length === 0
+        ? Promise.resolve([] as SplitRow[])
+        : orm()
+            .select()
+            .from(splits)
+            .where(isrcs ? inArray(splits.isrc, isrcs) : undefined)
+            .orderBy(asc(splits.isrc), asc(splits.validFrom)),
     setValidTo: async (id: string, validTo: string | null) => {
       await orm().update(splits).set({ validTo }).where(eq(splits.id, id));
     },
@@ -60,13 +68,16 @@ export function createSplitsRepository(db: Db) {
           .where(eq(participations.isrc, isrc))
           .orderBy(asc(participations.validFrom), asc(participations.id))
       ).map(canonicalPart),
-    allParticipations: async () =>
-      (
-        await orm()
-          .select()
-          .from(participations)
-          .orderBy(asc(participations.isrc), asc(participations.validFrom), asc(participations.id))
-      ).map(canonicalPart),
+    allParticipations: async (isrcs?: string[]) =>
+      isrcs && isrcs.length === 0
+        ? []
+        : (
+            await orm()
+              .select()
+              .from(participations)
+              .where(isrcs ? inArray(participations.isrc, isrcs) : undefined)
+              .orderBy(asc(participations.isrc), asc(participations.validFrom), asc(participations.id))
+          ).map(canonicalPart),
     participationsOfArtist: async (artistId: string) =>
       (
         await orm()

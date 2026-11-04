@@ -176,9 +176,16 @@ const operations: ApiOperation[] = [
     path: '/tracks/summary',
     tag: 'tracks',
     summary:
-      'Every track with B, C, ours and net from one calculation, optionally for one account and report month (17 N5)',
+      'Every track with B, C, ours and net from one calculation, optionally for one account and report month, or for a list of ISRCs (17 N5, D-162)',
     query: S.trackSummaryQuery,
     response: R.trackSummarySchema,
+  },
+  {
+    method: 'get',
+    path: '/tracks/catalog',
+    tag: 'tracks',
+    summary: 'Every ISRC that earns or is registered, with UPCs, names, split and participation flags; no money, no calculation (D-162)',
+    response: R.trackCatalogSchema,
   },
   {
     method: 'get',

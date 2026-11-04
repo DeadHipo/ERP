@@ -285,9 +285,14 @@ test('the card: header, tabs in the URL, documents, the lines link; the breadcru
 
 test('P5 «Треки»: the summary row of an ISRC, the quick filters in the URL, the account and month scope', async ({ page }) => {
   const i = isrc(11, 1, 1);
+  // D-162: the rows come without money (the catalog), the money of the visible rows is one summary call of their ISRCs
+  const asked = page.waitForRequest((r) => r.url().includes('/api/v1/tracks/summary?'));
   await openAs(page, `/tracks?q=${i}`);
+  // the rows (the catalog) come first, the money of the visible row a moment later: wait for that call, then settle
+  expect(new URL((await asked).url()).searchParams.get('isrcs')).toBe(i);
   await settled(page);
   expectMoneyCalls(page, 1);
+  await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
   const row = page.getByTestId(`track-${i}`);
   await expect(row).toBeVisible();
   await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');
@@ -297,6 +302,14 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await page.getByTestId('field-tracks-q').fill(isrc(8, 4, 1));
   await expect(page).toHaveURL(/q=QZTST2708401/);
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).getByTestId('chip-has-split-no')).toBeVisible();
+  // the new visible row gets its money by a second call of its own ISRC; the full calculation is one click away
+  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '50');
+  await page.getByTestId('action-compute-all').click();
+  await settled(page);
+  await expect(page.getByTestId('tracks-all-money')).toBeVisible();
+  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '50');
+  await page.getByTestId('action-visible-only').click();
+  await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
   await page.getByTestId(`track-${isrc(8, 4, 1)}`).getByRole('link', { name: isrc(8, 4, 1) }).click();
   await expect(page).toHaveURL(new RegExp(`/tracks/${isrc(8, 4, 1)}$`));
   // the B cell of an overview row opens the summary of its account and month

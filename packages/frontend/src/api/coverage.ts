@@ -41,6 +41,7 @@ export const OPERATION_COVERAGE: Record<
     note: 'only the note is editable (action-edit-note); identifiers (ISRC, UPC, title) are not editable on any screen',
   },
   'GET /tracks/summary': { page: 'P5', route: '/tracks' },
+  'GET /tracks/catalog': { page: 'P5', route: '/tracks', note: 'the first phase of P5 (D-162): the rows without money; the visible rows then ask /tracks/summary?isrcs=' },
   'GET /tracks/:isrc/money': { page: 'P6', route: '/tracks/:isrc' },
   'GET /tracks/:isrc/breakdown/:month': { page: 'P6', route: '/tracks/:isrc', note: 'action-breakdown of a month row' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },

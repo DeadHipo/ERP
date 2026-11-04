@@ -283,6 +283,10 @@ export const payablesQuery = periodQuery;
 export const trackSummaryQuery = z.object({
   account: z.string().optional(),
   month: month.optional(),
+  isrcs: z
+    .string()
+    .optional()
+    .describe('Comma-separated ISRCs (at most 500): only these tracks, from a calculation of their units alone (D-162)'),
 });
 
 export const releasesQuery = z.object({ q: z.string().optional() });

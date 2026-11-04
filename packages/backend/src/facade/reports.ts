@@ -331,7 +331,7 @@ export function reportsApi(ctx: FacadeContext) {
      */
     async explainTrack(isrcRaw: string) {
       const isrc = assertIsrc(isrcRaw);
-      const calc = await calculate(scoped(modules, { isrcs: [isrc] }), [], { traceIsrc: isrc });
+      const calc = await calculate(scoped(modules, { isrcs: [isrc], publishingLines: false }), [], { traceIsrc: isrc });
       const units = calc.units
         .filter((u) => u.isrc === isrc)
         .map(({ layers, ...u }) => ({

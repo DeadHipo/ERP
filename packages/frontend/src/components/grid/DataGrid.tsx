@@ -45,6 +45,11 @@ export function DataGrid<T>(props: {
   pagination?: boolean;
   /** The sort applied when the URL carries no grid state (e.g. the P1 drill-down sorts by B or ours). */
   defaultSort?: readonly [string, 'asc' | 'desc'];
+  /**
+   * The rows of the current page after filter and sort, whenever they change (page, sort, filter, data): P5 asks the
+   * money of exactly these rows (D-162).
+   */
+  onVisibleRowsChanged?: (rows: T[]) => void;
 }) {
   const [params, setParams] = useSearchParams();
   const apiRef = useRef<GridApi<T> | null>(null);
@@ -100,6 +105,21 @@ export function DataGrid<T>(props: {
     apiRef.current?.resetRowHeights();
   }, []);
 
+  const onVisibleRowsChanged = props.onVisibleRowsChanged;
+  const emitVisible = useCallback(() => {
+    const api = apiRef.current;
+    if (!api || !onVisibleRowsChanged) return;
+    const size = api.paginationGetPageSize();
+    const first = api.paginationGetCurrentPage() * size;
+    const rows: T[] = [];
+    let i = 0;
+    api.forEachNodeAfterFilterAndSort((node) => {
+      if (i >= first && i < first + size && node.data !== undefined) rows.push(node.data);
+      i += 1;
+    });
+    onVisibleRowsChanged(rows);
+  }, [onVisibleRowsChanged]);
+
   const getRowIdFn = useCallback((p: { data: T }) => props.getRowId(p.data), [props]);
   const localeText = useMemo(() => AG_GRID_LOCALE_RU, []);
   const pageSize = props.pageSize ?? PAGE_SIZES[0];
@@ -134,6 +154,8 @@ export function DataGrid<T>(props: {
         onRowDataUpdated={onRowDataUpdated}
         onSortChanged={save}
         onFilterChanged={save}
+        onModelUpdated={emitVisible}
+        onPaginationChanged={emitVisible}
         onRowClicked={(e) => {
           if (e.data && props.onRowClicked) props.onRowClicked(e.data);
         }}

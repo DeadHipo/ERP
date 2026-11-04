@@ -311,11 +311,12 @@ export function createPublishingService(db: Db, storageDir: string) {
      * Everything the facade needs to work out the publishing money, read from one consistent version (D-012):
      * writers, terms and the aggregated lines of the loaded statements. The module computes no money (D-128 part 2).
      */
-    snapshotForCalculation(): Promise<{ writers: WriterRow[]; terms: TermsRow[]; lines: AggregatedLine[] }> {
+    /** The B17 side of a calculation; `lines: false` (the unit scope of the facade, D-162) skips the statement lines. */
+    snapshotForCalculation(o: { lines?: boolean } = {}): Promise<{ writers: WriterRow[]; terms: TermsRow[]; lines: AggregatedLine[] }> {
       return repo.snapshot(async () => ({
         writers: await repo.allWriters(),
         terms: await repo.allTerms(),
-        lines: await repo.aggregatedLines(),
+        lines: o.lines === false ? [] : await repo.aggregatedLines(),
       }));
     },
   };

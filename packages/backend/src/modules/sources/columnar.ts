@@ -345,7 +345,7 @@ export function createBelieveColumnar(
     },
 
     /** Names per (ISRC, UPC) from the latest report month in which the pair appears (metadata only). */
-    async pairNames(fileIds: string[]): Promise<
+    async pairNames(fileIds: string[], filter: { isrcs?: string[]; upcs?: string[] } = {}): Promise<
       {
         isrc: string;
         upc: string;
@@ -355,7 +355,18 @@ export function createBelieveColumnar(
         labelName: string;
       }[]
     > {
-      if (fileIds.length === 0) return [];
+      if (fileIds.length === 0 || filter.isrcs?.length === 0 || filter.upcs?.length === 0) return [];
+      // the unit scope of the facade (D-162): only the pairs of these ISRCs / UPCs
+      const where = ['file_id IN {ids:Array(UUID)}'];
+      const params: Record<string, unknown> = { ids: fileIds };
+      if (filter.isrcs) {
+        where.push('isrc IN {isrcs:Array(String)}');
+        params.isrcs = filter.isrcs;
+      }
+      if (filter.upcs) {
+        where.push('upc IN {upcs:Array(String)}');
+        params.upcs = filter.upcs;
+      }
       const rows = await json<{
         isrc: string;
         upc: string;
@@ -366,8 +377,8 @@ export function createBelieveColumnar(
       }>(
         `SELECT isrc, upc, argMax(artist_name, reporting_month) AS artist, argMax(track_title, reporting_month) AS track,
                 argMax(release_title, reporting_month) AS release, argMax(label_name, reporting_month) AS label
-         FROM ${DB}.rows WHERE file_id IN {ids:Array(UUID)} GROUP BY isrc, upc`,
-        { ids: fileIds },
+         FROM ${DB}.rows WHERE ${where.join(' AND ')} GROUP BY isrc, upc`,
+        params,
       );
       return rows.map((r) => ({
         isrc: r.isrc,

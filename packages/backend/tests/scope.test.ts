@@ -81,6 +81,13 @@ describe('unit scope of the facade (D-161)', () => {
       ['listAds by isrc', () => f.listAds({ isrc: I(3) }), (r) => expect(r.units).toBe(2)],
       ['getAd', () => f.getAd(adId), (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(1)], 2])],
       ['adsSummary', () => f.adsSummary({}), (r) => expect(r.units).toBe(4)],
+      // D-162: a list of ISRCs (the visible rows of P5) narrows the units, the splits, the tracks and the names
+      [
+        'trackSummary isrcs',
+        () => f.trackSummary({ isrcs: `${I(3)},${I(1)}` }),
+        (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(1), I(3)], 4]),
+      ],
+      ['trackSummary isrcs+month', () => f.trackSummary({ isrcs: I(1), month: '2026-04' }), (r) => expect(r.units).toBe(1)],
     ];
     const reads = await spy();
     for (const [name, run, check] of calls) {
@@ -95,6 +102,55 @@ describe('unit scope of the facade (D-161)', () => {
       expect(reads[0]?.units, `${name}: the switch gives the full read`).toBe(5);
       expect(scopedAnswer, name).toBe(fullAnswer);
     }
+  });
+
+  it('the summary of a list of ISRCs is the full summary restricted to them; the catalog has every ISRC of the summary', async () => {
+    const { c } = await world();
+    const f = c.f;
+    await c.track(I(4)); // registered, no money: in the catalog and the summary (hasSplit false), with zero sums
+    await c.load('2026-05', [{ isrc: I(5), net: '10' }]); // money, not registered: known from the reports only
+    const full = (await f.trackSummary()).items;
+    expect(full.map((i) => i.isrc)).toEqual([I(1), I(2), I(3), I(4), I(5)]);
+    const part = (await f.trackSummary({ isrcs: `${I(4)},${I(1)}` })).items;
+    expect(text(part)).toBe(text(full.filter((i) => i.isrc === I(1) || i.isrc === I(4))));
+    const catalog = (await f.trackCatalog()).items;
+    expect(catalog.map((i) => [i.isrc, i.upcs, i.hasSplit, i.hasParticipations, i.registered])).toEqual(
+      full.map((i) => [i.isrc, i.upcs, i.hasSplit, i.hasParticipations, i.isrc !== I(5)]),
+    );
+    expect(catalog.map((i) => [i.title, i.artistName])).toEqual(full.map((i) => [i.title, i.artistName]));
+    await expect(f.trackSummary({ isrcs: 'not-an-isrc' })).rejects.toThrow();
+    await expect(f.trackSummary({ isrcs: Array.from({ length: 501 }, (_, n) => I(n)).join(',') })).rejects.toThrow(/at most 500/);
+  });
+
+  it('the master-only methods skip the B17 lines and narrow the split index; the full methods read everything', async () => {
+    const { c, adId } = await world();
+    const f = c.f;
+    const pub: { lines?: boolean }[] = [];
+    const idx: { isrcs?: string[] }[] = [];
+    const publishing = f.modules.publishing;
+    const splits = f.modules.splits;
+    const snap = publishing.snapshotForCalculation.bind(publishing);
+    const index = splits.index.bind(splits);
+    publishing.snapshotForCalculation = (o = {}) => {
+      pub.push(o);
+      return snap(o);
+    };
+    splits.index = (o = {}) => {
+      idx.push(o);
+      return index(o);
+    };
+    await f.trackMoney(I(1));
+    await f.trackSummary({ isrcs: `${I(1)},${I(2)}` });
+    await f.getAd(adId);
+    await f.release(UPC);
+    expect(pub).toEqual([{ lines: false }, { lines: false }, { lines: false }, { lines: false }]);
+    expect(idx).toEqual([{ isrcs: [I(1)] }, { isrcs: [I(1), I(2)] }, { isrcs: [I(1)] }, {}]);
+    pub.length = 0;
+    idx.length = 0;
+    await f.queue('split_unconfirmed', { from: '2026-03' });
+    await f.overview();
+    expect(pub).toEqual([{}, {}]);
+    expect(idx).toEqual([{}, {}]);
   });
 
   it('a record on a pseudonym alone needs no unit; the full methods stay full', async () => {

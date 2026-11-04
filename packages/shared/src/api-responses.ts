@@ -772,6 +772,19 @@ export const trackSummarySchema = z.object({
   calculatedAt: timestamp,
   items: z.array(trackSummaryItemSchema),
 });
+
+/** The tracks without money (D-162): the ISRC set of `trackSummary()`, no calculation. */
+export const trackCatalogItemSchema = z.object({
+  isrc: z.string(),
+  upcs: z.array(z.string()),
+  title: z.string(),
+  artistName: z.string(),
+  hasSplit: z.boolean(),
+  hasParticipations: z.boolean(),
+  registered: z.boolean().describe('Registered in module 1 (a track row); false for an ISRC known from the reports only'),
+});
+export const trackCatalogSchema = z.object({ items: z.array(trackCatalogItemSchema) });
+export type TrackCatalogItem = z.infer<typeof trackCatalogItemSchema>;
 export type TrackSummaryItem = z.infer<typeof trackSummaryItemSchema>;
 
 const documentStatusOfAllocation = z.enum(['approved', 'not_approved', 'not_attached', 'missing']);

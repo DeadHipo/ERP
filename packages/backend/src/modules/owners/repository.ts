@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import {
   artistTracks,
@@ -117,7 +117,14 @@ export function createOwnersRepository(db: Db) {
           .where(and(eq(tracks.isrc, isrc), eq(tracks.upc, upc)))
       )[0],
     tracksByIsrc: (isrc: string) => orm().select().from(tracks).where(eq(tracks.isrc, isrc)),
-    allTracks: () => orm().select().from(tracks),
+    /** Every track, or (the unit scope of the facade, D-162) only those registered under the given ISRCs. */
+    allTracks: (isrcs?: string[]) =>
+      isrcs && isrcs.length === 0
+        ? Promise.resolve([] as (typeof tracks.$inferSelect)[])
+        : orm()
+            .select()
+            .from(tracks)
+            .where(isrcs ? inArray(tracks.isrc, isrcs) : undefined),
     setTrackIds: async (id: string, isrc: string | null, upc: string | null) => {
       await orm().update(tracks).set({ isrc, upc }).where(eq(tracks.id, id));
     },
@@ -269,11 +276,13 @@ export function createOwnersRepository(db: Db) {
         .orderBy(documents.createdAt)
         .limit(limit),
 
-    knownPairs: () =>
-      orm()
-        .select({ isrc: tracks.isrc, upc: tracks.upc })
-        .from(tracks)
-        .where(and(isNotNull(tracks.isrc), isNotNull(tracks.upc))),
+    knownPairs: (isrcs?: string[]) =>
+      isrcs && isrcs.length === 0
+        ? Promise.resolve([] as { isrc: string | null; upc: string | null }[])
+        : orm()
+            .select({ isrc: tracks.isrc, upc: tracks.upc })
+            .from(tracks)
+            .where(and(isNotNull(tracks.isrc), isNotNull(tracks.upc), isrcs ? inArray(tracks.isrc, isrcs) : undefined)),
   };
 }
 

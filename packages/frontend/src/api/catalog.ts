@@ -12,6 +12,8 @@ export const catalog = {
   /** Every track with B, C, ours and net from one calculation, optionally one account and report month (N5). */
   trackSummary: (query: z.input<typeof S.trackSummaryQuery> = {}) =>
     call('GET', '/tracks/summary', { query, schema: R.trackSummarySchema }),
+  /** The tracks without money (D-162): the rows of P5; the visible ones ask `trackSummary({ isrcs })`. */
+  trackCatalog: () => call('GET', '/tracks/catalog', { schema: R.trackCatalogSchema }),
   /** Whose money of one ISRC by month: allocations with labels and the state after every layer (N6). */
   trackMoney: (isrc: string) => call('GET', `/tracks/${id(isrc)}/money`, { schema: R.trackMoneySchema }),
   /** Platform and country rows of one report month of an ISRC (N7, no calculation). */

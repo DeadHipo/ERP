@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
-import type { TrackSummaryItem } from '@erp/shared/api-responses';
+import type { TrackCatalogItem, TrackSummaryItem } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
 import { trackQueries } from '../../api/queries/tracks';
@@ -11,7 +11,7 @@ import { EntityLink } from '../../components/EntityLink';
 import { FormDialog } from '../../components/FormDialog';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
-import { QueryView } from '../../components/PageState';
+import { QueryView, StaleBadge } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
@@ -23,32 +23,121 @@ import { FlagChip } from './components/FlagChip';
 const t = ru.catalog.tracks;
 const m = ru.catalog.money;
 
-/** P5 «Треки»: one `GET /tracks/summary` (account and month from the URL), every row filtered on the client. */
+/** A row of P5: the track without money (the catalog) and, once asked, its money (a summary item). */
+type TrackRow = Omit<TrackCatalogItem, 'registered'> & { money?: TrackSummaryItem };
+
+const rowOfSummary = (i: TrackSummaryItem): TrackRow => ({
+  isrc: i.isrc,
+  upcs: i.upcs,
+  title: i.title,
+  artistName: i.artistName,
+  hasSplit: i.hasSplit,
+  hasParticipations: i.hasParticipations,
+  money: i,
+});
+
+/**
+ * P5 «Треки» (D-162). Without an account or month: the rows come from `GET /tracks/catalog` (no money) and the money
+ * of the rows on the screen from `GET /tracks/summary?isrcs=` (one calculation of their units); a page seen before
+ * is cached. With an account or month (the P1 drill-down) or «Посчитать все»: one `GET /tracks/summary` of every row,
+ * as before, so the money columns sort. Every row is filtered on the client.
+ */
 export function TracksPage() {
   const [account, setAccount] = useUrlParam('account');
   const [month, setMonth] = useUrlParam('month');
+  const [all, setAll] = useUrlParam('all');
   const [hasSplit, setHasSplit] = useUrlParam('hasSplit');
   const [q, setQ] = useUrlParam('q');
   const [creating, setCreating] = useState(false);
-  const query = useQuery(trackQueries.summary(account || undefined, month || undefined));
-  const columns = useMemo(() => trackColumns(), []);
+  const full = account !== '' || month !== '' || all === '1';
+  const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined), enabled: full });
+  const catalog = useQuery({ ...trackQueries.catalog(), enabled: !full });
+  // The ISRCs on the screen (page, sort, filter), settled for a moment before they are asked.
+  const [visible, setVisible] = useState<readonly string[]>([]);
+  const [asked, setAsked] = useState<readonly string[]>([]);
+  useEffect(() => {
+    const timer = setTimeout(() => setAsked(visible), 150);
+    return () => clearTimeout(timer);
+  }, [visible]);
+  const pageMoney = useQuery({ ...trackQueries.summaryOf(asked), enabled: !full && asked.length > 0 });
+  // The money seen so far, by ISRC: a row keeps its numbers while the next page is asked.
+  const moneyRef = useRef(new Map<string, TrackSummaryItem>());
+  const [moneyVersion, setMoneyVersion] = useState(0);
+  useEffect(() => {
+    if (!pageMoney.data) return;
+    for (const i of pageMoney.data.items) moneyRef.current.set(i.isrc, i);
+    setMoneyVersion((v) => v + 1);
+  }, [pageMoney.data]);
+  const onVisibleRowsChanged = useCallback((rows: TrackRow[]) => {
+    const next = rows.map((r) => r.isrc).sort();
+    setVisible((prev) => (prev.join(',') === next.join(',') ? prev : next));
+  }, []);
+  const columns = useMemo(() => trackColumns(full), [full]);
   // The P1 drill-down (B or ours of an account and month) opens the list sorted by that column, largest first; the
   // column travels in the router state, so the link itself stays `/tracks?account&month`.
   const location = useLocation();
   const sortBy = (location.state as { sortBy?: unknown } | null)?.sortBy;
-  const defaultSort = sortBy === 'B' || sortBy === 'ours' ? ([sortBy, 'desc'] as const) : undefined;
-  const filter = (items: readonly TrackSummaryItem[]) => {
-    const needle = q.trim().toLocaleLowerCase('ru');
-    // With an account or month scope the API still lists every track (zeros outside the scope): show those with units in it.
-    const scoped = account !== '' || month !== '';
-    return items.filter(
-      (i) =>
-        (!scoped || i.months.count > 0) &&
-        (hasSplit === '' || (hasSplit === 'yes') === i.hasSplit) &&
-        (needle === '' ||
-          [i.isrc, i.title, i.artistName, ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
-    );
-  };
+  const defaultSort = full && (sortBy === 'B' || sortBy === 'ours') ? ([sortBy, 'desc'] as const) : undefined;
+  const needle = q.trim().toLocaleLowerCase('ru');
+  const scoped = account !== '' || month !== '';
+  const keep = useCallback(
+    (i: TrackRow) =>
+      // With an account or month scope the API still lists every track (zeros outside the scope): show those with units in it.
+      (!scoped || (i.money?.months.count ?? 0) > 0) &&
+      (hasSplit === '' || (hasSplit === 'yes') === i.hasSplit) &&
+      (needle === '' || [i.isrc, i.title, i.artistName, ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
+    [scoped, hasSplit, needle],
+  );
+  const fullRows = useMemo(() => (summary.data ? summary.data.items.map(rowOfSummary).filter(keep) : []), [summary.data, keep]);
+  const pagedRows = useMemo(
+    () =>
+      catalog.data
+        ? catalog.data.items
+            .map(({ registered: _registered, ...i }): TrackRow => ({ ...i, money: moneyRef.current.get(i.isrc) }))
+            .filter(keep)
+        : [],
+    // moneyVersion: the money of a page arrived (the map is a ref)
+    [catalog.data, keep, moneyVersion],
+  );
+  const grid = (rows: TrackRow[]) => (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+        <span data-testid="tracks-count">{fmt(t.count, { n: rows.length })}</span>
+        {!scoped ? (
+          full ? (
+            <>
+              <span data-testid="tracks-all-money">{t.allMoney}</span>
+              <button type="button" className="text-accent hover:underline" data-testid="action-visible-only" onClick={() => setAll('')}>
+                {t.visibleOnly}
+              </button>
+            </>
+          ) : (
+            <>
+              <span data-testid="tracks-visible-money">{t.visibleMoney}</span>
+              <button type="button" className="text-accent hover:underline" data-testid="action-compute-all" onClick={() => setAll('1')}>
+                {t.computeAll}
+              </button>
+              <StaleBadge show={pageMoney.isFetching} />
+            </>
+          )
+        ) : null}
+      </div>
+      <DataGrid
+        rowData={rows}
+        columnDefs={columns}
+        getRowId={(r) => r.isrc}
+        rowTestId={(r) => `track-${r.isrc}`}
+        defaultSort={defaultSort}
+        gridStateKey="grid"
+        onVisibleRowsChanged={full ? undefined : onVisibleRowsChanged}
+      />
+    </div>
+  );
+  const emptyAction = (
+    <Link to="/sources" className="text-accent hover:underline">
+      {t.toSources}
+    </Link>
+  );
   return (
     <div data-testid="tracks-page">
       <PageHeader
@@ -94,51 +183,38 @@ export function TracksPage() {
           />
         </div>
       </div>
-      <QueryView
-        query={query}
-        money
-        isEmpty={(d) => d.items.length === 0}
-        emptyMessage={t.empty}
-        emptyAction={
-          <Link to="/sources" className="text-accent hover:underline">
-            {t.toSources}
-          </Link>
-        }
-      >
-        {(data) => {
-          const rows = filter(data.items);
-          return (
-            <div className="flex flex-col gap-2">
-              <div className="text-xs text-muted" data-testid="tracks-count">
-                {fmt(t.count, { n: rows.length })}
-              </div>
-              <DataGrid
-                rowData={rows}
-                columnDefs={columns}
-                getRowId={(r) => r.isrc}
-                rowTestId={(r) => `track-${r.isrc}`}
-                defaultSort={defaultSort}
-                gridStateKey="grid"
-              />
-            </div>
-          );
-        }}
-      </QueryView>
+      {full ? (
+        <QueryView query={summary} money isEmpty={(d) => d.items.length === 0} emptyMessage={t.empty} emptyAction={emptyAction}>
+          {() => grid(fullRows)}
+        </QueryView>
+      ) : (
+        <QueryView query={catalog} isEmpty={(d) => d.items.length === 0} emptyMessage={t.empty} emptyAction={emptyAction}>
+          {() => grid(pagedRows)}
+        </QueryView>
+      )}
       {creating ? <CreateTrackDialog onClose={() => setCreating(false)} /> : null}
     </div>
   );
 }
 
-type P = { data?: TrackSummaryItem };
+type P = { data?: TrackRow };
 const money = (col: 'net' | 'B' | 'C' | 'ours') => (p: P) =>
   p.data ? (
-    <span data-col={col}>
-      <Money value={p.data[col]} />
-    </span>
+    p.data.money ? (
+      <span data-col={col}>
+        <Money value={p.data.money[col]} />
+      </span>
+    ) : (
+      <span data-col={col} data-testid="money-pending" className="text-muted">
+        {t.moneyPending}
+      </span>
+    )
   ) : null;
 
-function trackColumns(): ColDef<TrackSummaryItem>[] {
+/** The money columns sort only when every row has its money (`full`); by pages they are not sortable. */
+function trackColumns(full: boolean): ColDef<TrackRow>[] {
   const c = t.cols;
+  const sums = { comparator: compareDecimal, filter: false, sortable: full, minWidth: 130 };
   return [
     {
       colId: 'isrc',
@@ -164,16 +240,17 @@ function trackColumns(): ColDef<TrackSummaryItem>[] {
         ) : null,
     },
     // Money columns sort by `compareDecimal` (sign, integer length, digits; no number is made); the API order (by ISRC) is the default.
-    { colId: 'net', headerName: m.net, minWidth: 130, valueGetter: (p) => p.data?.net, cellRenderer: money('net'), comparator: compareDecimal, filter: false },
-    { colId: 'B', headerName: m.B, minWidth: 130, valueGetter: (p) => p.data?.B, cellRenderer: money('B'), comparator: compareDecimal, filter: false },
-    { colId: 'C', headerName: m.C, minWidth: 130, valueGetter: (p) => p.data?.C, cellRenderer: money('C'), comparator: compareDecimal, filter: false },
-    { colId: 'ours', headerName: m.ours, minWidth: 130, valueGetter: (p) => p.data?.ours, cellRenderer: money('ours'), comparator: compareDecimal, filter: false },
+    { colId: 'net', headerName: m.net, valueGetter: (p) => p.data?.money?.net, cellRenderer: money('net'), ...sums },
+    { colId: 'B', headerName: m.B, valueGetter: (p) => p.data?.money?.B, cellRenderer: money('B'), ...sums },
+    { colId: 'C', headerName: m.C, valueGetter: (p) => p.data?.money?.C, cellRenderer: money('C'), ...sums },
+    { colId: 'ours', headerName: m.ours, valueGetter: (p) => p.data?.money?.ours, cellRenderer: money('ours'), ...sums },
     {
       colId: 'months',
       headerName: c.months,
       minWidth: 150,
+      sortable: full,
       valueGetter: (p) =>
-        p.data ? `${p.data.months.count}: ${p.data.months.from ?? '—'} – ${p.data.months.to ?? '—'}` : '',
+        p.data?.money ? `${p.data.money.months.count}: ${p.data.money.months.from ?? '—'} – ${p.data.money.months.to ?? '—'}` : '',
     },
     {
       colId: 'hasSplit',

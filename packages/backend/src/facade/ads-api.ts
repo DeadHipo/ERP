@@ -79,7 +79,7 @@ export function adsApi(ctx: FacadeContext) {
         ...(q.includeInactive ? {} : { active: true }),
       });
       // only the allocations of the listed records are read: the units of their ISRCs suffice (D-161)
-      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf(records) })));
+      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf(records), publishingLines: false })));
       const byId = new Map(calc.ads.map((r) => [r.adId, r]));
       const ownerId = q.ownerId ? await owners.resolveOwnerId(q.ownerId) : undefined;
       const artistId = q.artistId ? (calc.artistIndex.get(q.artistId)?.id ?? q.artistId) : undefined;
@@ -110,7 +110,7 @@ export function adsApi(ctx: FacadeContext) {
     /** One record with its allocation (null when it is deactivated). */
     async getAd(id: string): Promise<AdView> {
       const rec = await ads.get(id);
-      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf([rec]) })));
+      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf([rec]), publishingLines: false })));
       return viewOf(rec, calc.ads.find((r) => r.adId === id), calc.artistIndex);
     },
 
@@ -119,7 +119,7 @@ export function adsApi(ctx: FacadeContext) {
       for (const m of [f.from, f.to])
         if (m && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new ValidationError(`Invalid month "${m}"`);
       // every active record takes part: the units of their ISRCs (all months: the label of an earlier month may decide)
-      const calc = await calculate(scoped(modules, { isrcs: isrcsOf(await ads.list({ active: true })) }));
+      const calc = await calculate(scoped(modules, { isrcs: isrcsOf(await ads.list({ active: true })), publishingLines: false }));
       const rows = adSummary(calc.ads, f.from, f.to);
       const total = (k: 'amount' | 'recoveredFromArtists' | 'borneBySublabels' | 'borneByUs' | 'noSplit') =>
         rows.reduce((s, r) => s.add(r[k]), ZERO);

@@ -16,6 +16,12 @@ export const catalog = {
     empty: 'Нет треков с деньгами: отчёты не загружены или фильтр ничего не нашёл.',
     toSources: 'К отчётам',
     count: 'Строк: {n}',
+    /** D-162: without an account or month the money is asked for the rows on the screen only. */
+    visibleMoney: 'Деньги считаются для строк на экране; сортировка по деньгам после полного расчёта.',
+    computeAll: 'Посчитать все',
+    visibleOnly: 'Только видимые строки',
+    allMoney: 'Один расчёт по всем трекам',
+    moneyPending: '…',
     create: 'Создать трек',
     createSubtitle: 'Трек регистрируется по ISRC и UPC; без регистрации деньги пары ждут в C (неизвестная пара).',
     created: 'Трек создан: {isrc}',

@@ -491,13 +491,13 @@ export function createSplitsService(db: Db) {
     },
 
     async listParticipations(
-      filter: { isrc?: string; artistId?: string } = {},
+      filter: { isrc?: string; isrcs?: string[]; artistId?: string } = {},
     ): Promise<ParticipationView[]> {
       const rows = filter.isrc
         ? await repo.participationsOfIsrc(assertIsrc(filter.isrc))
         : filter.artistId
           ? await repo.participationsOfArtist(filter.artistId)
-          : await repo.allParticipations();
+          : await repo.allParticipations(filter.isrcs);
       return rows.filter((r) => !filter.artistId || r.artistId === filter.artistId).map(partView);
     },
 
@@ -534,11 +534,14 @@ export function createSplitsService(db: Db) {
       return view(s, await repo.sharesOf([id]));
     },
 
-    async listSplits(filter: { isrc?: string; artistId?: string } = {}): Promise<SplitView[]> {
+    async listSplits(filter: { isrc?: string; isrcs?: string[]; artistId?: string } = {}): Promise<SplitView[]> {
       let rows: SplitRow[];
       let shares: ShareRow[];
       if (filter.isrc) {
         rows = await repo.splitsOfIsrc(assertIsrc(filter.isrc));
+        shares = await repo.sharesOf(rows.map((r) => r.id));
+      } else if (filter.isrcs) {
+        rows = await repo.allSplits(filter.isrcs);
         shares = await repo.sharesOf(rows.map((r) => r.id));
       } else if (filter.artistId) {
         const ids = new Set(await repo.splitIdsOfArtist(filter.artistId));
@@ -561,10 +564,16 @@ export function createSplitsService(db: Db) {
     /**
      * In-memory index of all splits, built once per facade calculation (one consistent read of the module).
      */
-    async index() {
-      const [allSplits, allShares, allParts] = await db.snapshot(() =>
-        Promise.all([repo.allSplits(), repo.allShares(), repo.allParticipations()]),
-      );
+    async index(filter: { isrcs?: string[] } = {}) {
+      // With `isrcs` (the unit scope of the facade, D-162) only the splits, shares and participations of those ISRCs.
+      const [allSplits, allShares, allParts] = await db.snapshot(async () => {
+        const rows = await repo.allSplits(filter.isrcs);
+        const [shares, parts] = await Promise.all([
+          filter.isrcs ? repo.sharesOf(rows.map((r) => r.id)) : repo.allShares(),
+          repo.allParticipations(filter.isrcs),
+        ]);
+        return [rows, shares, parts] as const;
+      });
       const partsByIsrc = new Map<string, ParticipationRow[]>();
       for (const p of allParts) {
         const list = partsByIsrc.get(p.isrc) ?? [];

@@ -145,6 +145,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-159 The advertising pages: `GET /ads/:id`, summary totals, pasted list, expense on a pseudonym, pseudonym filter, the card, the track tab and the pseudonym section · in force
 - D-160 The KPI cards of P1: `totals` of `GET /overview` (all, per source, per account; the backend sums, R1), four cards with the identity check, the account filter picks one account, a card expands by source and account · in force
 - D-161 The unit scope of the facade: `scoped(modules, { isrcs | upcs | accounts | period })` narrows `sources.snapshot()` for track, release, summary, queue and ads methods; `calculate()` unchanged; balances, payables, overview, signals stay full; `FACADE_SCOPE=off`; answers byte-equal on real data, 2.5–4× faster · in force
+- D-162 The reference reads follow the unit scope (split index, known pairs, no B17 lines for master-only answers); `GET /tracks/summary?isrcs=` and `GET /tracks/catalog`; P5 asks the money of the visible rows only; every screen reviewed; real data line by line equal to the frozen summary, a track 0.23 s · in force
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)

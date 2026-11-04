@@ -23,13 +23,17 @@
   two modules for one answer uses `db.snapshot()`. A write cannot start inside a snapshot (it throws).
 - Nothing is stored or cached: every method recalculates from scratch. Do not add accrual tables or caches
   without an owner decision (README §2: caches out of scope; 09 principle 7).
-- **Unit scope** (`scope.ts`, D-161): `calculate()` is never changed for speed; a method whose answer depends on a
-  subset of the Believe units passes `scoped(modules, { isrcs | upcs | accounts | from/to/basis })` so that
-  `sources.snapshot()` reads only that subset (the allocation of a unit depends on the unit and the reference data
-  alone, so the answer is byte for byte the full one). Used by track money / explain (one ISRC), release (one UPC),
-  track summary (account, month), the C queue (period), the ads list / card / summary (the ISRCs of the records).
-  Never for balances, payables, the overview, the reconciliation or the signals (counts over everything, D-012).
-  `FACADE_SCOPE=off` disables every scope; `tests/scope.test.ts` asserts scoped = full for every scoped method.
+- **Unit scope** (`scope.ts`, D-161, D-162): `calculate()` is never changed for speed; a method whose answer depends on a
+  subset of the Believe units passes `scoped(modules, { isrcs | upcs | accounts | from/to/basis, publishingLines })` so
+  that `sources.snapshot()` reads only that subset; with `isrcs` the split index and the known pairs are read for those
+  ISRCs only, and `publishingLines: false` skips the B17 lines for the master-only answers (the allocation of a unit
+  depends on the unit and the reference data of its ISRC alone, so the answer is byte for byte the full one). Used by
+  track money / explain (one ISRC), release (one UPC), track summary (account, month, or the ISRC list of the visible
+  rows of P5), the C queue (period), the ads list / card / summary (the ISRCs of the records). The list reads beside
+  the calculation take the same filters (`owners.listTracks({ isrcs })`, `splits.listSplits({ isrcs })`,
+  `sources.pairAttributes({ isrcs | upcs })`). Never for balances, payables, the overview, the reconciliation, the
+  signals or the document uses (counts over everything, D-012). `FACADE_SCOPE=off` disables every scope;
+  `tests/scope.test.ts` asserts scoped = full for every scoped method and that the full ones read everything.
 - Category C reasons are one shared enum (`C_REASONS` / `CReason` in `packages/shared/src/api-responses.ts`), used by
   `C_breakdown` and `waitingBreakdown`; a new reason goes there first, then check the pages that show them
   (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.

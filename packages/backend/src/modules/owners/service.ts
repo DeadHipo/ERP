@@ -577,13 +577,13 @@ export function createOwnersService(db: Db) {
       }));
     },
 
-    async listTracks(): Promise<TrackView[]> {
-      return (await repo.allTracks()).map(toTrackView);
+    async listTracks(filter: { isrcs?: string[] } = {}): Promise<TrackView[]> {
+      return (await repo.allTracks(filter.isrcs)).map(toTrackView);
     },
 
     /** Set of "ISRC|UPC" keys known in module 1. */
-    async knownPairs(): Promise<Set<string>> {
-      return new Set((await repo.knownPairs()).map((p) => `${p.isrc}|${p.upc}`));
+    async knownPairs(filter: { isrcs?: string[] } = {}): Promise<Set<string>> {
+      return new Set((await repo.knownPairs(filter.isrcs)).map((p) => `${p.isrc}|${p.upc}`));
     },
 
     // ---- documents ----
