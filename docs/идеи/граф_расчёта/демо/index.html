@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Граф расчёта роялти: демо</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e2e5ea; --text: #1d2430; --muted: #6b7380;
+    --b: #2f8a57; --b-bg: #e8f5ec; --c: #c4453a; --c-bg: #fbeceb; --ours: #4f6f94; --ours-bg: #e9eff6;
+    --neutral: #9aa3ae; --accent: #2d5fa8; --warn: #b7791f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+         color: var(--text); background: var(--bg); }
+  .app { display: grid; grid-template-columns: 270px 1fr; min-height: 100vh; }
+  aside.cases { background: var(--panel); border-right: 1px solid var(--line); padding: 16px 0; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; }
+  aside.cases h1 { font-size: 15px; margin: 0 16px 4px; }
+  aside.cases .sub { color: var(--muted); font-size: 12px; margin: 0 16px 12px; }
+  .case-item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 16px; cursor: pointer;
+               border-left: 3px solid transparent; font: inherit; color: inherit; }
+  .case-item:hover { background: #f1f3f6; }
+  .case-item.active { background: #eaf0f9; border-left-color: var(--accent); }
+  .case-item .cid { font-weight: 600; margin-right: 6px; }
+  .case-item .meta { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .lvl { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; margin-left: 4px; vertical-align: 1px; }
+  .lvl-простой { background: #e8f5ec; color: #2f6b47; }
+  .lvl-средний { background: #fdf3e1; color: #8a5a12; }
+  .lvl-сложный { background: #fbeceb; color: #93352d; }
+  main { padding: 20px 28px 40px; min-width: 0; }
+  .note-today { display: inline-block; background: #fff8e6; border: 1px solid #f1dfb0; color: #7a5b13; padding: 3px 10px;
+                border-radius: 6px; font-size: 12.5px; }
+  .fallback-note { color: var(--warn); font-size: 12.5px; margin-left: 8px; }
+  h2.case-title { margin: 10px 0 4px; font-size: 20px; }
+  .case-desc { margin: 0 0 8px; max-width: 900px; }
+  .unit-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 14px 0 12px; }
+  .tabs, .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .tabs button, .seg button { border: 0; background: none; padding: 6px 14px; cursor: pointer; font: inherit; color: var(--text); }
+  .tabs button + button, .seg button + button { border-left: 1px solid var(--line); }
+  .tabs button.on, .seg button.on { background: var(--accent); color: #fff; }
+  .workspace { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .trackflow + .trackflow { margin-top: 16px; }
+  .tf-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+  .tf-head b { font-size: 14px; }
+  .banner { padding: 6px 10px; border-radius: 6px; font-size: 12.5px; margin: 6px 0; }
+  .banner.neg { background: #f3f0fb; color: #4b3b7a; }
+  .banner.status { background: #fdf3e1; color: #7a5b13; }
+  .graph-wrap { overflow-x: auto; }
+  svg.graph { display: block; }
+  svg.graph text { font-family: inherit; }
+  .edge { cursor: pointer; }
+  .edge .hit { stroke: transparent; fill: none; }
+  .edge:hover .vis, .edge.sel .vis { stroke-opacity: 1; filter: drop-shadow(0 0 1px rgba(0,0,0,.35)); }
+  .edge .vis { fill: none; stroke-opacity: .72; }
+  .edge-label { font-size: 11px; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; fill: #2a313c; }
+  .edge-label.rem { fill: #55606d; }
+  .node rect { stroke: #c9ced6; }
+  .node { cursor: pointer; }
+  .node .nl { font-size: 12.5px; font-weight: 600; fill: #1d2430; }
+  .node .nv { font-size: 11px; fill: #5b6370; }
+  .node .warn { font-size: 11px; fill: var(--warn); paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; font-size: 12.5px; color: #3c4450; margin-top: 12px; }
+  .legend .sw { display: inline-block; width: 26px; height: 0; border-top: 4px solid; vertical-align: middle; margin-right: 6px; }
+  .legend .sw.dash { border-top-style: dashed; border-top-width: 3px; }
+  .detail h3 { margin: 0 0 8px; font-size: 14px; }
+  .detail dl { margin: 0; display: grid; grid-template-columns: 96px 1fr; gap: 4px 10px; font-size: 12.5px; }
+  .detail dt { color: var(--muted); }
+  .detail dd { margin: 0; word-break: break-word; }
+  .detail .formula { margin-top: 10px; padding: 8px; background: #f6f7f9; border-radius: 6px; font-size: 12px;
+                     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+  .detail .empty { color: var(--muted); font-size: 12.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cat { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 8px; font-weight: 600; }
+  .cat-B { background: var(--b-bg); color: var(--b); }
+  .cat-C { background: var(--c-bg); color: var(--c); }
+  .cat-ours { background: var(--ours-bg); color: var(--ours); }
+  /* таблица-дерево */
+  .tree { font-size: 13px; }
+  .trow { display: grid; grid-template-columns: minmax(190px, 1.8fr) 90px 130px 52px 44px 86px 56px minmax(170px, 1.6fr);
+          gap: 6px; min-width: 860px; align-items: center; padding: 5px 4px; border-bottom: 1px solid #eef0f3; }
+  .trow.head { font-size: 11.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .trow.nodehdr { background: #f8f9fb; font-weight: 600; }
+  .trow.edgerow { cursor: pointer; }
+  .trow.edgerow:hover, .trow.edgerow.sel { background: #eef3fb; }
+  .tog { border: 0; background: none; cursor: pointer; width: 18px; padding: 0; color: var(--muted); font: inherit; }
+  .seeabove { color: var(--muted); font-weight: 400; font-size: 12px; }
+  table.plain { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.plain th, table.plain td { border-bottom: 1px solid #eef0f3; padding: 6px 8px; text-align: left; vertical-align: top; }
+  table.plain th { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  table.plain tfoot td { font-weight: 600; border-top: 1px solid var(--line); }
+  .fields { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #3c4450; }
+  .sec-title { font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
+  details.trace { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 6px 0; background: #fbfcfd; }
+  details.trace summary { cursor: pointer; font-size: 13px; }
+  .checks { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 13px; }
+  .chk { display: inline-flex; align-items: center; gap: 6px; }
+  .chk .box { width: 16px; height: 16px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+              color: #fff; font-size: 11px; font-weight: 700; }
+  .chk.ok .box { background: var(--b); }
+  .chk.bad .box { background: var(--c); }
+  .chk.bad { color: var(--c); }
+  .footnote { color: var(--muted); font-size: 12px; margin-top: 10px; max-width: 900px; }
+  .empty-state { padding: 30px; text-align: center; color: var(--muted); }
+  .detail.card { position: fixed; right: 18px; bottom: 18px; width: 330px; max-height: 70vh; overflow-y: auto;
+                 box-shadow: 0 6px 24px rgba(20,30,50,.16); z-index: 5; }
+  .detail .close { float: right; border: 0; background: none; cursor: pointer; font-size: 16px; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  .tree-wrap { overflow-x: auto; }
+  @media print { aside.cases, .toolbar, .detail { display: none; } .app { display: block; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="cases" id="caseList"></aside>
+  <main id="main"></main>
+</div>
+
+<script>
+/* Запасные данные: используются, только если cases.js не загрузился (window.CASES не определён).
+   Суммы посчитаны вручную по README §5 (12 знаков, остаток вычитанием). Схема: СХЕМА.md. */
+(function () {
+  function E(from, to, amount, kind, ruleId, documentId, percent, base, category, reason, assumption) {
+    return { from: from, to: to, amount: amount, kind: kind, ruleId: ruleId, documentId: documentId,
+             percent: percent, base: base, category: category, reason: reason, assumption: assumption };
+  }
+  function N(id, label, column, inA, outA, notes, remainderTo) {
+    var n = { id: id, label: label, column: column, in: inA, out: outA, notes: notes || [] };
+    if (remainderTo) n.remainderTo = remainderTo;
+    return n;
+  }
+  var OK = { nodeBalance: true, sinksEqualNet: true, edgesEqualAllocations: true, signOk: true };
+  function U(upc, net) {
+    return { isrc: 'XX0000000001', upc: upc, reportingMonth: '2026-09', salesMonth: '2026-07',
+             labelName: 'Label S', account: 'acc1', net: net };
+  }
+  function key(u) { return u.upc + '|' + u.salesMonth + '|' + u.labelName + '|' + u.account; }
+  function unitInput(u) {
+    return { kind: 'unit', id: key(u), summary: 'юнит ' + u.upc + ', net ' + u.net,
+             fields: { isrc: u.isrc, upc: u.upc, reportingMonth: u.reportingMonth, salesMonth: u.salesMonth,
+                       labelName: u.labelName, account: u.account, net: u.net }, node: 'perimeter' };
+  }
+
+  /* --- EX100: пример README §5 --- */
+  var u100 = U('000000000001', '100.000000000000');
+  var ex100 = {
+    id: 'EX100', title: 'Пример README §5: всё на 100,00', level: 'сложный', source: 'docs/идеи/граф_расчёта/README.md §5',
+    description: 'Ремиксер R 10 % off-the-top; сплит A 40 / B 20 от scaledNet; MC 5 % от net из пула; A&R 15 % от доли ' +
+      'лейбла; саблейбл S 50 % от остатка доли лейбла. Цель MC считается от net (5), а не от scaledNet; саблейбл берёт ' +
+      '50 % от 30,60 после A&R. Порядок «доля лейбла / саблейбл» — допущение Q11.',
+    units: [{
+      unitKey: key(u100), unit: u100, status: 'allocated', scheme: 'master/standard',
+      nodes: [
+        N('net', 'net', 0, '100.000000000000', '100.000000000000', [], 'scaledNet'),
+        N('scaledNet', 'после top', 1, '90.000000000000', '90.000000000000', [], 'labelShare'),
+        N('row:A', 'строка A', 2, '36.000000000000', '36.000000000000', [], 'artist:A'),
+        N('row:B', 'строка B', 2, '18.000000000000', '18.000000000000', [], 'artist:B'),
+        N('pool', 'пул', 2, '5.000000000000', '5.000000000000', []),
+        N('labelShare', 'доля лейбла', 3, '36.000000000000', '36.000000000000', [], 'ours'),
+        N('artist:R', 'R', 4, '10.000000000000', '10.000000000000'),
+        N('artist:A', 'A', 4, '32.666666666667', '32.666666666667'),
+        N('artist:B', 'B', 4, '16.333333333333', '16.333333333333'),
+        N('artist:MC', 'MC', 4, '5.000000000000', '5.000000000000'),
+        N('artist:AR', 'AR', 4, '5.400000000000', '5.400000000000'),
+        N('artist:S', 'S', 4, '15.300000000000', '15.300000000000'),
+        N('ours', 'наша доля', 4, '15.300000000000', '15.300000000000')
+      ],
+      edges: [
+        E('net', 'artist:R', '10.000000000000', 'top', 'p1', 'd1', '10', '100.000000000000', 'B', null, null),
+        E('scaledNet', 'row:A', '36.000000000000', 'row', 's1', 'd2', '40', '90.000000000000', null, null, null),
+        E('scaledNet', 'row:B', '18.000000000000', 'row', 's1', 'd2', '20', '90.000000000000', null, null, null),
+        E('row:A', 'pool', '3.333333333333', 'draw', 'p2', null, null, '36.000000000000', null, null, null),
+        E('row:B', 'pool', '1.666666666667', 'draw', 'p2', null, null, '18.000000000000', null, null, null),
+        E('pool', 'artist:MC', '5.000000000000', 'artist_pool', 'p2', 'd3', '5', '100.000000000000', 'B', null, null),
+        E('labelShare', 'artist:AR', '5.400000000000', 'label_share', 'p3', 'd4', '15', '36.000000000000', 'C', 'assumption', 'q11'),
+        E('labelShare', 'artist:S', '15.300000000000', 'sublabel', 'r1', 'd5', '50', '30.600000000000', 'C', 'assumption', 'q11'),
+        E('row:A', 'artist:A', '32.666666666667', 'remainder', 's1', 'd2', null, null, 'B', null, null),
+        E('row:B', 'artist:B', '16.333333333333', 'remainder', 's1', 'd2', null, null, 'B', null, null),
+        E('scaledNet', 'labelShare', '36.000000000000', 'remainder', null, null, null, null, null, null, null),
+        E('labelShare', 'ours', '15.300000000000', 'remainder', null, null, null, null, 'ours', null, null),
+        E('net', 'scaledNet', '90.000000000000', 'remainder', null, null, null, null, null, null, null)
+      ],
+      trace: [
+        { layer: 'label-of-record', scaledNet: '100.000000000000', labelShare: '0.000000000000', rows: [] },
+        { layer: 'off-the-top', scaledNet: '90.000000000000', labelShare: '0.000000000000',
+          rows: [{ artistId: 'R', kind: 'top', amount: '10.000000000000' }] },
+        { layer: 'split', scaledNet: '90.000000000000', labelShare: '36.000000000000',
+          rows: [{ artistId: 'R', kind: 'top', amount: '10.000000000000' }, { artistId: 'A', kind: 'row', amount: '36.000000000000' },
+                 { artistId: 'B', kind: 'row', amount: '18.000000000000' }] },
+        { layer: 'carve', scaledNet: '90.000000000000', labelShare: '30.600000000000',
+          rows: [{ artistId: 'R', kind: 'top', amount: '10.000000000000' }, { artistId: 'A', kind: 'row', amount: '32.666666666667' },
+                 { artistId: 'B', kind: 'row', amount: '16.333333333333' }, { artistId: 'MC', kind: 'artist_pool', amount: '5.000000000000' },
+                 { artistId: 'AR', kind: 'label_share', amount: '5.400000000000' }] },
+        { layer: 'sublabel', scaledNet: '90.000000000000', labelShare: '15.300000000000',
+          rows: [{ artistId: 'R', kind: 'top', amount: '10.000000000000' }, { artistId: 'A', kind: 'row', amount: '32.666666666667' },
+                 { artistId: 'B', kind: 'row', amount: '16.333333333333' }, { artistId: 'MC', kind: 'artist_pool', amount: '5.000000000000' },
+                 { artistId: 'AR', kind: 'label_share', amount: '5.400000000000' }, { artistId: 'S', kind: 'sublabel', amount: '15.300000000000' }] }
+      ],
+      checks: OK
+    }],
+    inputs: [
+      unitInput(u100),
+      { kind: 'label', id: 'L-S', summary: 'строка «Label S» → саблейбл S, не наш лейбл',
+        fields: { alias: 'Label S', labelId: 'L-S', ours: 'false' }, node: 'label-of-record' },
+      { kind: 'label_rule', id: 'r1', summary: 'саблейбл S 50 % от остатка доли лейбла, документ d5',
+        fields: { labelId: 'L-S', percent: '50', recipientArtistId: 'S', documentId: 'd5', validFrom: '2026-01-01', validTo: null }, node: 'sublabel' },
+      { kind: 'participation', id: 'p1', summary: 'участие R 10 % (net, top), документ ok',
+        fields: { artistId: 'R', percent: '10', base: 'net', fundedFrom: 'top', fromArtistId: null, documentId: 'd1', validFrom: '2026-01-01', validTo: null }, node: 'off-the-top' },
+      { kind: 'split_row', id: 's1/A', summary: 'строка сплита A 40 %',
+        fields: { splitId: 's1', artistId: 'A', percent: '40', documentId: 'd2', validFrom: '2026-01-01', validTo: null }, node: 'split' },
+      { kind: 'split_row', id: 's1/B', summary: 'строка сплита B 20 %',
+        fields: { splitId: 's1', artistId: 'B', percent: '20', documentId: 'd2', validFrom: '2026-01-01', validTo: null }, node: 'split' },
+      { kind: 'participation', id: 'p2', summary: 'участие MC 5 % (net, artist_pool), документ ok',
+        fields: { artistId: 'MC', percent: '5', base: 'net', fundedFrom: 'artist_pool', fromArtistId: null, documentId: 'd3', validFrom: '2026-01-01', validTo: null }, node: 'carve:pool' },
+      { kind: 'participation', id: 'p3', summary: 'участие AR 15 % (доля лейбла, label_share), документ ok',
+        fields: { artistId: 'AR', percent: '15', base: 'bucket', fundedFrom: 'label_share', fromArtistId: null, documentId: 'd4', validFrom: '2026-01-01', validTo: null }, node: 'carve:label_share' },
+      { kind: 'document', id: 'd1…d5', summary: 'договоры, все утверждены',
+        fields: { kind: 'contract', status: 'approved' }, node: 'categorise' }
+    ]
+  };
+
+  /* --- G01: одна строка A 50 --- */
+  function g01Unit(upc, net, half) {
+    var u = U(upc, net);
+    return {
+      unitKey: key(u), unit: u, status: 'allocated', scheme: 'master/standard',
+      nodes: [
+        N('net', 'net', 0, net, net, [], 'scaledNet'),
+        N('scaledNet', 'после top', 1, net, net, [], 'labelShare'),
+        N('row:A', 'строка A', 2, half, half, [], 'artist:A'),
+        N('labelShare', 'доля лейбла', 3, half, half, [], 'ours'),
+        N('artist:A', 'A', 4, half, half),
+        N('ours', 'наша доля', 4, half, half)
+      ],
+      edges: [
+        E('scaledNet', 'row:A', half, 'row', 's1', 'd1', '50', net, null, null, null),
+        E('row:A', 'artist:A', half, 'remainder', 's1', 'd1', null, null, 'B', null, null),
+        E('scaledNet', 'labelShare', half, 'remainder', null, null, null, null, null, null, null),
+        E('labelShare', 'ours', half, 'remainder', null, null, null, null, 'ours', null, null),
+        E('net', 'scaledNet', net, 'remainder', null, null, null, null, null, null, null)
+      ],
+      trace: [
+        { layer: 'label-of-record', scaledNet: net, labelShare: '0.000000000000', rows: [] },
+        { layer: 'split', scaledNet: net, labelShare: half, rows: [{ artistId: 'A', kind: 'row', amount: half }] },
+        { layer: 'sublabel', scaledNet: net, labelShare: half, rows: [{ artistId: 'A', kind: 'row', amount: half }] }
+      ],
+      checks: OK
+    };
+  }
+  function g01Inputs(units) {
+    return units.map(function (x) { return unitInput(x.unit); }).concat([
+      { kind: 'label', id: 'L-S', summary: 'строка «Label S» → наш лейбл, саблейбла нет',
+        fields: { alias: 'Label S', labelId: 'L-S', ours: 'true' }, node: 'label-of-record' },
+      { kind: 'split_row', id: 's1/A', summary: 'строка сплита A 50 %, документ ok',
+        fields: { splitId: 's1', artistId: 'A', percent: '50', documentId: 'd1', validFrom: '2026-01-01', validTo: null }, node: 'split' },
+      { kind: 'document', id: 'd1', summary: 'договор A, утверждён', fields: { kind: 'contract', status: 'approved' }, node: 'categorise' }
+    ]);
+  }
+  var g01u = [g01Unit('000000000001', '100.000000000000', '50.000000000000')];
+  var g01 = { id: 'G01', title: 'Одна строка 50 %, остаток лейблу', level: 'простой', source: 'docs/agents/12_golden_cases.md G01',
+    description: 'Юнит net 100, сплит из одной строки A 50 %. A получает 50 (B), остаток доли лейбла 50 — наша доля. ' +
+      'Внутренние остатки показаны всегда, даже когда правил нет (net → после top целиком).',
+    units: g01u, inputs: g01Inputs(g01u) };
+
+  /* --- G24-mini: трек-месяц из двух юнитов --- */
+  var g24u = [g01Unit('000000000001', '100.000000000000', '50.000000000000'),
+              g01Unit('000000000002', '50.000000000000', '25.000000000000')];
+  var g24 = { id: 'G24mini', title: 'Трек-месяц из двух юнитов (мини)', level: 'средний', source: 'запасной кейс по образцу G24',
+    description: 'Тот же сплит A 50 % на двух UPC одного ISRC и месяца: net 100 и net 50. В режиме «сумма по трек-месяцу» ' +
+      'одинаковые рёбра складываются: A 75, наша доля 75; раскрытие — по юниту.',
+    units: g24u, inputs: g01Inputs(g24u) };
+
+  /* --- EX-SF: недостача пула (README §5, второй пример) --- */
+  var usf = U('000000000001', '100.000000000000');
+  var exsf = { id: 'EXSF', title: 'Пул меньше цели: недостача', level: 'средний', source: 'docs/идеи/граф_расчёта/README.md §5 (недостача)',
+    description: 'Сплит A 4 %, MC 5 % от net из пула. Пул = 4, цель 5: MC получает 4, строка A уходит в 0 (ребро-остаток ' +
+      'показано нулём), у пула подпись «не хватило 1,00». Денег не создано: сумма стоков = 100.',
+    units: [{
+      unitKey: key(usf), unit: usf, status: 'allocated', scheme: 'master/standard',
+      nodes: [
+        N('net', 'net', 0, '100.000000000000', '100.000000000000', [], 'scaledNet'),
+        N('scaledNet', 'после top', 1, '100.000000000000', '100.000000000000', [], 'labelShare'),
+        N('row:A', 'строка A', 2, '4.000000000000', '4.000000000000', [], 'artist:A'),
+        N('pool', 'пул', 2, '4.000000000000', '4.000000000000', [{ ruleId: 'p2', missing: '1.000000000000', why: 'bucket_short' }]),
+        N('labelShare', 'доля лейбла', 3, '96.000000000000', '96.000000000000', [], 'ours'),
+        N('artist:A', 'A', 4, '0.000000000000', '0.000000000000'),
+        N('artist:MC', 'MC', 4, '4.000000000000', '4.000000000000'),
+        N('ours', 'наша доля', 4, '96.000000000000', '96.000000000000')
+      ],
+      edges: [
+        E('scaledNet', 'row:A', '4.000000000000', 'row', 's1', 'd1', '4', '100.000000000000', null, null, null),
+        E('row:A', 'pool', '4.000000000000', 'draw', 'p2', null, null, '4.000000000000', null, null, null),
+        E('pool', 'artist:MC', '4.000000000000', 'artist_pool', 'p2', 'd2', '5', '100.000000000000', 'B', null, null),
+        E('row:A', 'artist:A', '0.000000000000', 'remainder', 's1', 'd1', null, null, 'B', null, null),
+        E('scaledNet', 'labelShare', '96.000000000000', 'remainder', null, null, null, null, null, null, null),
+        E('labelShare', 'ours', '96.000000000000', 'remainder', null, null, null, null, 'ours', null, null),
+        E('net', 'scaledNet', '100.000000000000', 'remainder', null, null, null, null, null, null, null)
+      ],
+      trace: [
+        { layer: 'split', scaledNet: '100.000000000000', labelShare: '96.000000000000', rows: [{ artistId: 'A', kind: 'row', amount: '4.000000000000' }] },
+        { layer: 'carve', scaledNet: '100.000000000000', labelShare: '96.000000000000',
+          rows: [{ artistId: 'A', kind: 'row', amount: '0.000000000000' }, { artistId: 'MC', kind: 'artist_pool', amount: '4.000000000000' }] }
+      ],
+      checks: OK
+    }],
+    inputs: [
+      unitInput(usf),
+      { kind: 'split_row', id: 's1/A', summary: 'строка сплита A 4 %',
+        fields: { splitId: 's1', artistId: 'A', percent: '4', documentId: 'd1', validFrom: '2026-01-01', validTo: null }, node: 'split' },
+      { kind: 'participation', id: 'p2', summary: 'участие MC 5 % (net, artist_pool), документ ok',
+        fields: { artistId: 'MC', percent: '5', base: 'net', fundedFrom: 'artist_pool', fromArtistId: null, documentId: 'd2', validFrom: '2026-01-01', validTo: null }, node: 'carve:pool' }
+    ]
+  };
+
+  window.CASES_FALLBACK = [g01, ex100, exsf, g24];
+})();
+</script>
+<script src="cases.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== деньги: decimal-строка ↔ BigInt пико (12 знаков) ===================== */
+  var SCALE = 1000000000000n;
+  function toPico(s) {
+    if (s === null || s === undefined || s === '') return 0n;
+    var str = String(s).trim(), neg = false;
+    if (str[0] === '-' || str[0] === '−') { neg = true; str = str.slice(1); } else if (str[0] === '+') str = str.slice(1);
+    var parts = str.split('.'), ip = parts[0] || '0', fp = parts[1] || '';
+    if (!/^\d+$/.test(ip) || !/^\d*$/.test(fp)) throw new Error('не decimal-строка: ' + s);
+    if (fp.length > 12) fp = fp.slice(0, 12);
+    while (fp.length < 12) fp += '0';
+    var v = BigInt(ip) * SCALE + BigInt(fp);
+    return neg ? -v : v;
+  }
+  function absB(v) { return v < 0n ? -v : v; }
+  function picoToDec(v) {
+    var neg = v < 0n, a = absB(v), ip = (a / SCALE).toString(), fp = (a % SCALE).toString();
+    while (fp.length < 12) fp = '0' + fp;
+    return (neg ? '-' : '') + ip + '.' + fp;
+  }
+  function group(ip) { return ip.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  /** Центы: половина вверх от нуля, «−1 234,57». */
+  function fmtCents(v) {
+    var neg = v < 0n, cents = (absB(v) + 5000000000n) / 10000000000n;
+    var ip = (cents / 100n).toString(), fp = (cents % 100n).toString();
+    if (fp.length < 2) fp = '0' + fp;
+    return (neg && cents > 0n ? '−' : '') + group(ip) + ',' + fp;
+  }
+  /** Все 12 знаков: «−1 234,567890123456». */
+  function fmtFull(v) {
+    var neg = v < 0n, a = absB(v), ip = (a / SCALE).toString(), fp = (a % SCALE).toString();
+    while (fp.length < 12) fp = '0' + fp;
+    return (neg ? '−' : '') + group(ip) + ',' + fp;
+  }
+  function sumP(list) { var s = 0n; for (var i = 0; i < list.length; i++) s += list[i]; return s; }
+
+  /* ===================== словари ===================== */
+  var KIND_RU = { top: 'off-the-top', row: 'строка сплита', draw: 'взято в пул', artist_pool: 'пул артистов',
+    artist_share: 'доля от строки артиста', label_share: 'доля от доли лейбла', sublabel: 'саблейбл',
+    remainder: 'остаток', perimeter: 'периметр' };
+  var LAYER_ORDER = ['perimeter', 'top', 'row', 'draw', 'artist_pool', 'artist_share', 'label_share', 'sublabel', 'remainder'];
+  var REASON_RU = { split_unconfirmed: 'строка сплита без утверждённого документа',
+    rule_unconfirmed: 'правило (top, carve, саблейбл) без утверждённого документа',
+    assumption: 'допущение: решение совета без утверждённого документа', artist_without_owner: 'псевдоним без владельца',
+    owner_unconfirmed: 'владелец не подтверждён', label_unmapped: 'строка лейбла Believe не сопоставлена лейблу',
+    unknown_pair: 'пары ISRC/UPC нет в каталоге', no_isrc: 'строка без ISRC',
+    publishing_terms_unconfirmed: 'издательские условия без документа', writer_unmapped: 'автор не связан с владельцем' };
+  var ASSUMPTION_RU = { document: 'документ-допущение (решение совета)', q11: 'Q11: порядок «доля из доли лейбла / половина саблейбла»',
+    r1: 'R1: нет сплита, деньги саблейблу по допущению' };
+  var STATUS_RU = { allocated: 'распределён', no_split: 'нет сплита: всё в долю лейбла', unknown_pair: 'пары ISRC/UPC нет в каталоге',
+    no_isrc: 'строка без ISRC' };
+  var INPUT_KIND_RU = { unit: 'юнит', label: 'лейбл', split_row: 'строка сплита', participation: 'участие',
+    label_rule: 'правило лейбла', document: 'документ' };
+  var WHY_RU = { bucket_short: 'корзины не хватило', no_source_row: 'нет строки-источника', top_above_100: 'top больше 100 %' };
+  var COLORS = { B: '#2f8a57', C: '#c4453a', ours: '#4f6f94', neutral: '#9aa3ae' };
+
+  function isSink(id) { return id === 'ours' || id.indexOf('artist:') === 0 || id.indexOf('c:') === 0; }
+  function reasonText(r) { return r ? (REASON_RU[r] || r) : ''; }
+  function catText(e) {
+    if (e.category === 'B') return 'B — подтверждено, можно платить';
+    if (e.category === 'C') return 'C — начислено, ждёт' + (e.reason ? ': ' + reasonText(e.reason) : '');
+    if (e.category === 'ours') return 'наша доля';
+    return '—';
+  }
+  function cmpEdges(a, b) {
+    var la = LAYER_ORDER.indexOf(a.kind), lb = LAYER_ORDER.indexOf(b.kind);
+    if (la !== lb) return la - lb;
+    if (a.to !== b.to) return a.to < b.to ? -1 : 1;
+    var ra = a.ruleId || '', rb = b.ruleId || '';
+    return ra === rb ? 0 : (ra < rb ? -1 : 1);
+  }
+
+  /* ===================== агрегация по юнитам трек-месяца (Р5) ===================== */
+  function aggregateUnits(units) {
+    var edgeMap = {}, edgeList = [], nodeMap = {}, nodeList = [], net = 0n;
+    var checks = { nodeBalance: true, sinksEqualNet: true, edgesEqualAllocations: true, signOk: true };
+    units.forEach(function (u, ui) {
+      net += toPico(u.unit.net);
+      Object.keys(checks).forEach(function (k) { checks[k] = checks[k] && !!(u.checks && u.checks[k]); });
+      u.edges.forEach(function (e) {
+        var k = e.from + '|' + e.to + '|' + e.kind + '|' + (e.ruleId || '');
+        var a = edgeMap[k];
+        if (!a) {
+          a = edgeMap[k] = { from: e.from, to: e.to, kind: e.kind, ruleId: e.ruleId, documentId: e.documentId,
+            percent: e.percent, base: e.base, category: e.category, reason: e.reason, assumption: e.assumption,
+            _amount: 0n, _base: e.base === null ? null : 0n, unitCount: 0 };
+          edgeList.push(a);
+        }
+        a._amount += toPico(e.amount);
+        if (a._base !== null) a._base = e.base === null ? null : a._base + toPico(e.base);
+        if (a.documentId !== e.documentId) a.documentId = 'несколько';
+        if (a.percent !== e.percent) a.percent = null;
+        if (a.category !== e.category) a.category = a.category || e.category;
+        if (a.reason !== e.reason) a.reason = a.reason || e.reason;
+        if (a.assumption !== e.assumption) a.assumption = a.assumption || e.assumption;
+        a.unitCount++;
+      });
+      u.nodes.forEach(function (n) {
+        var m = nodeMap[n.id];
+        if (!m) { m = nodeMap[n.id] = { id: n.id, label: n.label, column: n.column, _in: 0n, _out: 0n, notes: [], remainderTo: n.remainderTo }; nodeList.push(m); }
+        m._in += toPico(n.in); m._out += toPico(n.out);
+        (n.notes || []).forEach(function (x) { m.notes.push({ ruleId: x.ruleId, missing: x.missing, why: x.why, unit: ui + 1 }); });
+      });
+    });
+    var edges = edgeList.map(function (a) {
+      var e = {}; Object.keys(a).forEach(function (k) { if (k[0] !== '_') e[k] = a[k]; });
+      e.amount = picoToDec(a._amount); e.base = a._base === null ? null : picoToDec(a._base);
+      return e;
+    }).sort(cmpEdges);
+    var nodes = nodeList.map(function (m) {
+      return { id: m.id, label: m.label, column: m.column, in: picoToDec(m._in), out: picoToDec(m._out), notes: m.notes, remainderTo: m.remainderTo };
+    });
+    var first = units[0].unit;
+    return { unitKey: 'сумма по трек-месяцу: ' + units.length + ' юнит(а)', aggregate: true, unitCount: units.length,
+      unit: { isrc: first.isrc, upc: units.map(function (u) { return u.unit.upc; }).join(', '), reportingMonth: first.reportingMonth,
+              salesMonth: units.map(function (u) { return u.unit.salesMonth; }).filter(function (v, i, s) { return s.indexOf(v) === i; }).join(', '),
+              labelName: first.labelName, account: first.account, net: picoToDec(net) },
+      status: units.every(function (u) { return u.status === units[0].status; }) ? units[0].status : 'смешанный',
+      scheme: units[0].scheme, nodes: nodes, edges: edges, trace: null, checks: checks };
+  }
+
+  /* ===================== пересчёт инвариантов на странице ===================== */
+  function verifyUnit(u) {
+    var res = { nodeBalance: true, sinksEqualNet: true, signOk: true, problems: [] };
+    var net = toPico(u.unit.net), inSum = {}, outSum = {};
+    u.edges.forEach(function (e) {
+      var a = toPico(e.amount);
+      inSum[e.to] = (inSum[e.to] || 0n) + a; outSum[e.from] = (outSum[e.from] || 0n) + a;
+      if ((net > 0n && a < 0n) || (net < 0n && a > 0n) || (net === 0n && a !== 0n)) { res.signOk = false; res.problems.push('знак ребра ' + e.from + '→' + e.to); }
+    });
+    var sinks = 0n;
+    u.nodes.forEach(function (n) {
+      var nin = toPico(n.in), nout = toPico(n.out);
+      if (isSink(n.id)) {
+        sinks += nin;
+        if ((inSum[n.id] || 0n) !== nin) { res.nodeBalance = false; res.problems.push('сток ' + n.id + ': рёбра ≠ in'); }
+        return;
+      }
+      var ein = n.id === 'net' ? net : (inSum[n.id] || 0n);
+      var eout = outSum[n.id] || 0n;
+      if (ein !== nin || eout !== nout || nin !== nout) { res.nodeBalance = false; res.problems.push('узел ' + n.id + ': in ' + picoToDec(ein) + ' / out ' + picoToDec(eout)); }
+    });
+    if (sinks !== net) { res.sinksEqualNet = false; res.problems.push('Σ стоков ' + picoToDec(sinks) + ' ≠ net ' + picoToDec(net)); }
+    return res;
+  }
+
+  function remainderFormula(u, e) {
+    var src = null;
+    u.nodes.forEach(function (n) { if (n.id === e.from) src = n; });
+    if (!src) return '';
+    var others = u.edges.filter(function (x) { return x.from === e.from && x !== e; });
+    var nin = toPico(src.in);
+    return 'остаток = вход − Σ правил = ' + fmtCents(nin) + ' − (' +
+      (others.length ? others.map(function (x) { return fmtCents(toPico(x.amount)); }).join(' + ') : '0,00') + ') = ' + fmtCents(toPico(e.amount));
+  }
+  function edgeFormula(u, e) {
+    if (e.kind === 'remainder') return remainderFormula(u, e);
+    if (e.kind === 'draw') return 'взято из строки пропорционально её размеру (база ' + (e.base ? fmtCents(toPico(e.base)) : '—') + ')';
+    if (e.percent !== null && e.base !== null) return e.percent + ' % × ' + fmtCents(toPico(e.base)) + ' = ' + fmtCents(toPico(e.amount)) +
+      ' (точно ' + fmtFull(toPico(e.amount)) + ')';
+    return '';
+  }
+
+  /* ===================== DOM-хелперы ===================== */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function h(tag, attrs, children) {
+    var el = document.createElement(tag);
+    setAttrs(el, attrs);
+    appendKids(el, children);
+    return el;
+  }
+  function s(tag, attrs, children) {
+    var el = document.createElementNS(SVGNS, tag);
+    setAttrs(el, attrs);
+    appendKids(el, children);
+    return el;
+  }
+  function setAttrs(el, attrs) {
+    if (!attrs) return;
+    Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (v === null || v === undefined || v === false) return;
+      if (k === 'text') el.textContent = v;
+      else if (k === 'onclick') el.addEventListener('click', v);
+      else el.setAttribute(k, v === true ? '' : String(v));
+    });
+  }
+  function appendKids(el, children) {
+    if (children === null || children === undefined) return;
+    (Array.isArray(children) ? children : [children]).forEach(function (c) {
+      if (c === null || c === undefined || c === false) return;
+      el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    });
+  }
+  function edgeAttrs(e) {
+    return { 'data-testid': 'flow-edge', 'data-from': e.from, 'data-to': e.to, 'data-kind': e.kind, 'data-amount': e.amount,
+      'data-category': e.category || '', 'data-assumption': e.assumption || '', 'data-rule-id': e.ruleId || '' };
+  }
+  function nodeAttrs(n, u) {
+    var bal = isSink(n.id) ? true : toPico(n.in) === toPico(n.out);
+    return { 'data-testid': 'flow-node-' + n.id, 'data-in': n.in, 'data-out': n.out, 'data-balanced': bal ? 'true' : 'false' };
+  }
+  function edgeColor(e) { return e.category ? COLORS[e.category] : COLORS.neutral; }
+  function edgeTitle(u, e) {
+    var lines = [e.from + ' → ' + e.to, 'сумма: ' + fmtFull(toPico(e.amount)), 'вид: ' + (KIND_RU[e.kind] || e.kind)];
+    if (e.ruleId) lines.push('правило: ' + e.ruleId);
+    if (e.documentId) lines.push('документ: ' + e.documentId);
+    if (e.category) lines.push('категория: ' + catText(e));
+    if (e.assumption) lines.push('допущение: ' + (ASSUMPTION_RU[e.assumption] || e.assumption));
+    var f = edgeFormula(u, e); if (f) lines.push(f);
+    if (e.unitCount) lines.push('юнитов: ' + e.unitCount);
+    return lines.join('\n');
+  }
+  function sinkCategory(u, id) {
+    var cats = {};
+    u.edges.forEach(function (e) { if (e.to === id && e.category) cats[e.category] = e; });
+    var ks = Object.keys(cats);
+    if (id.indexOf('c:') === 0) return { cat: 'C', reason: id.slice(2) };
+    if (ks.length === 1) return { cat: ks[0], reason: cats[ks[0]].reason };
+    if (ks.length > 1) return { cat: 'mixed', reason: null };
+    return { cat: null, reason: null };
+  }
+  function sinkStatus(u, id) {
+    var sc = sinkCategory(u, id);
+    if (id.indexOf('c:') === 0) return 'начислено, ждёт: ' + reasonText(sc.reason) + (sc.reason === 'label_unmapped' ? ' (ждёт наша доля, не артист)' : '');
+    if (sc.cat === 'B') return 'начислено, можно платить';
+    if (sc.cat === 'C') return 'начислено, ждёт' + (sc.reason ? ': ' + reasonText(sc.reason) : '');
+    if (sc.cat === 'ours') return 'наша доля';
+    if (sc.cat === 'mixed') return 'часть подтверждена, часть ждёт';
+    return '';
+  }
+
+  /* ===================== состояние ===================== */
+  var usingFallback = !(window.CASES && window.CASES.length);
+  var CASES = usingFallback ? (window.CASES_FALLBACK || []) : window.CASES;
+  var state = { caseId: null, view: 'tree', mode: 'units', selected: null };
+
+  function currentCase() {
+    for (var i = 0; i < CASES.length; i++) if (CASES[i].id === state.caseId) return CASES[i];
+    return CASES[0] || null;
+  }
+  function viewUnits(c) {
+    if (!c || !c.units || !c.units.length) return [];
+    if (c.units.length > 1 && state.mode === 'sum') return [aggregateUnits(c.units)];
+    return c.units;
+  }
+
+  /* ===================== список кейсов ===================== */
+  function renderCaseList() {
+    var box = document.getElementById('caseList');
+    box.innerHTML = '';
+    box.appendChild(h('h1', { text: 'Граф расчёта' }));
+    box.appendChild(h('div', { class: 'sub', text: 'кейсы от простых к сложным' + (usingFallback ? ' · запасные данные' : '') }));
+    CASES.forEach(function (c) {
+      box.appendChild(h('button', { class: 'case-item' + (c.id === state.caseId ? ' active' : ''), 'data-case': c.id,
+        onclick: function () { selectCase(c.id); } }, [
+        h('span', { class: 'cid', text: c.id }), c.title,
+        h('span', { class: 'lvl lvl-' + c.level, text: c.level }),
+        h('span', { class: 'meta', text: c.source })
+      ]));
+    });
+  }
+
+  /* ===================== граф (SVG) ===================== */
+  var NODE_W = 146, NODE_H = 50, COL_W = 236, ROW_H = 74, PAD = 24;
+
+  function layout(u) {
+    var byId = {}; u.nodes.forEach(function (n) { byId[n.id] = n; });
+    var vcol = {};
+    u.nodes.forEach(function (n) { vcol[n.id] = n.column; });
+    u.edges.forEach(function (e) { if (byId[e.from] && byId[e.to] && byId[e.from].column === byId[e.to].column) vcol[e.to] = byId[e.to].column + 0.5; });
+    var cols = Object.keys(vcol).map(function (k) { return vcol[k]; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
+    // полуколонку (пул) ставим в одну колонку со следующей, если между ними нет рёбер
+    var slot = {}, si = -1;
+    cols.forEach(function (c, i) {
+      var prev = cols[i - 1];
+      var mergeable = prev !== undefined && prev % 1 !== 0 && c === prev + 0.5 && !u.edges.some(function (e) {
+        return (vcol[e.from] === prev && vcol[e.to] === c) || (vcol[e.from] === c && vcol[e.to] === prev); });
+      if (!mergeable) si++;
+      slot[c] = si;
+    });
+    var nSlots = si + 1;
+    var groups = [];
+    for (var k = 0; k < nSlots; k++) groups.push(u.nodes.filter(function (n) { return slot[vcol[n.id]] === k; }));
+    var firstEdgeIdx = {}; u.edges.forEach(function (e, i) { if (firstEdgeIdx[e.to] === undefined) firstEdgeIdx[e.to] = i; });
+    var maxN = Math.max.apply(null, groups.map(function (g) { return g.length; }).concat([1]));
+    var height = PAD * 2 + maxN * ROW_H + 30;
+    var pos = {};
+    // колонки слева направо; узел ставим по среднему y его источников (барицентр), чтобы рёбра меньше пересекались
+    groups.forEach(function (g, gi) {
+      if (gi > 0) {
+        g.forEach(function (n) {
+          var preds = u.edges.filter(function (e) { return e.to === n.id && pos[e.from]; }).map(function (e) { return pos[e.from].y; });
+          n._bary = preds.length ? preds.reduce(function (a, b) { return a + b; }, 0) / preds.length : 0;
+        });
+        g.sort(function (a, b) { return (a._bary - b._bary) || ((firstEdgeIdx[a.id] || 0) - (firstEdgeIdx[b.id] || 0)); });
+      }
+      var total = g.length * ROW_H, y0 = (height - total) / 2;
+      g.forEach(function (n, i) { pos[n.id] = { x: PAD + gi * COL_W, y: y0 + i * ROW_H + (ROW_H - NODE_H) / 2 }; });
+    });
+    return { pos: pos, width: PAD * 2 + (nSlots - 1) * COL_W + NODE_W + 20, height: height };
+  }
+
+  function bez(p0, p1, p2, p3, t) {
+    var m = 1 - t;
+    return m * m * m * p0 + 3 * m * m * t * p1 + 3 * m * t * t * p2 + t * t * t * p3;
+  }
+
+  function renderGraph(u, host) {
+    var L = layout(u), pos = L.pos;
+    var svg = s('svg', { class: 'graph', width: L.width, height: L.height, viewBox: '0 0 ' + L.width + ' ' + L.height, role: 'img',
+      'aria-label': 'граф расчёта юнита' });
+    var maxAbs = 1n;
+    u.edges.forEach(function (e) { var a = absB(toPico(e.amount)); if (a > maxAbs) maxAbs = a; });
+    // порты: исходящие сортируем по y цели, входящие — по y источника
+    var outs = {}, ins = {};
+    u.edges.forEach(function (e, i) {
+      if (!pos[e.from] || !pos[e.to]) return;
+      (outs[e.from] = outs[e.from] || []).push(i); (ins[e.to] = ins[e.to] || []).push(i);
+    });
+    var portOut = {}, portIn = {};
+    Object.keys(outs).forEach(function (id) {
+      var l = outs[id].sort(function (a, b) { return pos[u.edges[a].to].y - pos[u.edges[b].to].y; });
+      l.forEach(function (ei, k) { portOut[ei] = pos[id].y + 8 + (NODE_H - 16) * (k + 1) / (l.length + 1); });
+    });
+    Object.keys(ins).forEach(function (id) {
+      var l = ins[id].sort(function (a, b) { return pos[u.edges[a].from].y - pos[u.edges[b].from].y; });
+      l.forEach(function (ei, k) { portIn[ei] = pos[id].y + 8 + (NODE_H - 16) * (k + 1) / (l.length + 1); });
+    });
+    var gEdges = s('g'), gNodes = s('g'), gLabels = s('g'), placed = [];
+    u.edges.forEach(function (e, i) {
+      if (!pos[e.from] || !pos[e.to]) return;
+      var x1 = pos[e.from].x + NODE_W, y1 = portOut[i], x2 = pos[e.to].x, y2 = portIn[i];
+      var dx = Math.max(40, (x2 - x1) / 2);
+      var d = 'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2;
+      var a = absB(toPico(e.amount));
+      var w = 1.5 + 12 * (Number(a) / Number(maxAbs)); // Number допустим только для толщины линии
+      var sel = state.selected && state.selected.type === 'edge' && state.selected.idx === i;
+      var g = s('g', Object.assign({ class: 'edge' + (sel ? ' sel' : '') }, edgeAttrs(e)), [
+        s('title', { text: edgeTitle(u, e) }),
+        s('path', { class: 'hit', d: d, 'stroke-width': Math.max(12, w + 6) }),
+        s('path', { class: 'vis', d: d, stroke: edgeColor(e), 'stroke-width': w.toFixed(2), 'stroke-dasharray': e.assumption ? '7 5' : null })
+      ]);
+      g.addEventListener('click', function () { select({ type: 'edge', idx: i, unitKey: u.unitKey }); });
+      gEdges.appendChild(g);
+      var span = (x2 - x1) / COL_W, t = span > 1.2 ? 1 - 45 / (x2 - x1) : 0.5;
+      var lx = bez(x1, x1 + dx, x2 - dx, x2, t), ly = bez(y1, y1, y2, y2, t) - 4;
+      // простая раздвижка подписей, чтобы суммы не наезжали друг на друга
+      var lh = e.kind === 'remainder' ? 23 : 13, tries = 0;
+      while (tries < 12 && placed.some(function (q) { return Math.abs(q.x - lx) < 46 && ly < q.y + q.h && q.y < ly + lh; })) {
+        tries++; ly += (tries % 2 ? 1 : -1) * tries * 7;
+      }
+      placed.push({ x: lx, y: ly, h: lh });
+      var lbl = s('text', { class: 'edge-label' + (e.kind === 'remainder' ? ' rem' : ''), x: lx, y: ly, 'text-anchor': 'middle',
+        'data-testid': 'flow-edge-label' }, [fmtCents(toPico(e.amount))]);
+      if (e.kind === 'remainder') lbl.appendChild(s('tspan', { x: lx, dy: 11, 'font-size': 9.5 }, ['остаток']));
+      lbl.appendChild(s('title', { text: edgeTitle(u, e) }));
+      lbl.style.cursor = 'pointer';
+      lbl.addEventListener('click', function () { select({ type: 'edge', idx: i, unitKey: u.unitKey }); });
+      gLabels.appendChild(lbl);
+    });
+    u.nodes.forEach(function (n) {
+      var p = pos[n.id]; if (!p) return;
+      var sink = isSink(n.id), sc = sink ? sinkCategory(u, n.id) : { cat: null };
+      var fill = '#ffffff', stroke = '#c9ced6';
+      if (sc.cat === 'B') { fill = '#e8f5ec'; stroke = '#9fceb2'; }
+      if (sc.cat === 'C') { fill = '#fbeceb'; stroke = '#e3a6a0'; }
+      if (sc.cat === 'ours') { fill = '#e9eff6'; stroke = '#a9bcd3'; }
+      if (sc.cat === 'mixed') { fill = '#fdf6ec'; stroke = '#e2c79a'; }
+      var title = n.label + ' (' + n.id + ')\nвход: ' + fmtFull(toPico(n.in)) + '\nвыход: ' + fmtFull(toPico(n.out));
+      if (sink) title += '\n' + sinkStatus(u, n.id);
+      var sub = sink ? (sc.cat === 'C' ? 'начислено, ждёт ' : sc.cat === 'B' ? 'начислено ' : '') + fmtCents(toPico(n.in))
+                     : (toPico(n.in) === toPico(n.out) ? 'in = out ' + fmtCents(toPico(n.in)) : 'in ' + fmtCents(toPico(n.in)) + ' / out ' + fmtCents(toPico(n.out)));
+      var g = s('g', Object.assign({ class: 'node' }, nodeAttrs(n, u)), [
+        s('title', { text: title }),
+        s('rect', { x: p.x, y: p.y, width: NODE_W, height: NODE_H, rx: 8, fill: fill, stroke: stroke }),
+        s('text', { class: 'nl', x: p.x + 10, y: p.y + 19 }, [n.label]),
+        s('text', { class: 'nv', x: p.x + 10, y: p.y + 37 }, [sub])
+      ]);
+      if (n.notes && n.notes.length) {
+        g.appendChild(s('text', { class: 'warn', x: p.x + NODE_W - 16, y: p.y + 17, 'font-size': 14 }, ['⚠']));
+        n.notes.forEach(function (x, k) {
+          g.appendChild(s('text', { class: 'warn', x: p.x, y: p.y + NODE_H + 13 + k * 13 },
+            ['не хватило ' + fmtCents(toPico(x.missing)) + ' по правилу ' + x.ruleId + (x.unit ? ' (юнит ' + x.unit + ')' : '')]));
+        });
+      }
+      g.addEventListener('click', function () { select({ type: 'node', id: n.id, unitKey: u.unitKey }); });
+      gNodes.appendChild(g);
+    });
+    svg.appendChild(gEdges); svg.appendChild(gNodes); svg.appendChild(gLabels);
+    host.appendChild(h('div', { class: 'graph-wrap' }, svg));
+  }
+
+  /* ===================== таблица-дерево (Р12) ===================== */
+  var collapsed = {};
+  function renderTree(u, host) {
+    var byId = {}; u.nodes.forEach(function (n) { byId[n.id] = n; });
+    var tree = h('div', { class: 'tree' });
+    var treeWrap = h('div', { class: 'tree-wrap' }, tree);
+    tree.appendChild(h('div', { class: 'trow head' }, [
+      h('div', { text: 'Узел / куда' }), h('div', { class: 'num', text: 'Сумма' }), h('div', { text: 'Вид' }),
+      h('div', { text: 'Правило' }), h('div', { class: 'num', text: '%' }), h('div', { class: 'num', text: 'База' }),
+      h('div', { text: 'Документ' }), h('div', { text: 'Категория / статус' })
+    ]));
+    var seen = {};
+    function nodeBlock(id, depth) {
+      var n = byId[id]; if (!n) return;
+      seen[id] = true;
+      var ck = u.unitKey + '#' + id, isCol = !!collapsed[ck];
+      var outs = u.edges.map(function (e, i) { return { e: e, i: i }; }).filter(function (x) { return x.e.from === id; });
+      var hdr = h('div', Object.assign({ class: 'trow nodehdr' }, nodeAttrs(n, u)), [
+        h('div', { style: 'padding-left:' + depth * 22 + 'px' }, [
+          h('button', { class: 'tog', title: isCol ? 'раскрыть' : 'свернуть', 'aria-expanded': isCol ? 'false' : 'true',
+            onclick: function () { collapsed[ck] = !collapsed[ck]; render(); } }, [isCol ? '▸' : '▾']),
+          n.label + ' ',
+        ]),
+        h('div', { class: 'num', title: fmtFull(toPico(n.out)), text: fmtCents(toPico(n.out)) }),
+        h('div', { class: 'seeabove', text: id === 'net' ? 'net юнита' : '' }), h('div'), h('div'), h('div'), h('div'),
+        h('div', { class: 'seeabove' }, n.notes && n.notes.length ? n.notes.map(function (x) {
+          return h('div', { style: 'color:var(--warn)', text: '⚠ не хватило ' + fmtCents(toPico(x.missing)) + ' по правилу ' + x.ruleId +
+            ' (' + (WHY_RU[x.why] || x.why) + ')' });
+        }) : null)
+      ]);
+      tree.appendChild(hdr);
+      if (isCol) return;
+      outs.forEach(function (x) {
+        var e = x.e, sink = isSink(e.to), tgt = byId[e.to];
+        var sel = state.selected && state.selected.type === 'edge' && state.selected.idx === x.i && state.selected.unitKey === u.unitKey;
+        var row = h('div', Object.assign({ class: 'trow edgerow' + (sel ? ' sel' : ''), title: edgeTitle(u, e) }, edgeAttrs(e)), [
+          h('div', { style: 'padding-left:' + (depth * 22 + 22) + 'px' }, [
+            '→ ' + (tgt ? tgt.label : e.to),
+            e.unitCount ? h('span', { class: 'seeabove', text: '  · юнитов: ' + e.unitCount }) : null
+          ]),
+          h('div', { class: 'num', title: fmtFull(toPico(e.amount)), 'data-testid': 'flow-edge-label', text: fmtCents(toPico(e.amount)) }),
+          h('div', null, [KIND_RU[e.kind] || e.kind, e.kind === 'remainder' ? h('div', { class: 'seeabove', text: '= вход − Σ правил' }) : null]),
+          h('div', { class: 'mono', text: e.ruleId || '—' }),
+          h('div', { class: 'num', text: e.percent !== null ? e.percent : '—' }),
+          h('div', { class: 'num', title: e.base ? fmtFull(toPico(e.base)) : '', text: e.base ? fmtCents(toPico(e.base)) : '—' }),
+          h('div', { class: 'mono', text: e.documentId || '—' }),
+          h('div', null, [
+            e.category ? h('span', { class: 'cat cat-' + e.category, text: e.category === 'ours' ? 'наша' : e.category }) : null,
+            e.category ? ' ' : null,
+            h('span', { class: 'seeabove', text: e.category === 'C' ? 'начислено, ждёт' + (e.reason ? ': ' + reasonText(e.reason) : '') :
+              e.category === 'B' ? 'можно платить' : e.category === 'ours' ? 'наша доля' : '' }),
+            e.assumption ? h('div', { class: 'seeabove', text: 'допущение: ' + (ASSUMPTION_RU[e.assumption] || e.assumption) }) : null
+          ])
+        ]);
+        row.addEventListener('click', function () { select({ type: 'edge', idx: x.i, unitKey: u.unitKey }); });
+        tree.appendChild(row);
+        if (!sink && tgt) {
+          if (seen[e.to]) {
+            tree.appendChild(h('div', { class: 'trow' }, [h('div', { class: 'seeabove', style: 'padding-left:' + (depth * 22 + 44) + 'px',
+              text: '«' + tgt.label + '» раскрыт выше' })]));
+          } else nodeBlock(e.to, depth + 2);
+        }
+      });
+    }
+    nodeBlock('net', 0);
+    host.appendChild(treeWrap);
+
+    // итог по стокам: сумма data-amount рёбер = ячейка «Всего»
+    var sinks = u.nodes.filter(function (n) { return isSink(n.id); });
+    var total = sumP(sinks.map(function (n) { return toPico(n.in); }));
+    var tb = h('tbody');
+    sinks.forEach(function (n) {
+      var sc = sinkCategory(u, n.id);
+      tb.appendChild(h('tr', { 'data-sink': n.id }, [
+        h('td', { text: n.label }),
+        h('td', { class: 'num', title: fmtFull(toPico(n.in)), 'data-amount': n.in, text: fmtCents(toPico(n.in)) }),
+        h('td', null, [sc.cat && sc.cat !== 'mixed' ? h('span', { class: 'cat cat-' + sc.cat, text: sc.cat === 'ours' ? 'наша' : sc.cat }) : null,
+          ' ', sinkStatus(u, n.id)]),
+        h('td', { class: 'num', text: String(u.edges.filter(function (e) { return e.to === n.id; }).length) })
+      ]));
+    });
+    host.appendChild(h('div', { class: 'sec-title', text: 'Куда пришли деньги (стоки)' }));
+    host.appendChild(h('table', { class: 'plain', 'data-testid': 'layers-table' }, [
+      h('thead', null, h('tr', null, [h('th', { text: 'Получатель' }), h('th', { class: 'num', text: 'Начислено' }),
+        h('th', { text: 'Статус' }), h('th', { class: 'num', text: 'Рёбер' })])),
+      tb,
+      h('tfoot', null, h('tr', null, [h('td', { text: 'Всего' }),
+        h('td', { class: 'num', 'data-testid': 'layers-total', 'data-amount': picoToDec(total), title: fmtFull(total), text: fmtCents(total) }),
+        h('td', { text: 'net юнита ' + fmtCents(toPico(u.unit.net)) }), h('td')]))
+    ]));
+  }
+
+  /* ===================== входы узлов (инспектор) и трейс ===================== */
+  function renderInputs(c, units, host) {
+    host.appendChild(h('div', { class: 'sec-title', style: 'margin-top:0', text: 'Входы узлов: правило → поля → узел, который его читает' }));
+    var tb = h('tbody');
+    (c.inputs || []).forEach(function (inp) {
+      var f = inp.fields || {};
+      tb.appendChild(h('tr', null, [
+        h('td', { text: INPUT_KIND_RU[inp.kind] || inp.kind }),
+        h('td', { class: 'mono', text: inp.id }),
+        h('td', { text: inp.summary }),
+        h('td', { class: 'fields' }, Object.keys(f).map(function (k) { return h('div', { text: k + ': ' + (f[k] === null ? 'null' : f[k]) }); })),
+        h('td', { class: 'mono', text: inp.node })
+      ]));
+    });
+    host.appendChild(h('table', { class: 'plain' }, [
+      h('thead', null, h('tr', null, ['Вид', 'id', 'Смысл', 'Поля (как в базе)', 'Узел'].map(function (t) { return h('th', { text: t }); }))), tb]));
+    host.appendChild(h('div', { class: 'sec-title', text: 'Трейс по слоям (состояние после каждого слоя)' }));
+    units.forEach(function (u) {
+      if (!u.trace) { host.appendChild(h('div', { class: 'footnote', text: 'В режиме суммы трейс не складывается: переключитесь «по юнитам».' })); return; }
+      if (units.length > 1) host.appendChild(h('div', { class: 'unit-key', text: u.unitKey }));
+      u.trace.forEach(function (t) {
+        host.appendChild(h('details', { class: 'trace' }, [
+          h('summary', null, [h('b', { text: t.layer }), '  · после top ' + fmtCents(toPico(t.scaledNet)) + ' · доля лейбла ' + fmtCents(toPico(t.labelShare)) +
+            ' · аллокаций ' + t.rows.length]),
+          t.rows.length ? h('table', { class: 'plain' }, [
+            h('thead', null, h('tr', null, [h('th', { text: 'Псевдоним' }), h('th', { text: 'Вид' }), h('th', { class: 'num', text: 'Сумма' })])),
+            h('tbody', null, t.rows.map(function (r) {
+              return h('tr', null, [h('td', { text: r.artistId }), h('td', { text: KIND_RU[r.kind] || r.kind }),
+                h('td', { class: 'num', title: fmtFull(toPico(r.amount)), text: fmtCents(toPico(r.amount)) })]);
+            }))
+          ]) : h('div', { class: 'footnote', text: 'аллокаций нет' })
+        ]));
+      });
+    });
+  }
+
+  /* ===================== панель деталей ===================== */
+  function findSelected(units) {
+    var sel = state.selected; if (!sel) return null;
+    for (var i = 0; i < units.length; i++) if (units[i].unitKey === sel.unitKey) {
+      var u = units[i];
+      if (sel.type === 'edge' && u.edges[sel.idx]) return { u: u, e: u.edges[sel.idx] };
+      if (sel.type === 'node') for (var j = 0; j < u.nodes.length; j++) if (u.nodes[j].id === sel.id) return { u: u, n: u.nodes[j] };
+    }
+    return null;
+  }
+  function renderDetail(units) {
+    var f = findSelected(units);
+    if (!f) return null;
+    var box = h('div', { class: 'card detail', 'data-testid': 'flow-edge-detail' });
+    box.appendChild(h('button', { class: 'close', title: 'закрыть', 'aria-label': 'закрыть', onclick: function () { select(null); } }, '\u2715'));
+    function row(k, v, title) { return [h('dt', { text: k }), h('dd', { title: title || null, text: v === null || v === undefined || v === '' ? '—' : v })]; }
+    if (f.e) {
+      var e = f.e, a = toPico(e.amount);
+      box.appendChild(h('h3', { text: 'Ребро ' + e.from + ' → ' + e.to }));
+      box.appendChild(h('dl', null, [].concat(
+        row('Откуда', e.from), row('Куда', e.to),
+        row('Сумма', fmtCents(a), fmtFull(a)), row('Точно', fmtFull(a)),
+        row('Вид', (KIND_RU[e.kind] || e.kind) + ' (' + e.kind + ')'),
+        row('Правило', e.ruleId), row('Документ', e.documentId),
+        row('Процент', e.percent !== null ? e.percent + ' %' : null),
+        row('База', e.base ? fmtCents(toPico(e.base)) : null, e.base ? fmtFull(toPico(e.base)) : null),
+        row('Категория', e.category === 'C' ? 'C — начислено, ждёт' : catText(e)), row('Причина', reasonText(e.reason)),
+        row('Допущение', e.assumption ? (ASSUMPTION_RU[e.assumption] || e.assumption) : null),
+        e.unitCount ? row('Юнитов', String(e.unitCount)) : []
+      )));
+      var fm = edgeFormula(f.u, e);
+      if (fm) box.appendChild(h('div', { class: 'formula', text: fm }));
+    } else {
+      var n = f.n;
+      box.appendChild(h('h3', { text: 'Узел «' + n.label + '»' }));
+      box.appendChild(h('dl', null, [].concat(
+        row('id', n.id), row('Вход', fmtCents(toPico(n.in)), fmtFull(toPico(n.in))), row('Выход', fmtCents(toPico(n.out)), fmtFull(toPico(n.out))),
+        row('Остаток в', n.remainderTo || (isSink(n.id) ? 'сток' : 'нет (Σ in = Σ out)')),
+        isSink(n.id) ? row('Статус', sinkStatus(f.u, n.id)) : []
+      )));
+      (n.notes || []).forEach(function (x) {
+        box.appendChild(h('div', { class: 'formula', text: '⚠ не хватило ' + fmtFull(toPico(x.missing)) + ' по правилу ' + x.ruleId + ' (' + (WHY_RU[x.why] || x.why) + ')' }));
+      });
+    }
+    return box;
+  }
+
+  function select(sel) { state.selected = sel; render(); }
+
+  /* ===================== основной рендер ===================== */
+  function render() {
+    renderCaseList();
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+    var c = currentCase();
+    var top = h('div', null, [h('span', { class: 'note-today', text: 'Расчёт на сегодня, не выписка: суммы пересчитываются из строк отчётов и могут измениться.' }),
+      usingFallback ? h('span', { class: 'fallback-note', text: 'cases.js не найден — показаны запасные кейсы' }) : null]);
+    main.appendChild(top);
+    if (!c) { main.appendChild(h('div', { class: 'card empty-state', 'data-testid': 'flow-empty', text: 'Нет кейсов.' })); return; }
+    main.appendChild(h('h2', { class: 'case-title', text: c.id + ' · ' + c.title }));
+    main.appendChild(h('p', { class: 'case-desc', text: c.description }));
+    main.appendChild(h('div', { class: 'unit-key', text: 'источник: ' + c.source }));
+
+    var units = viewUnits(c);
+    var tb = h('div', { class: 'toolbar' });
+    var tabs = h('div', { class: 'tabs', role: 'tablist' });
+    [['tree', 'Таблица-дерево'], ['graph', 'Граф'], ['inputs', 'Входы узлов']].forEach(function (t) {
+      tabs.appendChild(h('button', { class: state.view === t[0] ? 'on' : '', role: 'tab', 'data-view': t[0], 'aria-selected': state.view === t[0] ? 'true' : 'false',
+        onclick: function () { state.view = t[0]; render(); } }, t[1]));
+    });
+    tb.appendChild(tabs);
+    if (c.units && c.units.length > 1) {
+      var seg = h('div', { class: 'seg' });
+      [['units', 'по юнитам'], ['sum', 'сумма по трек-месяцу']].forEach(function (m) {
+        seg.appendChild(h('button', { class: state.mode === m[0] ? 'on' : '', 'data-mode': m[0],
+          onclick: function () { state.mode = m[0]; state.selected = null; render(); } }, m[1]));
+      });
+      tb.appendChild(seg);
+      tb.appendChild(h('span', { class: 'unit-key', text: 'юнитов в трек-месяце: ' + c.units.length }));
+    }
+    if (units.length && state.view !== 'inputs') tb.appendChild(h('span', { class: 'hint', text: 'щёлкните ребро или узел — откроются детали' }));
+    main.appendChild(tb);
+
+    var ws = h('div', { class: 'workspace' });
+    var left = h('div');
+    if (!units.length) {
+      left.appendChild(h('div', { class: 'card empty-state', 'data-testid': 'flow-empty', text: 'Нет юнитов: нет отчёта за этот месяц.' }));
+    } else if (state.view === 'inputs') {
+      var card = h('div', { class: 'card' }); renderInputs(c, units, card); left.appendChild(card);
+    } else {
+      units.forEach(function (u) {
+        var tf = h('div', { class: 'card trackflow', 'data-testid': 'trackflow', 'data-isrc': u.unit.isrc, 'data-month': u.unit.reportingMonth,
+          'data-unit-key': u.unitKey, 'data-units': u.unitCount || 1 });
+        tf.appendChild(h('div', { class: 'tf-head' }, [
+          h('b', { text: u.aggregate ? 'Сумма по трек-месяцу (' + u.unitCount + ' юнит(а))' : 'Юнит' }),
+          h('span', { class: 'unit-key', text: u.aggregate ? 'UPC ' + u.unit.upc : 'ключ ' + u.unitKey }),
+          h('span', { class: 'unit-key', text: 'ISRC ' + u.unit.isrc + ' · отчёт ' + u.unit.reportingMonth + ' · продажи ' + u.unit.salesMonth +
+            ' · лейбл «' + u.unit.labelName + '» · net ' + fmtCents(toPico(u.unit.net)) + ' · схема ' + u.scheme })
+        ]));
+        if (u.status !== 'allocated') tf.appendChild(h('div', { class: 'banner status', text: 'Статус юнита: ' + (STATUS_RU[u.status] || u.status) }));
+        if (toPico(u.unit.net) < 0n) tf.appendChild(h('div', { class: 'banner neg',
+          text: 'Возврат (отрицательный юнит): все суммы со знаком минус уменьшают начисленное, это не «забрали у артиста».' }));
+        if (!u.edges.length) tf.appendChild(h('div', { class: 'empty-state', 'data-testid': 'flow-empty', text: 'Рёбер нет.' }));
+        else if (state.view === 'graph') renderGraph(u, tf);
+        else renderTree(u, tf);
+        left.appendChild(tf);
+      });
+    }
+    ws.appendChild(left);
+    var det = renderDetail(units); if (det) ws.appendChild(det);
+    main.appendChild(ws);
+
+    // легенда
+    main.appendChild(h('div', { class: 'legend' }, [
+      h('span', null, [h('span', { class: 'sw', style: 'border-color:' + COLORS.B }), 'B — подтверждено, можно платить']),
+      h('span', null, [h('span', { class: 'sw', style: 'border-color:' + COLORS.C }), 'C — начислено, ждёт (причина текстом)']),
+      h('span', null, [h('span', { class: 'sw', style: 'border-color:' + COLORS.ours }), 'наша доля']),
+      h('span', null, [h('span', { class: 'sw', style: 'border-color:' + COLORS.neutral }), 'промежуточные корзины']),
+      h('span', null, [h('span', { class: 'sw dash', style: 'border-color:#6b7380' }), 'пунктир — допущение (тоже C)']),
+      h('span', null, [h('span', { style: 'color:var(--warn);margin-right:6px', text: '⚠' }), 'не хватило корзины (shortfall): деньги не создаются, цели уменьшены'])
+    ]));
+    main.appendChild(h('div', { class: 'footnote', text: 'Суммы показаны в центах (половина вверх); точное значение (12 знаков) — по наведению. ' +
+      'Из-за округления сумма центов в узле может расходиться на 0,01 — расчёт ведётся точно. Остаток узла не берётся процентом: ' +
+      'остаток = вход − Σ правил. Толщина ребра пропорциональна сумме.' }));
+
+    // проверки
+    var chk = h('div', { class: 'checks' });
+    var labels = { nodeBalance: 'баланс узлов (вход = выход)', sinksEqualNet: 'Σ стоков = net', edgesEqualAllocations: 'рёбра = аллокации',
+      signOk: 'знак рёбер = знак юнита' };
+    var agg = { nodeBalance: true, sinksEqualNet: true, edgesEqualAllocations: true, signOk: true };
+    units.forEach(function (u) { Object.keys(agg).forEach(function (k) { agg[k] = agg[k] && !!(u.checks && u.checks[k]); }); });
+    var page = { nodeBalance: true, sinksEqualNet: true, signOk: true }, problems = [];
+    units.forEach(function (u) { var r = verifyUnit(u); page.nodeBalance = page.nodeBalance && r.nodeBalance;
+      page.sinksEqualNet = page.sinksEqualNet && r.sinksEqualNet; page.signOk = page.signOk && r.signOk; problems = problems.concat(r.problems); });
+    function chkEl(ok, text, key) {
+      return h('span', { class: 'chk ' + (ok ? 'ok' : 'bad'), 'data-check': key, 'data-ok': ok ? 'true' : 'false' },
+        [h('span', { class: 'box', text: ok ? '✓' : '✕' }), text]);
+    }
+    chk.appendChild(h('b', { text: 'Проверка (из расчёта):' }));
+    Object.keys(labels).forEach(function (k) { chk.appendChild(chkEl(agg[k], labels[k], k)); });
+    main.appendChild(chk);
+    var chk2 = h('div', { class: 'checks' }, [h('b', { text: 'Пересчёт на странице:' }),
+      chkEl(page.nodeBalance, 'баланс узлов', 'page-nodeBalance'), chkEl(page.sinksEqualNet, 'Σ стоков = net', 'page-sinksEqualNet'),
+      chkEl(page.signOk, 'знак', 'page-signOk')]);
+    main.appendChild(chk2);
+    if (problems.length) main.appendChild(h('div', { class: 'footnote', style: 'color:var(--c)', text: problems.join('; ') }));
+  }
+
+  function selectCase(id) {
+    if (id !== state.caseId) { state.caseId = id; state.selected = null; state.mode = 'units'; }
+    try { history.replaceState(null, '', '#' + encodeURIComponent(id)); } catch (err) { /* data:/file: без истории */ }
+    render();
+  }
+  function fromHash() {
+    var id = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+    var found = CASES.some(function (c) { return c.id === id; });
+    var next = found ? id : (CASES[0] && CASES[0].id);
+    if (next !== state.caseId) { state.caseId = next; state.selected = null; state.mode = 'units'; }
+    render();
+  }
+
+  /* ===================== самотест (console.assert) ===================== */
+  function selfTest() {
+    var A = console.assert.bind(console), fails = 0;
+    function check(cond, msg) { if (!cond) fails++; A(cond, msg); }
+    check(fmtCents(toPico('-1234.567')) === '−1 234,57', 'формат центов −1 234,57');
+    check(fmtCents(toPico('3.333333333333')) === '3,33', 'центы 3,33');
+    check(fmtCents(toPico('0.005')) === '0,01', 'половина вверх');
+    check(fmtCents(toPico('-0.001')) === '0,00', 'минус ноль не показывается');
+    check(fmtFull(toPico('1234567.5')) === '1 234 567,500000000000', '12 знаков');
+    check(picoToDec(toPico('3.333333333333') + toPico('1.666666666667')) === '5.000000000000', 'сложение через BigInt');
+    check(picoToDec(toPico('-100')) === '-100.000000000000', 'отрицательная decimal-строка');
+    var fb = window.CASES_FALLBACK || [];
+    fb.forEach(function (c) {
+      c.units.forEach(function (u) {
+        var r = verifyUnit(u);
+        check(r.nodeBalance && r.sinksEqualNet && r.signOk, 'запасной кейс ' + c.id + ' ' + u.unitKey + ': ' + r.problems.join('; '));
+        // рёбра в artist:X = сумма аллокаций X в последнем слое трейса
+        var last = u.trace[u.trace.length - 1], alloc = {};
+        last.rows.forEach(function (row) { alloc['artist:' + row.artistId] = (alloc['artist:' + row.artistId] || 0n) + toPico(row.amount); });
+        Object.keys(alloc).forEach(function (k) {
+          var es = sumP(u.edges.filter(function (e) { return e.to === k; }).map(function (e) { return toPico(e.amount); }));
+          check(es === alloc[k], c.id + ': рёбра в ' + k + ' = аллокация');
+        });
+      });
+    });
+    var g = fb.filter(function (c) { return c.units.length > 1; })[0];
+    if (g) {
+      var agg = aggregateUnits(g.units);
+      var rr = verifyUnit(agg);
+      check(rr.nodeBalance && rr.sinksEqualNet, 'агрегат сходится: ' + rr.problems.join('; '));
+      var ea = agg.edges.filter(function (e) { return e.to === 'artist:A'; });
+      check(ea.length === 1 && ea[0].amount === '75.000000000000' && ea[0].unitCount === 2, 'агрегат: artist:A 75 из 2 юнитов');
+      check(agg.edges.length === g.units[0].edges.length, 'агрегат: одинаковые рёбра склеены');
+      check(agg.unit.net === '150.000000000000', 'агрегат: net 150');
+    }
+    if (!usingFallback) CASES.forEach(function (c) {
+      (c.units || []).forEach(function (u) { var r = verifyUnit(u); if (!(r.nodeBalance && r.sinksEqualNet && r.signOk)) console.warn('cases.js', c.id, r.problems); });
+    });
+    console.log('самотест демо: ' + (fails ? fails + ' ошибок' : 'всё сходится'));
+    return fails;
+  }
+
+  window.__demo = { toPico: toPico, picoToDec: picoToDec, fmtCents: fmtCents, fmtFull: fmtFull, aggregateUnits: aggregateUnits,
+    verifyUnit: verifyUnit, selfTest: selfTest };
+  selfTest();
+  if (typeof document !== 'undefined' && document.getElementById && document.getElementById('main')) {
+    window.addEventListener('hashchange', fromHash);
+    fromHash();
+  }
+})();
+</script>
+</body>
+</html>
