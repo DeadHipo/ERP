@@ -40,7 +40,8 @@ New pages: recipe "Add a page" in `docs/agents/04_recipes.md` (own folder, route
 strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golden/`).
 ## Pages P1-P21 (one sentence each: the operator question; P4 of revision 1 is the payouts view of P9)
 - **P1 Обзор** `/` (`pages/work/OverviewPage.tsx`, one `GET /overview`, period in the URL): did every dollar of each account and month land
-  in B, C or ours, and what waits by reason? A plain table (rows `overview-row-<source>-<account>-<month>`, cells `data-col="A|B|C|ours|noSplit|discrepancy|fileDiscrepancy"`,
+  in B, C or ours, and what waits by reason? Four KPI cards over everything (D-160: `kpi-received|confirmed|waiting|ours` show `totals` of the same call, never a client sum; the
+  account filter picks one `byAccount` entry, several matches show «—»; a click expands `kpi-breakdown` by source and account), a plain table (rows `overview-row-<source>-<account>-<month>`, cells `data-col="A|B|C|ours|noSplit|discrepancy|fileDiscrepancy"`,
   `c-reason-<reason>`, `by-label-<name>`), the queue strip (`queue-chip-<reason>`) and signal counts (`signal-chip-<name>`); no totals row.
 - **P2 Очередь ожидания (C)** `/queue` (summary from the same overview query, `queue-reason-<reason>`) and `/queue/:reason` (`GET /queue/:reason`, filters
   and `limit`/`offset` in the URL): what waits, grouped by what unblocks it, and what do I do? Rows `queue-group-<key.kind>-<key.id>`, one action dialog
@@ -80,6 +81,7 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 | `AppShell`, `Sidebar` (collapsible, `sessionStorage` `erp.sidebar`), `Breadcrumbs` (from `nav.ts`; a detail page calls `useBreadcrumbLabel(name)`), `GlobalSearch` (Cmd/Ctrl+K, `GET /search?q=`), `OperatorField`, `RecalcIndicator`, `ThemeToggle` (`html.dark`, `localStorage` `erp.theme`) | `sidebar`, `sidebar-toggle`, `nav-<id>`, `breadcrumbs`, `global-search`, `global-search-dialog`, `global-search-input`, `global-search-results`, `operator-field`, `operator-hint`, `recalc-indicator`, `theme-toggle` |
 | `DataGrid` (AG Grid, one theme on HeroUI variables, `locale-ru.ts`, pagination 50/100/500 or `pagination={false}` for a server-paged list, required `getRowId` (unique!), `onRowClicked`, sort/filter in the URL under `gridStateKey`, `defaultSort` when the URL has none; `rowTestId` puts a `data-testid` on the row, `autoHeight` keeps every row of the page in the DOM; a money column sets `comparator: compareDecimal`) | `data-grid`; rows are `[row-id="<key>"]` (AG Grid's own attribute on `.ag-row`, from `getRowId`) |
 | `Money` (`formatMoney`; exact string in `title`; negative red) | `money` with `title` |
+| `KpiCard` (D-160: tinted icon, label with a HeroUI tooltip, a large `Money` with «USD», a check or hint line, a chevron that expands; the value is an API string, `null` shows «—») | `<testId>` with `data-active`, `<testId>-toggle`, `<testId>-check` (`data-ok`), `<testId>-hint`, `<testId>-none`, `<testId>-skeleton` |
 | `StatusChip` (kinds: documentStatus, documentKind, ownerStatus, artistStatus, category, cReason, operationMeaning, fileStatus, signal) | `chip-<value>` |
 | `EntityLink`, `entityPath` | |
 | `EntityCard` + `CardTabs` (tabs in `?tab=`) | `entity-card`, `tab-<id>` |

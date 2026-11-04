@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { account, apiError, expectMoneyCalls, expectP1, json, openAs, overviewRow, settled, trackErrors } from '../helpers';
+import type { Page } from '@playwright/test';
 
 // P1 «Обзор» (19 §4, S01–S11): the read-only rows of the reconciliation, keyed by source, account and month.
 // Every number is the exact API string in `title`; the page never sums (no totals row).
@@ -112,13 +113,79 @@ test('P1 period filter is kept in the URL', async ({ page }) => {
   await expect(overviewRow(page, 'believe', account(1, 1), M)).toHaveCount(0);
 });
 
+// The KPI cards over the table (D-160): every headline is a field of `totals` of the same overview call (the page never
+// sums); the account filter picks one account's entry; a card expands into the same metric by source and account.
+const KPI = ['kpi-received', 'kpi-confirmed', 'kpi-waiting', 'kpi-ours'] as const;
+const kpiValue = (page: Page, id: (typeof KPI)[number]) => page.getByTestId(id).getByTestId('money').first();
+
+test('P1 KPI cards: the API totals, the identity check 0, one account by the filter, the breakdown by source and account', async ({ page }) => {
+  const errors = trackErrors(page);
+  const answered = page.waitForResponse((r) => r.url().includes('/api/v1/overview') && r.request().method() === 'GET');
+  await openAs(page, '/');
+  await settled(page);
+  const { totals } = (await (await answered).json()) as {
+    totals: { all: Record<string, string>; bySource: Record<'believe' | 'b17', Record<string, string>> };
+  };
+  expectMoneyCalls(page, 1);
+  // the headline of every card is the exact total of the API; the check line says the rows add up
+  await expect(kpiValue(page, 'kpi-received')).toHaveAttribute('title', totals.all.received ?? '');
+  await expect(kpiValue(page, 'kpi-confirmed')).toHaveAttribute('title', totals.all.notOurs ?? '');
+  await expect(kpiValue(page, 'kpi-waiting')).toHaveAttribute('title', totals.all.waiting ?? '');
+  await expect(kpiValue(page, 'kpi-ours')).toHaveAttribute('title', totals.all.ourShare ?? '');
+  await expect(page.getByTestId('kpi-ours-nosplit').getByTestId('money')).toHaveAttribute('title', totals.all.ourShareNoSplit ?? '');
+  for (const id of KPI) {
+    await expect(page.getByTestId(`${id}-check`)).toHaveAttribute('data-ok', 'true');
+    await expect(page.getByTestId(`${id}-check`).getByTestId('money')).toHaveAttribute('title', '0');
+  }
+  // the account filter of the table selects the cards: S10/2, second account = 57 / 25 / 7 / 25
+  await page.getByTestId('field-overview-account').fill(account(10, 2, 1));
+  await expect(kpiValue(page, 'kpi-received')).toHaveAttribute('title', '57');
+  await expect(kpiValue(page, 'kpi-confirmed')).toHaveAttribute('title', '25');
+  await expect(kpiValue(page, 'kpi-waiting')).toHaveAttribute('title', '7');
+  await expect(kpiValue(page, 'kpi-ours')).toHaveAttribute('title', '25');
+  // a card expands into the breakdown of its metric: with the filter, the matching account only
+  await page.getByTestId('kpi-waiting').click();
+  await expect(page.getByTestId('kpi-waiting')).toHaveAttribute('data-active', 'true');
+  const breakdown = page.getByTestId('kpi-breakdown');
+  await expect(breakdown).toHaveAttribute('data-metric', 'waiting');
+  await expect(breakdown.getByTestId(`kpi-breakdown-account-${account(10, 2, 1)}`).getByTestId('money')).toHaveAttribute('title', '7');
+  await expect(breakdown.getByTestId('kpi-breakdown-believe')).toHaveCount(0);
+  // several accounts match: no headline is invented, the breakdown lists them
+  await page.getByTestId('field-overview-account').fill(account(10, 2).slice(0, -1));
+  await expect(page.getByTestId('kpi-received-none')).toBeVisible();
+  await expect(page.getByTestId('kpi-received-hint')).toBeVisible();
+  await expect(breakdown.getByTestId(`kpi-breakdown-account-${account(10, 2, 0)}`).getByTestId('money')).toHaveAttribute('title', '0');
+  await expect(breakdown.getByTestId(`kpi-breakdown-account-${account(10, 2, 1)}`).getByTestId('money')).toHaveAttribute('title', '7');
+  // without the filter: Believe with its accounts, then B17, each the API's own sum
+  await page.getByTestId('field-overview-account').fill('');
+  await expect(breakdown.getByTestId('kpi-breakdown-believe').getByTestId('money')).toHaveAttribute('title', totals.bySource.believe.waiting ?? '');
+  await expect(breakdown.getByTestId('kpi-breakdown-b17').getByTestId('money')).toHaveAttribute('title', totals.bySource.b17.waiting ?? '');
+  await expect(breakdown.getByTestId(`kpi-breakdown-account-${account(10, 2, 1)}`).getByTestId('money')).toHaveAttribute('title', '7');
+  // the chevron collapses it; the same money call served everything (R2)
+  await page.getByTestId('kpi-waiting-toggle').click();
+  await expect(page.getByTestId('kpi-breakdown')).toHaveCount(0);
+  await expect(page.getByTestId('kpi-waiting')).toHaveAttribute('data-active', 'false');
+  expectMoneyCalls(page, 1);
+  expect(errors).toEqual([]);
+});
+
 // States of P1 (17 §8, 19 SS1–SS3 on the real page) with `page.route` mocks.
-const emptyOverview = { calculatedAt: '2026-11-03T00:00:00.000Z', reconciliation: [], queue: [], signals: [], files: { believe: 0, b17: 0 } };
+const zeroSums = { received: '0', notOurs: '0', waiting: '0', ourShare: '0', ourShareNoSplit: '0', discrepancy: '0' };
+const emptyOverview = {
+  calculatedAt: '2026-11-03T00:00:00.000Z',
+  reconciliation: [],
+  totals: { all: zeroSums, bySource: { believe: zeroSums, b17: zeroSums }, byAccount: [] },
+  queue: [],
+  signals: [],
+  files: { believe: 0, b17: 0 },
+};
 
 test('P1 empty: no files loaded -> the sentence and the link to the reports', async ({ page }) => {
   await page.route('**/api/v1/overview*', (route) => json(route, 200, emptyOverview));
   await openAs(page, '/');
   await expect(page.getByTestId('page-state-empty')).toContainText('отчёты не загружены');
+  // the KPI cards show muted zeros over the empty state
+  await expect(kpiValue(page, 'kpi-received')).toHaveAttribute('title', '0');
   await page.getByTestId('page-state-empty').getByRole('link').click();
   await expect(page).toHaveURL(/\/sources$/);
 });
@@ -130,6 +197,7 @@ test('P1 long: a slow overview shows the recalculation panel, the shell stays us
   });
   await openAs(page, '/');
   await expect(page.getByTestId('page-state-long')).toBeVisible();
+  await expect(page.getByTestId('kpi-received-skeleton')).toBeVisible();
   await expect(page.getByTestId('recalc-indicator')).toBeVisible();
   await page.getByTestId('nav-questions').click();
   await expect(page.getByTestId('questions-page')).toBeVisible();

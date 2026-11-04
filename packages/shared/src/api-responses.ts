@@ -462,15 +462,34 @@ export const queuePageSchema = z.object({
   items: z.array(queueGroupSchema),
 });
 
+/** The six sums of one KPI card set of P1 (D-160): the reconciliation fields over a set of rows. */
+export const kpiSumsSchema = z.object({
+  received: money.describe('Σ A_received'),
+  notOurs: money.describe('Σ B_notOurs'),
+  waiting: money.describe('Σ C_waiting'),
+  ourShare: money.describe('Σ ourShare'),
+  ourShareNoSplit: money.describe('Σ ourShareNoSplit'),
+  discrepancy: money.describe('Σ discrepancy: 0 when A = B + C + ours holds on every row'),
+});
+export type KpiSums = z.infer<typeof kpiSumsSchema>;
+
 export const overviewSchema = z.object({
   calculatedAt: timestamp,
   reconciliation: z.array(reconciliationRowSchema.extend({ negativeRemainders: z.number().int() })),
+  totals: z
+    .object({
+      all: kpiSumsSchema,
+      bySource: z.object({ believe: kpiSumsSchema, b17: kpiSumsSchema }),
+      byAccount: z.array(kpiSumsSchema.extend({ source: z.enum(['believe', 'b17']), account: z.string() })),
+    })
+    .describe('The KPI cards of P1 over the reconciliation rows of the period: all, per source, per source × account (D-160)'),
   queue: z.array(
     z.object({ reason: cReasonSchema, amount: money, groups: z.number().int(), isrcs: z.number().int() }),
   ),
   signals: z.array(z.object({ name: z.string(), count: z.number().int() })),
   files: z.object({ believe: z.number().int(), b17: z.number().int() }),
 });
+export type Overview = z.infer<typeof overviewSchema>;
 
 /** Whether the payout button works for the owner now, and why not (17 N19); the client shows it, never recomputes it. */
 export const payoutGateSchema = z.object({
