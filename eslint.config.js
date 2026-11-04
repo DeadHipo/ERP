@@ -30,7 +30,8 @@ const R1 = [
 const r1Rules = (except = []) => R1.filter((r) => !except.includes(r.id)).map(({ selector, message }) => ({ selector, message }));
 
 export default tseslint.config(
-  { ignores: ['**/node_modules', 'data', 'context_data', 'packages/frontend/dist', 'packages/frontend/test-results', 'packages/frontend/playwright-report'] },
+  // docs/идеи holds idea sketches (browser demos among them), not project code
+  { ignores: ['**/node_modules', 'data', 'context_data', 'docs/идеи', 'packages/frontend/dist', 'packages/frontend/test-results', 'packages/frontend/playwright-report'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

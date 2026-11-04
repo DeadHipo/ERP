@@ -2,6 +2,11 @@ import { NotFoundError, ValidationError } from '../shared/errors';
 import type { AdExpense, AdExpenseInput, AdScope } from '../modules/ads';
 import { ZERO } from '../shared/money';
 import { calculate, type Calculation } from './calculation';
+import { scoped } from './scope';
+
+/** The distinct ISRCs of advertising records (a record on a pseudonym alone has none and needs no unit). */
+const isrcsOf = (records: readonly { isrc: string | null }[]) =>
+  [...new Set(records.map((r) => r.isrc).filter((x): x is string => x !== null))].sort();
 import { adSummary, type AdResult, type AdStatus } from './ads';
 import type { FacadeContext } from './context';
 import { timed } from '../shared/timing';
@@ -67,15 +72,14 @@ export function adsApi(ctx: FacadeContext) {
     /** Records with their allocation, newest month first; filters on the record and on the allocation. */
     async listAds(q: AdsQuery = {}) {
       if (q.ownerId) await owners.getOwner(await owners.resolveOwnerId(q.ownerId));
-      const [records, calc] = await Promise.all([
-        ads.list({
-          ...(q.isrc ? { isrc: q.isrc } : {}),
-          ...(q.from ? { from: q.from } : {}),
-          ...(q.to ? { to: q.to } : {}),
-          ...(q.includeInactive ? {} : { active: true }),
-        }),
-        timed('calculate', () => calculate(modules)),
-      ]);
+      const records = await ads.list({
+        ...(q.isrc ? { isrc: q.isrc } : {}),
+        ...(q.from ? { from: q.from } : {}),
+        ...(q.to ? { to: q.to } : {}),
+        ...(q.includeInactive ? {} : { active: true }),
+      });
+      // only the allocations of the listed records are read: the units of their ISRCs suffice (D-161)
+      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf(records) })));
       const byId = new Map(calc.ads.map((r) => [r.adId, r]));
       const ownerId = q.ownerId ? await owners.resolveOwnerId(q.ownerId) : undefined;
       const artistId = q.artistId ? (calc.artistIndex.get(q.artistId)?.id ?? q.artistId) : undefined;
@@ -105,7 +109,8 @@ export function adsApi(ctx: FacadeContext) {
 
     /** One record with its allocation (null when it is deactivated). */
     async getAd(id: string): Promise<AdView> {
-      const [rec, calc] = await Promise.all([ads.get(id), timed('calculate', () => calculate(modules))]);
+      const rec = await ads.get(id);
+      const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf([rec]) })));
       return viewOf(rec, calc.ads.find((r) => r.adId === id), calc.artistIndex);
     },
 
@@ -113,7 +118,8 @@ export function adsApi(ctx: FacadeContext) {
     async adsSummary(f: { from?: string; to?: string } = {}) {
       for (const m of [f.from, f.to])
         if (m && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new ValidationError(`Invalid month "${m}"`);
-      const calc = await calculate(modules);
+      // every active record takes part: the units of their ISRCs (all months: the label of an earlier month may decide)
+      const calc = await calculate(scoped(modules, { isrcs: isrcsOf(await ads.list({ active: true })) }));
       const rows = adSummary(calc.ads, f.from, f.to);
       const total = (k: 'amount' | 'recoveredFromArtists' | 'borneBySublabels' | 'borneByUs' | 'noSplit') =>
         rows.reduce((s, r) => s.add(r[k]), ZERO);

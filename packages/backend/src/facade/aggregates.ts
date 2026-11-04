@@ -4,6 +4,7 @@ import { assertIsrc } from '../shared/identifiers';
 import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
+import { scoped, type UnitScope } from './scope';
 import { ownerBalance, ownerIndex } from './balance';
 import { cItems } from './queue';
 import type { FacadeContext } from './context';
@@ -52,6 +53,8 @@ const sortedMonths = (units: UnitResult[]) => [...new Set(units.map((u) => u.rep
 export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof splitsApi>) {
   const { owners, splits, sources, settlements, modules, db, opDocIds, gateOf } = ctx;
   const calcWithOps = async () => calculate(modules, await opDocIds());
+  /** The same calculation narrowed to a unit scope (D-161). */
+  const calcScoped = async (scope: UnitScope) => calculate(scoped(modules, scope), await opDocIds());
   const nameMaps = async () => {
     const attrs = await sources.pairAttributes();
     const byIsrc = new Map<string, { artistName: string; trackTitle: string }>();
@@ -113,7 +116,11 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * shows zeros. Units without an ISRC are not tracks and are left out (they are on the signals page).
      */
     async trackSummary(f: { account?: string; month?: string } = {}) {
-      const calc = await calcWithOps();
+      // one account and/or one report month: only those units can appear in the answer (D-161)
+      const calc = await calcScoped({
+        ...(f.account !== undefined ? { accounts: [f.account] } : {}),
+        ...(f.month !== undefined ? { from: f.month, to: f.month, basis: 'report' as const } : {}),
+      });
       const { tracks, splitList, partList } = await db.snapshot(async () => ({
         tracks: await owners.listTracks(),
         splitList: await splits.listSplits(),
@@ -160,7 +167,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      */
     async trackMoney(isrcRaw: string) {
       const isrc = assertIsrc(isrcRaw);
-      const calc = await calculate(modules, [], { traceIsrc: isrc });
+      const calc = await calculate(scoped(modules, { isrcs: [isrc] }), [], { traceIsrc: isrc });
       const [tracks, ownerList, splitList, partList] = await Promise.all([
         owners.listTracks(),
         owners.listOwners(),
@@ -271,7 +278,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
 
     /** One release (N9): its tracks and report months with B, C and ours, from one calculation. */
     async release(upc: string) {
-      const calc = await calcWithOps();
+      const calc = await calcScoped({ upcs: [upc] });
       const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps()]);
       const mine = tracks.filter((t) => t.upc === upc);
       const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');

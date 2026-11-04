@@ -1,6 +1,18 @@
 import type { ClickHouseClient } from '@clickhouse/client';
 import { note, timed } from '../../shared/timing';
 
+/**
+ * What a read of the units may be narrowed to: a month range on one basis, and (the unit scope of the facade, D-161)
+ * a list of ISRCs and/or UPCs. `undefined` = no filter; an empty list = nothing.
+ */
+export interface UnitsFilter {
+  from?: string;
+  to?: string;
+  basis?: 'report' | 'sales';
+  isrcs?: string[];
+  upcs?: string[];
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface StageTotals {
@@ -196,7 +208,7 @@ export function createBelieveColumnar(
      */
     async units(
       fileIds: string[],
-      filter: { from?: string; to?: string; basis?: 'report' | 'sales' } = {},
+      filter: UnitsFilter = {},
     ): Promise<
       {
         fileId: string;
@@ -219,6 +231,17 @@ export function createBelieveColumnar(
       if (filter.to) {
         where.push(`${column} <= {to:Date}`);
         params.to = `${filter.to}-01`;
+      }
+      // A unit scope of the facade (D-161): only these ISRCs / UPCs; an empty list means no unit at all.
+      if (filter.isrcs) {
+        if (filter.isrcs.length === 0) return [];
+        where.push('isrc IN {isrcs:Array(String)}');
+        params.isrcs = filter.isrcs;
+      }
+      if (filter.upcs) {
+        if (filter.upcs.length === 0) return [];
+        where.push('upc IN {upcs:Array(String)}');
+        params.upcs = filter.upcs;
       }
       // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
       // The view is answered from the `units_by_label` projection of believe.rows (D-122, D-124). Hundreds of thousands of units:
@@ -282,7 +305,7 @@ export function createBelieveColumnar(
                 toString(sum(net_revenue)) AS net, toString(sum(quantity)) AS qty
          FROM ${DB}.rows WHERE isrc = {isrc:String} AND file_id IN {ids:Array(UUID)}${reportingMonth ? ' AND reporting_month = {month:Date}' : ''}
          GROUP BY reporting_month, sales_month, platform, country_region, streaming_subscription_type, sales_type, upc
-         ORDER BY reporting_month, sales_month, sum(net_revenue) DESC`,
+         ORDER BY reporting_month, sales_month, sum(net_revenue) DESC, platform, country_region, streaming_subscription_type, sales_type, upc`,
         { isrc, ids: fileIds, ...(reportingMonth ? { month: `${reportingMonth}-01` } : {}) },
       );
       return rows.map((r) => ({

@@ -3,7 +3,7 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { normalizeIsrc, normalizeUpc } from '../../shared/identifiers';
 import { parsePico, picoToString } from '../../shared/money';
 import { timed, timedSync } from '../../shared/timing';
-import type { BelieveColumnar, LinesFacets, LinesSort, LineRow, LinesTotal } from './columnar';
+import type { BelieveColumnar, LinesFacets, LinesSort, LineRow, LinesTotal, UnitsFilter } from './columnar';
 import { createBelieveLoader, type LoadInput } from './loader';
 import type { SourceFileRecord, SourceFilesRegistry } from './registry';
 
@@ -19,6 +19,14 @@ export interface SourceUnit {
   /** Label string of the report line (`Label Name`); part of the unit key (D-124). */
   labelName: string;
   netPico: bigint;
+}
+
+/**
+ * What `snapshot()` may be narrowed to (the unit scope of the facade, D-161): a month range on one basis, ISRCs, UPCs,
+ * Believe accounts. The files in force are always all of them; only the units read are fewer.
+ */
+export interface SnapshotFilter extends UnitsFilter {
+  accounts?: string[];
 }
 
 /** A file in force, as stored with every payout for reproducibility. */
@@ -141,21 +149,22 @@ export function createSourcesService(deps: SourcesDeps) {
      * The files in force and their units, read together: the units belong to exactly these files. A calculation
      * and the payout snapshot that records its files use one snapshot.
      */
-    async snapshot(
-      filter: { from?: string; to?: string; basis?: 'report' | 'sales' } = {},
-    ): Promise<{ files: ActiveFile[]; units: SourceUnit[] }> {
+    async snapshot(filter: SnapshotFilter = {}): Promise<{ files: ActiveFile[]; units: SourceUnit[] }> {
       const files = await timed(
         'pg: registry.loaded',
         () => registry.loaded(),
         (r) => `${r.length} files`,
       );
       const accountOf = new Map(files.map((f) => [f.id, f.account]));
+      // The unit scope (D-161) narrows the units read, never the list of files in force.
+      const { accounts, ...unitsFilter } = filter;
+      const read = accounts ? files.filter((f) => accounts.includes(f.account)) : files;
       const rows = await timed(
         'clickhouse: units',
         () =>
           columnar.units(
-            files.map((f) => f.id),
-            filter,
+            read.map((f) => f.id),
+            unitsFilter,
           ),
         (r) => `${r.length} units`,
       );
@@ -180,9 +189,7 @@ export function createSourcesService(deps: SourcesDeps) {
     },
 
     /** Units grouped by ISRC + UPC + report month + sales month, optionally filtered by month range. */
-    async units(
-      filter: { from?: string; to?: string; basis?: 'report' | 'sales' } = {},
-    ): Promise<SourceUnit[]> {
+    async units(filter: SnapshotFilter = {}): Promise<SourceUnit[]> {
       return (await service.snapshot(filter)).units;
     },
 

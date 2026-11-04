@@ -3,6 +3,7 @@ import { inMonthRange } from '../shared/dates';
 import { assertIsrc } from '../shared/identifiers';
 import { calculate, reconcile, type Calculation, type PeriodFilter, type Reconciliation } from './calculation';
 import { cQueue, type QueueOptions } from './queue';
+import { periodScope, scoped } from './scope';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
 
@@ -312,7 +313,8 @@ export function reportsApi(ctx: FacadeContext) {
 
     /** One reason of the C queue, grouped by what the operator fixes (17 N3). */
     async queue(reason: CReason, f: PeriodFilter = {}, o: Omit<QueueOptions, 'reason'> = {}) {
-      const calc = await calculate(modules, await ctx.opDocIds());
+      // the groups hold only the items of the period: the units outside it are not read (D-161)
+      const calc = await calculate(scoped(modules, periodScope(f)), await ctx.opDocIds());
       const ownerList = await owners.listOwners();
       const { groups } = cQueue(
         calc,
@@ -329,7 +331,7 @@ export function reportsApi(ctx: FacadeContext) {
      */
     async explainTrack(isrcRaw: string) {
       const isrc = assertIsrc(isrcRaw);
-      const calc = await calculate(modules, [], { traceIsrc: isrc });
+      const calc = await calculate(scoped(modules, { isrcs: [isrc] }), [], { traceIsrc: isrc });
       const units = calc.units
         .filter((u) => u.isrc === isrc)
         .map(({ layers, ...u }) => ({
