@@ -174,3 +174,21 @@ bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-m
   max(1.00, 2 %) and at 1.00 and the Σ per cause (`14` §9.3, §10). A warning names owners whose diff no longer
   matches the CSV (re-run `compare-main.ts`).
 - After any load: `GET /api/v1/reconciliation` must show discrepancy 0 on every row.
+
+## 10. Snapshot and restore the stores (PostgreSQL + ClickHouse)
+
+Before a stage that changes the schema or re-keys the data, take a snapshot into `data/backup/<date>-<why>/` (files
+under `data/` are git-ignored). Done on 2026-11-05 before the organisation / label work; that folder's `README.md` has
+the exact commands and the restore recipes. The two layers:
+
+- **Logical, hot:** `pg_dump -U erp -Fc --no-owner erp` (20 MB), `pg_dumpall --globals-only`; ClickHouse
+  `ALTER TABLE believe.rows FREEZE WITH NAME '<name>'` (and `believe.schema_migrations`), tar of
+  `/var/lib/clickhouse/shadow/<name>` (1.45 GB), then `rm -rf` that shadow directory (`SYSTEM UNFREEZE` is disabled in
+  the image). Keep `SHOW CREATE TABLE` and `count() / sum(net_revenue) / uniqExact(file_id)` next to it. Restore:
+  `pg_restore` into a new database; ClickHouse parts into `detached/` of a migrated empty table and `ATTACH PARTITION`.
+- **Physical, cold:** `docker compose … stop postgres clickhouse`, tar of the named volumes `royalty-erp_pg_data` and
+  `royalty-erp_ch_data` (exclude `./shadow`) with a throw-away alpine container, `start`. Two minutes of downtime, returns
+  the whole stack byte for byte (test databases included). Restore: stop, empty the volume, untar, start.
+
+Verify after any restore: the counts above, `GET /api/v1/reconciliation` discrepancy 0 on every row,
+`scripts/check-owner-scope.ts` 0 differing. Mark the git point with a tag (`snapshot-<date>-<why>`).
