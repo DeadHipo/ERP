@@ -14,6 +14,7 @@ import { DataGrid } from '../../../components/grid/DataGrid';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { compareDecimal } from '../../../lib/money';
+import { useLabel } from '../../../lib/label';
 import { fmt, ru } from '../../../i18n/ru';
 import { useUrlParam } from '../../catalog/components/url';
 import { CreateArtistDialog } from './CreateArtistDialog';
@@ -40,8 +41,10 @@ export function ArtistsPage() {
   const [all, setAll] = useUrlParam('all');
   const [creating, setCreating] = useState(false);
   const full = all === '1';
-  const list = useQuery(artistQueries.list());
-  const allMoney = useQuery({ ...artistQueries.balances(), enabled: full });
+  // the label view (D-168): the pseudonyms visible under it, each the book of that label
+  const { labelId } = useLabel();
+  const list = useQuery(artistQueries.list(labelId));
+  const allMoney = useQuery({ ...artistQueries.balances(labelId), enabled: full });
   const [visible, setVisible] = useState<readonly string[]>([]);
   const [asked, setAsked] = useState<readonly string[]>([]);
   useEffect(() => {
@@ -55,7 +58,7 @@ export function ArtistsPage() {
     return out;
   }, [asked]);
   const pageMoney = useQueries({
-    queries: chunks.map((ids) => ({ ...artistQueries.balancesOf(ids), enabled: !full })),
+    queries: chunks.map((ids) => ({ ...artistQueries.balancesOf(ids, labelId), enabled: !full })),
     combine: (results) => ({
       items: results.flatMap((r) => r.data?.items ?? []),
       updatedAt: results.map((r) => r.dataUpdatedAt).join(','),
@@ -71,6 +74,11 @@ export function ArtistsPage() {
     setMoneyVersion((v) => v + 1);
     // updatedAt: the chunks answered (the items array is rebuilt on every render)
   }, [pageMoney.updatedAt]);
+  // a new label changes every row's money: forget what was seen under the old one
+  useEffect(() => {
+    moneyRef.current.clear();
+    setMoneyVersion((v) => v + 1);
+  }, [labelId]);
   const onVisibleRowsChanged = useCallback((rows: Row[]) => {
     const next = rows.map((r) => r.id).sort();
     setVisible((prev) => (prev.join(',') === next.join(',') ? prev : next));

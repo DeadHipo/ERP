@@ -93,7 +93,7 @@ export const OPERATION_COVERAGE: Record<
 
   'GET /settlements/operations': { page: 'P20', route: '/operations', note: 'also the operations tab of P10' },
   'POST /settlements/operations': { page: 'P20', route: '/operations', note: 'action-create-operation' },
-  'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168); also P20' },
+  'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168)' },
   'POST /settlements/operations/:id/proof': { page: 'P20', route: '/operations', note: 'action-proof; shared with P10' },
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },
   'POST /settlements/operations/:id/deactivate': { page: 'P20', route: '/operations', note: 'action-deactivate; shared with P10' },

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, choose, confirm, expectOverview, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, choose, confirm, expectOverview, isrc, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // S31 (19 §4; G43 (i)–(iii), G48, G49): advances with a scope created through the owner's «Аванс / вычет / кредит»
 // dialog, their proof, the P20 needsProof filter; k4: deduction 10 → 40, credit −5 → 45, deactivate the deduction → 55,
@@ -34,6 +34,7 @@ async function createOperation(page: Page, input: OpInput, expectLines: string[]
   await dialog.getByTestId('field-op-date').fill(input.date);
   if (input.scope) await choose(page, 'op-scope', input.scope);
   if (input.isrcs) await dialog.getByTestId('field-op-isrcs').fill(input.isrcs);
+  await choose(page, 'op-label', '0to8'); // the operation belongs to an own label (D-168)
   await dialog.getByTestId('field-document-file').fill(input.file);
   await dialog.getByTestId('action-document-create').click();
   await toastOk(page, 'Документ создан');
@@ -189,7 +190,10 @@ let payout = '';
 
 test('S31/4 pay 55 (5500 cents) and attach the proof → paid 55, payable 0', async ({ page }) => {
   const ownerId = sc(31, 4).owners.A ?? '';
-  await openOwner(page, ownerId);
+  // the button pays under a label (D-168): the income of S31/4 is 0to8, so its book is the whole owner
+  await openAs(page, `/owners/${ownerId}?tab=balance&label=${labelOf('0to8')}`);
+  await settled(page);
+  await expect(page.getByTestId('confirm-dialog')).toHaveCount(0);
   await page.getByTestId('action-pay').click();
   await expect(page.getByTestId('confirm-dialog')).toContainText('будет отправлено 5500 центов');
   const paid = page.waitForResponse((r) => r.url().endsWith(`/owners/${ownerId}/payouts`) && r.request().method() === 'POST');

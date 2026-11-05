@@ -10,10 +10,13 @@ import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { PageState, QueryView } from '../../components/PageState';
+import { StatusChip } from '../../components/StatusChip';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { compareDecimal } from '../../lib/money';
+import { useLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
+import { centsToText } from '../owners/components/cents';
 import { useOwnerNames } from '../reference/shared';
 import {
   AssignOwnerDialog,
@@ -24,6 +27,7 @@ import {
   NoteDialog,
   RecreateParticipationDialog,
   RegisterTrackDialog,
+  SetOperationLabelDialog,
   SetRuleDialog,
   SublabelRuleDialog,
 } from './actions/dialogs';
@@ -45,7 +49,8 @@ const LIMIT = 5000;
 
 export function SignalsPage() {
   const { name } = useParams();
-  const query = useQuery(reportQueries.signals(LIMIT));
+  const { labelId } = useLabel(); // the label view (D-168): the units of the label; the lists without a label stay whole
+  const query = useQuery(reportQueries.signals(LIMIT, labelId));
   const known = SIGNAL_NAMES.find((n) => n === name);
   useBreadcrumbLabel(known ? ru.signals[known] : name);
   if (name !== undefined && !known) return <PageState variant="empty" message={t.unknown} />;
@@ -396,6 +401,64 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
             actionCol((r) =>
               btn('assign-owner', a.assignOwner, () => open(<AssignOwnerDialog artistId={r.artistId} pseudonym={r.pseudonym} onClose={close} />)),
             ),
+          ]}
+        />
+      );
+    }
+    case 'operationsWithoutLabel': {
+      type R = Signals['operationsWithoutLabel'][number];
+      return (
+        <Grid<R>
+          name={name}
+          count={count}
+          rows={data.operationsWithoutLabel}
+          rowKey={(r) => r.operationId}
+          columns={[
+            textCol('date', c.date, (r) => r.date),
+            {
+              colId: 'owner',
+              headerName: c.owner,
+              minWidth: 160,
+              valueGetter: (p) => p.data?.ownerName ?? '',
+              cellRenderer: (p: { data?: R }) =>
+                p.data?.ownerId ? <EntityLink kind="owner" id={p.data.ownerId} label={p.data.ownerName ?? p.data.ownerId} /> : <span>—</span>,
+            },
+            {
+              colId: 'pseudonym',
+              headerName: c.pseudonym,
+              valueGetter: (p) => p.data?.pseudonym ?? '',
+              cellRenderer: (p: { data?: R }) =>
+                p.data?.artistId ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym ?? p.data.artistId} /> : <span>—</span>,
+            },
+            {
+              colId: 'meaning',
+              headerName: c.meaning,
+              valueGetter: (p) => p.data?.meaning,
+              cellRenderer: (p: { data?: R }) => (p.data ? <StatusChip kind="operationMeaning" value={p.data.meaning} /> : null),
+            },
+            moneyCol('amount', c.amount, (r) => centsToText(r.amountCents)),
+            actionCol((r) => btn('set-label', a.setLabel, () => open(<SetOperationLabelDialog operationId={r.operationId} onClose={close} />))),
+          ]}
+        />
+      );
+    }
+    case 'labelOutsideAccount': {
+      type R = Signals['labelOutsideAccount'][number];
+      return (
+        <Grid<R>
+          name={name}
+          count={count}
+          rows={data.labelOutsideAccount}
+          rowKey={(r) => `${r.account}|${r.month}|${r.labelName}`}
+          columns={[
+            textCol('account', c.account, (r) => r.account),
+            textCol('month', c.month, (r) => r.month),
+            textCol('label', c.label, (r) => r.labelName),
+            textCol('ourLabel', c.ourLabel, (r) => r.ourLabelName),
+            textCol('accountLabel', c.accountLabel, (r) => r.accountLabelName),
+            moneyCol('net', c.net, (r) => r.net),
+            textCol('units', c.units, (r) => String(r.units)),
+            actionCol(() => (SIGNAL_ACTIONS.labelOutsideAccount.information ? info(t.info) : null)),
           ]}
         />
       );

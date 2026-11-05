@@ -13,6 +13,8 @@ import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
+import { useLabel } from '../../lib/label';
+import { useOwnLabels } from '../../components/LabelSwitch';
 import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
 import { centsToText } from '../owners/components/cents';
@@ -39,6 +41,11 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
   const [proof, setProof] = useState<{ id: string; label: string } | null>(null);
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
+  // the operation belongs to an own label (D-168): the switch of the header is the default
+  const own = useOwnLabels();
+  const { labelId: switchLabel } = useLabel();
+  const [labelId, setLabelId] = useState(switchLabel);
+  const labelName = own.find((l) => l.id === labelId)?.name ?? '';
 
   const isrcList = isrcs
     .split(',')
@@ -56,6 +63,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
         documentId: doc?.id ?? null,
         paymentProofId: direction === 'out' ? (proof?.id ?? null) : null,
         comment: comment.trim(),
+        labelId,
       }),
     {
       invalidate: 'all',
@@ -71,6 +79,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
     date !== '' &&
     comment.trim() !== '' &&
     doc !== null &&
+    labelId !== '' &&
     (scope !== 'isrcs' || isrcList.length > 0);
   // The dialog warns when an equal operation exists with this date (17 §6): same direction, pseudonym, date and the
   // same formatted amount (both are texts of the API / the operator; nothing is computed).
@@ -133,6 +142,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           options={props.detail.artists.map((x) => ({ id: x.id, label: x.pseudonym }))}
         />
         <DateField name="op-date" label={t.date} value={date} onChange={setDate} isRequired />
+        <SelectField name="op-label" label={t.label} value={labelId || null} onChange={setLabelId} isRequired options={own.map((l) => ({ id: l.id, label: l.name }))} />
         <SelectField
           name="op-scope"
           label={t.scope}
@@ -171,6 +181,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           fmt(t.createLines.artist, { pseudonym }),
           fmt(t.createLines.scope, { scope: scopeLabel }),
           fmt(t.createLines.document, { title: doc?.title ?? '' }),
+          fmt(t.createLines.label, { label: labelName }),
           ...(sameToday ? [t.createLines.sameToday] : []),
         ]}
         isPending={run.isPending}

@@ -18,6 +18,7 @@ const reconRow = (receivedA: string) => ({
   discrepancy: '0',
   fileTotal: null,
   fileDiscrepancy: null,
+  byLabel: {},
 });
 
 test('SS1: no files loaded -> the empty state with the upload link', async ({ page }) => {

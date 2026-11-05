@@ -29,6 +29,7 @@ import { useApproveLines } from './approve-lines';
 
 export { AssignOwnerDialog, CreateContractDialog, MergeOwnerDialog } from './owner-dialogs';
 export { CloseRuleDialog } from './rule-dialogs';
+export { SetOperationLabelDialog } from './label-dialogs';
 
 const a = ru.actions;
 const f = a.fields;

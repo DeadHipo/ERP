@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, expectMoneyCalls, expectOverview, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectMoneyCalls, expectOverview, isrc, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // P10 Владелец and P9 Владельцы, read-only scenarios and the G39 change made through the API (19 §4: S24, S23).
 // The merge (S33) is 25-merge, the duplicate dialog (S36) 23-duplicate-dialog, the payout (S22) 26-payout. Runs after
@@ -8,8 +8,9 @@ import { account, apiPost, expectMoneyCalls, expectOverview, isrc, openAs, sc, s
 test.describe.configure({ mode: 'serial' });
 
 const fact = (page: Page, name: string) => page.getByTestId(`balance-${name}`).getByTestId('money');
+/** The owner card under the label 0to8 (D-168: the payout button works under a label; every seeded unit here is 0to8). */
 async function openOwner(page: Page, ownerId: string, tab = 'balance') {
-  await openAs(page, `/owners/${ownerId}?tab=${tab}`);
+  await openAs(page, `/owners/${ownerId}?tab=${tab}&label=${labelOf('0to8')}`);
   await settled(page);
   expectMoneyCalls(page, 1);
   await expect(page.getByTestId('balance-tab')).toBeVisible();
@@ -54,7 +55,7 @@ test('S24/2 G28: payable -20 is shown as 0 with the warning; gate nothing_to_pay
   await expect(page.getByTestId('payout-gate').getByTestId('gate-nothing_to_pay')).toBeVisible();
   await expect(page.getByTestId('action-pay')).toBeDisabled();
   await expect(page.getByTestId('payout-gate')).toContainText('нечего выплачивать');
-  const again = await apiPost(request, `/owners/${ownerId}/payouts`);
+  const again = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('0to8') });
   expect([again.status, again.code]).toEqual([422, 'nothing_to_pay']);
   await openOwners(page, 'A-242');
   await expect(cell(page, ownerId, 'payableShown')).toHaveAttribute('title', '0');

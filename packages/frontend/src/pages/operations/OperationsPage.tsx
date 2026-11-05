@@ -13,6 +13,7 @@ import { DateField } from '../../components/fields/DateField';
 import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { OperationsGrid } from './OperationsGrid';
 
 const t = ru.money.operations;
@@ -48,7 +49,8 @@ function useOperationsFilter(): [Filter, (f: Record<(typeof KEYS)[number], strin
 /** P20 Операции `/operations`: which operations exist, which lack a proof, which are deferred or inactive? */
 export function OperationsPage() {
   const [filter, apply] = useOperationsFilter();
-  const query = useQuery(settlementQueries.operations(filter));
+  const { labelId } = useLabel(); // the label view (D-168): the operations of the label; «Все» shows those without one too
+  const query = useQuery(settlementQueries.operations({ ...filter, ...(labelId ? { label: labelId } : {}) }));
   const filtered = KEYS.some((k) => filter[k] !== undefined);
   return (
     <div data-testid="operations-page">

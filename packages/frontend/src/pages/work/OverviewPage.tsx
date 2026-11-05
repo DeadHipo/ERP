@@ -137,6 +137,7 @@ export function OverviewPage() {
             </div>
             <ReconTable rows={data.reconciliation.filter((r) => account === '' || r.account.includes(account))} />
             <p className="text-xs text-muted">{t.noTotals}</p>
+            <LabelBooksTable books={data.totals.byLabel} />
           </div>
         )}
       </QueryView>
@@ -189,6 +190,43 @@ function SignalStrip({ signals }: { signals: Overview['signals'] }) {
             {signalLabel(s.name)}: <b>{s.count}</b>
           </Link>
         ))}
+      </div>
+    </section>
+  );
+}
+
+/** The six sums of the period per label of record (D-168, the backend's `totals.byLabel`; '?' = without a label). */
+function LabelBooksTable({ books }: { books: z.output<typeof overviewSchema>['totals']['byLabel'] }) {
+  const entries = Object.entries(books);
+  if (entries.length === 0) return null;
+  const c = t.cols;
+  return (
+    <section data-testid="overview-by-label">
+      <h2 className="mb-2 text-sm font-medium">{t.byLabelTitle}</h2>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-default/50 text-left text-xs text-muted">
+            <tr>
+              {[c.byLabel, c.A, c.B, c.C, c.ours, c.noSplit, c.discrepancy].map((h) => (
+                <th key={h} className="px-3 py-2 font-medium">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(([label, v]) => (
+              <tr key={label} data-testid={`overview-label-${label}`} className="border-t border-border">
+                <td className="px-3 py-2">{label === '?' ? t.byLabelNone : label}</td>
+                {(['received', 'notOurs', 'waiting', 'ourShare', 'ourShareNoSplit', 'discrepancy'] as const).map((k) => (
+                  <td key={k} className="px-3 py-2" data-col={k}>
+                    <Money value={v[k]} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

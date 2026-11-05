@@ -175,8 +175,8 @@ export function ArtistDocumentsTab(props: { detail: ArtistDetail }) {
 }
 
 /** P12 Операции: the operations tied to the pseudonym (`GET /settlements/operations?artistId=`): advances, deductions, credits. */
-export function ArtistOperationsTab(props: { artistId: string }) {
-  const query = useQuery(settlementQueries.operations({ artistId: props.artistId }));
+export function ArtistOperationsTab(props: { artistId: string; labelId?: string }) {
+  const query = useQuery(settlementQueries.operations({ artistId: props.artistId, ...(props.labelId ? { label: props.labelId } : {}) }));
   return (
     <div className="flex flex-col gap-3" data-testid="operations-tab">
       <p className="text-sm text-muted">{t.operations.note}</p>

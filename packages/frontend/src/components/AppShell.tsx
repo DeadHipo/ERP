@@ -4,12 +4,13 @@ import { Sidebar } from './Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { GlobalSearch } from './GlobalSearch';
 import { OperatorField } from './OperatorField';
+import { LabelSwitch } from './LabelSwitch';
 import { RecalcIndicator } from './RecalcIndicator';
 import { ThemeToggle } from './ThemeToggle';
 import { BreadcrumbLabelProvider } from './breadcrumb-label';
 import { ru } from '../i18n/ru';
 
-/** Sidebar + header (breadcrumbs, search, recalc indicator, operator, theme) + the routed page. */
+/** Sidebar + header (breadcrumbs, search, recalc indicator, the label switch, operator, theme) + the routed page. */
 export function AppShell() {
   return (
     <BreadcrumbLabelProvider>
@@ -21,6 +22,7 @@ export function AppShell() {
             <div className="flex items-center gap-4">
               <RecalcIndicator />
               <GlobalSearch />
+              <LabelSwitch />
               <OperatorField />
               <ThemeToggle />
             </div>

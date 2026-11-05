@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, expectOverview, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, expectOverview, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // The payout (19 §4 S22: G27, G27b and the deferred flag): the gate of the balance, the Pay dialog, the operation
 // deferred until its proof, the proof, the deferred toggle on P20, the snapshot; the second press per 19 §5.
@@ -11,8 +11,9 @@ async function expectTotals(page: Page, totals: Record<string, string>) {
   for (const [name, value] of Object.entries(totals)) await expect(fact(page, name), name).toHaveAttribute('title', value);
 }
 const gate = (page: Page, key: string) => page.getByTestId('payout-gate').getByTestId(`gate-${key}`);
+/** The owner card under the label 0to8 (D-168: the button pays the book of the label; every unit of S22 is 0to8). */
 async function openOwner(page: Page, ownerId: string, tab = 'balance') {
-  await openAs(page, `/owners/${ownerId}?tab=${tab}`);
+  await openAs(page, `/owners/${ownerId}?tab=${tab}&label=${labelOf('0to8')}`);
   await settled(page);
 }
 async function balanceTab(page: Page) {
@@ -40,6 +41,7 @@ test('S22/1 before: earned 15, recouped 10, remaining 0, payable 5; Pay → the 
   await expect(gate(page, 'allowed')).toBeVisible();
   await page.getByTestId('action-pay').click();
   const dialog = page.getByTestId('confirm-dialog');
+  await expect(dialog).toContainText('Лейбл: 0to8');
   await expect(dialog).toContainText('К выплате: 5,00 (будет отправлено 500 центов)');
   await expect(dialog).toContainText('Заработано 15,00 − удержано 10,00 − выплачено 0,00');
   await expect(dialog).toContainText('P-221: заработано 15,00, удержано 10,00');
@@ -52,8 +54,8 @@ test('S22/1 before: earned 15, recouped 10, remaining 0, payable 5; Pay → the 
   const paid = page.waitForResponse((r) => r.url().endsWith(`/owners/${ownerId}/payouts`) && r.request().method() === 'POST');
   // a double click sends one request (the button is disabled while it is in flight)
   await dialog.getByTestId('confirm-dialog-ok').dblclick();
-  const body = (await (await paid).json()) as { id: string; amountCents: number; deferred: boolean };
-  expect([body.amountCents, body.deferred]).toEqual([500, true]);
+  const body = (await (await paid).json()) as { id: string; amountCents: number; deferred: boolean; labelId: string };
+  expect([body.amountCents, body.deferred, body.labelId]).toEqual([500, true, labelOf('0to8')]);
   payoutId = body.id;
   await toastOk(page, 'Выплачено: 5,00');
   expect(posts).toBe(1);
@@ -65,7 +67,7 @@ test('S22/1 before: earned 15, recouped 10, remaining 0, payable 5; Pay → the 
   await expect(page.getByTestId(`pending-${payoutId}`)).toBeVisible();
   await expect(page.getByTestId('action-pay')).toBeDisabled();
   await expect(page.getByTestId('payout-gate')).toContainText('есть выплата без подтверждения');
-  const again = await apiPost(request, `/owners/${ownerId}/payouts`);
+  const again = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('0to8') });
   expect([again.status, again.code]).toEqual([422, 'payout_blocked']);
   // P4: the owner is a candidate blocked by one payout
   const grid = JSON.stringify({ f: { name: { filterType: 'text', type: 'contains', filter: 'P-221' } } });
@@ -129,7 +131,7 @@ test('S22/1 deferred on P20: still counted but blocks; unset: nothing_to_pay; th
   await openOwner(page, ownerId);
   await expect(gate(page, 'nothing_to_pay')).toBeVisible();
   await expect(page.getByTestId('blocking-payouts')).toHaveCount(0);
-  const pay = await apiPost(request, `/owners/${ownerId}/payouts`);
+  const pay = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('0to8') });
   expect([pay.status, pay.code]).toEqual([422, 'nothing_to_pay']);
 });
 

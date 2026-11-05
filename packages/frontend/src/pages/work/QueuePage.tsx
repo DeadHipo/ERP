@@ -16,6 +16,7 @@ import { TextField } from '../../components/fields/TextField';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { compareDecimal } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { useOwnerNames } from '../reference/shared';
 import { usePeriod } from './OverviewPage';
 import {
@@ -106,7 +107,8 @@ function QueueReason({ reason }: { reason: CReason }) {
     ownerId: params.get('ownerId') ?? undefined,
     q: params.get('q') ?? undefined,
   };
-  const query = useQuery(reportQueries.queue(reason, { ...period, ...filter, limit, offset }));
+  const { labelId } = useLabel(); // the label view (D-168): the units of the label, no B17 lines
+  const query = useQuery(reportQueries.queue(reason, { ...period, ...filter, limit, offset }, labelId));
   const [active, setActive] = useState<Active | null>(null);
   const ownerNames = useOwnerNames(filter.ownerId !== undefined);
   const setParam = (key: string, value: string | undefined) =>

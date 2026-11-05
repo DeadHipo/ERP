@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useLabel } from '../../lib/label';
 import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
 import type { adsQuery } from '@erp/shared/api-schemas';
@@ -58,8 +59,10 @@ function useAdsFilter(): [Filter, (f: Record<Key, string>) => void] {
 export function AdsPage() {
   const [filter, apply] = useAdsFilter();
   const [creating, setCreating] = useState<'one' | 'batch' | null>(null);
-  const summary = useQuery(adQueries.summary({ from: filter.from, to: filter.to }));
-  const list = useQuery(adQueries.list({ ...filter, limit: LIST_LIMIT }));
+  const { labelId } = useLabel(); // the label view (D-168): the records whose label of record is the label
+  const label = labelId ? { label: labelId } : {};
+  const summary = useQuery(adQueries.summary({ from: filter.from, to: filter.to, ...label }));
+  const list = useQuery(adQueries.list({ ...filter, ...label, limit: LIST_LIMIT }));
   return (
     <div data-testid="ads-page" className="flex flex-col gap-4">
       <PageHeader

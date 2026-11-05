@@ -10,6 +10,7 @@ import { QueryView, StaleBadge } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { fmt, ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { usePeriod } from '../work/OverviewPage';
 import { BalanceTab } from './BalanceTab';
 import { DocumentsTab } from './DocumentsTab';
@@ -27,8 +28,10 @@ const t = ru.money.owner;
 export function OwnerPage() {
   const id = useParams().id ?? '';
   const [period, setPeriod] = usePeriod();
+  // the label view (D-168): the money and the operations of that label; the card stays whole
+  const { labelId } = useLabel();
   const detail = useQuery(ownerQueries.detail(id));
-  const balance = useQuery(ownerQueries.balance(id, period));
+  const balance = useQuery(ownerQueries.balance(id, period, labelId));
   const [merging, setMerging] = useState(false);
   useBreadcrumbLabel(detail.data?.owner.name);
   return (
@@ -102,7 +105,7 @@ export function OwnerPage() {
                   { id: 'artists', label: t.tabs.artists, content: <ArtistsTab detail={d} /> },
                   { id: 'documents', label: t.tabs.documents, content: <DocumentsTab detail={d} /> },
                   { id: 'publishing', label: t.tabs.publishing, content: <PublishingTab detail={d} balance={balance.data} /> },
-                  { id: 'operations', label: t.tabs.operations, content: <OperationsTab detail={d} balance={balance.data} /> },
+                  { id: 'operations', label: t.tabs.operations, content: <OperationsTab detail={d} balance={balance.data} labelId={labelId} /> },
                   { id: 'history', label: t.tabs.history, content: <HistoryTab ownerId={d.owner.id} /> },
                 ]}
               />

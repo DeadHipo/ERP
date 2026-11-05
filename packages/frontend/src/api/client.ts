@@ -87,26 +87,29 @@ const list = <T extends z.ZodType>(item: T) => z.array(item);
 // ---- one function per operation of packages/backend/src/api/operations.ts, named by topic ----
 
 export const owners = {
-  list: () => call('GET', '/owners', { schema: list(R.ownerSchema) }),
+  /** Under a label (D-168): the owners visible under it. */
+  list: (query: z.input<typeof S.ownersQuery> = {}) => call('GET', '/owners', { query, schema: list(R.ownerSchema) }),
   create: (body: z.input<typeof S.createOwnerBody>) =>
     call('POST', '/owners', { body, schema: R.ownerSchema }),
   merge: (body: z.input<typeof S.mergeOwnersBody>) =>
     call('POST', '/owners/merge', { body, schema: R.ownerSchema }),
   get: (ownerId: string) => call('GET', `/owners/${id(ownerId)}`, { schema: R.ownerDetailSchema }),
-  balance: (ownerId: string, query: z.input<typeof S.periodQuery> = {}) =>
+  /** Under a label (`label`, D-168): the book of that label alone. */
+  balance: (ownerId: string, query: z.input<typeof S.labelPeriodQuery> = {}) =>
     call('GET', `/owners/${id(ownerId)}/balance`, { query, schema: R.balanceSchema }),
   payout: (ownerId: string, body: z.input<typeof S.createPayoutBody> = {}) =>
     call('POST', `/owners/${id(ownerId)}/payouts`, { body, schema: R.operationSchema }),
 };
 
 export const artists = {
-  list: () => call('GET', '/artists', { schema: list(R.artistListItemSchema) }),
+  /** Under a label (D-168): the pseudonyms visible under it. */
+  list: (query: z.input<typeof S.artistsQuery> = {}) => call('GET', '/artists', { query, schema: list(R.artistListItemSchema) }),
   create: (body: z.input<typeof S.createArtistBody>) =>
     call('POST', '/artists', { body, schema: R.artistSchema }),
   /** The card of a pseudonym (P12, D-165); a merged id answers for the survivor. */
   get: (artistId: string) => call('GET', `/artists/${id(artistId)}`, { schema: R.artistDetailSchema }),
   /** The money of a pseudonym from the units of its reach (P12, D-165). */
-  balance: (artistId: string, query: z.input<typeof S.periodQuery> = {}) =>
+  balance: (artistId: string, query: z.input<typeof S.labelPeriodQuery> = {}) =>
     call('GET', `/artists/${id(artistId)}/balance`, { query, schema: R.artistBalanceSchema }),
   assignOwner: (artistId: string, body: z.input<typeof S.assignOwnerBody>) =>
     call('POST', `/artists/${id(artistId)}/owner`, { body, schema: R.artistSchema }),
@@ -167,6 +170,9 @@ export const labels = {
     call('POST', '/labels', { body, schema: R.labelSchema }),
   addAlias: (labelId: string, body: z.input<typeof S.addAliasBody>) =>
     call('POST', `/labels/${id(labelId)}/aliases`, { body, schema: R.labelSchema }),
+  /** A Believe account of an own label (D-168). */
+  addAccount: (labelId: string, body: z.input<typeof S.addAccountBody>) =>
+    call('POST', `/labels/${id(labelId)}/accounts`, { body, schema: R.labelSchema }),
   setRule: (labelId: string, body: z.input<typeof S.createLabelRuleBody>) =>
     call('POST', `/labels/${id(labelId)}/rules`, { body, schema: R.labelRuleSchema }),
   closeRule: (ruleId: string, body: z.input<typeof S.closeValidToBody>) =>
@@ -196,7 +202,7 @@ export const reports = {
   reconciliation: (query: z.input<typeof S.periodQuery> = {}) =>
     call('GET', '/reconciliation', { query, schema: list(R.reconciliationRowSchema) }),
   /** Signals: every list cut to `limit`, `counts` has the full length of each (N18). */
-  signals: (query: z.input<typeof S.listQuery> & z.input<typeof S.periodQuery> = {}) =>
+  signals: (query: z.input<typeof S.listQuery> & z.input<typeof S.labelPeriodQuery> = {}) =>
     call('GET', '/signals', { query, schema: R.signalsSchema }),
   /** P1 in one calculation: reconciliation rows, the C queue summary, signal counts, file counts (N1). */
   overview: (query: z.input<typeof S.periodQuery> = {}) =>
@@ -210,6 +216,9 @@ export const reports = {
 export const settlements = {
   create: (body: z.input<typeof S.createOperationBody>) =>
     call('POST', '/settlements/operations', { body, schema: R.operationSchema }),
+  /** The label of an existing operation (the history before the split, D-168). */
+  setLabel: (operationId: string, body: z.input<typeof S.setOperationLabelBody>) =>
+    call('PATCH', `/settlements/operations/${id(operationId)}`, { body, schema: R.operationSchema }),
   proof: (operationId: string, body: z.input<typeof S.proofBody>) =>
     call('POST', `/settlements/operations/${id(operationId)}/proof`, { body, schema: R.operationSchema }),
   deferred: (operationId: string, body: z.input<typeof S.deferredBody>) =>

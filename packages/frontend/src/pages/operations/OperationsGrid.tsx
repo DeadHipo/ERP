@@ -99,6 +99,18 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
     },
     { colId: 'scope', headerName: c.scope, minWidth: 100, valueGetter: (p) => (p.data ? scopeText(p.data) : '') },
     {
+      colId: 'label',
+      headerName: c.label,
+      minWidth: 90,
+      valueGetter: (p) => p.data?.labelName ?? '',
+      cellRenderer: (p: P) =>
+        p.data ? (
+          <span data-col="label" data-label-id={p.data.labelId ?? ''} className={p.data.labelId ? '' : 'text-muted'}>
+            {p.data.labelName ?? ru.money.balance.unmappedLabel}
+          </span>
+        ) : null,
+    },
+    {
       colId: 'state',
       headerName: c.state,
       minWidth: 170,

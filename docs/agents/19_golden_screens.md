@@ -342,6 +342,21 @@ Close the rule at 2026-04-01 (`POST /labels/rules/:id/close`, dialog: the rule, 
 50, ours 50, no NG; P1 04 100 / 50 / 0 / 50; P21 `sublabelWithoutRule` [`Close Label 37`, 2026-04, `100`]; NG-371
 earned 50 → `25`.
 
+**S38 The label as a book (G50, D-168).** Seed: owner A with rows A 50 on j1 (`Test Label` → 0to8, unit 100) and j2
+(`Echo8`, unit 60) in one file of account 0; a migrated advance 40 without a label (`extra['advance-unlabelled']`,
+recouped from any income in month order: 0to8 first) and an advance 10 under Echo8 (`extra['advance-echo8']`, its
+income only); `labels['0to8']`, `labels.Echo8`. P10 under «Все»: earned `80`, recouped `50`, payable `30`; the books
+(`by-label-<name>`, cols `earned|waiting|recouped|adsCharged|paid|returns|credits|payable`): 0to8 `50 / 40 / 10`,
+Echo8 `30 / 10 / 20`; both positions listed; `action-pay` disabled with «выберите лейбл». The switch (`label-switch`,
+`data-label`; the select `field-label`) under Echo8: `balance-tab[data-label]`, earned `30`, recouped `10`, payable
+`20`, the Echo8 book alone, the Echo8 advance alone, the URL carries `label=`, a reload keeps the stored switch, a link
+with `?label=` wins. The payout under 0to8: the dialog says «Лейбл: 0to8», `amountCents` 1000 with `labelId`; without a
+label the API answers 400 `label_required`; after the proof 0to8 paid `10`, payable `0`; «Все» payable `20`. P20
+(`[data-col="label"]`): the payout «0to8», the Echo8 advance under Echo8, the old advance «без лейбла». P21
+`operationsWithoutLabel`: the old advance (`40.00`), `action-set-label` → `field-op-label` → `action-set-label-submit`
+→ the row goes; the books are unchanged (its only income is 0to8). P9 under Echo8 lists the owner with payable `20`;
+P11 under Echo8 the pseudonym with earned `30`; P5 under Echo8 the j2 track only.
+
 **S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
 `validFrom` 2026-03-01; toast "начало округлено до 2026-03-01" (dates compared, no money). P6 A 50, ours 50 → A 50, P
 7.5, ours 42.5; P1 2728100 B 50 → 57.5.
@@ -445,6 +460,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`) | acts |
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
+| 35 | `35-label-switch.spec.ts` | S38 (D-168): the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=` | acts |
 | – | `smoke.spec.ts` | the shell, every route renders | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
 

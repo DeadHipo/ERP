@@ -30,7 +30,10 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
       : id;
   };
   return (
-    <div className="flex flex-col gap-4" data-testid="balance-tab">
+    <div className="flex flex-col gap-4" data-testid="balance-tab" data-label={m.label?.id ?? ''}>
+      <div className="text-sm" data-testid="balance-label">
+        {b.labelView}: <b>{m.label ? m.label.name : b.allLabels}</b>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title={t.total} testId="balance-total">
           <Fact testId="balance-earned" label={t.earned} value={m.total.earned} strong />
@@ -70,16 +73,15 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
           )}
         </Section>
         <Section title={b.byLabel} testId="by-label">
-          <SimpleTable head={[b.label, b.earned, b.waiting]}>
+          <SimpleTable head={[b.bookCols.label, b.bookCols.earned, b.bookCols.waiting, b.bookCols.recouped, b.bookCols.adsCharged, b.bookCols.paid]}>
             {Object.entries(m.byLabel).map(([label, v]) => (
-              <tr key={label} data-testid={`by-label-${label}`}>
+              <tr key={label} data-testid={`by-label-${label}`} data-label-id={v.labelId ?? ''}>
                 <Td>{label === '?' ? b.unmappedLabel : label}</Td>
-                <Td col="earned">
-                  <Money value={v.earned} />
-                </Td>
-                <Td col="waiting">
-                  <Money value={v.waiting} />
-                </Td>
+                {(['earned', 'waiting', 'recouped', 'adsCharged', 'paid'] as const).map((k) => (
+                  <Td key={k} col={k}>
+                    <Money value={v[k]} />
+                  </Td>
+                ))}
               </tr>
             ))}
           </SimpleTable>

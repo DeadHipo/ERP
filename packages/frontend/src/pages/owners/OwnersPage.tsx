@@ -12,6 +12,7 @@ import { QueryView, StaleBadge } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { compareDecimal } from '../../lib/money';
+import { useLabel } from '../../lib/label';
 import { ru } from '../../i18n/ru';
 import { usePeriod } from '../work/OverviewPage';
 import { useUrlParam } from '../catalog/components/url';
@@ -42,9 +43,11 @@ export function OwnersPage() {
   const payouts = params.get('view') === 'payouts';
   const [all, setAll] = useUrlParam('all');
   const [period, setPeriod] = usePeriod();
+  // the label view (D-168): the owners visible under it, each the book of that label
+  const { labelId } = useLabel();
   const full = payouts || all === '1';
-  const payables = useQuery({ ...ownerQueries.payables(period), enabled: full });
-  const list = useQuery({ ...ownerQueries.list(), enabled: !full });
+  const payables = useQuery({ ...ownerQueries.payables(period, labelId), enabled: full });
+  const list = useQuery({ ...ownerQueries.list(labelId), enabled: !full });
   const [visible, setVisible] = useState<readonly string[]>([]);
   const [asked, setAsked] = useState<readonly string[]>([]);
   useEffect(() => {
@@ -58,7 +61,7 @@ export function OwnersPage() {
     return out;
   }, [asked]);
   const pageMoney = useQueries({
-    queries: chunks.map((ids) => ({ ...ownerQueries.payablesOf(ids, period), enabled: !full })),
+    queries: chunks.map((ids) => ({ ...ownerQueries.payablesOf(ids, period, labelId), enabled: !full })),
     combine: (results) => ({
       items: results.flatMap((r) => r.data?.items ?? []),
       updatedAt: results.map((r) => r.dataUpdatedAt).join(','),
@@ -73,11 +76,11 @@ export function OwnersPage() {
     setMoneyVersion((v) => v + 1);
     // updatedAt: the chunks answered (the items array is rebuilt on every render)
   }, [pageMoney.updatedAt]);
-  // A new period changes every row's money: forget what was seen under the old one.
+  // A new period or label changes every row's money: forget what was seen under the old one.
   useEffect(() => {
     moneyRef.current.clear();
     setMoneyVersion((v) => v + 1);
-  }, [period.from, period.to, period.basis]);
+  }, [period.from, period.to, period.basis, labelId]);
   const onVisibleRowsChanged = useCallback((rows: OwnerRow[]) => {
     const next = rows.map((r) => r.ownerId).sort();
     setVisible((prev) => (prev.join(',') === next.join(',') ? prev : next));

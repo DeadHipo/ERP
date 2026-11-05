@@ -45,6 +45,8 @@ export function seedKeys(): SeedKeys {
   ) as SeedKeys;
   return cached;
 }
+/** The id of a shared own label (`0to8`, `Echo8`), D-168: the payouts and operations of the specs are made under 0to8. */
+export const labelOf = (name: '0to8' | 'Echo8'): string => seedKeys().shared[`label:${name}`] ?? '';
 /** Keys of scenario `nn`, case `k`. */
 export function sc(nn: number, k = 1): CaseKeys {
   const c = seedKeys().scenarios[`S${String(nn).padStart(2, '0')}`]?.[`k${k}`];

@@ -101,9 +101,9 @@ export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | u
   );
 }
 
-/** P10 Операции: the owner's operations (`GET /settlements/operations?ownerId=`) and «Аванс / вычет / кредит». */
-export function OperationsTab(props: { detail: OwnerDetail; balance: Balance | undefined }) {
-  const query = useQuery(settlementQueries.operations({ ownerId: props.detail.owner.id }));
+/** P10 Операции: the owner's operations (`GET /settlements/operations?ownerId=`, under the label those of it, D-168) and «Аванс / вычет / кредит». */
+export function OperationsTab(props: { detail: OwnerDetail; balance: Balance | undefined; labelId?: string }) {
+  const query = useQuery(settlementQueries.operations({ ownerId: props.detail.owner.id, ...(props.labelId ? { label: props.labelId } : {}) }));
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-3" data-testid="operations-tab">

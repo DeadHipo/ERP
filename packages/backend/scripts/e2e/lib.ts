@@ -473,8 +473,11 @@ export class Sc {
     st.units += rows.length;
   }
 
-  /** An advance: out, with scope, an approved basis and a payment proof (as in the golden tests). */
-  async advance(letter: string, amount: string, scope: Scope, date = '2026-03-01') {
+  /**
+   * An advance: out, with scope, an approved basis and a payment proof (as in the golden tests), under the label
+   * (default 0to8, D-168); `label: null` records a migrated advance without a label (the history before the split).
+   */
+  async advance(letter: string, amount: string, scope: Scope, date = '2026-03-01', label: '0to8' | 'Echo8' | null = '0to8') {
     const o = this.f.modules.owners;
     const basis = await o.createDocument({
       kind: 'advance_basis',
@@ -491,9 +494,9 @@ export class Sc {
       scope: scope as never,
       documentId: basis.id,
       comment: 'advance',
-      labelId: this.g.label('0to8'),
+      ...(label === null ? { migration: true } : { labelId: this.g.label(label) }),
     });
-    await this.f.attachPaymentProof(op.id, { fileRef: 'dummy://proof.pdf' });
+    if (label !== null) await this.f.attachPaymentProof(op.id, { fileRef: 'dummy://proof.pdf' });
     this.keys.documents['advance-basis'] = basis.id;
     this.keys.extra['advance-operation'] = op.id;
     return op;
@@ -506,6 +509,7 @@ export class Sc {
       date,
       comment: 'migration',
       migration: true,
+      labelId: this.g.label('0to8'), // the history is 0to8 (the owner's decision, D-168)
     });
     (this.keys.extra['migration-operations'] ??= '');
     this.keys.extra['migration-operations'] += (this.keys.extra['migration-operations'] ? ',' : '') + op.id;

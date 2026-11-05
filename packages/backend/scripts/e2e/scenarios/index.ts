@@ -14,6 +14,7 @@ import { payouts } from './payouts';
 import { operations } from './operations';
 import { rulesDates } from './rules-dates';
 import { sources } from './sources';
+import { labelBooks } from './label-books';
 
 /** What a scenario may use besides the facade: the names of the private stores, the data directory and the seed toolkit. */
 export interface ScenarioHelpers {
@@ -29,7 +30,7 @@ export interface Scenario {
 
 /**
  * The seed scenarios of the e2e database, run in order by `scripts/e2e/seed.ts`: the shared seed S00 first (labels, NG,
- * QQ, the brand), then S01..S37 by id. The B17 statement collected by the scenarios is loaded by seed.ts after the last one.
+ * QQ, the brand), then S01..S38 by id. The B17 statement collected by the scenarios is loaded by seed.ts after the last one.
  */
 export const scenarios: Scenario[] = [
   ...shared,
@@ -46,4 +47,5 @@ export const scenarios: Scenario[] = [
   ...operations,
   ...rulesDates,
   ...sources,
+  ...labelBooks,
 ].sort((a, b) => a.id.localeCompare(b.id));

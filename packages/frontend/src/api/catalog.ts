@@ -13,7 +13,7 @@ export const catalog = {
   trackSummary: (query: z.input<typeof S.trackSummaryQuery> = {}) =>
     call('GET', '/tracks/summary', { query, schema: R.trackSummarySchema }),
   /** The tracks without money (D-162): the rows of P5; the visible ones ask `trackSummary({ isrcs })`. */
-  trackCatalog: () => call('GET', '/tracks/catalog', { schema: R.trackCatalogSchema }),
+  trackCatalog: (query: z.input<typeof S.trackCatalogQuery> = {}) => call('GET', '/tracks/catalog', { query, schema: R.trackCatalogSchema }),
   /** Whose money of one ISRC by month: allocations with labels and the state after every layer (N6). */
   trackMoney: (isrc: string) => call('GET', `/tracks/${id(isrc)}/money`, { schema: R.trackMoneySchema }),
   /** Platform and country rows of one report month of an ISRC (N7, no calculation). */
@@ -23,7 +23,7 @@ export const catalog = {
   releases: (query: z.input<typeof S.releasesQuery> = {}) =>
     call('GET', '/releases', { query, schema: R.releasesSchema }),
   /** One release: tracks and report months with B, C and ours (N9). */
-  release: (upc: string) => call('GET', `/releases/${id(upc)}`, { schema: R.releaseSchema }),
+  release: (upc: string, query: z.input<typeof S.releaseQuery> = {}) => call('GET', `/releases/${id(upc)}`, { query, schema: R.releaseSchema }),
   /** The audit trail of an entity (N16). */
   audit: (query: z.input<typeof S.auditQuery> = {}) => call('GET', '/audit', { query, schema: R.auditListSchema }),
 };

@@ -23,10 +23,10 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 11 lists with their counts and links', async ({ page }) => {
+test('the index lists the 13 lists with their counts and links', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(11);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(13);
   await page.getByTestId('signal-list-unfunded').getByRole('link').click();
   await expect(page).toHaveURL(/\/signals\/unfunded$/);
   await settled(page);

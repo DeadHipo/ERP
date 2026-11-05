@@ -17,6 +17,7 @@ import { DataGrid } from '../../components/grid/DataGrid';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { compareDecimal } from '../../lib/money';
+import { useLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
 import { useUrlParam } from './components/url';
 import { FlagChip } from './components/FlagChip';
@@ -52,8 +53,10 @@ export function TracksPage() {
   const [q, setQ] = useUrlParam('q');
   const [creating, setCreating] = useState(false);
   const full = account !== '' || month !== '' || all === '1';
-  const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined), enabled: full });
-  const catalog = useQuery({ ...trackQueries.catalog(), enabled: !full });
+  // the label view (D-168): the ISRCs of the label's units and their money alone
+  const { labelId } = useLabel();
+  const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined, labelId), enabled: full });
+  const catalog = useQuery({ ...trackQueries.catalog(labelId), enabled: !full });
   // The ISRCs on the screen (page, sort, filter), settled for a moment before they are asked.
   const [visible, setVisible] = useState<readonly string[]>([]);
   const [asked, setAsked] = useState<readonly string[]>([]);
@@ -61,7 +64,7 @@ export function TracksPage() {
     const timer = setTimeout(() => setAsked(visible), 150);
     return () => clearTimeout(timer);
   }, [visible]);
-  const pageMoney = useQuery({ ...trackQueries.summaryOf(asked), enabled: !full && asked.length > 0 });
+  const pageMoney = useQuery({ ...trackQueries.summaryOf(asked, labelId), enabled: !full && asked.length > 0 });
   // The money seen so far, by ISRC: a row keeps its numbers while the next page is asked.
   const moneyRef = useRef(new Map<string, TrackSummaryItem>());
   const [moneyVersion, setMoneyVersion] = useState(0);
@@ -70,6 +73,11 @@ export function TracksPage() {
     for (const i of pageMoney.data.items) moneyRef.current.set(i.isrc, i);
     setMoneyVersion((v) => v + 1);
   }, [pageMoney.data]);
+  // a new label changes every row's money: forget what was seen under the old one
+  useEffect(() => {
+    moneyRef.current.clear();
+    setMoneyVersion((v) => v + 1);
+  }, [labelId]);
   const onVisibleRowsChanged = useCallback((rows: TrackRow[]) => {
     const next = rows.map((r) => r.isrc).sort();
     setVisible((prev) => (prev.join(',') === next.join(',') ? prev : next));

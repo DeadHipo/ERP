@@ -1,9 +1,10 @@
 /**
  * D-168 check on real data: for every owner the books of the labels, «without a label» included, add up to the full
  * balance field by field (the artist rows too); the view under a label through the facade equals the book of the full
- * balance; and the balance with the labels of the operations stripped equals the balance with them (no label changes
- * the money of a real owner: the marking script labels only operations whose income is under one label). Also the
- * reconciliation rows: Σ books = the row. Prints the owners that differ (none expected) and the times.
+ * balance; and how many owners' totals the labels of the operations change (an advance under a label is recouped from
+ * that label's income only: after the owner's decision to mark the history as 0to8 a mixed owner's advance no longer
+ * takes Echo8 income, so this is a count to report, not a failure). Also the reconciliation rows: Σ books = the row.
+ * Prints the owners that differ (none expected) and the times.
  *
  *   npx tsx packages/backend/scripts/check-label-books.ts [dataDir] [limit]
  *
@@ -57,6 +58,7 @@ try {
   const differing: string[] = [];
   let withBooks = 0;
   let labelled = 0;
+  const changed: string[] = [];
   let viewMs = 0;
   let views = 0;
   const t1 = performance.now();
@@ -72,11 +74,11 @@ try {
       const rs = Object.values(a.byLabel);
       for (const k of ROW) if (sum(rs.map((x) => x[k])) !== a[k].toFixed()) differing.push(`${o.id} ${a.artistId}: Σ books ${k} ≠ row`);
     }
-    // the labels of the operations change nothing for a real owner (the marking labels single-label income only)
+    // what the labels of the operations change: the owner's totals with them against without them (a report, not a failure)
     if (ops.some((x) => x.labelId !== null)) {
       labelled += 1;
       const stripped = ownerBalance(full, o.id, ops.map((x) => ({ ...x, labelId: null })), {}, idx);
-      if (text(stripped.total) !== text(b.total)) differing.push(`${o.id}: the labels of the operations change the total (${stripped.total.payable.toFixed()} → ${b.total.payable.toFixed()})`);
+      if (text(stripped.total) !== text(b.total)) changed.push(`${o.id}: payable ${stripped.total.payable.toFixed()} without the labels → ${b.total.payable.toFixed()} with them`);
     }
     // the view through the facade (by reach) = the book of the full balance, for the first owners
     if (n < 20) {
@@ -96,6 +98,8 @@ try {
   }
   if (views) console.log(`${views} views through the facade: ${(viewMs / views / 1000).toFixed(2)} s each`);
   for (const d of differing) console.log(`  differs: ${d}`);
+  console.log(`owners whose totals the labels of the operations change: ${changed.length}`);
+  for (const c of changed) console.log(`  changed: ${c}`);
   console.log(`differing: ${differing.length}`);
   process.exitCode = differing.length === 0 && badRows === 0 ? 0 : 1;
 } finally {

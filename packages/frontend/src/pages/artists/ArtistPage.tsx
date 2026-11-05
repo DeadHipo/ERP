@@ -8,6 +8,7 @@ import { QueryView, StaleBadge } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { fmt, ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { AdsOfEntity } from '../ads/AdsOfEntity';
 import { AssignOwnerAction } from '../reference/artists/AssignOwnerAction';
 import { PeriodBar } from '../owners/components/PeriodBar';
@@ -26,8 +27,10 @@ const t = ru.money.artist;
 export function ArtistPage() {
   const id = useParams().id ?? '';
   const [period, setPeriod] = usePeriod();
+  // the label view (D-168): the money and the operations of that label; the card stays whole
+  const { labelId } = useLabel();
   const detail = useQuery(artistQueries.detail(id));
-  const balance = useQuery(artistQueries.balance(id, period));
+  const balance = useQuery(artistQueries.balance(id, period, labelId));
   useBreadcrumbLabel(detail.data?.artist.pseudonym ?? id);
   return (
     <div data-testid="artist-page">
@@ -87,7 +90,7 @@ export function ArtistPage() {
                 { id: 'rules', label: t.tabs.rules, content: <ArtistRulesTab detail={d} /> },
                 { id: 'documents', label: t.tabs.documents, content: <ArtistDocumentsTab detail={d} /> },
                 { id: 'ads', label: t.tabs.ads, content: <AdsOfEntity artistId={d.artist.id} pseudonym={d.artist.pseudonym} /> },
-                { id: 'operations', label: t.tabs.operations, content: <ArtistOperationsTab artistId={d.artist.id} /> },
+                { id: 'operations', label: t.tabs.operations, content: <ArtistOperationsTab artistId={d.artist.id} labelId={labelId} /> },
                 { id: 'history', label: t.tabs.history, content: <ArtistHistoryTab artistId={d.artist.id} /> },
               ]}
             />

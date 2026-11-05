@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useLabel } from '../../lib/label';
 import { adQueries } from '../../api/queries/ads';
 import { ActionButton } from '../../components/ActionButton';
 import { EntityLink } from '../../components/EntityLink';
@@ -17,7 +18,8 @@ const LIMIT = 200;
 /** «Реклама» of one track (P6, the tab) or one pseudonym (P12): its records, a link to the rest, and adding one here. */
 export function AdsOfEntity(props: { isrc?: string; artistId?: string; pseudonym?: string }) {
   const [creating, setCreating] = useState(false);
-  const filter = props.isrc ? { isrc: props.isrc } : { artistId: props.artistId };
+  const { labelId } = useLabel(); // the label view (D-168)
+  const filter = { ...(props.isrc ? { isrc: props.isrc } : { artistId: props.artistId }), ...(labelId ? { label: labelId } : {}) };
   const query = useQuery(adQueries.list({ ...filter, limit: LIMIT }));
   const e = t.entity;
   const all = props.isrc ? `/ads?isrc=${props.isrc}` : `/ads?artistId=${props.artistId ?? ''}`;

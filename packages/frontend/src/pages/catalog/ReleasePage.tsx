@@ -8,6 +8,7 @@ import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
 import { ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { SimpleTable, Td } from './components/MoneyTable';
 import { CReasonList } from './components/CReasonList';
 
@@ -17,7 +18,8 @@ const m = ru.catalog.money;
 /** P8 «Релиз»: `GET /releases/:upc` (one calculation filtered by UPC): tracks and report months with B, C, ours. */
 export function ReleasePage() {
   const upc = useParams().upc ?? '';
-  const query = useQuery(releaseQueries.detail(upc));
+  const { labelId } = useLabel(); // the label view (D-168)
+  const query = useQuery(releaseQueries.detail(upc, labelId));
   useBreadcrumbLabel(query.data ? `${query.data.title} (${upc})` : upc);
   return (
     <div data-testid="release-page">

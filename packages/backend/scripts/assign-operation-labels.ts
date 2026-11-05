@@ -1,9 +1,13 @@
 /**
- * D-168: marks the existing operations with the own label they belong to. For a payout or a return: the labels of the
- * owner's units (the units of every ISRC its pseudonyms have a split row or a participation on); for an advance, a
- * deduction or a credit: the labels of the pseudonym's units. When exactly one own label carries them, it is set;
- * when none (no units) or both (a mixed owner or pseudonym: the history before the split) the operation stays without
- * a label, visible under «Все» and in the signal `operationsWithoutLabel`. A return takes the label of its payout.
+ * D-168: marks the existing operations with the own label they belong to. For a payout: the labels of the owner's units
+ * (the units of every ISRC its pseudonyms have a split row or a participation on); for an advance, a deduction or a
+ * credit: the labels of the pseudonym's units. When exactly one own label carries them, it is set. When none (no units)
+ * or both (a mixed owner or pseudonym: the history before the split) the operation goes to 0to8 by the product owner's
+ * decision of 2026-11-05 («по выплатам, давай пока укажем что это 0to8 был»), counted apart so he can revisit them; only
+ * an owner or pseudonym whose units are exclusively Echo8 gets Echo8. A return takes the label of its payout. After
+ * `--apply` no operation stays without a label; the NULL handling and the signal `operationsWithoutLabel` stay in the
+ * code for an operation a future import could leave without one, and every label is editable through
+ * PATCH /settlements/operations/:id.
  *
  *   npx tsx packages/backend/scripts/assign-operation-labels.ts [dataDir] [--apply]
  *
@@ -28,6 +32,8 @@ try {
   const t0 = performance.now();
   const labelIndex = await labels.index();
   const names = new Map(labelIndex.ownLabels().map((l) => [l.id, l.name]));
+  const zero = labelIndex.ownLabels().find((l) => l.name === '0to8')?.id;
+  if (!zero) throw new Error('no own label named 0to8: the default of the history needs it');
   // the own labels of every ISRC, from the label string of every unit
   const isrcLabels = new Map<string, Set<string>>();
   const { units } = await sources.snapshot();
@@ -66,35 +72,35 @@ try {
   const ops = (await settlements.allOperations()).filter((o) => o.active && o.labelId === null);
   console.log(`${ops.length} active operations without a label`);
   const decided = new Map<string, string>();
-  const counters = new Map<string, { one: number; none: number; mixed: number }>();
-  const count = (meaning: string, k: 'one' | 'none' | 'mixed') => {
-    const c = counters.get(meaning) ?? { one: 0, none: 0, mixed: 0 };
+  type Why = 'one' | 'mixed' | 'none' | 'payout';
+  const counters = new Map<string, Record<Why, number>>();
+  const count = (meaning: string, k: Why) => {
+    const c = counters.get(meaning) ?? { one: 0, mixed: 0, none: 0, payout: 0 };
     c[k] += 1;
     counters.set(meaning, c);
   };
   const byLabel = new Map<string, number>();
-  const decide = (o: (typeof ops)[number]): string | null => {
+  const decide = (o: (typeof ops)[number]): { labelId: string; why: Why } => {
     if (o.meaning === 'return') {
-      const ref = o.operationRef ? decided.get(o.operationRef) ?? ops.find((x) => x.id === o.operationRef)?.labelId ?? null : null;
-      return ref;
+      // a return follows its payout; a return whose payout is unknown goes to the default too
+      const ref = o.operationRef ? (decided.get(o.operationRef) ?? ops.find((x) => x.id === o.operationRef)?.labelId ?? null) : null;
+      return ref ? { labelId: ref, why: 'payout' } : { labelId: zero, why: 'none' };
     }
     const set = o.meaning === 'payout' ? ownerLabels.get(o.ownerId ?? '') : artistLabels.get(canon(o.artistId ?? ''));
-    return set && set.size === 1 ? ([...set][0] as string) : null;
+    if (set && set.size === 1) return { labelId: [...set][0] as string, why: 'one' };
+    // the owner's decision of 2026-11-05: the undecidable history is 0to8 (mixed: both labels; none: no units)
+    return { labelId: zero, why: set && set.size > 1 ? 'mixed' : 'none' };
   };
   // payouts first: a return follows its payout
   const ordered = [...ops.filter((o) => o.meaning !== 'return'), ...ops.filter((o) => o.meaning === 'return')];
   for (const o of ordered) {
-    const labelId = decide(o);
-    if (labelId) {
-      decided.set(o.id, labelId);
-      count(o.meaning, 'one');
-      byLabel.set(labelId, (byLabel.get(labelId) ?? 0) + 1);
-    } else {
-      const set = o.meaning === 'payout' ? ownerLabels.get(o.ownerId ?? '') : artistLabels.get(canon(o.artistId ?? ''));
-      count(o.meaning, o.meaning === 'return' || !set || set.size === 0 ? 'none' : 'mixed');
-    }
+    const { labelId, why } = decide(o);
+    decided.set(o.id, labelId);
+    count(o.meaning, why);
+    byLabel.set(labelId, (byLabel.get(labelId) ?? 0) + 1);
   }
-  for (const [meaning, c] of [...counters.entries()].sort()) console.log(`  ${meaning}: one label ${c.one}, no units ${c.none}, mixed (left without a label) ${c.mixed}`);
+  for (const [meaning, c] of [...counters.entries()].sort())
+    console.log(`  ${meaning}: by its one label ${c.one}, mixed → 0to8 ${c.mixed}, no units → 0to8 ${c.none}${c.payout ? `, by its payout ${c.payout}` : ''}`);
   for (const [id, n] of byLabel) console.log(`  → ${names.get(id) ?? id}: ${n}`);
   console.log(`to assign: ${decided.size}; left without a label: ${ops.length - decided.size}`);
   if (apply) {

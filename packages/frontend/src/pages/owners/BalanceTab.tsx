@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { formatMoney } from '../../lib/money';
+import { useLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from './components/cents';
 import { Fact, Section, SimpleTable, Td } from './components/Fact';
@@ -41,7 +42,11 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
   const ops = useQuery({ ...settlementQueries.operations({ ownerId: props.ownerId }), enabled: listed });
   const opById = new Map((ops.data ?? []).map((o) => [o.id, o]));
   return (
-    <div className="flex flex-col gap-4" data-testid="balance-tab">
+    <div className="flex flex-col gap-4" data-testid="balance-tab" data-label={b.label?.id ?? ''}>
+      <div className="text-sm" data-testid="balance-label">
+        {t.labelView}: <b>{b.label ? b.label.name : t.allLabels}</b>
+        {b.label ? <span className="ml-2 text-xs text-muted">{t.labelViewHint}</span> : null}
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title={t.formula} testId="balance-formula">
           <Fact testId="balance-earned" label={t.earned} value={b.total.earned} />
@@ -107,21 +112,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
             </ul>
           )}
         </Section>
-        <Section title={t.byLabel} testId="by-label">
-          <SimpleTable head={[t.label, t.earned, t.waiting]}>
-            {Object.entries(b.byLabel).map(([label, v]) => (
-              <tr key={label} data-testid={`by-label-${label}`}>
-                <Td>{label === '?' ? t.unmappedLabel : label}</Td>
-                <Td col="earned">
-                  <Money value={v.earned} />
-                </Td>
-                <Td col="waiting">
-                  <Money value={v.waiting} />
-                </Td>
-              </tr>
-            ))}
-          </SimpleTable>
-        </Section>
+        <LabelBooks books={b.byLabel} />
       </div>
       <Section title={t.artists} testId="balance-artists">
         <SimpleTable head={[t.pseudonym, t.isrc, t.net, t.earned, t.waiting, ru.money.owners.cols.recouped, t.unrecouped]}>
@@ -198,6 +189,27 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
   );
 }
 
+/** The book of every label (D-168): Σ over the rows, «без лейбла» included, = the formula fields above. */
+export function LabelBooks(props: { books: Balance['byLabel'] }) {
+  const c = t.bookCols;
+  return (
+    <Section title={t.byLabel} testId="by-label">
+      <SimpleTable head={[c.label, c.earned, c.waiting, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, c.payable]}>
+        {Object.entries(props.books).map(([label, v]) => (
+          <tr key={label} data-testid={`by-label-${label}`} data-label-id={v.labelId ?? ''}>
+            <Td>{label === '?' ? t.unmappedLabel : label}</Td>
+            {(['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const).map((k) => (
+              <Td key={k} col={k}>
+                <Money value={v[k]} />
+              </Td>
+            ))}
+          </tr>
+        ))}
+      </SimpleTable>
+    </Section>
+  );
+}
+
 /** P10 Реклама: the advertising charged to the owner's pseudonyms (`balance.ads`), taken off payable at once (D-157). */
 function AdsSection(props: { balance: Balance }) {
   const b = props.balance;
@@ -228,20 +240,23 @@ function AdsSection(props: { balance: Balance }) {
 }
 
 /**
- * «Выплатить» (17 §6): enabled only by `balance.payout.allowed` (else the reason beside it) → ConfirmDialog with the
- * formula fields, the pseudonyms and «снимок будет сохранён» → `POST /owners/:id/payouts`; the toast shows the
+ * «Выплатить» (17 §6): enabled only by `balance.payout.allowed` (else the reason beside it) and under a label (D-168:
+ * the button pays the book of the label; under «Все» it is unavailable with the hint) → ConfirmDialog with the formula
+ * fields, the pseudonyms and «снимок будет сохранён» → `POST /owners/:id/payouts` with `labelId`; the toast shows the
  * response's `amountCents`.
  */
 function PayButton(props: { ownerId: string; balance: Balance }) {
   const b = props.balance;
   const [open, setOpen] = useState(false);
-  const run = useAction(() => api.owners.payout(props.ownerId, {}), {
+  const { labelId } = useLabel();
+  const run = useAction(() => api.owners.payout(props.ownerId, { labelId }), {
     invalidate: 'all',
     success: (o) => fmt(ru.money.pay.toast, { amount: formatMoney(centsToText(o.amountCents)), date: o.date }),
   });
   const l = ru.money.pay.lines;
   const m = formatMoney;
   const lines = [
+    fmt(l.label, { label: b.label?.name ?? t.allLabels }),
     fmt(l.payable, { amount: m(b.total.payableShown), cents: b.payout.amountCents }),
     fmt(l.formula, {
       earned: m(b.total.earned),
@@ -258,8 +273,8 @@ function PayButton(props: { ownerId: string; balance: Balance }) {
     <>
       <ActionButton
         name="pay"
-        isDisabled={!b.payout.allowed}
-        reason={b.payout.reason ? ru.status.payoutGate[b.payout.reason] : undefined}
+        isDisabled={!b.payout.allowed || !labelId || b.label === null}
+        reason={!labelId || b.label === null ? ru.money.pay.chooseLabel : b.payout.reason ? ru.status.payoutGate[b.payout.reason] : undefined}
         isPending={run.isPending}
         onPress={() => setOpen(true)}
       >

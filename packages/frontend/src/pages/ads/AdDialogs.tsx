@@ -9,6 +9,8 @@ import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
+import { useLabel } from '../../lib/label';
+import { useOwnLabels } from '../../components/LabelSwitch';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { SimpleTable, Td } from '../owners/components/Fact';
@@ -44,6 +46,11 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   const [scope, setScope] = useState<AdScopeKind>('any');
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
+  // a record without an ISRC belongs to an own label explicitly (D-168); the switch of the header is the default
+  const own = useOwnLabels();
+  const { labelId: switchLabel } = useLabel();
+  const [labelId, setLabelId] = useState(switchLabel);
+  const labelName = own.find((l) => l.id === labelId)?.name ?? '';
   const onArtist = target === 'artist';
   const typedIsrc = isrc.trim();
   const run = useAction(
@@ -58,6 +65,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
             recoveryPercent: percent.trim(),
             scope,
             ...(comment.trim() ? { comment: comment.trim() } : {}),
+            ...(labelId ? { labelId } : {}),
           },
         ],
       }),
@@ -69,7 +77,8 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   );
   const whoOk = onArtist ? artist !== null && (typedIsrc === '' || ISRC.test(typedIsrc)) : ISRC.test(typedIsrc);
   const scopeOk = scope !== 'isrc' || ISRC.test(typedIsrc);
-  const filled = whoOk && scopeOk && MONTH.test(month.trim()) && AMOUNT.test(amount.trim()) && PERCENT.test(percent.trim());
+  const labelOk = typedIsrc !== '' || labelId !== '';
+  const filled = whoOk && scopeOk && labelOk && MONTH.test(month.trim()) && AMOUNT.test(amount.trim()) && PERCENT.test(percent.trim());
   return (
     <>
       <FormDialog
@@ -126,6 +135,8 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           options={AD_SCOPES.map((s) => ({ id: s, label: t.scopes[s] }))}
         />
         <span className="text-xs text-muted">{t.create.scopeHint}</span>
+        <SelectField name="ad-label" label={t.create.label} value={labelId || null} onChange={setLabelId} isRequired={typedIsrc === ''} options={own.map((l) => ({ id: l.id, label: l.name }))} />
+        <span className="text-xs text-muted">{t.create.labelHint}</span>
         <TextField name="ad-comment" label={t.create.comment} value={comment} onChange={setComment} />
       </FormDialog>
       <ConfirmDialog
@@ -139,6 +150,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           fmt(t.create.lines.amount, { amount: AMOUNT.test(amount.trim()) ? formatMoney(amount.trim()) : amount }),
           fmt(t.create.lines.percent, { percent: percent.trim() }),
           fmt(t.create.lines.scope, { scope: t.scopes[scope] }),
+          ...(labelId ? [fmt(t.create.lines.label, { label: labelName })] : []),
         ]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}

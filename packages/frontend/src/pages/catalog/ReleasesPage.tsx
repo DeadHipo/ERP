@@ -13,6 +13,7 @@ import { DataGrid } from '../../components/grid/DataGrid';
 import { TextField } from '../../components/fields/TextField';
 import { compareDecimal } from '../../lib/money';
 import { ru } from '../../i18n/ru';
+import { useLabel } from '../../lib/label';
 import { useUrlParam } from './components/url';
 
 type Item = z.output<typeof releasesSchema>['items'][number];
@@ -29,7 +30,8 @@ export function ReleasesPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [text, q, setQ]);
-  const query = useQuery(releaseQueries.list(q || undefined));
+  const { labelId } = useLabel(); // the label view (D-168): the tracks of the label's ISRCs, the net of its units
+  const query = useQuery(releaseQueries.list(q || undefined, labelId));
   const columns = useMemo(() => releaseColumns(), []);
   return (
     <div data-testid="releases-page">

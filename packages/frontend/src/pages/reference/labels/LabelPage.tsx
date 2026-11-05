@@ -42,12 +42,36 @@ function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
   );
 }
 
-/** P17 «Лейбл» `/labels/:id`: aliases and rules of one label; add alias, set rule, close rule. */
+/** «Добавить счёт» (D-168): a Believe account registered under an own label → `POST /labels/:id/accounts`. */
+function AddAccountDialog(props: { label: LabelListItem; onClose: () => void }) {
+  const [account, setAccount] = useState('');
+  const run = useAction(() => api.labels.addAccount(props.label.id, { account: account.trim() }), {
+    invalidate: 'all',
+    success: (l) => fmt(t.accountAdded, { account: account.trim(), label: l.name }),
+  });
+  return (
+    <FormDialog
+      isOpen
+      onOpenChange={(o) => (o ? null : props.onClose())}
+      title={t.addAccount}
+      subtitle={t.accountsHint}
+      footer={
+        <ActionButton name="account-submit" isPending={run.isPending} isDisabled={account.trim() === ''} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+          {t.addAccount}
+        </ActionButton>
+      }
+    >
+      <TextField name="label-account" label={t.accountField} value={account} onChange={setAccount} isRequired />
+    </FormDialog>
+  );
+}
+
+/** P17 «Лейбл» `/labels/:id`: aliases, accounts and rules of one label; add alias, add account, set rule, close rule. */
 export function LabelPage() {
   const id = useParams().id ?? '';
   const query = useQuery(labelQueries.list());
   const label = query.data?.find((l) => l.id === id);
-  const [dialog, setDialog] = useState<{ kind: 'alias' } | { kind: 'rule' } | { kind: 'close'; rule: Rule } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'alias' } | { kind: 'account' } | { kind: 'rule' } | { kind: 'close'; rule: Rule } | null>(null);
   useBreadcrumbLabel(label?.name ?? id);
   const close = () => setDialog(null);
   return (
@@ -87,6 +111,27 @@ export function LabelPage() {
                   </ul>
                 )}
               </section>
+              {l.kind === 'own' ? (
+                <section>
+                  <div className="mb-2 flex items-center gap-3">
+                    <h2 className="text-sm font-medium">{t.accounts}</h2>
+                    <ActionButton name="add-account" variant="secondary" onPress={() => setDialog({ kind: 'account' })}>
+                      {t.addAccount}
+                    </ActionButton>
+                  </div>
+                  {l.accounts.length === 0 ? (
+                    <p className="text-sm text-muted">{t.noAccounts}</p>
+                  ) : (
+                    <ul className="flex flex-wrap gap-2" data-testid="label-accounts">
+                      {l.accounts.map((acc) => (
+                        <li key={acc} data-testid={`account-${acc}`} className="rounded-lg border border-border px-2 py-1 text-sm">
+                          {acc}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ) : null}
               <section>
                 <div className="mb-2 flex items-center gap-3">
                   <h2 className="text-sm font-medium">{t.rules}</h2>
@@ -117,6 +162,7 @@ export function LabelPage() {
                 )}
               </section>
               {dialog?.kind === 'alias' ? <AddAliasDialog label={l} onClose={close} /> : null}
+              {dialog?.kind === 'account' ? <AddAccountDialog label={l} onClose={close} /> : null}
               {dialog?.kind === 'rule' ? <SetRuleDialog labelString={l.name} month="" onClose={close} /> : null}
               {dialog?.kind === 'close' ? <CloseRuleDialog labelId={l.id} ruleId={dialog.rule.id} onClose={close} /> : null}
             </div>
