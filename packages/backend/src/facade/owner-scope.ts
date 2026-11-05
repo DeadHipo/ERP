@@ -18,11 +18,29 @@ export async function ownerReach(modules: Modules, ownerId: string): Promise<{ a
 
 /** The reach of several owners at once (the visible rows of P9): the union, read once. */
 export async function ownersReach(modules: Modules, ownerIds: readonly string[]): Promise<{ artistIds: string[]; isrcs: string[] }> {
-  const { owners, splits, labels, sources, ads } = modules;
   const wantedOwners = new Set(ownerIds);
-  const artistIds = [...(await owners.artistIndex()).entries()]
+  const artistIds = [...(await modules.owners.artistIndex()).entries()]
     .filter(([, a]) => a.ownerId !== null && wantedOwners.has(a.ownerId))
     .map(([id]) => id);
+  return reachOf(modules, artistIds);
+}
+
+/**
+ * The reach of a pseudonym (D-165): the same three sources, for one artist, by every id it had (the ids merged into it
+ * count too). The artist row of `ownerBalance()` reads only the units where the pseudonym has an allocation and recoups
+ * its positions from its own master income (and the owner's publishing income, read whole), so a calculation over the
+ * pseudonym's reach gives the very same row as the full calculation of its owner.
+ */
+export async function artistReach(modules: Modules, artistId: string): Promise<{ artistIds: string[]; isrcs: string[] }> {
+  const idx = await modules.owners.artistIndex();
+  const canonical = idx.get(artistId)?.id ?? artistId;
+  const ids = [...idx.entries()].filter(([, a]) => a.id === canonical).map(([id]) => id);
+  return reachOf(modules, ids.length > 0 ? ids : [artistId]);
+}
+
+/** The ISRCs that can carry money to any of the pseudonym ids (every id, merged ones included). */
+async function reachOf(modules: Modules, artistIds: readonly string[]): Promise<{ artistIds: string[]; isrcs: string[] }> {
+  const { splits, labels, sources, ads } = modules;
   const unique = new Set(artistIds);
   const isrcs = new Set<string>();
   // one read of every split and participation, filtered here: a read per pseudonym would load all splits each time

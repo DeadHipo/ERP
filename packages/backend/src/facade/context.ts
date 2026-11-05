@@ -7,10 +7,10 @@ import { type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
 import { type AuditService } from '../modules/audit';
 import { type AdsService } from '../modules/ads';
-import { ownerReach } from './owner-scope';
+import { artistReach, ownerReach } from './owner-scope';
 import { scoped } from './scope';
 import { calculate, type PeriodFilter } from './calculation';
-import { ownerBalance } from './balance';
+import { artistBalance, ownerBalance } from './balance';
 import { payoutGate } from './payout-gate';
 import { floorToCents } from '../shared/money';
 import { stubPaymentService, type PaymentService } from './payment-service';
@@ -175,6 +175,34 @@ export function createFacadeContext(
     return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf(balance) } };
   }
 
+  /**
+   * The money of one pseudonym from the units of its reach (`artistReach`, D-165): the artist row is the one
+   * `ownerBalance()` builds, since that row reads only the units where the pseudonym has an allocation and recoups its
+   * positions from its own master income and the owner's publishing (read whole). A merged id answers for the survivor.
+   */
+  async function artistBalanceWithReach(artistId: string, f: PeriodFilter = {}) {
+    const entry = await timed('owners.artistIndex (resolve)', async () => {
+      const e = (await owners.artistIndex()).get(artistId);
+      if (!e) await owners.getArtist(artistId); // throws not_found
+      return e as NonNullable<typeof e>;
+    });
+    const docIds = await timed('settlements.allOperations (document ids)', opDocIds, (r) => `${r.length} ids`);
+    const reach = await timed('artistReach', () => artistReach(modules, entry.id), (r) => `${r.isrcs.length} ISRCs`);
+    const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
+    const { artist, owner, operations } = await timed(
+      'pg snapshot: artist + owner + operations',
+      () =>
+        db.snapshot(async () => ({
+          artist: await owners.getArtist(entry.id),
+          owner: entry.ownerId ? await owners.getOwner(entry.ownerId) : null,
+          operations: entry.ownerId ? await settlements.listOperations({ ownerId: entry.ownerId }) : [],
+        })),
+      (r) => `${r.operations.length} operations`,
+    );
+    const money = timedSync('artistBalance (JS)', () => artistBalance(calc, entry.id, operations, f));
+    return { artist, owner, ...money };
+  }
+
   /** The payout gate of a balance (N19): the very decision the payout button takes. */
   function gateOf(b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'blockingPayouts' | 'total'>) {
     return payoutGate({
@@ -203,6 +231,7 @@ export function createFacadeContext(
     checkSplitDocument,
     resolveShares,
     balanceWithFiles,
+    artistBalanceWithReach,
     gateOf,
   };
 }

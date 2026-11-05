@@ -6,7 +6,7 @@ import { ReleasesPage } from '../pages/catalog/ReleasesPage';
 import { ReleasePage } from '../pages/catalog/ReleasePage';
 import { ArtistsPage } from '../pages/reference/artists/ArtistsPage';
 import { DuplicatesPage } from '../pages/reference/artists/DuplicatesPage';
-import { ArtistPage } from '../pages/reference/artists/ArtistPage';
+import { ArtistPage } from '../pages/artists/ArtistPage';
 
 /** Каталог: tracks and releases, pseudonyms; owners live in routes/owners.tsx. */
 export const catalogRoutes = [

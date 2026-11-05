@@ -80,7 +80,7 @@ test('S30 create the split DUP-301 50 % from the candidate: the candidate goes, 
 });
 test('P12 lists the split rows of an artist with a link to the track', async ({ page }) => {
   const k = sc(1);
-  await openAs(page, `/artists/${k.artists.A}`);
+  await openAs(page, `/artists/${k.artists.A}?tab=rules`); // the rows are on the tab Сплиты и участия (D-165)
   const row = page.getByTestId(`split-${k.splits[isrc(1, 1, 1)]?.[0]}`);
   await expect(row).toContainText('A-011 50 %');
   await expect(row.getByRole('link', { name: isrc(1, 1, 1) })).toBeVisible();

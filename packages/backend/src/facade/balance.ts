@@ -449,3 +449,135 @@ export function ownerIndex(calc: Calculation): Map<string, { units: UnitResult[]
   for (const p of calc.publishing) if (p.ownerId) of(p.ownerId).publishing.push(p);
   return index;
 }
+
+/** What one pseudonym sees of its money (D-165): the artist row of `ownerBalance()` with the owner-level parts of it. */
+export interface ArtistMoney {
+  artistId: string;
+  pseudonym: string;
+  ownerId: string | null;
+  period: {
+    from: string | null;
+    to: string | null;
+    basis: 'report' | 'sales';
+    /** Σ net of the units where the pseudonym has an allocation (the whole unit, not its part). */
+    received: Decimal;
+    earned: Decimal;
+    waiting: Decimal;
+    waitingBreakdown: Partial<Record<CReason, Decimal>>;
+  };
+  total: {
+    earned: Decimal;
+    waiting: Decimal;
+    recouped: Decimal;
+    unrecouped: Decimal;
+    recoupedFromMaster: Decimal;
+    /** Advertising charged to this pseudonym (its recovered part, or the unrecovered part it bears as a sublabel). */
+    adsCharged: Decimal;
+    /** Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym). */
+    paid: Decimal;
+  };
+  byLabel: OwnerBalance['byLabel'];
+  tracks: ArtistBalance['tracks'];
+  positions: PositionView[];
+  ads: AdChargeView[];
+  pendingOperations: { operationId: string; why: string }[];
+}
+
+/**
+ * The money of one pseudonym (D-165). With an owner, the row is the very `ArtistBalance` that `ownerBalance()` builds
+ * for it (earned, waiting, recouped, unrecouped, recoupedFromMaster, tracks), and the positions, advertising and
+ * pending operations are the owner's filtered to this pseudonym; the reasons of the waiting money, the per-label
+ * sums, the net received and the all-time earned / waiting come from the same loop over the units, restricted to this
+ * pseudonym's allocations. Without an owner there is no owner balance: everything comes from that loop (nothing is
+ * earned, nothing recouped), and `ops` is empty.
+ */
+export function artistBalance(calc: Calculation, artistId: string, ops: OperationView[], f: PeriodFilter): ArtistMoney {
+  const basis = f.basis ?? 'report';
+  const entry = calc.artistIndex.get(artistId);
+  const id = entry?.id ?? artistId;
+  const ownerId = entry?.ownerId ?? null;
+  const owner = ownerId ? ownerBalance(calc, ownerId, ops, f) : null;
+  const row = owner?.artists.find((a) => a.artistId === id);
+
+  let received = ZERO;
+  let tEarned = ZERO;
+  let tWaiting = ZERO;
+  let pEarned = ZERO;
+  let pWaiting = ZERO;
+  const waitingBreakdown: Partial<Record<CReason, Decimal>> = {};
+  const byLabel: OwnerBalance['byLabel'] = {};
+  const trackAgg = new Map<string, { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }>();
+  for (const u of calc.units) {
+    const mine = u.allocations.filter((a) => a.artistId === id);
+    if (mine.length === 0) continue;
+    const inP = unitInPeriod(u, f);
+    if (inP) received = received.add(u.net);
+    const lb = (byLabel[u.ourLabelName ?? '?'] ??= { earned: ZERO, waiting: ZERO });
+    const t = trackAgg.get(u.isrc) ?? { isrc: u.isrc, net: ZERO, amount: ZERO, waiting: ZERO };
+    for (const a of mine) {
+      if (a.category === 'B') {
+        lb.earned = lb.earned.add(a.amount);
+        tEarned = tEarned.add(a.amount);
+        if (inP) {
+          pEarned = pEarned.add(a.amount);
+          t.amount = t.amount.add(a.amount);
+        }
+      } else {
+        lb.waiting = lb.waiting.add(a.amount);
+        tWaiting = tWaiting.add(a.amount);
+        if (inP) {
+          pWaiting = pWaiting.add(a.amount);
+          const r = a.reason as CReason;
+          waitingBreakdown[r] = (waitingBreakdown[r] ?? ZERO).add(a.amount);
+          t.waiting = t.waiting.add(a.amount);
+        }
+      }
+      if (inP) t.net = t.net.add(u.net);
+    }
+    trackAgg.set(u.isrc, t);
+  }
+  const tracks =
+    row?.tracks ??
+    [...trackAgg.values()]
+      .filter((t) => !t.net.isZero() || !t.amount.isZero() || !t.waiting.isZero())
+      .sort((x, y) => y.amount.add(y.waiting).cmp(x.amount.add(x.waiting)));
+
+  let paid = ZERO;
+  for (const o of ops) {
+    if (o.meaning !== 'payout' || !o.artistId || (calc.artistIndex.get(o.artistId)?.id ?? o.artistId) !== id) continue;
+    if (classifyOperation(o, calc.documentStatus).counted) paid = paid.add(centsToDecimal(o.amountCents));
+  }
+  const opArtist = (operationId: string) => {
+    const o = ops.find((x) => x.id === operationId);
+    return o?.artistId ? (calc.artistIndex.get(o.artistId)?.id ?? o.artistId) : null;
+  };
+  const ads = (owner?.ads ?? []).filter((a) => a.artistId === id);
+  return {
+    artistId: id,
+    pseudonym: entry?.pseudonym ?? '?',
+    ownerId,
+    period: {
+      from: f.from ?? null,
+      to: f.to ?? null,
+      basis,
+      received,
+      earned: row?.earned ?? pEarned,
+      waiting: row?.waiting ?? pWaiting,
+      waitingBreakdown,
+    },
+    total: {
+      earned: tEarned,
+      waiting: tWaiting,
+      recouped: row?.recouped ?? ZERO,
+      unrecouped: row?.unrecouped ?? ZERO,
+      recoupedFromMaster: row?.recoupedFromMaster ?? ZERO,
+      adsCharged: ads.reduce((s, a) => s.add(a.amount), ZERO),
+      paid,
+    },
+    byLabel,
+    tracks,
+    positions: (owner?.positions ?? []).filter((p) => p.artistId === id),
+    ads,
+    pendingOperations: (owner?.pendingOperations ?? []).filter((p) => opArtist(p.operationId) === id),
+  };
+}

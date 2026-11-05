@@ -106,6 +106,9 @@ describe('API contract', () => {
     await call('get', '/artists/duplicates');
     await call('get', '/search', { query: { q: 'synth', kinds: 'owners,artists' } });
     await call('get', '/artists/:id', { params: { id: a1.id } });
+    const card = await call('get', '/artists/:id', { params: { id: a1.id } });
+    expect([card.artist.id, card.owner?.id, card.merged]).toEqual([a1.id, owner.id, false]);
+    await call('get', '/artists/:id/balance', { params: { id: a1.id }, query: { from: '2026-07', to: '2026-07' } });
     const t1 = await call('post', '/tracks', { body: { title: 'Track One', isrc: I1, upc: UPC } });
     await call('post', '/tracks', { body: { title: 'Track Two', isrc: I2, upc: UPC } });
     await call('post', '/tracks', { body: { title: 'Track Three', isrc: I3, upc: UPC } });

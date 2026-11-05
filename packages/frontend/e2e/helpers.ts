@@ -54,7 +54,7 @@ export function sc(nn: number, k = 1): CaseKeys {
 
 /** The money endpoints of 17 §7 (every one runs a recalculation): R2 allows one request per page load. */
 const MONEY_PATH =
-  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|documents\/[^/]+\/uses)$/;
+  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|artists\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|documents\/[^/]+\/uses)$/;
 const moneyCalls = new WeakMap<Page, string[]>();
 
 /** Opens a page with the operator set (19 §1: `e2e-operator` before every spec). Restarts the money request count. */

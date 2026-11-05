@@ -95,7 +95,14 @@ export function DocumentPage() {
                     <tr key={s.id} data-testid={`split-${s.id}`} className="border-t border-border">
                       <Td><EntityLink kind="isrc" id={s.isrc} /></Td>
                       <Td>{period(s.validFrom, s.validTo)}</Td>
-                      <Td>{s.shares.map((x) => `${x.pseudonym} ${x.percent} %`).join(', ')}</Td>
+                      <Td>
+                        {s.shares.map((x, i) => (
+                          <span key={x.artistId}>
+                            {i > 0 ? ', ' : ''}
+                            <EntityLink kind="artist" id={x.artistId} label={x.pseudonym} /> {x.percent} %
+                          </span>
+                        ))}
+                      </Td>
                     </tr>
                   ))}
                 </SimpleTable>

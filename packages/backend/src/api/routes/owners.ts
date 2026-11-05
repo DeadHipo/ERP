@@ -71,7 +71,13 @@ export function ownersRouter(facade: Facade) {
     res.status(201).json(await owners.createArtist({ pseudonym: b.pseudonym, ownerId: b.ownerId ?? null }));
   });
   r.get('/artists/duplicates', async (_req, res) => res.json(await facade.artistDuplicates()));
-  r.get('/artists/:id', async (req, res) => res.json(await owners.getArtist(param(req, 'id'))));
+  r.get('/artists/:id', async (req, res) => res.json(await facade.artistDetail(param(req, 'id'))));
+  r.get('/artists/:id/balance', async (req, res) =>
+    timed(`GET /artists/${param(req, 'id')}/balance`, async () => {
+      const b = await facade.artistBalance(param(req, 'id'), parse(S.periodQuery, req.query));
+      timedSync('res.json (serialize + send)', () => res.json(b));
+    }),
+  );
   r.post('/artists/:id/owner', async (req, res) => {
     await owners.assignArtistOwner(param(req, 'id'), parse(S.assignOwnerBody, req.body).ownerId);
     res.json(await owners.getArtist(param(req, 'id')));

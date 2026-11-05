@@ -220,7 +220,7 @@ function Filters(props: { filter: Filter; onApply: (f: Record<Key, string>) => v
       {props.filter.artistId ? (
         <span className="w-full text-sm" data-testid="ads-filter-artist">
           {f.artistChosen}
-          <EntityLink kind="artist" id={props.filter.artistId} label={chosen.data?.pseudonym ?? props.filter.artistId} />
+          <EntityLink kind="artist" id={props.filter.artistId} label={chosen.data?.artist.pseudonym ?? props.filter.artistId} />
         </span>
       ) : null}
     </div>

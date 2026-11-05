@@ -12,6 +12,7 @@ import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
 import { reportsApi } from './reports';
 import { ownerViewApi } from './owner-view';
+import { artistViewApi } from './artist-view';
 import { payoutsApi } from './payouts';
 import { auditApi } from './audit';
 import { aggregatesApi } from './aggregates';
@@ -61,6 +62,7 @@ export function openFacade(config: FacadeConfig) {
     ...sourcesApi(ctx),
     ...reportsApi(ctx),
     ...ownerViewApi(ctx),
+    ...artistViewApi(ctx, splitsPart),
     ...payoutsApi(ctx),
     ...auditApi(ctx),
     ...searchApi(ctx),

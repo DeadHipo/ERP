@@ -442,18 +442,20 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 29 | `29-labels.spec.ts` | S37 (and P17) | acts |
 | 30 | `30-sources.spec.ts` | S34 | acts |
 | 31 | `31-questions.spec.ts` | the 14 open items | reads |
+| 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`) | acts |
+| 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | – | `smoke.spec.ts` | the shell, every route renders | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
 
 The dependencies the numbers encode: 12, 13, 14, 15 before 20 (the before states of S12, S13, S16, S19, S32); 20 before
 21 (S20 is asserted before in the queue and acted on in the signals page); 21 before 22 (the S30 candidate is in
 `isrcsWithoutSplit` until 22 creates the split); 20 before 28 (S13 after); 23 before 24 (the S36 owner is confirmed in
-24). Adding a spec: pick a number between the files it must follow and precede, and say so here.
+24); 24 before 33 (24 reads the before state of S24/2, which 33 changes with an advertising expense). Adding a spec: pick a number between the files it must follow and precede, and say so here.
 
 Request counts (17 R2): `openAs` restarts a per-page count of the money endpoints (overview, reconciliation, signals,
 queue, balance, owners/payables, tracks/summary, tracks/:isrc/money, releases/:upc, documents/:id/uses);
 `expectMoneyCalls(page, 1)` after `settled` is asserted for P1 (10), the queue (20), P21 (21), the owner card and the
-owners list (24), the track card and the track list (12), the release card (11) and the document card (14).
+owners list (24), the pseudonym card (33), the track card and the track list (12), the release card (11) and the document card (14).
 
 ## 7. Derivation notes (numbers not stated in 12)
 

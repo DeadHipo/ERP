@@ -215,6 +215,22 @@ export type SplitListItem = z.infer<typeof splitListItemSchema>;
 
 export const splitListSchema = z.object({ total: z.number().int(), items: z.array(splitListItemSchema) });
 
+/** `GET /artists/:id` (P12, D-165): the card of a pseudonym; a merged id answers for the surviving one. */
+export const artistDetailSchema = z.object({
+  artist: artistSchema,
+  merged: z.boolean().describe('The requested id was merged into `artist` (the survivor)'),
+  previousIds: z.array(z.string()).describe('Every other id the pseudonym had (merged into it)'),
+  merges: z.array(z.object({ fromId: z.string(), intoId: z.string(), reason: z.string(), at: timestamp })),
+  owner: ownerSchema.nullable(),
+  tracks: z.array(trackSchema),
+  contracts: z.array(contractSchema).describe('The contracts of the owner that name the pseudonym'),
+  splits: z.array(splitListItemSchema).describe('Every split with a row of the pseudonym (any period, every id)'),
+  participations: z.array(participationListSchema.shape.items.element),
+  labelRules: z.array(labelListItemSchema.shape.rules.element.extend({ labelName: z.string() })).describe('Sublabel rules whose recipient is the pseudonym'),
+  documents: z.array(documentSchema).describe('The documents the splits, rows, participations, contracts and rules above cite'),
+});
+export type ArtistDetail = z.infer<typeof artistDetailSchema>;
+
 // ---- sources (Believe) and publishing (B17) ----
 
 export const sourceFileSchema = z.object({
@@ -588,6 +604,39 @@ export const balanceSchema = z.object({
   blockingPayouts: z.array(z.string()),
 });
 export type Balance = z.infer<typeof balanceSchema>;
+
+/** `GET /artists/:id/balance` (P12, D-165): the money of one pseudonym, the artist row of its owner's balance with its parts. */
+export const artistBalanceSchema = z.object({
+  artist: artistSchema,
+  owner: ownerSchema.nullable(),
+  artistId: z.string(),
+  pseudonym: z.string(),
+  ownerId: z.string().nullable(),
+  period: z.object({
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    basis: z.enum(['report', 'sales']),
+    received: money.describe('Σ net of the units where the pseudonym has an allocation'),
+    earned: money,
+    waiting: money,
+    waitingBreakdown: cBreakdown,
+  }),
+  total: z.object({
+    earned: money,
+    waiting: money,
+    recouped: money,
+    unrecouped: money,
+    recoupedFromMaster: money.describe('Part of this pseudonym\'s master income consumed by recoupment'),
+    adsCharged: money.describe('Advertising charged to this pseudonym, taken off the owner\'s payable at once (D-157)'),
+    paid: money.describe('Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym)'),
+  }),
+  byLabel: balanceSchema.shape.byLabel,
+  tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
+  positions: balanceSchema.shape.positions,
+  ads: balanceSchema.shape.ads,
+  pendingOperations: balanceSchema.shape.pendingOperations,
+});
+export type ArtistBalance = z.infer<typeof artistBalanceSchema>;
 
 // ---- track explanation (the state after every master layer, D-127) ----
 

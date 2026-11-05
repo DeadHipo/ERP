@@ -5,7 +5,8 @@
   by the caller, `src/connect-sources.ts`)
   and spreads the method groups: `splits.ts`, `sources.ts` (B17 upload, writers, terms), `reports.ts`
   (reconciliation, owner balance, signals, track explanation), `owner-view.ts` (owner detail, merges),
-  `payouts.ts` (operations, payout button, payment proof, returns). Shared checks live in `context.ts`.
+  `payouts.ts` (operations, payout button, payment proof, returns), `artist-view.ts` (the card and the money of one
+  pseudonym, D-165). Shared checks live in `context.ts`.
 - `calculation.ts` is the domain core: `calculate()` reads `sources.snapshot()` first, then every module inside one
   `db.snapshot()` (read-only REPEATABLE READ), so one request sees one version of the data (D-012, D-121). Keep new
   reads inside that snapshot. It builds the pure `LayerContext` and runs `allocateUnit` per unit; `reconcile()` is
@@ -38,6 +39,10 @@
   owner's money (splits and participations of its pseudonyms, label strings of sublabels whose rule names them, its
   ads); a calculation over them gives the same `ownerBalance()`, since the balance reads only the units where the owner
   has an allocation. The balance route, the payout snapshot (`balanceWithFiles`) and `ownerPayables({ ids })` use it.
+  `artistReach` is the same for one pseudonym, by every id it had: `artistBalance()` (`balance.ts`) takes the artist row
+  of `ownerBalance()` from a calculation over that reach (`artistBalanceWithReach` in `context.ts`), which is the row of
+  the full calculation because the row reads only the units where the pseudonym has an allocation and recoups its
+  positions from its own master income (the owner's publishing is read whole); `tests/scope.test.ts` pins it (D-165).
   **A new way for money to reach a pseudonym** (a new layer, a new rule kind, a new kind of record) must extend
   `ownerReach`, and `tests/scope.test.ts` must pin balance-by-reach = full for it; `scripts/check-owner-scope.ts`
   proves it on the real data.

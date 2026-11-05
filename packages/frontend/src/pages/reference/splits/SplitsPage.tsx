@@ -74,7 +74,21 @@ export function SplitsPage() {
       { colId: 'isrc', headerName: t.cols.isrc, minWidth: 150, valueGetter: (p) => p.data?.isrc, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null) },
       { colId: 'period', headerName: t.cols.period, minWidth: 200, valueGetter: (p) => (p.data ? period(p.data.validFrom, p.data.validTo) : '') },
       { colId: 'document', headerName: t.cols.document, valueGetter: (p) => p.data?.documentStatus, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <DocumentCell id={p.data.documentId} status={p.data.documentStatus} /> : null) },
-      { colId: 'shares', headerName: t.cols.shares, minWidth: 260, valueGetter: (p) => p.data?.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', ') },
+      {
+        colId: 'shares',
+        headerName: t.cols.shares,
+        minWidth: 260,
+        valueGetter: (p) => p.data?.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', '),
+        cellRenderer: (p: { data?: SplitListItem }) =>
+          p.data
+            ? p.data.shares.map((s, i) => (
+                <span key={s.artistId}>
+                  {i > 0 ? ', ' : ''}
+                  <EntityLink kind="artist" id={s.artistId} label={s.pseudonym} /> {s.percent} %
+                </span>
+              ))
+            : null,
+      },
       { colId: 'ourShare', headerName: t.cols.ourShare, comparator: compareDecimal, valueGetter: (p) => p.data?.ourShare, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <span data-col="ourShare"><Money value={p.data.ourShare} /></span> : null) },
       { colId: 'origin', headerName: t.cols.origin, valueGetter: (p) => p.data?.origin },
       {

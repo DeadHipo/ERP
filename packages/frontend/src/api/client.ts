@@ -103,7 +103,11 @@ export const artists = {
   list: () => call('GET', '/artists', { schema: list(R.artistListItemSchema) }),
   create: (body: z.input<typeof S.createArtistBody>) =>
     call('POST', '/artists', { body, schema: R.artistSchema }),
-  get: (artistId: string) => call('GET', `/artists/${id(artistId)}`, { schema: R.artistSchema }),
+  /** The card of a pseudonym (P12, D-165); a merged id answers for the survivor. */
+  get: (artistId: string) => call('GET', `/artists/${id(artistId)}`, { schema: R.artistDetailSchema }),
+  /** The money of a pseudonym from the units of its reach (P12, D-165). */
+  balance: (artistId: string, query: z.input<typeof S.periodQuery> = {}) =>
+    call('GET', `/artists/${id(artistId)}/balance`, { query, schema: R.artistBalanceSchema }),
   assignOwner: (artistId: string, body: z.input<typeof S.assignOwnerBody>) =>
     call('POST', `/artists/${id(artistId)}/owner`, { body, schema: R.artistSchema }),
 };

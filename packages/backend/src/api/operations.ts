@@ -141,7 +141,23 @@ const operations: ApiOperation[] = [
     response: R.artistSchema,
     errors: ['409 possible_duplicate: artists with this pseudonym exist; repeat with force=true'],
   },
-  { method: 'get', path: '/artists/:id', tag: 'artists', summary: 'One artist', response: R.artistSchema },
+  {
+    method: 'get',
+    path: '/artists/:id',
+    tag: 'artists',
+    summary:
+      'The card of a pseudonym (P12, D-165): owner, the ids merged into it, tracks, contracts, split rows and participations by every id, sublabel rules where it is the recipient, the documents they cite; a merged id answers for the survivor',
+    response: R.artistDetailSchema,
+  },
+  {
+    method: 'get',
+    path: '/artists/:id/balance',
+    tag: 'artists',
+    summary:
+      'The money of one pseudonym from the units of its reach (D-165): the artist row of the owner balance (earned, waiting by reason, recouped, unrecouped, tracks), its advertising, payouts and positions; the period shapes the per-period fields as in the owner balance',
+    query: S.periodQuery,
+    response: R.artistBalanceSchema,
+  },
   {
     method: 'post',
     path: '/artists/:id/owner',
