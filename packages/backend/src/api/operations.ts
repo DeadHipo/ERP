@@ -120,8 +120,19 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists',
     tag: 'artists',
-    summary: 'Artists (merged ones are folded into the survivor)',
+    summary:
+      'Artists (merged ones are folded into the survivor), each with its owner, the ids merged into it, its tracks, open split rows and participations, contracts and open rows without a document (P11, D-167); no money',
     response: list(R.artistListItemSchema),
+  },
+  {
+    method: 'get',
+    path: '/artists/balances',
+    tag: 'artists',
+    summary:
+      'The money of a list of pseudonyms (the visible rows of P11, D-167): one calculation over the union of their reaches, then the artist row of each; ids (at most 200) filters the answer, without it every pseudonym from the full calculation',
+    query: S.artistBalancesQuery,
+    response: R.artistBalancesSchema,
+    errors: ['400 validation_error: more than 200 ids'],
   },
   {
     method: 'get',

@@ -52,10 +52,7 @@ export function ownersRouter(facade: Facade) {
     res.status(201).json(await facade.createPayout(param(req, 'id'), b));
   });
 
-  r.get('/artists', async (_req, res) => {
-    const idx = await owners.artistIndex();
-    res.json([...idx.entries()].filter(([id, a]) => id === a.id).map(([, a]) => a));
-  });
+  r.get('/artists', async (_req, res) => timed('GET /artists', async () => res.json(await facade.artistList())));
   r.post('/artists', async (req, res) => {
     const b = parse(S.createArtistBody, req.body);
     const similar = await owners.findSimilarArtists(b.pseudonym);
@@ -71,6 +68,12 @@ export function ownersRouter(facade: Facade) {
     res.status(201).json(await owners.createArtist({ pseudonym: b.pseudonym, ownerId: b.ownerId ?? null }));
   });
   r.get('/artists/duplicates', async (_req, res) => res.json(await facade.artistDuplicates()));
+  r.get('/artists/balances', async (req, res) =>
+    timed('GET /artists/balances', async () => {
+      const b = await facade.artistBalances(parse(S.artistBalancesQuery, req.query));
+      timedSync('res.json (serialize + send)', () => res.json(b));
+    }),
+  );
   r.get('/artists/:id', async (req, res) => res.json(await facade.artistDetail(param(req, 'id'))));
   r.get('/artists/:id/balance', async (req, res) =>
     timed(`GET /artists/${param(req, 'id')}/balance`, async () => {

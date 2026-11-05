@@ -38,6 +38,17 @@ export async function artistReach(modules: Modules, artistId: string): Promise<{
   return reachOf(modules, ids.length > 0 ? ids : [artistId]);
 }
 
+/**
+ * The reach of several pseudonyms at once (the visible rows of P11, D-167): the union over every id each of them had,
+ * read once. A merged id stands for its survivor; an unknown id is ignored.
+ */
+export async function artistsReach(modules: Modules, artistIds: readonly string[]): Promise<{ artistIds: string[]; isrcs: string[] }> {
+  const idx = await modules.owners.artistIndex();
+  const canonical = new Set(artistIds.map((id) => idx.get(id)?.id ?? id));
+  const ids = [...idx.entries()].filter(([, a]) => canonical.has(a.id)).map(([id]) => id);
+  return reachOf(modules, ids.length > 0 ? ids : [...canonical]);
+}
+
 /** The ISRCs that can carry money to any of the pseudonym ids (every id, merged ones included). */
 async function reachOf(modules: Modules, artistIds: readonly string[]): Promise<{ artistIds: string[]; isrcs: string[] }> {
   const { splits, labels, sources, ads } = modules;

@@ -75,8 +75,21 @@ export const artistSchema = z.object({
 });
 export type Artist = z.infer<typeof artistSchema>;
 
-/** The artist list resolves merges, so it has no `origin`. */
-export const artistListItemSchema = artistSchema.omit({ origin: true });
+/**
+ * The artist list resolves merges, so it has no `origin`. A row of P11 (D-167): the owner, the ids merged into it, the
+ * distinct tracks it is on, its open split rows and participations, the contracts naming it, the open rows without a
+ * document. No money (`GET /artists/balances`).
+ */
+export const artistListItemSchema = artistSchema.omit({ origin: true }).extend({
+  owner: z.object({ id: z.string(), name: z.string(), status: z.enum(['confirmed', 'waiting_documents']) }).nullable(),
+  previousIds: z.number().int().describe('How many other ids the pseudonym had (merged into it)'),
+  tracks: z.number().int().describe('Distinct tracks the pseudonym is on: registry links, split rows and participations, by every id'),
+  splitRows: z.number().int().describe('Split rows of the pseudonym not closed by today'),
+  participations: z.number().int().describe('Participations of the pseudonym not closed by today'),
+  contracts: z.number().int().describe('Contracts of its owner that name the pseudonym'),
+  undocumented: z.number().int().describe('Open split rows and participations without a document (their money waits)'),
+});
+export type ArtistListItem = z.infer<typeof artistListItemSchema>;
 
 /**
  * A pseudonym of the registry named by a catalog row (D-166): the surviving id (merges resolved) and its pseudonym.
@@ -645,6 +658,22 @@ export const artistBalanceSchema = z.object({
   pendingOperations: balanceSchema.shape.pendingOperations,
 });
 export type ArtistBalance = z.infer<typeof artistBalanceSchema>;
+
+/** `GET /artists/balances` (P11, D-167): the totals of `GET /artists/:id/balance` for a list of pseudonyms, from one calculation. */
+export const artistBalanceItemSchema = z.object({
+  artistId: z.string(),
+  pseudonym: z.string(),
+  ownerId: z.string().nullable(),
+  earned: money,
+  waiting: money,
+  recouped: money,
+  unrecouped: money,
+  adsCharged: money,
+  paid: money,
+  remaining: money.describe('earned − recouped − adsCharged − paid: what this pseudonym left for its owner\'s payable (the payout is the owner\'s)'),
+});
+export const artistBalancesSchema = z.object({ calculatedAt: timestamp, items: z.array(artistBalanceItemSchema) });
+export type ArtistBalanceItem = z.infer<typeof artistBalanceItemSchema>;
 
 // ---- track explanation (the state after every master layer, D-127) ----
 

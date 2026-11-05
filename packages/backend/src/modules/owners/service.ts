@@ -786,6 +786,15 @@ export function createOwnersService(db: Db) {
       });
     },
 
+    /** Every contract → pseudonym link with the contract's owner (the artists list counts the contracts naming a pseudonym, D-167). */
+    async contractLinks(): Promise<{ contractId: string; ownerId: string; artistId: string }[]> {
+      const [list, links] = await db.snapshot(() => Promise.all([repo.allContracts(), repo.allContractArtists()]));
+      const ownerOf = new Map(list.map((c) => [c.id, c.ownerId]));
+      return links
+        .filter((l) => ownerOf.has(l.contractId))
+        .map((l) => ({ contractId: l.contractId, ownerId: ownerOf.get(l.contractId) as string, artistId: l.artistId }));
+    },
+
     async contractsOfOwner(
       ownerId: string,
     ): Promise<{ id: string; number: string | null; documentId: string; artistIds: string[] }[]> {

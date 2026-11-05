@@ -110,6 +110,9 @@ export const artists = {
     call('GET', `/artists/${id(artistId)}/balance`, { query, schema: R.artistBalanceSchema }),
   assignOwner: (artistId: string, body: z.input<typeof S.assignOwnerBody>) =>
     call('POST', `/artists/${id(artistId)}/owner`, { body, schema: R.artistSchema }),
+  /** The money of a list of pseudonyms (the visible rows of P11, D-167), or of every pseudonym without `ids`. */
+  balances: (query: z.input<typeof S.artistBalancesQuery> = {}) =>
+    call('GET', '/artists/balances', { query, schema: R.artistBalancesSchema }),
 };
 
 export const tracks = {

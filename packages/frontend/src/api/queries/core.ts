@@ -12,6 +12,7 @@ export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['owners', 'balance'],
   ['owners', 'payables'],
   ['artists', 'balance'],
+  ['artists', 'balances'],
   ['reports', 'reconciliation'],
   ['reports', 'signals'],
   ['reports', 'overview'],

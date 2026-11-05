@@ -284,6 +284,14 @@ export const payablesQuery = periodQuery.extend({
     .describe('Comma-separated owner ids (at most 500): only these owners, from a calculation of the units of their reach (D-163)'),
 });
 
+/** `GET /artists/balances` (P11, D-167): the money of a list of pseudonyms from one calculation of their union reach. */
+export const artistBalancesQuery = periodQuery.extend({
+  ids: z
+    .string()
+    .optional()
+    .describe('Comma-separated artist ids (at most 200): only these pseudonyms, from a calculation of the units of their reach (D-167); without it every pseudonym from the full calculation'),
+});
+
 /** `GET /tracks/summary`: only the units of one Believe account and/or one report month. */
 export const trackSummaryQuery = z.object({
   account: z.string().optional(),

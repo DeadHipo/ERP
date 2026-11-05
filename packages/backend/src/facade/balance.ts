@@ -450,6 +450,25 @@ export function ownerIndex(calc: Calculation): Map<string, { units: UnitResult[]
   return index;
 }
 
+/**
+ * Per pseudonym (the surviving id), the units where it has at least one allocation, in calculation order. Built in one
+ * pass for the balances of a list of pseudonyms (D-167), as `ownerIndex` is for the payables.
+ */
+export function artistUnitIndex(calc: Calculation): Map<string, UnitResult[]> {
+  const index = new Map<string, UnitResult[]>();
+  for (const u of calc.units) {
+    const seen = new Set<string>();
+    for (const a of u.allocations) {
+      if (seen.has(a.artistId)) continue;
+      seen.add(a.artistId);
+      const list = index.get(a.artistId);
+      if (list) list.push(u);
+      else index.set(a.artistId, [u]);
+    }
+  }
+  return index;
+}
+
 /** What one pseudonym sees of its money (D-165): the artist row of `ownerBalance()` with the owner-level parts of it. */
 export interface ArtistMoney {
   artistId: string;
@@ -491,12 +510,22 @@ export interface ArtistMoney {
  * pseudonym's allocations. Without an owner there is no owner balance: everything comes from that loop (nothing is
  * earned, nothing recouped), and `ops` is empty.
  */
-export function artistBalance(calc: Calculation, artistId: string, ops: OperationView[], f: PeriodFilter): ArtistMoney {
+export function artistBalance(
+  calc: Calculation,
+  artistId: string,
+  ops: OperationView[],
+  f: PeriodFilter,
+  /**
+   * Prebuilt indexes (`artistUnitIndex`, `ownerIndex`): the units where the pseudonym has an allocation and the owner's
+   * entry, in calculation order. The same loops run over them, so the result equals the one from the whole calculation.
+   */
+  index: { units?: UnitResult[]; owner?: { units?: UnitResult[]; publishing?: PublishingResult[] } } = {},
+): ArtistMoney {
   const basis = f.basis ?? 'report';
   const entry = calc.artistIndex.get(artistId);
   const id = entry?.id ?? artistId;
   const ownerId = entry?.ownerId ?? null;
-  const owner = ownerId ? ownerBalance(calc, ownerId, ops, f) : null;
+  const owner = ownerId ? ownerBalance(calc, ownerId, ops, f, index.owner ?? {}) : null;
   const row = owner?.artists.find((a) => a.artistId === id);
 
   let received = ZERO;
@@ -507,7 +536,7 @@ export function artistBalance(calc: Calculation, artistId: string, ops: Operatio
   const waitingBreakdown: Partial<Record<CReason, Decimal>> = {};
   const byLabel: OwnerBalance['byLabel'] = {};
   const trackAgg = new Map<string, { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }>();
-  for (const u of calc.units) {
+  for (const u of index.units ?? calc.units) {
     const mine = u.allocations.filter((a) => a.artistId === id);
     if (mine.length === 0) continue;
     const inP = unitInPeriod(u, f);

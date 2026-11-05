@@ -13,6 +13,10 @@ export const artistKeys = {
   /** A money key (`MONEY_KEYS`): the calculation of the pseudonym's reach (D-165). */
   balance: (artistId: string, period: QueryPeriod = {}) => ['artists', 'balance', artistId, period] as const,
   duplicates: () => ['artists', 'duplicates'] as const,
+  /** A money key: one calculation for every pseudonym (P11 «Посчитать все», D-167). */
+  balances: () => ['artists', 'balances'] as const,
+  /** The balances of a list of pseudonyms (the visible rows of P11, D-167); the key is the sorted list. */
+  balancesOf: (ids: readonly string[]) => ['artists', 'balances', 'ids', ids.join(',')] as const,
 };
 
 export const artistQueries = {
@@ -26,4 +30,13 @@ export const artistQueries = {
       ...MONEY_QUERY,
     }),
   duplicates: () => queryOptions({ queryKey: artistKeys.duplicates(), queryFn: () => reference.artistDuplicates() }),
+  balances: () => queryOptions({ queryKey: artistKeys.balances(), queryFn: () => api.artists.balances(), ...MONEY_QUERY }),
+  /** P11 (D-167): the money of the visible rows only; one calculation of the units of their union reach. */
+  balancesOf: (ids: readonly string[]) =>
+    queryOptions({
+      queryKey: artistKeys.balancesOf(ids),
+      queryFn: () => api.artists.balances({ ids: ids.join(',') }),
+      enabled: ids.length > 0,
+      ...MONEY_QUERY,
+    }),
 };

@@ -45,6 +45,10 @@
   of `ownerBalance()` from a calculation over that reach (`artistBalanceWithReach` in `context.ts`), which is the row of
   the full calculation because the row reads only the units where the pseudonym has an allocation and recoups its
   positions from its own master income (the owner's publishing is read whole); `tests/scope.test.ts` pins it (D-165).
+  `artistsReach` is the union over a list of pseudonyms (D-167): `artistBalances({ ids })` (`artist-view.ts`, the
+  visible rows of P11) runs one calculation over it and takes the `artistBalance()` row of each with the prebuilt
+  `artistUnitIndex` / `ownerIndex`; `artistList()` is the row per pseudonym without money (owner, merged ids, tracks,
+  open rows, contracts, rows without a document), one snapshot, no calculation.
   **A new way for money to reach a pseudonym** (a new layer, a new rule kind, a new kind of record) must extend
   `ownerReach`, and `tests/scope.test.ts` must pin balance-by-reach = full for it; `scripts/check-owner-scope.ts`
   proves it on the real data.

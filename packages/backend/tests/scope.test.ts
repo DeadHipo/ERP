@@ -352,6 +352,56 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     expect(april.tracks.map((t) => [t.isrc, t.net.toFixed(), t.amount.toFixed()])).toEqual([[I(1), '200', '90']]);
   });
 
+  it('the balances of a list of pseudonyms are their single balances from one calculation of the union reach; the list rows count their rules (D-167)', async () => {
+    const { c } = await artistsWorld();
+    const f = c.f;
+    const ids = ['A', 'R', 'P'].map((n) => c.id(n));
+    const reads = await spy();
+    const list = await f.artistBalances({ ids: ids.join(',') });
+    expect(reads.map((r) => [r.filter.isrcs, r.units])).toEqual([[[I(1), I(3)], 3]]); // the union reach: I(1) twice, I(3) once
+    expect(list.items.map((i) => i.artistId).sort()).toEqual([...ids].sort());
+    for (const i of list.items) {
+      const one = await f.artistBalance(i.artistId);
+      const t = one.total;
+      expect(text([i.pseudonym, i.ownerId, i.earned, i.waiting, i.recouped, i.unrecouped, i.adsCharged, i.paid]), i.pseudonym).toBe(
+        text([one.pseudonym, one.ownerId, t.earned, t.waiting, t.recouped, t.unrecouped, t.adsCharged, t.paid]),
+      );
+      expect(i.remaining.toFixed(), i.pseudonym).toBe(t.earned.sub(t.recouped).sub(t.adsCharged).sub(t.paid).toFixed());
+    }
+    // the golden numbers of A: earned 135, the advance of 30 recouped, the ad of 40 charged, nothing paid → 65 left
+    const a = list.items.find((i) => i.artistId === c.id('A'));
+    expect(a && [a.earned.toFixed(), a.recouped.toFixed(), a.adsCharged.toFixed(), a.paid.toFixed(), a.remaining.toFixed()]).toEqual(['135', '30', '40', '0', '65']);
+    // without ids: every live pseudonym from the full calculation, the same rows
+    reads.length = 0;
+    const all = await f.artistBalances();
+    expect(reads.map((r) => [r.filter, r.units])).toEqual([[{}, 6]]);
+    expect(all.items.map((i) => i.artistId).sort()).toEqual(['A', 'A2', 'B', 'R', 'P'].map((n) => c.id(n)).sort());
+    expect(text(all.items.filter((i) => ids.includes(i.artistId)))).toBe(text(list.items));
+    // the list rows: owner, tracks (links, rows, participations), open rows, contracts, rows without a document
+    const rows = await f.artistList();
+    const row = (name: string) => {
+      const r = rows.find((x) => x.id === c.id(name));
+      return r && [r.owner?.id, r.owner?.status, r.previousIds, r.tracks, r.splitRows, r.participations, r.contracts, r.undocumented];
+    };
+    expect(row('A')).toEqual([c.owners.get('A'), 'confirmed', 0, 1, 1, 0, 1, 0]);
+    expect(row('A2')).toEqual([c.owners.get('A'), 'confirmed', 0, 1, 1, 0, 0, 0]);
+    expect(row('B')).toEqual([c.owners.get('B'), 'confirmed', 0, 1, 1, 0, 1, 1]); // the split of I(2) has no document
+    expect(row('P')).toEqual([c.owners.get('P'), 'confirmed', 0, 1, 0, 1, 1, 0]);
+    expect(row('R')).toEqual([c.owners.get('R'), 'confirmed', 0, 0, 0, 0, 1, 0]);
+    expect(rows.map((r) => r.pseudonym)).toEqual([...rows.map((r) => r.pseudonym)].sort((x, y) => x.localeCompare(y)));
+    // a merged id answers for the survivor once, an unknown id is left out, more than 200 ids are refused
+    await f.modules.owners.mergeArtists(c.id('A2'), c.id('A'), 'same person');
+    reads.length = 0;
+    const merged = await f.artistBalances({ ids: [c.id('A2'), c.id('A'), 'no-such-artist'].join(',') });
+    expect(reads.map((r) => [r.filter.isrcs, r.units])).toEqual([[[I(1), I(4)], 4]]);
+    expect(merged.items.map((i) => [i.artistId, i.earned.toFixed()])).toEqual([[c.id('A'), '151']]);
+    expect(row('A')).toEqual([c.owners.get('A'), 'confirmed', 0, 1, 1, 0, 1, 0]); // the rows above were read before the merge
+    const after = (await f.artistList()).find((x) => x.id === c.id('A'));
+    expect(after && [after.previousIds, after.tracks, after.splitRows]).toEqual([1, 2, 2]);
+    expect((await f.artistList()).some((x) => x.id === c.id('A2'))).toBe(false);
+    await expect(f.artistBalances({ ids: Array.from({ length: 201 }, (_, n) => `id-${n}`).join(',') })).rejects.toThrow(/at most 200/);
+  });
+
   it('a pseudonym without owner waits by reach; a merged id answers for the survivor by every id it had', async () => {
     const { c } = await artistsWorld();
     const f = c.f;

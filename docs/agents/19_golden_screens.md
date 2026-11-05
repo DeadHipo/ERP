@@ -444,6 +444,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 31 | `31-questions.spec.ts` | the 14 open items | reads |
 | 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`) | acts |
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
+| 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
 | – | `smoke.spec.ts` | the shell, every route renders | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
 

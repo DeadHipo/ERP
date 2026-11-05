@@ -25,6 +25,7 @@ export const OPERATION_COVERAGE: Record<
 
   'GET /artists': { page: 'P11', route: '/artists', note: 'also the pseudonyms of the rows of P14 that carry only an artist id (useArtistNames)' },
   'GET /artists/duplicates': { page: 'P11', route: '/artists/duplicates' },
+  'GET /artists/balances': { page: 'P11', route: '/artists', note: 'the money of the visible rows (ids=, D-167) or of every pseudonym (action-compute-all)' },
   'POST /artists': { page: 'P11', route: '/artists', note: 'action-create-artist' },
   'GET /artists/:id': { page: 'P12', route: '/artists/:id', note: 'the card: owner, merged ids, tracks, contracts, splits, participations, sublabel rules, documents; also the chosen pseudonym of the P22 filter' },
   'GET /artists/:id/balance': { page: 'P12', route: '/artists/:id', note: 'the one money call of the page (the reach of the pseudonym, D-165), shared by the tabs' },
