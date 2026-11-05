@@ -1053,7 +1053,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
         validFrom: '2020-01-01',
         documentId: (await approvedDoc(c.f, 'contract', owner)).id,
       });
-      await c.f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]));
+      await c.f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]), c.f.testLabels['0to8']);
       expect((await c.balance('A')).total.payable.toFixed()).toBe('80');
       return c;
     }
@@ -1363,7 +1363,7 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
       await writeB17(
         'Q12026',
         lines.filter((l) => which.includes(l.title)).map((l) => ({ ...l, period: '1Q26' })),
-      ),
+      ), c.f.testLabels['0to8'],
     );
     const calc = await calculate({ ...c.f.modules, db: c.f.db });
     const pick = (title: string) =>

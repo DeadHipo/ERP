@@ -74,7 +74,7 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
     const name = '9100001_1052428_2026-07-01_2026-07-01.csv.zip';
     const path = tmpPath(name);
     writeZip(path, [{ name: name.replace(/\.zip$/, ''), data: csv }]);
-    const loaded = await f.ingestBelieve({ path, fileName: name });
+    const loaded = await f.ingestBelieve({ path, fileName: name }, f.testLabels['0to8']);
     expect(loaded.netTotal).toBe('1.5');
     const two = tmpPath('9100002_1052428_2026-08-01_2026-08-01.csv.zip');
     writeZip(two, [
@@ -82,12 +82,12 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
       { name: 'b.csv', data: csv },
     ]);
     await expect(
-      f.ingestBelieve({ path: two, fileName: '9100002_1052428_2026-08-01_2026-08-01.csv.zip' }),
+      f.ingestBelieve({ path: two, fileName: '9100002_1052428_2026-08-01_2026-08-01.csv.zip' }, f.testLabels['0to8']),
     ).rejects.toThrow(/exactly one/);
     const notCsv = tmpPath('9100003_1052428_2026-09-01_2026-09-01.csv.zip');
     writeZip(notCsv, [{ name: 'report.xlsx', data: csv }]);
     await expect(
-      f.ingestBelieve({ path: notCsv, fileName: '9100003_1052428_2026-09-01_2026-09-01.csv.zip' }),
+      f.ingestBelieve({ path: notCsv, fileName: '9100003_1052428_2026-09-01_2026-09-01.csv.zip' }, f.testLabels['0to8']),
     ).rejects.toThrow(/must be a \.csv/);
     // a zipped load that fails mid-file releases the archive: the zip can be removed at once (D-101)
     const bad = Buffer.from(
@@ -99,7 +99,7 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
     const badName = '9100004_1052428_2026-10-01_2026-10-01.csv.zip';
     const badPath = tmpPath(badName);
     writeZip(badPath, [{ name: badName.replace(/\.zip$/, ''), data: bad }]);
-    await expect(f.ingestBelieve({ path: badPath, fileName: badName })).rejects.toThrow(/USD/);
+    await expect(f.ingestBelieve({ path: badPath, fileName: badName }, f.testLabels['0to8'])).rejects.toThrow(/USD/);
     rmSync(badPath);
     expect(existsSync(badPath)).toBe(false);
     const files = await f.modules.sources.listFiles();
@@ -120,7 +120,7 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
         { ...base, subscription: 'Free' },
         { ...base, salesType: 'Download' },
         { ...base, upc: '999' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(loaded.lineCount).toBe(8);
     expect((await testFileTotals(loaded.id)).keys).toBe('7');
@@ -132,7 +132,7 @@ describe('sources: zip input, key dimensions, recovery, validation', () => {
     const bad = tmpPath('9000001_1052428_2026-13-01_2026-13-01.csv');
     writeFileSync(bad, readFileSync(file.path));
     await expect(
-      f.ingestBelieve({ path: bad, fileName: '9000001_1052428_2026-13-01_2026-13-01.csv' }),
+      f.ingestBelieve({ path: bad, fileName: '9000001_1052428_2026-13-01_2026-13-01.csv' }, f.testLabels['0to8']),
     ).rejects.toThrow(/Invalid month/);
     expect(await f.modules.sources.listFiles()).toHaveLength(0);
   });
@@ -171,9 +171,9 @@ describe('publishing: terms, merges, statement checks', () => {
       documentId: (await approvedDoc(f, 'buyout', a.owner.id)).id,
     });
     await f.ingestB17(
-      await writeB17('Q12026', [{ writer: 'OWNER, A', title: 'S', payable: '100', period: '1Q26' }]),
+      await writeB17('Q12026', [{ writer: 'OWNER, A', title: 'S', payable: '100', period: '1Q26' }]), f.testLabels['0to8'],
     );
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '100' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '100' }]), f.testLabels['0to8']);
     const rows = (await f.reconciliation()).filter((r) => r.source === 'b17');
     expect(rows.find((r) => r.month === '2026-03')?.C_breakdown.publishing_terms_unconfirmed?.toFixed()).toBe(
       '50',
@@ -219,7 +219,7 @@ describe('publishing: terms, merges, statement checks', () => {
       validFrom: '2020-01-01',
       documentId: a.contractDocId,
     });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Writer Stub', title: 'S', payable: '100' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Writer Stub', title: 'S', payable: '100' }]), f.testLabels['0to8']);
     const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing') as {
       id: string;
     };
@@ -231,7 +231,7 @@ describe('publishing: terms, merges, statement checks', () => {
   it('statement checks: Period differs from the file quarter, non-USD, Payable column, same file again', async () => {
     const f = await newFacade();
     await expect(
-      f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1', period: '1Q26' }])),
+      f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1', period: '1Q26' }]), f.testLabels['0to8']),
     ).rejects.toThrow(/differs/);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('D');
@@ -239,11 +239,11 @@ describe('publishing: terms, merges, statement checks', () => {
     ws.addRow(['3Q25', 'S', 'W', 5, 'USD']);
     const p1 = tmpPath('0to8_Q32025_Pub.xlsx');
     await wb.xlsx.writeFile(p1);
-    const ok = await f.ingestB17({ path: p1, fileName: '0to8_Q32025_Pub.xlsx' });
+    const ok = await f.ingestB17({ path: p1, fileName: '0to8_Q32025_Pub.xlsx' }, f.testLabels['0to8']);
     expect(ok.statement.totalPayable).toBe('5');
     const p2 = tmpPath('0to8_copy.xlsx');
     writeFileSync(p2, readFileSync(p1));
-    await expect(f.ingestB17({ path: p2, fileName: '0to8_copy.xlsx' })).rejects.toMatchObject({
+    await expect(f.ingestB17({ path: p2, fileName: '0to8_copy.xlsx' }, f.testLabels['0to8'])).rejects.toMatchObject({
       code: 'duplicate_file',
     });
     const wb2 = new ExcelJS.Workbook();
@@ -253,14 +253,14 @@ describe('publishing: terms, merges, statement checks', () => {
     const p3 = tmpPath('0to8_Q42025_Publishing_Statement.xlsx');
     await wb2.xlsx.writeFile(p3);
     await expect(
-      f.ingestB17({ path: p3, fileName: '0to8_Q42025_Publishing_Statement.xlsx' }),
+      f.ingestB17({ path: p3, fileName: '0to8_Q42025_Publishing_Statement.xlsx' }, f.testLabels['0to8']),
     ).rejects.toThrow(/only USD/);
   });
 
   it('two simultaneous uploads of the same statement: one loads, the other is refused, the kept original survives', async () => {
     const f = await newFacade();
     const file = await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1' }]);
-    const results = await Promise.allSettled([f.ingestB17(file), f.ingestB17(file)]);
+    const results = await Promise.allSettled([f.ingestB17(file, f.testLabels['0to8']), f.ingestB17(file, f.testLabels['0to8'])]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const kept = (await f.modules.publishing.listStatements())[0];
     expect(kept).toBeDefined();
@@ -301,7 +301,7 @@ describe('final review: dates, adjustment documents, label guard, contracts', ()
 
   it('a writer mapped to a label owner is never paid as B: it stays unmapped (C)', async () => {
     const f = await newFacade();
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Label Writer', title: 'S', payable: '100' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Label Writer', title: 'S', payable: '100' }]), f.testLabels['0to8']);
     const label = await confirmedOwner(f, 'Label Co', []);
     const labelOwner = await f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
     void label;
@@ -381,7 +381,7 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
       shares: [{ artistId, percent: '50' }],
       documentId: (await approvedDoc(f, 'appendix')).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] }); // no proof yet
     await expect(
       async () =>
@@ -422,7 +422,7 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
       shares: [{ artistId, percent: '50' }],
       documentId: (await approvedDoc(f, 'appendix')).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
     await expect(
@@ -444,7 +444,7 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
       path,
       fileName: '0to8_Q22026_Publishing_Statement.xlsx',
       generatedAt: '2026-08-01',
-    });
+    }, f.testLabels['0to8']);
     expect(res.statement.lineCount).toBe(2);
     expect(res.statement.totalPayable).toBe('20');
     expect(res.statement.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -476,7 +476,7 @@ describe('B17 songwriters: lines belong to our writers (D-087)', () => {
           songwriters: 'ANNA SYNTHETIC, Testov Boris, External Person',
         },
         { writer: 'SOME PUBLISHER LTD', title: 'Song 2', payable: '40', songwriters: 'Unknown Cowriter' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(res.writers).toMatchObject({ matched: 2, external: 2, created: 1 });
     // Song 1: 300 split between A and B (150 each), author 50% -> 75 each. Song 2: rights-holder owner (waiting).
@@ -496,12 +496,12 @@ describe('B17 songwriters: final review fixes', () => {
     await f.ingestB17(
       await writeB17('Q12026', [
         { writer: 'PUB LTD', title: 'S1', payable: '10', period: '1Q26', songwriters: 'Nora Newcomer' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(
       (await f.modules.publishing.listWriters()).find((w) => w.displayName === 'Nora Newcomer')?.resolution,
     ).toBe('external');
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Nora Newcomer', title: 'S2', payable: '20' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Nora Newcomer', title: 'S2', payable: '20' }]), f.testLabels['0to8']);
     const w = (await f.modules.publishing.listWriters()).find((x) => x.displayName === 'Nora Newcomer');
     expect(w?.role).toBe('holder');
     expect(w?.ownerId).toBeTruthy();
@@ -536,7 +536,7 @@ describe('B17 songwriters: final review fixes', () => {
           payable: '100',
           songwriters: 'Anna Synthetic, Boris Testov, Ivan Twin',
         },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const r = (await f.reconciliation()).find((x) => x.source === 'b17');
     expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('33.333333333334');
@@ -553,7 +553,7 @@ describe('sources: units', () => {
         { isrc: I1, upc: UPC, net: '1.5', salesMonth: '2026-06' },
         { isrc: I1, upc: UPC, net: '2', salesMonth: '2026-07' },
         { isrc: I1, upc: UPC, net: '0.25', salesMonth: '2026-07', country: 'Peru' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const units = (await f.modules.sources.units()).map((u) => [u.salesMonth, u.netPico.toString()]).sort();
     expect(units).toEqual([

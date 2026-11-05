@@ -29,7 +29,7 @@ describe('streaming CSV parser', () => {
 describe('label string of the unit (D-124)', () => {
   it('reaches SourceUnit.labelName; the fixture default is Test Label', async () => {
     const f = await newFacade();
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]), f.testLabels['0to8']);
     const units = await f.modules.sources.units();
     expect(units.map((u) => u.labelName)).toEqual(['Test Label']);
   });
@@ -40,7 +40,7 @@ describe('label string of the unit (D-124)', () => {
         { isrc: ISRC, upc: UPC, net: '1', labelName: 'Label A' },
         { isrc: ISRC, upc: UPC, net: '2', labelName: 'Label B' },
         { isrc: ISRC, upc: UPC, net: '3', labelName: 'Label B', country: 'France' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const units = await f.modules.sources.units();
     expect(units.map((u) => [u.labelName, u.netPico])).toEqual([
@@ -72,7 +72,7 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
       { isrc: ISRC, upc: UPC, net: '0.2', quantity: 3, artistName: 'Name B (different)' },
       { isrc: ISRC, upc: UPC, net: '1', country: 'France' },
     ]);
-    const loaded = await f.ingestBelieve(file);
+    const loaded = await f.ingestBelieve(file, f.testLabels['0to8']);
     expect(loaded.lineCount).toBe(3);
     expect((await testFileTotals(loaded.id)).keys).toBe('2');
     expect(loaded.netTotal).toBe('1.300000000001');
@@ -84,24 +84,25 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
   it('stores the sha256 of the file', async () => {
     const f = await newFacade();
     const file = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]);
-    const loaded = await f.ingestBelieve(file);
+    const loaded = await f.ingestBelieve(file, f.testLabels['0to8']);
     expect(loaded.sha256).toBe(createHash('sha256').update(readFileSync(file.path)).digest('hex'));
   });
 
   it('a second file for an already loaded (reporting month, account) is an error', async () => {
     const f = await newFacade();
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]), f.testLabels['0to8']);
     const second = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '2' }], { reportId: '9000002' });
-    await expect(f.ingestBelieve(second)).rejects.toMatchObject({
+    await expect(f.ingestBelieve(second, f.testLabels['0to8'])).rejects.toMatchObject({
       code: 'duplicate_period',
       statusCode: 409,
     });
     // another account for the same month is a different scope
+    await f.modules.labels.addAccount(f.testLabels['0to8'], '7777777');
     await f.ingestBelieve(
       writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '2' }], {
         account: '7777777',
         reportId: '9000003',
-      }),
+      }), f.testLabels['0to8'],
     );
     expect(await f.modules.sources.listFiles()).toHaveLength(2);
   });
@@ -109,11 +110,11 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
   it('the same file content under another month name is rejected by sha256', async () => {
     const f = await newFacade();
     const a = writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]);
-    await f.ingestBelieve(a);
+    await f.ingestBelieve(a, f.testLabels['0to8']);
     const copy = tmpPath('9000009_1052428_2026-08-01_2026-08-01.csv');
     writeFileSync(copy, readFileSync(a.path));
     await expect(
-      f.ingestBelieve({ path: copy, fileName: '9000009_1052428_2026-08-01_2026-08-01.csv' }),
+      f.ingestBelieve({ path: copy, fileName: '9000009_1052428_2026-08-01_2026-08-01.csv' }, f.testLabels['0to8']),
     ).rejects.toMatchObject({ code: 'duplicate_file' });
   });
 
@@ -123,18 +124,18 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
       { isrc: ISRC, upc: UPC, net: '1' },
       { isrc: ISRC, upc: UPC, net: 'abc', country: 'Chile' },
     ]);
-    await expect(f.ingestBelieve(bad)).rejects.toThrow(/Line 3: (Gross|Net) Revenue/);
+    await expect(f.ingestBelieve(bad, f.testLabels['0to8'])).rejects.toThrow(/Line 3: (Gross|Net) Revenue/);
     // the failed load is recorded, but nothing of it counts and it does not block the period
     expect((await f.modules.sources.listFiles()).map((x) => x.status)).toEqual(['failed']);
     expect(await f.modules.sources.units()).toHaveLength(0);
     // the period is free again after a failed load
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1' }]), f.testLabels['0to8']);
   });
 
   it('only USD is accepted (everything inside is USD)', async () => {
     const f = await newFacade();
     await expect(
-      f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', currency: 'EUR' }])),
+      f.ingestBelieve(writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', currency: 'EUR' }]), f.testLabels['0to8']),
     ).rejects.toThrow(/only USD/);
   });
 
@@ -142,7 +143,7 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     const f = await newFacade();
     await expect(
       f.ingestBelieve(
-        writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', reportingMonth: '2026-06' }]),
+        writeBelieve('2026-07', [{ isrc: ISRC, upc: UPC, net: '1', reportingMonth: '2026-06' }]), f.testLabels['0to8'],
       ),
     ).rejects.toThrow(/differs/);
   });
@@ -153,7 +154,7 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
       writeBelieve('2026-07', [
         { isrc: ISRC, upc: UPC, net: '-0.5', quantity: -1 },
         { isrc: '', upc: UPC, net: '3', platform: 'iTunes', salesType: 'Download' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(loaded.netTotal).toBe('2.5');
     const units = await f.modules.sources.units();
@@ -185,7 +186,7 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     }
     await new Promise<void>((r) => out.end(() => r()));
     const before = process.memoryUsage().heapUsed;
-    const loaded = await f.ingestBelieve({ path, fileName });
+    const loaded = await f.ingestBelieve({ path, fileName }, f.testLabels['0to8']);
     expect(loaded.lineCount).toBe(200_000);
     expect(loaded.netTotal).toBe('0.2');
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(300 * 1024 * 1024);

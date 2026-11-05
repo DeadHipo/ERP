@@ -55,7 +55,7 @@ async function loadJuly(f: TestFacade) {
       { isrc: 'QZTST2699999', upc: '999', net: '7', artistName: 'A1' }, // unknown pair, artist name matches but must not be used
       { isrc: 'QZTST2688888', upc: UPC, net: '3' }, // known? no: pair not in module 1
       { isrc: '', upc: UPC, net: '2', platform: 'iTunes', salesType: 'Download' },
-    ]),
+    ]), f.testLabels['0to8'],
   );
 }
 
@@ -96,7 +96,7 @@ describe('facade: completeness check A = B + C + our share (09, principle 11)', 
   it('ISRC without split on the report date stays with us and is shown separately', async () => {
     const f = await newFacade();
     await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10' }]), f.testLabels['0to8']);
     const [r] = await f.reconciliation();
     expect(r?.ourShareNoSplit.toFixed()).toBe('10');
     expect(r?.ourShare.toFixed()).toBe('10');
@@ -122,7 +122,7 @@ describe('facade: completeness check A = B + C + our share (09, principle 11)', 
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '100' },
         { isrc: I1, upc: '555', net: '100' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('100');
   });
@@ -174,7 +174,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
   it('payout: one amount per owner, rounded down to cents, with snapshot; blocks until the payment proof exists', async () => {
     const f = await newFacade();
     const { a, a1 } = await world(f);
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100.123456789012' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100.123456789012' }]), f.testLabels['0to8']);
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     expect(p.amountCents).toBe(5006); // 50% of 100.123456789012 = 50.061728394506 -> 50.06
     expect(p.direction).toBe('out');
@@ -197,7 +197,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
   it('a deferred payment blocks payouts; a return is a separate operation linked by operation id', async () => {
     const f = await newFacade();
     const { a } = await world(f);
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     await f.modules.settlements.setDeferred(p.id, true);
@@ -217,7 +217,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
   it('payout threshold is not part of the calculation, it only disables the button', async () => {
     const f = await newFacade(10000);
     const { a } = await world(f);
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('50');
     await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/threshold/);
   });
@@ -281,7 +281,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
   it('balance may be negative after a split change; it is stored with the minus and shown as 0', async () => {
     const f = await newFacade();
     const { a, a1, a2 } = await world(f);
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     // retroactive change confirmed by a new appendix: artist shares go down
@@ -319,7 +319,7 @@ describe('facade: publishing B17 (08)', () => {
       await writeB17('Q22026', [
         { writer: 'OWNER, A', title: 'Song One', payable: '200' },
         { writer: 'Unknown Writer', title: 'Song Two', payable: '80' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(res.writers).toMatchObject({ matched: 1, created: 1, ambiguous: 0 });
     const b = await f.ownerBalance(a.owner.id);
@@ -344,7 +344,7 @@ describe('facade: publishing B17 (08)', () => {
       documentId: termsDoc.id,
     });
     await f.ingestB17(
-      await writeB17('Q22026', [{ writer: 'Writer Unknown', title: 'Song', payable: '100' }]),
+      await writeB17('Q22026', [{ writer: 'Writer Unknown', title: 'Song', payable: '100' }]), f.testLabels['0to8'],
     );
     const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing');
     expect(stub?.status).toBe('waiting_documents');
@@ -366,7 +366,7 @@ describe('facade: publishing B17 (08)', () => {
       documentId: termsDoc.id,
     });
     await loadJuly(f); // master: 100 confirmed
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '400' }])); // author 200
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '400' }]), f.testLabels['0to8']); // author 200
     const basis = await approvedDoc(f, 'advance_basis', a.owner.id);
     const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
@@ -386,14 +386,14 @@ describe('facade: publishing B17 (08)', () => {
 
   it('a second B17 statement for the same quarter is an error', async () => {
     const f = await newFacade();
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1' }]), f.testLabels['0to8']);
     await expect(
       f.ingestB17(
         await writeB17(
           'Q22026',
           [{ writer: 'W', title: 'S', payable: '2' }],
           '0to8_Q22026_Publishing_Statement_Updated.xlsx',
-        ),
+        ), f.testLabels['0to8'],
       ),
     ).rejects.toMatchObject({ code: 'duplicate_period' });
   });

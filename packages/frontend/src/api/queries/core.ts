@@ -58,6 +58,8 @@ export function useAction<Args, Result>(
     invalidate: 'money' | 'reference' | 'all';
     /** The success toast text, built from the response (what changed). */
     success?: (result: Result, args: Args) => string;
+    /** An error the page answers itself (e.g. a dialog that fixes it and repeats, D-169): true = no error toast. */
+    handled?: (error: ApiError, args: Args) => boolean;
   },
 ) {
   const queryClient = useQueryClient();
@@ -75,7 +77,9 @@ export function useAction<Args, Result>(
       else void queryClient.invalidateQueries();
       notifySuccess(options.success ? options.success(result, args) : undefined);
     },
-    onError: (error) => notifyError(error),
+    onError: (error, args) => {
+      if (!options.handled?.(error, args)) notifyError(error);
+    },
   });
   const mutate: typeof mutation.mutate = (...rest) => {
     if (inFlight.current) return;

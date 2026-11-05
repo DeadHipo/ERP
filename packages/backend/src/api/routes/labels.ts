@@ -19,6 +19,9 @@ export function labelsRouter(facade: Facade) {
   r.post('/labels/:id/accounts', async (req, res) =>
     res.status(201).json(await labels.addAccount(param(req, 'id'), parse(S.addAccountBody, req.body).account)),
   );
+  r.post('/labels/:id/accounts/:account/remove', async (req, res) =>
+    res.json(await facade.removeLabelAccount(param(req, 'id'), param(req, 'account'))),
+  );
   r.post('/labels/:id/aliases', async (req, res) =>
     res.status(201).json(await labels.addAlias(param(req, 'id'), parse(S.addAliasBody, req.body).alias)),
   );

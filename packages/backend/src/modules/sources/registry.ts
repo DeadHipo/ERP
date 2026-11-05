@@ -17,6 +17,8 @@ export interface SourceFileRecord {
   netTotal: string | null;
   grossTotal: string | null;
   uploadedBy: string;
+  /** The own label the file was loaded under (D-169): opaque text here, the facade checks it; null = before the labels. */
+  labelId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,11 +33,12 @@ export interface NewSourceFile {
   storedPath: string;
   sha256: string;
   uploadedBy: string;
+  labelId: string | null;
 }
 
 const COLUMNS = `id, source, account, to_char(reporting_month, 'YYYY-MM') AS reporting_month, report_id, file_name,
   stored_path, sha256, status, line_count::text AS line_count, net_total::text AS net_total,
-  gross_total::text AS gross_total, uploaded_by, created_at, updated_at`;
+  gross_total::text AS gross_total, uploaded_by, label_id, created_at, updated_at`;
 
 interface Row {
   id: string;
@@ -51,6 +54,7 @@ interface Row {
   net_total: string | null;
   gross_total: string | null;
   uploaded_by: string;
+  label_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +76,7 @@ const record = (r: Row): SourceFileRecord => ({
   netTotal: canonical(r.net_total),
   grossTotal: canonical(r.gross_total),
   uploadedBy: r.uploaded_by,
+  labelId: r.label_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -103,8 +108,8 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
     async insertLoading(f: NewSourceFile): Promise<SourceFileRecord> {
       try {
         const { rows } = await pool.query<Row>(
-          `INSERT INTO source_files (id, source, account, reporting_month, report_id, file_name, stored_path, sha256, uploaded_by)
-           VALUES ($1, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8, $9) RETURNING ${COLUMNS}`,
+          `INSERT INTO source_files (id, source, account, reporting_month, report_id, file_name, stored_path, sha256, uploaded_by, label_id)
+           VALUES ($1, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8, $9, $10) RETURNING ${COLUMNS}`,
           [
             f.id,
             f.source,
@@ -115,6 +120,7 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
             f.storedPath,
             f.sha256,
             f.uploadedBy,
+            f.labelId,
           ],
         );
         return record(rows[0] as Row);
@@ -154,9 +160,28 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
 
     get: (id: string) => one(`SELECT ${COLUMNS} FROM source_files WHERE id = $1`, [id]),
 
-    async list(): Promise<SourceFileRecord[]> {
+    /** Every file, newest month first; with `labelId` only the files loaded under that label (D-169). */
+    async list(filter: { labelId?: string } = {}): Promise<SourceFileRecord[]> {
+      const { rows } =
+        filter.labelId === undefined
+          ? await pool.query<Row>(
+              `SELECT ${COLUMNS} FROM source_files ORDER BY reporting_month DESC, account, created_at DESC`,
+            )
+          : await pool.query<Row>(
+              `SELECT ${COLUMNS} FROM source_files WHERE label_id = $1
+               ORDER BY reporting_month DESC, account, created_at DESC`,
+              [filter.labelId],
+            );
+      return rows.map(record);
+    },
+
+    /** The files of an account that are being loaded or loaded (D-169: an account with files is not removed). */
+    async activeOfAccount(source: string, account: string): Promise<SourceFileRecord[]> {
       const { rows } = await pool.query<Row>(
-        `SELECT ${COLUMNS} FROM source_files ORDER BY reporting_month DESC, account, created_at DESC`,
+        `SELECT ${COLUMNS} FROM source_files
+         WHERE source = $1 AND account = $2 AND status IN ('loading', 'loaded')
+         ORDER BY reporting_month, created_at`,
+        [source, account],
       );
       return rows.map(record);
     },

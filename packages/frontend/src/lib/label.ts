@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { ru } from '../i18n/ru';
 import { readStorage, writeStorage } from './storage';
 
 /** The storage key of the label switch (D-168): the id of an own label, '' = «Все» (every label). */
@@ -60,3 +61,12 @@ export function useLabel(): { labelId: string; setLabel: (id: string) => void } 
 
 /** The label view as a query object to spread into a read (`label=<id>`), nothing under «Все». */
 export const labelQuery = (labelId: string): { label?: string } => (labelId ? { label: labelId } : {});
+
+/**
+ * The label a write is made under (D-169): the switch of the header. Under «Все» every write that needs a label (an
+ * upload, a payout) is closed, and `reason` says why next to the button: one rule instead of a check per page.
+ */
+export function useWriteLabel(): { labelId: string; closed: boolean; reason: string } {
+  const { labelId } = useLabel();
+  return { labelId, closed: labelId === '', reason: ru.shell.label.pick };
+}

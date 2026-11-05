@@ -251,11 +251,18 @@ file, account 2733100.
 Action (P10 of Y, "объединить в…"): `POST /owners/merge` {fromId Y, intoId X, reason}; dialog: from → into,
 pseudonym B and documents that move, "необратимо". History of X shows the audit row with `e2e-operator`.
 
-**S34 Upload a Believe file (P19).** Fixture: `packages/frontend/e2e/fixtures/9900001_2734100_2026-03-01_2026-03-01.csv`
-(synthetic, one line `QZTST2734101`, UPC `2734100000001`, net 100, `Test Label`); seed: the track and row A 50, no
-file. Before: P19 has no file of account 2734100, P1 has no row. Upload → file `loaded`, lineCount 1; P1 2734100 /
-2026-03: 100 / 50 / 0 / 50. Same file again: 409 `duplicate_period` (the loader checks account + month before the
-hash). The same bytes renamed to account 2734101 (`9900002_2734101_…csv`): 409 `duplicate_file`.
+**S34 Upload a Believe file (P19), under a label (D-169).** Fixture: `9900001_2734100_2026-03-01_2026-03-01.csv`, built in
+the spec (synthetic, one line `QZTST2734101`, UPC `2734100000001`, net 100, `Test Label`); seed: the track and row A 50, no
+file, account 2734100 registered under no label. Before: P19 has no file of account 2734100, P1 has no row. Under «Все»
+`action-upload-believe` and `action-upload-b17` are disabled, `upload-closed-reason` «выберите лейбл в шапке…». Under 0to8
+the upload answers 422 `account_unregistered`: `register-account-dialog` opens («Зарегистрировать счёт 2734100 за лейблом
+0to8», `field-label-account` prefilled) → `action-account-submit` registers it and the upload repeats → file `loaded`,
+lineCount 1, `file-label` (`data-col="label"`) «0to8»; P1 2734100 / 2026-03: 100 / 50 / 0 / 50. Same file again under
+0to8: 409 `duplicate_period` (the loader checks account + month before the hash). The same file under Echo8: the file
+is not listed there, the toast `account_of_other_label` says «Счёт 2734100 принадлежит лейблу 0to8» (not
+`duplicate_period`: the account is checked first). The same bytes renamed to account 2734101 (`9900002_2734101_…csv`,
+registered under 0to8 by the spec): 409 `duplicate_file`. P17 (spec 29): an account added to 0to8 and removed again
+(`action-remove-account-<n>`, `ConfirmDialog`); `account_has_files` is the backend test's.
 
 **S30 Duplicate pseudonyms (P11).** Seed: artist `DUP-301` of confirmed Owner DUP-301; a second artist `DUP-301`
 without owner; `QZTST2730101` registered, Believe artist name `DUP-301`, net 100, no split. Before: P11 group (2

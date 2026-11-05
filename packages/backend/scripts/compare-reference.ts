@@ -21,6 +21,7 @@
  * Read-only: GET requests only. Exit 0 = invariants hold, 1 = a violation, 2 = the comparison could not run.
  */
 import { readdirSync, readFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Decimal } from '../src/shared/money';
@@ -225,16 +226,32 @@ function readRef<T>(file: string): T {
   return JSON.parse(readFileSync(join(refDir, file), 'utf8')) as T;
 }
 
-async function get<T>(path: string): Promise<T> {
+/** One GET without a timeout (a full calculation on a loaded machine may take longer than fetch's header timeout). */
+function get<T>(path: string): Promise<T> {
   const t0 = performance.now();
-  const res = await fetch(`${api}/api/v1${path}`, {
-    headers: { Accept: 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+  return new Promise<T>((resolve, reject) => {
+    const req = httpRequest(
+      `${api}/api/v1${path}`,
+      { method: 'GET', headers: { Accept: 'application/json', ...(cookie ? { Cookie: cookie } : {}) } },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          // the body of an error is not printed: it may carry names
+          if ((res.statusCode ?? 0) >= 400) return reject(new Error(`GET ${path}: HTTP ${res.statusCode}`));
+          console.error(`GET ${path}: ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+          try {
+            resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as T);
+          } catch (e) {
+            reject(e instanceof Error ? e : new Error(String(e)));
+          }
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('error', reject);
+    req.end();
   });
-  // the body of an error is not printed: it may carry names
-  if (!res.ok) throw new Error(`GET ${path}: HTTP ${res.status}`);
-  const body = (await res.json()) as T;
-  console.error(`GET ${path}: ${((performance.now() - t0) / 1000).toFixed(1)} s`);
-  return body;
 }
 
 // ---------------------------------------------------------------- comparison

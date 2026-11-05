@@ -41,6 +41,8 @@ export interface ActiveFile {
 export interface LinesQuery {
   /** Files to read (loaded ones). Without it: all loaded files if an ISRC or UPC is given, else the newest report month. */
   fileIds?: string[];
+  /** Only the files loaded under this label (D-169): opaque text, the facade has checked it. */
+  labelId?: string;
   isrc?: string;
   upc?: string;
   platform?: string;
@@ -105,9 +107,13 @@ export function createSourcesService(deps: SourcesDeps) {
   const { registry, columnar } = deps;
   const loader = createBelieveLoader(deps);
 
-  /** The requested files, which must be loaded; else all loaded files (ISRC or UPC given) or the newest month. */
-  async function chooseFiles(requested: string[] | undefined, anchored: boolean) {
-    const loaded = await registry.loaded();
+  /**
+   * The requested files, which must be loaded; else all loaded files (ISRC or UPC given) or the newest month. With a
+   * label (D-169) only the loaded files of that label count: a requested file of another label is not a loaded file here.
+   */
+  async function chooseFiles(requested: string[] | undefined, anchored: boolean, labelId?: string) {
+    const all = await registry.loaded();
+    const loaded = labelId === undefined ? all : all.filter((f) => f.labelId === labelId);
     if (requested && requested.length > 0) {
       const byId = new Map(loaded.map((f) => [f.id, f]));
       const unknown = requested.filter((id) => !byId.has(id));
@@ -126,8 +132,15 @@ export function createSourcesService(deps: SourcesDeps) {
      */
     ingestBelieve: (input: LoadInput): Promise<SourceFileRecord> => loader.ingestBelieve(input),
 
-    /** Every file in the registry, newest month first, including failed and replaced ones. */
-    listFiles: (): Promise<SourceFileRecord[]> => registry.list(),
+    /**
+     * Every file in the registry, newest month first, including failed and replaced ones; with `labelId` only the
+     * files loaded under that label (D-169).
+     */
+    listFiles: (filter: { labelId?: string } = {}): Promise<SourceFileRecord[]> => registry.list(filter),
+
+    /** The files of a Believe account that are being loaded or loaded (D-169). */
+    activeFilesOfAccount: (account: string): Promise<SourceFileRecord[]> =>
+      registry.activeOfAccount('believe', account),
 
     async getFile(id: string): Promise<SourceFileRecord> {
       const f = await registry.get(id);
@@ -246,7 +259,7 @@ export function createSourcesService(deps: SourcesDeps) {
       const dir = q.dir ?? 'desc';
       const isrc = normalizeIsrc(q.isrc);
       const upc = normalizeUpc(q.upc);
-      const files = await chooseFiles(q.fileIds, Boolean(isrc || upc));
+      const files = await chooseFiles(q.fileIds, Boolean(isrc || upc), q.labelId);
       const salesFrom = q.salesFrom ? assertMonth(q.salesFrom) : undefined;
       const salesTo = q.salesTo ? assertMonth(q.salesTo) : undefined;
       const filter = {
@@ -288,9 +301,12 @@ export function createSourcesService(deps: SourcesDeps) {
       };
     },
 
-    /** The values the filters of the lines page can take in the chosen files (newest report month by default). */
-    async linesFacets(fileIds?: string[]): Promise<{ files: FileRef[] } & LinesFacets> {
-      const files = await chooseFiles(fileIds, false);
+    /**
+     * The values the filters of the lines page can take in the chosen files (newest report month by default); with
+     * `labelId` over the files of that label only (D-169).
+     */
+    async linesFacets(fileIds?: string[], labelId?: string): Promise<{ files: FileRef[] } & LinesFacets> {
+      const files = await chooseFiles(fileIds, false, labelId);
       const facets = await columnar.facets(files.map((f) => f.id));
       return {
         files: files.map(({ id, account, reportingMonth, fileName }) => ({

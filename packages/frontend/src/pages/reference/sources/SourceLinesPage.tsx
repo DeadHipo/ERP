@@ -12,6 +12,7 @@ import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { labelQuery, useLabel } from '../../../lib/label';
 import { toInt } from '../shared';
 
 const t = ru.reference.lines;
@@ -31,7 +32,9 @@ const sortOf = (v: string) => SORTS.find((s) => s === v);
  */
 export function SourceLinesPage() {
   const [params, setParams] = useSearchParams();
-  const files = useQuery(sourceQueries.files());
+  // under a label (D-169) only the files loaded under it are listed and read
+  const { labelId } = useLabel();
+  const files = useQuery(sourceQueries.files(labelId));
   const loaded = useMemo(() => (files.data?.believe ?? []).filter((f) => f.status === 'loaded'), [files.data]);
   const account = params.get('account') ?? '';
   const month = params.get('month') ?? '';
@@ -57,7 +60,7 @@ export function SourceLinesPage() {
 
   const waitingForFiles = (account !== '' || month !== '') && !fileParam && files.data === undefined;
   const ready = !waitingForFiles && (ids.length > 0 || searching);
-  const facets = useQuery({ ...sourceQueries.facets(idsText || undefined), enabled: !waitingForFiles });
+  const facets = useQuery({ ...sourceQueries.facets(idsText || undefined, labelId), enabled: !waitingForFiles });
   const lines = useQuery({
     ...sourceQueries.lines({
       fileId: idsText || undefined,
@@ -74,6 +77,7 @@ export function SourceLinesPage() {
       dir: get('dir') === 'asc' ? 'asc' : 'desc',
       limit: toInt(get('limit') || '100'),
       offset: toInt(offset),
+      ...labelQuery(labelId),
     }),
     enabled: ready,
   });

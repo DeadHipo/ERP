@@ -171,6 +171,7 @@ export class Case {
         })),
         { account },
       ),
+      account === ACC2 ? this.f.testLabels.Echo8 : this.f.testLabels['0to8'], // D-169: the label of the account
     );
     this.files.push({ account, month });
   }

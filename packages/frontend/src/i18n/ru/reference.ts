@@ -200,6 +200,14 @@ export const reference = {
     accountField: 'Номер счёта Believe',
     accountAdded: 'Счёт {account} добавлен к лейблу {label}',
     accountsHint: 'Строки файла счёта, ведущие к другому своему лейблу, видны в сигнале «Строки лейбла вне своего счёта»',
+    registerAccount: 'Зарегистрировать счёт {account} за лейблом {label}',
+    registerHint: 'Счёт этого файла не зарегистрирован ни за одним лейблом. После регистрации файл загрузится снова сам.',
+    removeAccount: 'Снять счёт',
+    accountRemoved: 'Счёт {account} снят с лейбла {label}',
+    removeLines: {
+      account: 'Счёт {account} перестанет принадлежать лейблу {label}',
+      files: 'Пока у счёта есть загруженные файлы, снять его нельзя',
+    },
     rules: 'Правила получателя',
     noRules: 'Правил нет.',
     setRule: 'Задать правило',
@@ -275,7 +283,7 @@ export const reference = {
     noFileChosen: 'файл не выбран',
     uploaded: 'Файл загружен: {name}',
     uploadedB17: 'Выписка загружена: {name}',
-    cols: { account: 'Счёт', month: 'Месяц', fileName: 'Файл', status: 'Статус', lineCount: 'Строк', net: 'Получено', createdAt: 'Загружен', periods: 'Периоды', totalPayable: 'К выплате', warnings: 'Предупреждения' },
+    cols: { account: 'Счёт', label: 'Лейбл', month: 'Месяц', fileName: 'Файл', status: 'Статус', lineCount: 'Строк', net: 'Получено', createdAt: 'Загружен', periods: 'Периоды', totalPayable: 'К выплате', warnings: 'Предупреждения' },
   },
   lines: {
     title: 'Строки отчётов',

@@ -246,10 +246,25 @@ export const sourceLinesQuery = z.object({
   dir: z.enum(['asc', 'desc']).optional(),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  ...labelQuery.shape,
 });
 export type SourceLinesQuery = z.infer<typeof sourceLinesQuery>;
 
-export const sourceFacetsQuery = z.object({ fileId: z.string().optional() });
+export const sourceFacetsQuery = z.object({ fileId: z.string().optional(), ...labelQuery.shape });
+
+/** `GET /sources/files`: under a label (`label=`) the files and statements loaded under it (D-169). */
+export const sourceFilesQuery = labelQuery;
+
+/**
+ * `POST /sources/believe`, `POST /publishing/b17`: the own label the file is loaded under (D-169). Optional here so that
+ * a missing label is the facade's 400 `label_required`, not a `validation_error`; checked before the body is received.
+ */
+export const uploadLabelQuery = z.object({
+  label: z
+    .string()
+    .optional()
+    .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown, 400 label_not_own'),
+});
 
 export const mapWriterBody = z.object({ ownerId: z.string().nullish(), createNew: z.boolean().optional() });
 

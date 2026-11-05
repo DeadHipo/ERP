@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { account, apiPost, expectOwner, expectP1, openAs, openSignalList, sc, settled, signalRow, toastOk } from '../helpers';
+import { account, apiPost, expectOwner, expectP1, labelOf, openAs, openSignalList, sc, settled, signalRow, toastOk } from '../helpers';
 
 // P17 «Лейблы» (19 §4 S37): close the label rule of «Close Label 37» at 2026-04-01 through the page; the month 04 loses the
 // NG carve (ours 25 → 50), 03 stays. The second close at the same date is a 200 without change.
@@ -78,4 +78,22 @@ test('P17 add an alias; the same alias again is 409 alias_taken; create a sublab
   await page.getByTestId('action-create-label-submit').click();
   await toastOk(page, 'Лейбл создан: Ref Spec Sublabel');
   await expect(page.locator('[data-testid^="label-"][row-id]').filter({ hasText: 'Ref Spec Sublabel' })).toBeVisible();
+});
+
+test('P17 an account of 0to8: add it, then remove it through the confirmation (D-169)', async ({ page }) => {
+  const id = labelOf('0to8');
+  const acct = account(29, 9);
+  await openAs(page, `/labels/${id}`);
+  await expect(page.getByTestId(`account-${acct}`)).toHaveCount(0);
+  await page.getByTestId('action-add-account').click();
+  await page.getByTestId('field-label-account').fill(acct);
+  await page.getByTestId('action-account-submit').click();
+  await toastOk(page, `Счёт ${acct} добавлен к лейблу 0to8`);
+  await expect(page.getByTestId(`account-${acct}`)).toBeVisible();
+  await page.getByTestId(`action-remove-account-${acct}`).click();
+  const dialog = page.getByTestId('confirm-dialog');
+  await expect(dialog).toContainText(acct);
+  await dialog.getByTestId('confirm-dialog-ok').click();
+  await toastOk(page, `Счёт ${acct} снят с лейбла 0to8`);
+  await expect(page.getByTestId(`account-${acct}`)).toHaveCount(0);
 });

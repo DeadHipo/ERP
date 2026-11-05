@@ -9,8 +9,7 @@ import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
-import { useLabel } from '../../lib/label';
-import { useOwnLabels } from '../../components/LabelSwitch';
+import { LabelField, useLabelChoice } from '../../components/fields/LabelField';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { SimpleTable, Td } from '../owners/components/Fact';
@@ -47,10 +46,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
   // a record without an ISRC belongs to an own label explicitly (D-168); the switch of the header is the default
-  const own = useOwnLabels();
-  const { labelId: switchLabel } = useLabel();
-  const [labelId, setLabelId] = useState(switchLabel);
-  const labelName = own.find((l) => l.id === labelId)?.name ?? '';
+  const { labelId, setLabelId, labelName } = useLabelChoice();
   const onArtist = target === 'artist';
   const typedIsrc = isrc.trim();
   const run = useAction(
@@ -135,7 +131,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           options={AD_SCOPES.map((s) => ({ id: s, label: t.scopes[s] }))}
         />
         <span className="text-xs text-muted">{t.create.scopeHint}</span>
-        <SelectField name="ad-label" label={t.create.label} value={labelId || null} onChange={setLabelId} isRequired={typedIsrc === ''} options={own.map((l) => ({ id: l.id, label: l.name }))} />
+        <LabelField name="ad-label" label={t.create.label} value={labelId} onChange={setLabelId} isRequired={typedIsrc === ''} />
         <span className="text-xs text-muted">{t.create.labelHint}</span>
         <TextField name="ad-comment" label={t.create.comment} value={comment} onChange={setComment} />
       </FormDialog>

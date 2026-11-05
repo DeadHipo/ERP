@@ -178,7 +178,7 @@ async function stackWorld(f: TestFacade) {
     writeBelieve('2026-07', [
       { isrc: I1, upc: UPC, net: '100' },
       { isrc: I2, upc: UPC, net: '20' },
-    ]),
+    ]), f.testLabels['0to8'],
   );
   return { a, a1 };
 }
@@ -245,7 +245,7 @@ describe('ads: the owner balance (stack)', () => {
       validFrom: '2020-01-01',
       documentId: (await approvedAppendix(f, subOwner.owner.id)).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-08', [{ isrc: I2, upc: UPC, net: '40', labelName: 'Sub One' }]));
+    await f.ingestBelieve(writeBelieve('2026-08', [{ isrc: I2, upc: UPC, net: '40', labelName: 'Sub One' }]), f.testLabels['0to8']);
     const first = await f.createAds([
       { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1' },
     ]);

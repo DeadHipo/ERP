@@ -203,8 +203,13 @@ describe('API contract', () => {
     ).toBe('Synth Two');
     // D-168: a Believe account under an own label; the seeded 0to8 is the label of every operation below
     const zero = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === '0to8') as { id: string };
-    const withAccount = await call('post', '/labels/:id/accounts', { params: { id: own.id }, body: { account: '1052428' } });
-    expect(withAccount.accounts).toEqual(['1052428']);
+    // (1052428 → 0to8 and 1055956 → Echo8 are registered by newFacade, D-169)
+    const withAccount = await call('post', '/labels/:id/accounts', { params: { id: own.id }, body: { account: '2799001' } });
+    expect(withAccount.accounts).toEqual(['2799001']);
+    const withoutAccount = await call('post', '/labels/:id/accounts/:account/remove', {
+      params: { id: own.id, account: '2799001' },
+    });
+    expect(withoutAccount.accounts).toEqual([]);
     await call('post', '/labels/rules/:id/close', {
       params: { id: rule.id },
       body: { validTo: '2026-06-01' },
@@ -232,19 +237,53 @@ describe('API contract', () => {
       body: { validTo: '2026-09-01' },
     });
 
-    // sources and publishing
-    await call('post', '/sources/believe', {
-      file: writeBelieve('2026-07', [
-        { isrc: I1, upc: UPC, net: '300' },
-        { isrc: I3, upc: UPC, net: '5' },
-      ]),
+    // sources and publishing: a file is loaded under the own label of its account (D-169)
+    const refused = async (url: string, query: Record<string, string>, file: { path: string; fileName: string }) =>
+      (await request(app).post(url).set('X-Operator', OPERATOR).query(query).attach('file', file.path, file.fileName))
+        .body as { error: { code: string; details?: unknown } };
+    const july = writeBelieve('2026-07', [
+      { isrc: I1, upc: UPC, net: '300' },
+      { isrc: I3, upc: UPC, net: '5' },
+    ]);
+    expect((await refused('/api/v1/sources/believe', {}, july)).error.code).toBe('label_required');
+    expect((await refused('/api/v1/sources/believe', { label: sub.id }, july)).error.code).toBe('label_not_own');
+    const unregistered = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }], { account: '2799002' });
+    expect((await refused('/api/v1/sources/believe', { label: zero.id }, unregistered)).error).toMatchObject({
+      code: 'account_unregistered',
+      details: { account: '2799002' },
     });
+    const echoFile = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }], { account: '1055956' });
+    const echoLabel = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === 'Echo8') as { id: string };
+    expect((await refused('/api/v1/sources/believe', { label: zero.id }, echoFile)).error).toMatchObject({
+      code: 'account_of_other_label',
+      details: { account: '1055956', labelId: echoLabel.id, labelName: 'Echo8' },
+    });
+    const loaded = await call('post', '/sources/believe', { query: { label: zero.id }, file: july });
+    expect([loaded.labelId, loaded.uploadedBy]).toEqual([zero.id, OPERATOR]);
+    // an account with files is not removed
+    const blocked = await request(app)
+      .post(`/api/v1/labels/${zero.id}/accounts/1052428/remove`)
+      .set('X-Operator', OPERATOR);
+    expect([blocked.status, blocked.body.error.code, blocked.body.error.details]).toEqual([
+      409,
+      'account_has_files',
+      { account: '1052428', files: 1 },
+    ]);
     await call('get', '/sources/files');
+    const ofZero = await call('get', '/sources/files', { query: { label: zero.id } });
+    expect(ofZero.believe.map((x: { id: string }) => x.id)).toEqual([loaded.id]);
+    const ofEcho = await call('get', '/sources/files', { query: { label: echoLabel.id } });
+    expect(ofEcho.believe).toEqual([]);
     await call('get', '/sources/lines', { query: { limit: '5' } });
+    const echoLines = await call('get', '/sources/lines', { query: { limit: '5', label: echoLabel.id } });
+    expect([echoLines.files, echoLines.items]).toEqual([[], []]);
     await call('get', '/sources/lines/facets');
-    await call('post', '/publishing/b17', {
-      file: await writeB17('Q22026', [{ writer: 'Writer Synthetic', title: 'Song', payable: 100 }]),
-    });
+    const zeroFacets = await call('get', '/sources/lines/facets', { query: { label: zero.id } });
+    expect(zeroFacets.files.map((x: { id: string }) => x.id)).toEqual([loaded.id]);
+    const b17File = await writeB17('Q22026', [{ writer: 'Writer Synthetic', title: 'Song', payable: 100 }]);
+    expect((await refused('/api/v1/publishing/b17', {}, b17File)).error.code).toBe('label_required');
+    const b17 = await call('post', '/publishing/b17', { query: { label: zero.id }, file: b17File });
+    expect(b17.statement.labelId).toBe(zero.id);
     const writers = await call('get', '/publishing/writers');
     await call('post', '/publishing/writers/resolve');
     await call('post', '/publishing/writers/:norm/map', {

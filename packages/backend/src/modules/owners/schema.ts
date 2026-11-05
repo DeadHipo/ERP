@@ -3,7 +3,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 
 // Module 1: owners, artists (pseudonyms), tracks, documents and contracts.
 // The document registry lives here and is referenced by id from every other module.
-// The DDL is migrations/postgres/0003_owners.sql (schema `owners`); change both.
+// The DDL is migrations/postgres/0003_owners.sql, 0007 and 0015 (schema `owners`); change both.
 
 const s = pgSchema('owners');
 
@@ -68,6 +68,8 @@ export const documents = s.table('documents', {
   uploadDeadline: date('upload_deadline', { mode: 'string' }),
   migration: boolean('migration').notNull(),
   createdAt: isoTimestamp('created_at').notNull(),
+  /** The own label of the document (D-169, 0015); null = any label. Read from stage 1 commit 4 on. */
+  labelId: text('label_id'),
 });
 
 export const contracts = s.table('contracts', {

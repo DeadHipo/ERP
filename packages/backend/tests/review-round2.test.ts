@@ -44,7 +44,7 @@ describe('recoupment is capped by the net income in scope', () => {
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '100' },
         { isrc: I2, upc: UPC, net: '-100' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     await f.setPublishingTerms({
@@ -53,7 +53,7 @@ describe('recoupment is capped by the net income in scope', () => {
       validFrom: '2020-01-01',
       documentId: a.contractDocId,
     });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]), f.testLabels['0to8']);
     const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '100',
@@ -139,7 +139,7 @@ describe('merged artists keep their settlements', () => {
     });
     await f.attachPaymentProof(adv.id, { fileRef: 'dummy://adv' });
     await f.modules.owners.mergeArtists(dup.id, artistId, 'duplicate record');
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.recouped.toFixed()).toBe('30');
     expect(b.total.payable.toFixed()).toBe('70');
@@ -168,7 +168,7 @@ describe('splits: report date, owners, confirmation', () => {
     });
     // sold in June, reported in July: the July split (60%) applies
     await f.ingestBelieve(
-      writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-06' }]),
+      writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-06' }]), f.testLabels['0to8'],
     );
     expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('60');
   });
@@ -182,7 +182,7 @@ describe('splits: report date, owners, confirmation', () => {
       shares: [{ newArtistPseudonym: 'Newcomer', percent: '50' }],
       documentId: (await approvedAppendix(f)).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     expect((await f.reconciliation())[0]?.C_breakdown.artist_without_owner?.toFixed()).toBe('50');
     const artistId = s.shares[0]?.artistId as string;
     const o = await f.modules.owners.createOwner({ name: 'Newcomer Owner', kind: 'person' });
@@ -238,7 +238,7 @@ describe('splits: report date, owners, confirmation', () => {
 describe('settlements: credits, rollback, merge, proofs, period figures', () => {
   async function owner200(f: TestFacade) {
     const { a, artistId } = await ownerWithTracks(f);
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     return { a, artistId };
   }
 
@@ -372,7 +372,7 @@ describe('publishing completeness check', () => {
         { writer: 'OWNER, A', title: 'S1', payable: '100' }, // confirmed owner, default terms -> C
         { writer: 'New Writer', title: 'S2', payable: '60' }, // created, unconfirmed -> C
         { writer: 'TESTOV, IVAN', title: 'S3', payable: '40' }, // ambiguous -> unmapped C (whole payable)
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const r = (await f.reconciliation()).find((x) => x.source === 'b17');
     expect(r?.A_received.toFixed()).toBe('200');

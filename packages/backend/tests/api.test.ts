@@ -15,29 +15,37 @@ async function setup() {
 
 describe('JSON API', () => {
   it('streams a Believe upload and returns 409 with a clear message for a second file of the same period', async () => {
-    const { app } = await setup();
+    const { f, app } = await setup();
+    const zero = f.testLabels['0to8'];
     const file = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10.5' }]);
     const ok = await writer(app)
       .post('/api/v1/sources/believe')
+      .query({ label: zero })
       .attach('file', file.path, file.fileName)
       .field('generatedAt', '2026-08-09T10:00:00Z');
     expect(ok.status).toBe(201);
     expect(ok.body.reportingMonth).toBe('2026-07');
     expect(ok.body.sha256).toMatch(/^[0-9a-f]{64}$/);
     const again = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '11' }], { reportId: '9999' });
-    const dup = await writer(app).post('/api/v1/sources/believe').attach('file', again.path, again.fileName);
+    const dup = await writer(app)
+      .post('/api/v1/sources/believe')
+      .query({ label: zero })
+      .attach('file', again.path, again.fileName);
     expect(dup.status).toBe(409);
     expect(dup.body.error.code).toBe('duplicate_period');
     expect(dup.body.error.message).toMatch(/already loaded/);
   });
 
   it('lists the lines of the chosen report files with filters and paging, and validates the query', async () => {
-    const { app } = await setup();
+    const { f, app } = await setup();
     const file = writeBelieve('2026-07', [
       { isrc: I1, upc: UPC, net: '10.5', platform: 'Spotify' },
       { isrc: I1, upc: UPC, net: '2', platform: 'Deezer' },
     ]);
-    const up = await writer(app).post('/api/v1/sources/believe').attach('file', file.path, file.fileName);
+    const up = await writer(app)
+      .post('/api/v1/sources/believe')
+      .query({ label: f.testLabels['0to8'] })
+      .attach('file', file.path, file.fileName);
     expect(up.status).toBe(201);
     const all = await writer(app).get(`/api/v1/sources/lines?fileId=${up.body.id}&limit=1`);
     expect(all.status).toBe(200);
@@ -95,7 +103,7 @@ describe('JSON API', () => {
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '0.000000002' },
         { isrc: I1, upc: UPC, net: '300', country: 'Peru' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const bal = await writer(app)
       .get(`/api/v1/owners/${a.owner.id}/balance?from=2026-07&to=2026-07&basis=report`)

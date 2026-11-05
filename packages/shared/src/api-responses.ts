@@ -267,7 +267,8 @@ export const sourceFileSchema = z.object({
   lineCount: z.number().int().nullable(),
   netTotal: money.nullable(),
   grossTotal: money.nullable(),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().describe('The operator (X-Operator) who uploaded the file, or the loading script'),
+  labelId: z.string().nullable().describe('The own label the file was loaded under (D-169); null = loaded before the labels'),
   createdAt: timestamp,
   updatedAt: timestamp,
 });
@@ -285,6 +286,7 @@ export const statementSchema = z.object({
   lineCount: z.number().int(),
   totalPayable: money,
   warnings: z.array(z.string()),
+  labelId: z.string().nullable().describe('The own label the statement was loaded under (D-169); null = loaded before the labels'),
 });
 
 export const sourceFilesSchema = z.object({

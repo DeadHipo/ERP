@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { formatMoney } from '../../lib/money';
-import { useLabel } from '../../lib/label';
+import { useWriteLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from './components/cents';
 import { Fact, Section, SimpleTable, Td } from './components/Fact';
@@ -248,7 +248,7 @@ function AdsSection(props: { balance: Balance }) {
 function PayButton(props: { ownerId: string; balance: Balance }) {
   const b = props.balance;
   const [open, setOpen] = useState(false);
-  const { labelId } = useLabel();
+  const { labelId, closed, reason } = useWriteLabel();
   const run = useAction(() => api.owners.payout(props.ownerId, { labelId }), {
     invalidate: 'all',
     success: (o) => fmt(ru.money.pay.toast, { amount: formatMoney(centsToText(o.amountCents)), date: o.date }),
@@ -273,8 +273,8 @@ function PayButton(props: { ownerId: string; balance: Balance }) {
     <>
       <ActionButton
         name="pay"
-        isDisabled={!b.payout.allowed || !labelId || b.label === null}
-        reason={!labelId || b.label === null ? ru.money.pay.chooseLabel : b.payout.reason ? ru.status.payoutGate[b.payout.reason] : undefined}
+        isDisabled={!b.payout.allowed || closed || b.label === null}
+        reason={closed || b.label === null ? reason : b.payout.reason ? ru.status.payoutGate[b.payout.reason] : undefined}
         isPending={run.isPending}
         onPress={() => setOpen(true)}
       >

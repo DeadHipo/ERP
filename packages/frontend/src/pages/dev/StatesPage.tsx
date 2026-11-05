@@ -53,7 +53,7 @@ export function StatesPage() {
 
 /** SS1: no files loaded -> the empty state with the upload link. */
 function Ss1() {
-  const query = useQuery(sourceQueries.files());
+  const query = useQuery(sourceQueries.files(''));
   return (
     <QueryView
       query={query}

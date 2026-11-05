@@ -469,8 +469,7 @@ describe('the label as a book (D-168)', () => {
     await c.load('2026-04', [{ isrc: I(2), net: '40', label: 'Echo8' }], ACC2);
     const zero = f.testLabels['0to8'];
     const echo = f.testLabels.Echo8;
-    await f.modules.labels.addAccount(zero, ACC1);
-    await f.modules.labels.addAccount(echo, ACC2);
+    // ACC1 → 0to8 and ACC2 → Echo8 are registered by newFacade (D-169)
     const basis = (await f.modules.owners.createDocument({
       kind: 'advance_basis',
       title: 'Advance basis A',

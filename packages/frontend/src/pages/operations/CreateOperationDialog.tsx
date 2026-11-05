@@ -13,8 +13,7 @@ import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
-import { useLabel } from '../../lib/label';
-import { useOwnLabels } from '../../components/LabelSwitch';
+import { LabelField, useLabelChoice } from '../../components/fields/LabelField';
 import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
 import { centsToText } from '../owners/components/cents';
@@ -42,10 +41,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
   // the operation belongs to an own label (D-168): the switch of the header is the default
-  const own = useOwnLabels();
-  const { labelId: switchLabel } = useLabel();
-  const [labelId, setLabelId] = useState(switchLabel);
-  const labelName = own.find((l) => l.id === labelId)?.name ?? '';
+  const { labelId, setLabelId, labelName } = useLabelChoice();
 
   const isrcList = isrcs
     .split(',')
@@ -142,7 +138,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           options={props.detail.artists.map((x) => ({ id: x.id, label: x.pseudonym }))}
         />
         <DateField name="op-date" label={t.date} value={date} onChange={setDate} isRequired />
-        <SelectField name="op-label" label={t.label} value={labelId || null} onChange={setLabelId} isRequired options={own.map((l) => ({ id: l.id, label: l.name }))} />
+        <LabelField name="op-label" label={t.label} value={labelId} onChange={setLabelId} isRequired />
         <SelectField
           name="op-scope"
           label={t.scope}

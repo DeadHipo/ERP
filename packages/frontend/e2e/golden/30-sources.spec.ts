@@ -1,9 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { account, expectP1, isrc, openAs, sc, settled, toastOk } from '../helpers';
+import type { Page } from '@playwright/test';
+import { account, apiPost, choose, expectP1, isrc, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
-// P19 «Отчёты» (19 §4 S34): the files tables, the Believe upload (the synthetic fixture is built here: one line
-// QZTST2734101, UPC 2734100000001, net 100), 409 duplicate_period for the same file and duplicate_file for the same bytes
-// under another account; the lines page with server paging, facets and the API totals.
+// P19 «Отчёты» (19 §4 S34): the files tables, the Believe upload under a label (D-169; the synthetic fixture is built here:
+// one line QZTST2734101, UPC 2734100000001, net 100): closed under «Все»; under 0to8 the unregistered account opens the
+// register dialog and the upload repeats; the same file under Echo8 is account_of_other_label; 409 duplicate_period for the
+// same file and duplicate_file for the same bytes under another account of 0to8; the lines page with server paging, facets
+// and the API totals.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -21,6 +24,11 @@ function fixture(acct: string): { name: string; buffer: Buffer } {
 }
 const ACCT = account(34, 1);
 
+async function upload(page: Page, f: { name: string; buffer: Buffer }) {
+  await page.getByTestId('field-upload-believe').setInputFiles({ name: f.name, mimeType: 'text/csv', buffer: f.buffer });
+  await page.getByTestId('action-upload-believe').click();
+}
+
 test('S34 before: the files table has no file of the account; the seeded files are listed', async ({ page }) => {
   expect(sc(34).extra.fixtureFile).toBe(fixture(ACCT).name);
   await openAs(page, '/sources');
@@ -36,32 +44,63 @@ test('S34 before: the files table has no file of the account; the seeded files a
   await expect(seeded.locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
 });
 
-test('S34 upload: loaded, one line; P1 2734100 / 2026-03 is 100 / 50 / 0 / 50; again: 409 duplicate_period', async ({ page }) => {
+test('S34 under «Все» the upload is closed: a write is made under a label', async ({ page }) => {
   await openAs(page, '/sources');
+  await expect(page.getByTestId('label-switch')).toHaveAttribute('data-label', '');
+  await expect(page.getByTestId('upload-closed-reason')).toContainText('выберите лейбл');
+  await page.getByTestId('field-upload-believe').setInputFiles({ name: fixture(ACCT).name, mimeType: 'text/csv', buffer: fixture(ACCT).buffer });
+  await expect(page.getByTestId('action-upload-believe')).toBeDisabled();
+  await expect(page.getByTestId('action-upload-b17')).toBeDisabled();
+});
+
+test('S34 upload under 0to8: account_unregistered → register → loaded under 0to8; P1 2734100 / 2026-03 is 100 / 50 / 0 / 50; again: 409 duplicate_period', async ({ page }) => {
+  await openAs(page, '/sources');
+  await choose(page, 'label', '0to8');
+  await expect(page.getByTestId('label-switch')).toHaveAttribute('data-label', labelOf('0to8'));
   const f = fixture(ACCT);
-  await page.getByTestId('field-upload-believe').setInputFiles({ name: f.name, mimeType: 'text/csv', buffer: f.buffer });
-  await page.getByTestId('action-upload-believe').click();
+  await upload(page, f);
+  const dialog = page.getByTestId('register-account-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId('form-dialog')).toContainText(`Зарегистрировать счёт ${ACCT} за лейблом 0to8`);
+  await expect(page.getByTestId('field-label-account')).toHaveValue(ACCT);
+  await page.getByTestId('action-account-submit').click();
+  await toastOk(page, `Счёт ${ACCT} добавлен к лейблу 0to8`);
   await toastOk(page, 'Файл загружен');
   await page.getByTestId('field-sources-q').fill(ACCT);
   const row = page.locator('[data-testid^="source-file-"][row-id]').filter({ hasText: ACCT });
   await expect(row).toHaveCount(1);
   await expect(row.getByTestId('chip-loaded')).toBeVisible();
+  await expect(row.getByTestId('file-label')).toHaveText('0to8');
   await expect(row.locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
   await page.getByTestId('nav-overview').click();
   await settled(page);
   await expectP1(page, ACCT, '2026-03', '100 / 50 / 0 / 50');
-  // the same file again
+  // the same file again, still under 0to8
   await openAs(page, '/sources');
-  await page.getByTestId('field-upload-believe').setInputFiles({ name: f.name, mimeType: 'text/csv', buffer: f.buffer });
-  await page.getByTestId('action-upload-believe').click();
+  await expect(page.getByTestId('label-switch')).toHaveAttribute('data-label', labelOf('0to8'));
+  await upload(page, f);
   await expect(page.locator('[data-testid="toast"][data-code="duplicate_period"]').first()).toBeVisible();
 });
 
-test('S34 the same bytes under another account: 409 duplicate_file', async ({ page }) => {
+test('S34 the same file under Echo8: 422 account_of_other_label names the account and 0to8', async ({ page }) => {
   await openAs(page, '/sources');
-  const f = fixture(ACCT);
-  await page.getByTestId('field-upload-believe').setInputFiles({ name: `9900002_${account(34, 1, 1)}_2026-03-01_2026-03-01.csv`, mimeType: 'text/csv', buffer: f.buffer });
-  await page.getByTestId('action-upload-believe').click();
+  await choose(page, 'label', 'Echo8');
+  await expect(page.getByTestId('label-switch')).toHaveAttribute('data-label', labelOf('Echo8'));
+  // under Echo8 the file of 0to8 is not listed
+  await expect(page.locator('[data-testid^="source-file-"][row-id]').filter({ hasText: ACCT })).toHaveCount(0);
+  await upload(page, fixture(ACCT));
+  const refusal = page.locator('[data-testid="toast"][data-code="account_of_other_label"]').first();
+  await expect(refusal.getByTestId('toast-text')).toHaveText(`Счёт ${ACCT} принадлежит лейблу 0to8`);
+  await expect(page.getByTestId('register-account-dialog')).toHaveCount(0);
+});
+
+test('S34 the same bytes under another account of 0to8: 409 duplicate_file', async ({ page }) => {
+  const other = account(34, 1, 1);
+  const reg = await apiPost(page.request, `/labels/${labelOf('0to8')}/accounts`, { account: other });
+  expect(reg.status).toBe(201);
+  await openAs(page, '/sources');
+  await choose(page, 'label', '0to8');
+  await upload(page, { name: `9900002_${other}_2026-03-01_2026-03-01.csv`, buffer: fixture(ACCT).buffer });
   await expect(page.locator('[data-testid="toast"][data-code="duplicate_file"]').first()).toBeVisible();
 });
 

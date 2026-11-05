@@ -15,7 +15,7 @@ async function setup() {
     await writeB17('Q22026', [
       { writer: 'Typed Writer', title: 'S1', payable: '100', operationType: 'Mechanical' },
       { writer: 'Typed Writer', title: 'S2', payable: '100', operationType: 'Performance' },
-    ]),
+    ]), f.testLabels['0to8'],
   );
   const w = (await f.modules.publishing.listWriters()).find((x) => x.displayName === 'Typed Writer')!;
   await f.modules.publishing.mapWriter(w.writerNorm, owner.id, 'manual');

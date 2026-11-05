@@ -24,7 +24,7 @@ describe('README 5: Believe line key', () => {
     const f = await newFacade();
     const base = { isrc: I1, upc: UPC, net: '1', gross: '2', quantity: 3 };
     const loaded = await f.ingestBelieve(
-      writeBelieve('2026-07', [base, { ...base }, { ...base, releaseType: 'Video Release' }]),
+      writeBelieve('2026-07', [base, { ...base }, { ...base, releaseType: 'Video Release' }]), f.testLabels['0to8'],
     );
     expect(loaded.lineCount).toBe(3);
     expect((await testFileTotals(loaded.id)).keys).toBe('2');
@@ -43,10 +43,10 @@ describe('README 5: Believe line key', () => {
   it('account is part of the scope: two accounts load the same month; the same account twice is refused', async () => {
     const f = await newFacade();
     const rows = (net: string) => [{ isrc: I1, upc: UPC, net }];
-    await f.ingestBelieve(writeBelieve('2026-07', rows('1'), { account: '1052428', reportId: '9000011' }));
-    await f.ingestBelieve(writeBelieve('2026-07', rows('2'), { account: '1055956', reportId: '9000012' }));
+    await f.ingestBelieve(writeBelieve('2026-07', rows('1'), { account: '1052428', reportId: '9000011' }), f.testLabels['0to8']);
+    await f.ingestBelieve(writeBelieve('2026-07', rows('2'), { account: '1055956', reportId: '9000012' }), f.testLabels.Echo8);
     await expect(
-      f.ingestBelieve(writeBelieve('2026-07', rows('3'), { account: '1055956', reportId: '9000013' })),
+      f.ingestBelieve(writeBelieve('2026-07', rows('3'), { account: '1055956', reportId: '9000013' }), f.testLabels.Echo8),
     ).rejects.toThrow(/already loaded/);
     expect(await f.modules.sources.listFiles()).toHaveLength(2);
   });
@@ -85,7 +85,7 @@ describe('README 5: buyout payment is not part of the balance', () => {
       effectiveFrom: '2026-07-01',
       documentId: (await approvedDoc(f, 'buyout')).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     const b = await f.ownerBalance(owner.id);
     expect(await f.modules.settlements.listOperations({ ownerId: owner.id })).toHaveLength(0);
     expect(b.total.paid.toFixed()).toBe('0');
@@ -151,7 +151,7 @@ describe('README 5: B17 amount column', () => {
     ws.addRow(['2Q26', 'Song', 'Synthetic Holder', '', 999, 989, 10]);
     const path = tmpPath('0to8_Q22026_Publishing_Statement.xlsx');
     await wb.xlsx.writeFile(path);
-    const r = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' });
+    const r = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' }, f.testLabels['0to8']);
     expect(r.statement.totalPayable.toString()).toBe('10');
   });
 
@@ -165,7 +165,7 @@ describe('README 5: B17 amount column', () => {
       validFrom: '2020-01-01',
       documentId: (await approvedDoc(f, 'contract', owner.id)).id,
     });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Synthetic Writer', title: 'S', payable: '100' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Synthetic Writer', title: 'S', payable: '100' }]), f.testLabels['0to8']);
     await f.resolveWriters();
     expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('70');
   });
@@ -184,7 +184,7 @@ describe('README 5: period filter', () => {
     await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
     await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
     await f.ingestBelieve(
-      writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-05' }]),
+      writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-05' }]), f.testLabels['0to8'],
     );
     const byDefault = await f.ownerBalance(owner.id, { from: '2026-07', to: '2026-07' });
     expect(byDefault.period?.basis).toBe('report');
@@ -245,7 +245,7 @@ describe('README 5: no floats in money', () => {
         { isrc: I1, upc: UPC, net: '0.1' },
         { isrc: I1, upc: UPC, net: '0.2', country: 'Peru' },
         { isrc: I1, upc: UPC, net: '1000.000000000001', country: 'Chile' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     const payout = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });
     const fractional: string[] = [];
@@ -268,9 +268,9 @@ describe('README 5: key dimensions account and reporting month', () => {
   it('identical lines in two accounts or two reporting months stay separate units and are not merged', async () => {
     const f = await newFacade();
     const line = (net: string) => [{ isrc: I1, upc: UPC, net, salesMonth: '2026-06' }];
-    await f.ingestBelieve(writeBelieve('2026-07', line('1'), { account: '1052428', reportId: '9000021' }));
-    await f.ingestBelieve(writeBelieve('2026-07', line('2'), { account: '1055956', reportId: '9000022' }));
-    await f.ingestBelieve(writeBelieve('2026-08', line('4'), { account: '1052428', reportId: '9000023' }));
+    await f.ingestBelieve(writeBelieve('2026-07', line('1'), { account: '1052428', reportId: '9000021' }), f.testLabels['0to8']);
+    await f.ingestBelieve(writeBelieve('2026-07', line('2'), { account: '1055956', reportId: '9000022' }), f.testLabels.Echo8);
+    await f.ingestBelieve(writeBelieve('2026-08', line('4'), { account: '1052428', reportId: '9000023' }), f.testLabels['0to8']);
     const units = (await f.modules.sources.units())
       .map((u) => [u.account, u.reportingMonth, u.netPico.toString()])
       .sort();
@@ -299,11 +299,11 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
       });
       await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
       await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
-      await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+      await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('50');
       // a later report changes "today" at once; the July period view does not move
       await f.ingestBelieve(
-        writeBelieve('2026-08', [{ isrc: I1, upc: UPC, net: '20' }], { reportId: '9000031' }),
+        writeBelieve('2026-08', [{ isrc: I1, upc: UPC, net: '20' }], { reportId: '9000031' }), f.testLabels['0to8'],
       );
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('60');
       expect(
@@ -331,7 +331,7 @@ describe('README 5: payout snapshot and B17 file names (D-100)', () => {
     // a payout is made under a label (D-168) and publishing has none: the owner needs master income under 0to8
     await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
     await f.createSplit({ isrc: I1, validFrom: '2020-01-01', shares: [{ artistId: (artists[0] as { id: string }).id, percent: '50' }], documentId: (await approvedAppendix(f)).id });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     await f.modules.owners.addOwnerAlias(owner.id, 'Snapshot Writer');
     await f.setPublishingTerms({
       ownerId: owner.id,
@@ -340,7 +340,7 @@ describe('README 5: payout snapshot and B17 file names (D-100)', () => {
       documentId: (await approvedDoc(f, 'contract', owner.id)).id,
     });
     const r = await f.ingestB17(
-      await writeB17('Q22026', [{ writer: 'Snapshot Writer', title: 'S', payable: '40' }]),
+      await writeB17('Q22026', [{ writer: 'Snapshot Writer', title: 'S', payable: '40' }]), f.testLabels['0to8'],
     );
     await f.resolveWriters();
     const payout = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });

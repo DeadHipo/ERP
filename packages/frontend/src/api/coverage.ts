@@ -70,16 +70,17 @@ export const OPERATION_COVERAGE: Record<
 
   'GET /labels': { page: 'P17', route: '/labels' },
   'POST /labels': { page: 'P17', route: '/labels' },
-  'POST /labels/:id/accounts': { page: 'P17', route: '/labels/:id', note: 'action-add-account (D-168)' },
+  'POST /labels/:id/accounts': { page: 'P17', route: '/labels/:id', note: 'action-add-account (D-168); also P19: account_unregistered opens register-account-dialog (D-169)' },
+  'POST /labels/:id/accounts/:account/remove': { page: 'P17', route: '/labels/:id', note: 'action-remove-account-<account> with ConfirmDialog (D-169)' },
   'POST /labels/:id/aliases': { page: 'P17', route: '/labels/:id', note: 'action-add-alias; also the queue and the signals' },
   'POST /labels/:id/rules': { page: 'P17', route: '/labels/:id', note: 'action-set-rule; also the queue and the signals' },
   'POST /labels/rules/:id/close': { page: 'P17', route: '/labels/:id', note: 'action-close-rule' },
 
-  'GET /sources/files': { page: 'P19', route: '/sources' },
-  'GET /sources/lines': { page: 'P19', route: '/sources/lines' },
-  'GET /sources/lines/facets': { page: 'P19', route: '/sources/lines' },
-  'POST /sources/believe': { page: 'P19', route: '/sources', note: 'field-upload-believe' },
-  'POST /publishing/b17': { page: 'P19', route: '/sources', note: 'field-upload-b17' },
+  'GET /sources/files': { page: 'P19', route: '/sources', note: 'label= of the switch; the «Лейбл» column file-label / statement-label (D-169)' },
+  'GET /sources/lines': { page: 'P19', route: '/sources/lines', note: 'label= of the switch: the files of the label only (D-169)' },
+  'GET /sources/lines/facets': { page: 'P19', route: '/sources/lines', note: 'label= of the switch (D-169)' },
+  'POST /sources/believe': { page: 'P19', route: '/sources', note: 'field-upload-believe under the label of the switch, closed under «Все» (upload-closed-reason); account_unregistered opens register-account-dialog and repeats (D-169)' },
+  'POST /publishing/b17': { page: 'P19', route: '/sources', note: 'field-upload-b17 under the label of the switch, closed under «Все» (D-169)' },
 
   'GET /publishing/writers': { page: 'P18', route: '/publishing' },
   'POST /publishing/writers/:norm/map': { page: 'P18', route: '/publishing', note: 'action-map-writer; also the queue and the signals' },

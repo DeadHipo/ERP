@@ -98,7 +98,7 @@ describe('GET /artists/duplicates (N11)', () => {
         { isrc: 'QZTST2600002', upc: UPC, net: '7.5', artistName: 'NIGHT owl', trackTitle: 'Orphan' },
         { isrc: 'QZTST2600002', upc: UPC, net: '2.5', artistName: 'NIGHT owl', trackTitle: 'Orphan' },
         { isrc: 'QZTST2600003', upc: UPC, net: '1', artistName: 'Someone Else', trackTitle: 'Other' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
 
     const res = await request(app(f)).get('/api/v1/artists/duplicates');

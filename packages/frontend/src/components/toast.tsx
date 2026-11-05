@@ -1,7 +1,7 @@
 import { toast } from '@heroui/react';
 import type { ApiError } from '../api/client';
 import { errorText } from '../i18n/ru/errors';
-import { ru } from '../i18n/ru';
+import { fmt, ru } from '../i18n/ru';
 
 // HeroUI's Toast does not let us set attributes on its root element, but the message is any ReactNode, so the
 // hooks `data-testid="toast"` and `data-code` sit on an element inside the title (e2e: `getByTestId('toast')`).
@@ -30,13 +30,23 @@ export function notifyAuditFailed(): void {
   );
 }
 
+/** The scalar fields of an error's `details` (`{ account, labelName, files }`) as the parameters of its sentence. */
+export function detailParams(details: unknown): Record<string, string | number> {
+  if (details === null || typeof details !== 'object' || Array.isArray(details)) return {};
+  const params: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(details)) if (typeof value === 'string' || typeof value === 'number') params[key] = value;
+  return params;
+}
+
 /**
  * Failure: the Russian sentence of the code (`i18n/ru/errors.ts`), `data-code="<api code>"`; the code and the API's own
- * message follow in small print (also the tooltip), so nothing of the answer is hidden (R4).
+ * message follow in small print (also the tooltip), so nothing of the answer is hidden (R4). The placeholders of the
+ * sentence (`{account}`, `{labelName}`, `{files}`) take the values of the error's `details` (D-169).
  */
 export function notifyError(error: ApiError | Error): void {
   const code = 'code' in error && typeof error.code === 'string' ? error.code : 'error';
-  const russian = errorText(code);
+  const template = errorText(code);
+  const russian = template === undefined ? undefined : fmt(template, detailParams('details' in error ? error.details : undefined));
   const detail = `${code}: ${error.message}`;
   toast.danger(
     <span data-testid="toast" data-code={code} title={detail} className="flex flex-col gap-0.5">

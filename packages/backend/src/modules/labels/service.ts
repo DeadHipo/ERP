@@ -215,6 +215,18 @@ export function createLabelsService(db: Db) {
       });
     },
 
+    /** Removes a Believe account from its own label (D-169); 404 when it is not registered under that label. */
+    async removeAccount(labelId: string, accountRaw: string): Promise<LabelView> {
+      const account = accountRaw.trim();
+      return repo.transaction(async () => {
+        if (!(await repo.getLabel(labelId))) throw new NotFoundError('Label', labelId);
+        const row = await repo.getAccount(account);
+        if (!row || row.labelId !== labelId) throw new NotFoundError(`Believe account of label ${labelId}`, account);
+        await repo.deleteAccount(account);
+        return service.getLabel(labelId);
+      });
+    },
+
     /** Every registered Believe account with its own label (D-168). */
     async listAccounts(): Promise<{ account: string; labelId: string }[]> {
       return (await repo.allAccounts()).map((a) => ({ account: a.account, labelId: a.labelId }));

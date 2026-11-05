@@ -71,7 +71,7 @@ async function world() {
         operationType: 'Mechanical',
         period: '1Q26',
       },
-    ]),
+    ]), c.f.testLabels['0to8'],
   );
   const calc = await calculate({ ...c.f.modules, db: c.f.db });
   const ownerNames = new Map((await c.f.modules.owners.listOwners()).map((o) => [o.id, o.name]));

@@ -154,7 +154,7 @@ export class Seed {
     mkdirSync(this.tmpDir, { recursive: true });
     const path = join(this.tmpDir, B17_FILE_NAME);
     await wb.xlsx.writeFile(path);
-    await this.f.ingestB17({ path, fileName: B17_FILE_NAME });
+    await this.f.ingestB17({ path, fileName: B17_FILE_NAME }, this.label('0to8'));
     return { lines: this.b17Lines.length };
   }
 }
@@ -466,7 +466,11 @@ export class Sc {
       return { isrc: i, upc: u, net: r.net, label: r.label ?? 'Test Label', artist: r.artist ?? 'Synthetic Artist' };
     });
     const file = await this.g.writeBelieveFile(month, acct, csv);
-    await this.f.ingestBelieve(file);
+    // D-169: a file is loaded under the label of its account; account(0) of a case is 0to8's, account(1) Echo8's
+    const labelId = this.g.label(a === 1 ? 'Echo8' : '0to8');
+    const labels = this.f.modules.labels;
+    if (!(await labels.listAccounts()).some((x) => x.account === acct)) await labels.addAccount(labelId, acct);
+    await this.f.ingestBelieve(file, labelId);
     if (!this.keys.accounts.includes(acct)) this.keys.accounts.push(acct);
     const st = this.g.stats.get(this.scenarioId) as { files: number; units: number };
     st.files += 1;

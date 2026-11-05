@@ -173,6 +173,9 @@ export const labels = {
   /** A Believe account of an own label (D-168). */
   addAccount: (labelId: string, body: z.input<typeof S.addAccountBody>) =>
     call('POST', `/labels/${id(labelId)}/accounts`, { body, schema: R.labelSchema }),
+  /** Removes an account from an own label while no file of it is loaded (D-169; 409 `account_has_files`). */
+  removeAccount: (labelId: string, account: string) =>
+    call('POST', `/labels/${id(labelId)}/accounts/${id(account)}/remove`, { schema: R.labelSchema }),
   setRule: (labelId: string, body: z.input<typeof S.createLabelRuleBody>) =>
     call('POST', `/labels/${id(labelId)}/rules`, { body, schema: R.labelRuleSchema }),
   closeRule: (ruleId: string, body: z.input<typeof S.closeValidToBody>) =>
@@ -180,16 +183,21 @@ export const labels = {
 };
 
 export const sources = {
-  files: () => call('GET', '/sources/files', { schema: R.sourceFilesSchema }),
+  /** Under a label (`label`, D-169): the files and statements loaded under it. */
+  files: (query: z.input<typeof S.sourceFilesQuery> = {}) => call('GET', '/sources/files', { query, schema: R.sourceFilesSchema }),
   lines: (query: z.input<typeof S.sourceLinesQuery> = {}) =>
     call('GET', '/sources/lines', { query, schema: R.sourceLinesPageSchema }),
   facets: (query: z.input<typeof S.sourceFacetsQuery> = {}) =>
     call('GET', '/sources/lines/facets', { query, schema: R.sourceFacetsSchema }),
-  uploadBelieve: (file: File) => call('POST', '/sources/believe', { body: fileForm(file), schema: R.sourceFileSchema }),
+  /** Loaded under an own label (D-169): the account of the file name must be registered under it. */
+  uploadBelieve: (file: File, labelId: string) =>
+    call('POST', '/sources/believe', { query: uploadQuery(labelId), body: fileForm(file), schema: R.sourceFileSchema }),
 };
 
 export const publishing = {
-  uploadB17: (file: File) => call('POST', '/publishing/b17', { body: fileForm(file), schema: R.b17UploadSchema }),
+  /** Loaded under an own label (D-169). */
+  uploadB17: (file: File, labelId: string) =>
+    call('POST', '/publishing/b17', { query: uploadQuery(labelId), body: fileForm(file), schema: R.b17UploadSchema }),
   writers: () => call('GET', '/publishing/writers', { schema: list(R.publishingWriterSchema) }),
   mapWriter: (norm: string, body: z.input<typeof S.mapWriterBody>) =>
     call('POST', `/publishing/writers/${id(norm)}/map`, { body, schema: R.ownerSchema }),
@@ -246,6 +254,10 @@ export const search = {
   query: (q: string, kinds?: readonly (typeof R.SEARCH_KINDS)[number][]) =>
     call('GET', '/search', { query: { q, kinds: kinds?.join(',') }, schema: R.searchResultSchema }),
 };
+
+function uploadQuery(labelId: string): z.input<typeof S.uploadLabelQuery> {
+  return { label: labelId };
+}
 
 function fileForm(file: File): FormData {
   const form = new FormData();

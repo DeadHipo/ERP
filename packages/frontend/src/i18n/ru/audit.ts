@@ -25,6 +25,7 @@ export const audit = {
     'POST /participations/:id/close': 'закрыто участие',
     'POST /labels': 'создан лейбл',
     'POST /labels/:id/accounts': 'добавлен счёт лейбла',
+    'POST /labels/:id/accounts/:account/remove': 'снят счёт лейбла',
     'POST /labels/:id/aliases': 'добавлен алиас лейбла',
     'POST /labels/:id/rules': 'задано правило лейбла',
     'POST /labels/rules/:id/close': 'закрыто правило лейбла',

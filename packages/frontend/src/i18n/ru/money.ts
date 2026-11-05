@@ -195,7 +195,6 @@ export const money = {
   },
   pay: {
     title: 'Выплатить владельцу',
-    chooseLabel: 'выберите лейбл в шапке: выплата делается под лейблом',
     lines: {
       label: 'Лейбл: {label}',
       payable: 'К выплате: {amount} (будет отправлено {cents} центов)',

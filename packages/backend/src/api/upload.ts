@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import busboy from 'busboy';
 import type { Request } from 'express';
+import * as S from '@erp/shared/api-schemas';
+import type { Facade } from '../facade';
+import { parse } from './http';
 import { ValidationError } from '../shared/errors';
 import { newId } from '../shared/identifiers';
 
@@ -69,6 +72,20 @@ export async function receiveUpload(req: Request, tmpDir: string): Promise<Uploa
     fileStream?.destroy();
     await written?.catch(() => undefined);
     await cleanup().catch(() => undefined); // never hide the original error
+    throw e;
+  }
+}
+
+/**
+ * The label of an upload (`?label=`, D-169), checked before the multipart body is received: a refusal drains the
+ * body unread (`req.resume()`) and answers at once.
+ */
+export async function uploadLabel(facade: Facade, req: Request): Promise<string> {
+  try {
+    const { label } = parse(S.uploadLabelQuery, req.query);
+    return (await facade.assertUploadLabel(label)).id;
+  } catch (e) {
+    req.resume();
     throw e;
   }
 }

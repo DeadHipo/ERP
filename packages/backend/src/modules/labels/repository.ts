@@ -72,5 +72,8 @@ export function createLabelsRepository(db: Db) {
     insertAccount: async (row: typeof labelAccounts.$inferInsert) => {
       await orm().insert(labelAccounts).values(row);
     },
+    deleteAccount: async (account: string) => {
+      await orm().delete(labelAccounts).where(eq(labelAccounts.account, account));
+    },
   };
 }

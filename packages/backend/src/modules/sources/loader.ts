@@ -22,7 +22,10 @@ export interface LoadInput {
   path: string;
   /** Its original name: <reportId>_<account>_<from>_<to>.csv[.zip]. The account and the month are read from it. */
   fileName: string;
+  /** The operator (the API's X-Operator) or the script that loads the file; default 'operator'. */
   uploadedBy?: string;
+  /** The own label the file is loaded under (D-169): stored as is, the facade has checked it. */
+  labelId?: string | null;
 }
 
 export interface BelieveLoaderDeps {
@@ -92,6 +95,7 @@ export function createBelieveLoader(deps: BelieveLoaderDeps) {
       storedPath,
       sha256,
       uploadedBy: input.uploadedBy ?? 'operator',
+      labelId: input.labelId ?? null,
     });
 
     let attached = false;

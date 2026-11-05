@@ -24,6 +24,8 @@ export interface StatementView {
   lineCount: number;
   totalPayable: string;
   warnings: string[];
+  /** The own label the statement was loaded under (D-169): opaque text, the facade checks it; null = before the labels. */
+  labelId: string | null;
 }
 
 const view = (s: StatementRow): StatementView => ({
@@ -39,6 +41,7 @@ const view = (s: StatementRow): StatementView => ({
   lineCount: s.lineCount,
   totalPayable: s.totalPayable,
   warnings: JSON.parse(s.warnings) as string[],
+  labelId: s.labelId ?? null,
 });
 
 /** A unique violation of PostgreSQL (sha256 or the quarter of a statement, taken by a concurrent load). */
@@ -68,6 +71,8 @@ export function createPublishingService(db: Db, storageDir: string) {
       path: string;
       fileName: string;
       generatedAt?: string | null;
+      /** The own label of the statement (D-169), stored as is. */
+      labelId?: string | null;
     }): Promise<StatementView> {
       return serial(() => load(input));
     },
@@ -77,6 +82,7 @@ export function createPublishingService(db: Db, storageDir: string) {
     path: string;
     fileName: string;
     generatedAt?: string | null;
+    labelId?: string | null;
   }): Promise<StatementView> {
     {
       if (!/\.xlsx$/i.test(input.fileName)) throw new ValidationError('B17 statements are accepted as .xlsx');
@@ -136,6 +142,7 @@ export function createPublishingService(db: Db, storageDir: string) {
             lineCount: lines.length,
             totalPayable: '0',
             warnings: '[]',
+            labelId: input.labelId ?? null,
           });
           for (const p of periods) await repo.insertStatementPeriod(p, id);
           let total = 0n;

@@ -204,7 +204,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       shares: [{ artistId: a.artists[0]?.id as string, percent: '50' }],
       documentId: (await approvedAppendix(f)).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     return { f, a, artistId: a.artists[0]?.id as string };
   }
 
@@ -304,7 +304,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '100' },
         { isrc: I1, upc: UPC, net: '-100', country: 'Chile' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     await f.setPublishingTerms({
@@ -313,7 +313,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       validFrom: '2020-01-01',
       documentId: a.contractDocId,
     });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]), f.testLabels['0to8']);
     const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '100',
@@ -361,7 +361,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       shares: [{ artistId: a.artists[0]?.id as string, percent: '50' }],
       documentId: (await approvedAppendix(f)).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     expect(await Promise.all(calls)).toEqual(['1']);
     expect(p.externalRef).toBe('ext-1');
@@ -377,12 +377,14 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
 describe('sources: robustness', () => {
   it('concurrent uploads are serialized and both load', async () => {
     const f = await newFacade();
+    await f.modules.labels.addAccount(f.testLabels['0to8'], '1');
+    await f.modules.labels.addAccount(f.testLabels['0to8'], '2');
     const [x, y] = await Promise.all([
       f.ingestBelieve(
-        writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }], { account: '1', reportId: '11' }),
+        writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }], { account: '1', reportId: '11' }), f.testLabels['0to8'],
       ),
       f.ingestBelieve(
-        writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '2' }], { account: '2', reportId: '12' }),
+        writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '2' }], { account: '2', reportId: '12' }), f.testLabels['0to8'],
       ),
     ]);
     expect([x.netTotal, y.netTotal]).toEqual(['1', '2']);
@@ -396,14 +398,14 @@ describe('sources: robustness', () => {
       p1,
       Buffer.concat([Buffer.from('"Reporting month";"x"\n"'), Buffer.from([0xff, 0xfe]), Buffer.from('"\n')]),
     );
-    await expect(f.ingestBelieve({ path: p1, fileName: name })).rejects.toThrow(/UTF-8/);
+    await expect(f.ingestBelieve({ path: p1, fileName: name }, f.testLabels['0to8'])).rejects.toThrow(/UTF-8/);
     const good = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }]);
     const p2 = tmpPath(name);
     writeFileSync(
       p2,
       Buffer.from(readFileSync(good.path, 'utf8').replace('"Platform"', '"Reporting month"')),
     );
-    await expect(f.ingestBelieve({ path: p2, fileName: name })).rejects.toThrow(/duplicated/);
+    await expect(f.ingestBelieve({ path: p2, fileName: name }, f.testLabels['0to8'])).rejects.toThrow(/duplicated/);
   });
 
   it('JSON money never uses exponent notation or -0', async () => {
@@ -424,7 +426,7 @@ describe('publishing: labels, similar names, numeric cells', () => {
       await writeB17('Q22026', [
         { writer: 'Label Writer', title: 'S1', payable: '10' },
         { writer: 'TESTOV, IVAN', title: 'S2', payable: '10' },
-      ]),
+      ]), f.testLabels['0to8'],
     );
     expect(res.writers).toMatchObject({ matched: 0, created: 1, ambiguous: 1 });
     expect((await f.signals()).ambiguousWriters.map((w) => w.displayName)).toEqual(['TESTOV, IVAN']);
@@ -445,7 +447,7 @@ describe('publishing: labels, similar names, numeric cells', () => {
     ws.addRow(['', '', '', 12.64]); // total row without title and writer
     const path = tmpPath('0to8_Q22026_Publishing_Statement.xlsx');
     await wb.xlsx.writeFile(path);
-    const res = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' });
+    const res = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' }, f.testLabels['0to8']);
     expect(res.statement.totalPayable).toBe('12.64');
     expect(res.statement.lineCount).toBe(2);
   });
@@ -463,7 +465,7 @@ describe('payout snapshot attribution', () => {
       shares: [{ artistId, percent: '50' }],
       documentId: (await approvedAppendix(f)).id,
     });
-    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]), f.testLabels['0to8']);
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     await f.setPublishingTerms({
       ownerId: a.owner.id,
@@ -471,7 +473,7 @@ describe('payout snapshot attribution', () => {
       validFrom: '2020-01-01',
       documentId: a.contractDocId,
     });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '400' }]));
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '400' }]), f.testLabels['0to8']);
     const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '150',
