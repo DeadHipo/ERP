@@ -37,6 +37,8 @@ export async function stepAds(ctx: Ctx) {
   const items: AdExpenseInput[] = [];
   const totals = new Map<string, Decimal>();
   const add = (k: string, v: string) => totals.set(k, (totals.get(k) ?? new Decimal(0)).add(v));
+  const payerLabelId = ctx.labelsCache.get('0to8');
+  if (!payerLabelId) throw new Error('the own label 0to8 must exist before the ads step (the payer of the history)');
   for (const r of records) {
     add('gross_all', r.gross);
     const artistId = r.artistId ? (ctx.canonArtist.get(r.artistId) ?? null) : null;
@@ -52,6 +54,8 @@ export async function stepAds(ctx: Ctx) {
     }
     items.push({
       isrc: r.isrc,
+      // a record without an ISRC needs the label it belongs to (D-168); the history was paid by 0to8 (the owner, 2026-11-05)
+      ...(r.isrc ? {} : { labelId: payerLabelId }),
       month: r.month,
       amount: new Decimal(r.gross).toFixed(2),
       recoveryPercent: String(r.recoveryPercent),

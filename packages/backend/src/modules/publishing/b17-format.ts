@@ -129,82 +129,98 @@ async function* readRows(path: string): AsyncGenerator<SheetRow> {
 /**
  * Reads the detail sheet of a B17 statement (the sheet whose A1 is `Period` and whose header has `asset title`)
  * with the streaming xlsx reader. `Total Payable` is the base (amount after withholding).
+ * When the archive stores `sharedStrings.xml` after the sheets, the streaming reader sees the header cells unresolved
+ * and finds no detail sheet; the statement is then read in memory (the same rows, resolved).
  */
 export async function* readB17Statement(path: string, fileName: string): AsyncGenerator<B17Line> {
-  const fileQuarters = quartersFromFileName(fileName);
-  let found = false;
-  let lineSeq = 0;
-  let currentSheet = 0;
-  let col: Record<string, number> | undefined;
-  let skip = false;
-  for await (const row of readRows(path)) {
-    if (row.sheet !== currentSheet) {
-      currentSheet = row.sheet;
-      col = undefined;
-      skip = false;
-    }
-    {
-      if (skip) continue;
-      const values = row.values;
-      if (!col) {
-        const header = values.map((v) => cellText(v));
-        if (header[1] !== 'Period' || !header.includes('asset title')) {
-          skip = true; // not the detail sheet (Cover, Payment, Top 50 Songs, ...)
-          continue;
-        }
-        col = {};
-        header.forEach((h, i) => {
-          if (h && col) col[h] = i;
-        });
-        if (col['Total Payable'] === undefined && col['Payable'] !== undefined)
-          col['Total Payable'] = col['Payable'];
-        const missing = REQUIRED.filter((r) => col && col[r] === undefined);
-        if (missing.length)
-          throw new ValidationError(`B17 detail sheet is missing columns: ${missing.join(', ')}`);
-        found = true;
-        continue;
-      }
-      const get = (name: string) =>
-        col && col[name] !== undefined ? values[col[name] as number] : undefined;
-      const title = cellText(get('asset title') ?? null);
-      const payableCell = get('Total Payable') ?? null;
-      if (!title && cellText(payableCell) === '') continue;
-      const lineNo = ++lineSeq; // unique across sheets (row numbers restart per sheet)
-      const sheetRow = row.number;
-      const periodCell = cellText(get('Period') ?? null);
-      const writerName = cellText(get('rights-holder name') ?? null);
-      if (!writerName && !title) continue; // subtotal / total row
-      const cellPeriod = parsePeriodCell(periodCell);
-      const period = fileQuarters.length === 1 ? (fileQuarters[0] as string) : cellPeriod;
-      if (!period)
-        throw new ValidationError(`Row ${sheetRow}: cannot determine the quarter (Period "${periodCell}")`);
-      if (cellPeriod && cellPeriod !== period)
-        throw new ValidationError(
-          `Row ${sheetRow}: Period ${cellPeriod} differs from the file quarter ${period}`,
-        );
-      if (!writerName) throw new ValidationError(`Row ${sheetRow}: empty rights-holder name`);
-      if (cellText(payableCell) === '') throw new ValidationError(`Row ${sheetRow}: empty Total Payable`);
-      const currency = cellText(get('currency') ?? null);
-      if (currency && currency.toUpperCase() !== 'USD')
-        throw new ValidationError(`Row ${sheetRow}: currency ${currency}; only USD is accepted`);
-      yield {
-        lineNo,
-        period,
-        writerName,
-        songwriters: cellText(get('songwriters') ?? null) || null,
-        workTitle: title,
-        workCode: cellText(get('work identifier') ?? null) || null,
-        operationType: cellText(get('operation type') ?? null) || null,
-        retailer: cellText(get('retailer / service') ?? null) || null,
-        country: cellText(get('country') ?? null) || null,
-        payablePico: amountPico(payableCell, sheetRow, 'Total Payable'),
-      };
-    }
-  }
-  if (!found)
+  const streamed = parseB17Rows(readRows(path), fileName);
+  for await (const line of streamed.lines) yield line;
+  if (streamed.found()) return;
+  const inMemory = parseB17Rows(memoryRows(path), fileName);
+  for await (const line of inMemory.lines) yield line;
+  if (!inMemory.found())
     throw new ValidationError(
       'No B17 detail sheet found (row 1 must start with "Period" and contain "asset title")',
     );
+}
+
+function parseB17Rows(
+  rows: AsyncGenerator<SheetRow>,
+  fileName: string,
+): { lines: AsyncGenerator<B17Line>; found: () => boolean } {
+  let found = false;
+  async function* lines(): AsyncGenerator<B17Line> {
+    const fileQuarters = quartersFromFileName(fileName);
+    let lineSeq = 0;
+    let currentSheet = 0;
+    let col: Record<string, number> | undefined;
+    let skip = false;
+    for await (const row of rows) {
+      if (row.sheet !== currentSheet) {
+        currentSheet = row.sheet;
+        col = undefined;
+        skip = false;
+      }
+      {
+        if (skip) continue;
+        const values = row.values;
+        if (!col) {
+          const header = values.map((v) => cellText(v));
+          if (header[1] !== 'Period' || !header.includes('asset title')) {
+            skip = true; // not the detail sheet (Cover, Payment, Top 50 Songs, ...)
+            continue;
+          }
+          col = {};
+          header.forEach((h, i) => {
+            if (h && col) col[h] = i;
+          });
+          if (col['Total Payable'] === undefined && col['Payable'] !== undefined)
+            col['Total Payable'] = col['Payable'];
+          const missing = REQUIRED.filter((r) => col && col[r] === undefined);
+          if (missing.length)
+            throw new ValidationError(`B17 detail sheet is missing columns: ${missing.join(', ')}`);
+          found = true;
+          continue;
+        }
+        const get = (name: string) =>
+          col && col[name] !== undefined ? values[col[name] as number] : undefined;
+        const title = cellText(get('asset title') ?? null);
+        const payableCell = get('Total Payable') ?? null;
+        if (!title && cellText(payableCell) === '') continue;
+        const lineNo = ++lineSeq; // unique across sheets (row numbers restart per sheet)
+        const sheetRow = row.number;
+        const periodCell = cellText(get('Period') ?? null);
+        const writerName = cellText(get('rights-holder name') ?? null);
+        if (!writerName && !title) continue; // subtotal / total row
+        const cellPeriod = parsePeriodCell(periodCell);
+        const period = fileQuarters.length === 1 ? (fileQuarters[0] as string) : cellPeriod;
+        if (!period)
+          throw new ValidationError(`Row ${sheetRow}: cannot determine the quarter (Period "${periodCell}")`);
+        if (cellPeriod && cellPeriod !== period)
+          throw new ValidationError(
+            `Row ${sheetRow}: Period ${cellPeriod} differs from the file quarter ${period}`,
+          );
+        if (!writerName) throw new ValidationError(`Row ${sheetRow}: empty rights-holder name`);
+        if (cellText(payableCell) === '') throw new ValidationError(`Row ${sheetRow}: empty Total Payable`);
+        const currency = cellText(get('currency') ?? null);
+        if (currency && currency.toUpperCase() !== 'USD')
+          throw new ValidationError(`Row ${sheetRow}: currency ${currency}; only USD is accepted`);
+        yield {
+          lineNo,
+          period,
+          writerName,
+          songwriters: cellText(get('songwriters') ?? null) || null,
+          workTitle: title,
+          workCode: cellText(get('work identifier') ?? null) || null,
+          operationType: cellText(get('operation type') ?? null) || null,
+          retailer: cellText(get('retailer / service') ?? null) || null,
+          country: cellText(get('country') ?? null) || null,
+          payablePico: amountPico(payableCell, sheetRow, 'Total Payable'),
+        };
+      }
+    }
+  }
+  return { lines: lines(), found: () => found };
 }
 
 /** "A B, C D, E F" -> ["A B", "C D", "E F"]: each comma-separated part of the songwriters cell is one writer. */

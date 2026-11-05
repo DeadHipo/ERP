@@ -192,3 +192,36 @@ the exact commands and the restore recipes. The two layers:
 
 Verify after any restore: the counts above, `GET /api/v1/reconciliation` discrepancy 0 on every row,
 `scripts/check-owner-scope.ts` 0 differing. Mark the git point with a tag (`snapshot-<date>-<why>`).
+
+## 11. Rebuild the reference data on a clean stack and prove the calculation unchanged
+
+Done on 2026-11-05/06 before the «label from zero» work (`docs/идеи/лейбл_с_нуля/`); the reference answers are the
+API JSON in `data/backup/2026-11-05-before-org/reference/` (git-ignored). The whole state is rebuilt from files on
+disk, in this order (every step idempotent; the stack from `docker compose … up -d`, then `npm run migrate:pg`):
+
+1. Believe: the 47 report files (34 of account 1052428 from `context_data/ERP_data/believe/raw`, 13 of 1055956 from
+   `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --storage data/real/files/sources <files>`
+   (the July 2026 Echo8 file is stored there under a name with a trailing ` 2`: copy it under its proper name first,
+   the loader takes the account and month from the name). Expect 75 744 752 rows, Σ net 16 338 476,404666051188.
+2. The base reference data: `npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts data/pub` (the four SQLite
+   files of the format before D-121; columns added by later migrations stay at their defaults).
+3. Stage 4 loader, one step at a time with `--apply`: `labels tracks normalise-dates splits participations exclusions
+   echo8 main terms contracts`, then the two B17 statements (`scripts/mvp/load-b17.ts
+   context_data/ERP_data/publishing/raw/0to8_Q22025_Statement.xlsx` and `…/0to8_Q42024_Q12025_Publishing_Breakdown.xlsx`,
+   D-134), then `pairs label-fixes lunar b17-holders carves settlement-prestart assumption-rows hygiene`.
+4. Advertising: `python3 -I packages/backend/scripts/mvp/extract-main-ads.py` first (the mapping carries pseudonym
+   ids, which the loader generates anew on every rebuild; the extractor is deterministic in money and ISRC), then
+   `load.ts ads --apply` (2 686 records; the 33 without an ISRC are created with the payer label 0to8).
+5. `scripts/assign-operation-labels.ts data/real --apply` (D-168) and the two accounts: `POST /labels/:id/accounts`
+   1052428 → 0to8, 1055956 → Echo8.
+6. The seven manual API writes of 2026-11-03 (operator `13`: an approved `advance_basis` document, an operation out
+   40.00 with its payment proof, an approved `appendix` document confirming the split of ISRC FRX202537544): replayed
+   through the API with the same bodies; they are part of the reference.
+7. `npx tsx packages/backend/scripts/compare-reference.ts data/backup/2026-11-05-before-org/reference --api
+   http://localhost:3001 --strict` against `PORT=3001 npx tsx packages/backend/src/main.ts data/real`: every section
+   must print `0 differing` (`--strict` compares the books too; without it the books may move as a stage decides,
+   and the script prints the movement per label). Then `scripts/check-owner-scope.ts data/real` (0 differing).
+
+Counts after the rebuild (= the snapshot README): owners 1 151, artists 2 134, tracks 26 305, documents 1 400,
+contracts 803, splits 24 107 / shares 42 070, participations 283, operations 2 663, statements 6 (lines 1 162 586),
+labels 17, ads 2 686.

@@ -98,19 +98,25 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
     if (replace) await client.query(`TRUNCATE ${m.tables.map((t) => `${m.module}.${t}`).join(', ')}`);
 
     for (const t of m.tables) {
-      const columns = (
-        await client.query<{ column_name: string }>(
-          `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2
-           ORDER BY ordinal_position`,
+      const pgColumns = (
+        await client.query<{ column_name: string; is_nullable: string; column_default: string | null }>(
+          `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+           WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position`,
           [m.module, t],
         )
-      ).rows.map((r) => r.column_name);
-      if (columns.length === 0) throw new Error(`${m.module}.${t} does not exist: run the migrations first`);
+      ).rows;
+      if (pgColumns.length === 0) throw new Error(`${m.module}.${t} does not exist: run the migrations first`);
       const liteColumns = new Set(
         (lite.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name),
       );
-      const missing = columns.filter((c) => !liteColumns.has(c));
-      if (missing.length > 0) throw new Error(`${t}: SQLite has no column(s) ${missing.join(', ')}`);
+      // A column added by a later migration is left to its default when it can be empty (the data format before D-121).
+      const missing = pgColumns.filter(
+        (c) => !liteColumns.has(c.column_name) && c.is_nullable === 'NO' && c.column_default === null,
+      );
+      if (missing.length > 0) {
+        throw new Error(`${t}: SQLite has no column(s) ${missing.map((c) => c.column_name).join(', ')}`);
+      }
+      const columns = pgColumns.map((c) => c.column_name).filter((c) => liteColumns.has(c));
       const extra = [...liteColumns].filter((c) => !columns.includes(c));
       if (extra.length > 0) throw new Error(`${t}: PostgreSQL has no column(s) ${extra.join(', ')}`);
 
