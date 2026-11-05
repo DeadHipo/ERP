@@ -98,7 +98,7 @@ describe('README 5: operations', () => {
   it('in/out with a signed amount and optional fields; no operation type is stored', async () => {
     const f = await newFacade();
     const { owner, artists } = await confirmedOwner(f, 'Ops Owner', ['Ops']);
-    const op = await f.createOperation({
+    const op = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'in',
       amount: '12.34',
       artistId: artists[0]?.id as string,
@@ -121,7 +121,7 @@ describe('README 5: operations', () => {
     const { owner, artists } = await confirmedOwner(f, 'Scope Owner', ['Scope']);
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'out',
           amount: '50',
           artistId: artists[0]?.id as string,
@@ -247,7 +247,7 @@ describe('README 5: no floats in money', () => {
         { isrc: I1, upc: UPC, net: '1000.000000000001', country: 'Chile' },
       ]),
     );
-    const payout = await f.createPayout(owner.id);
+    const payout = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });
     const fractional: string[] = [];
     const walk = (v: unknown, path: string) => {
       if (typeof v === 'number' && !Number.isInteger(v)) fractional.push(`${path}=${v}`);
@@ -310,7 +310,7 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
         (await f.ownerBalance(owner.id, { from: '2026-07', to: '2026-07' })).period?.received.toFixed(),
       ).toBe('100');
       // the payout is dated today and counts as soon as its proof exists
-      const p = await f.createPayout(owner.id);
+      const p = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });
       expect(p.date).toBe('2026-09-15');
       await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('0');
@@ -327,7 +327,11 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
 describe('README 5: payout snapshot and B17 file names (D-100)', () => {
   it('the payout snapshot stores the hashes of the B17 statements as well as the Believe files', async () => {
     const f = await newFacade();
-    const { owner } = await confirmedOwner(f, 'Snapshot Owner', ['Snap']);
+    const { owner, artists } = await confirmedOwner(f, 'Snapshot Owner', ['Snap']);
+    // a payout is made under a label (D-168) and publishing has none: the owner needs master income under 0to8
+    await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
+    await f.createSplit({ isrc: I1, validFrom: '2020-01-01', shares: [{ artistId: (artists[0] as { id: string }).id, percent: '50' }], documentId: (await approvedAppendix(f)).id });
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
     await f.modules.owners.addOwnerAlias(owner.id, 'Snapshot Writer');
     await f.setPublishingTerms({
       ownerId: owner.id,
@@ -339,7 +343,7 @@ describe('README 5: payout snapshot and B17 file names (D-100)', () => {
       await writeB17('Q22026', [{ writer: 'Snapshot Writer', title: 'S', payable: '40' }]),
     );
     await f.resolveWriters();
-    const payout = await f.createPayout(owner.id);
+    const payout = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });
     const snap = (await f.modules.settlements.getSnapshot(payout.id)) as {
       files: { b17: { sha256: string }[] };
     };

@@ -91,6 +91,12 @@ export interface Calculation {
   confirmedOwners: Set<string>;
   documentStatus: (id: string | null | undefined) => 'approved' | 'not_approved' | 'not_attached' | 'missing';
   documentKind: (id: string | null | undefined) => string | undefined;
+  /** The name of a label by id (the books of the balance are named, D-168). */
+  labelName: (id: string) => string | undefined;
+  /** Every own label (id, name). */
+  ownLabels: { id: string; name: string }[];
+  /** The own label a Believe account is registered under (D-168), undefined when the account is not registered. */
+  labelOfAccount: (account: string) => string | undefined;
   /** Every active advertising expense with who bears it (D-155, D-156). */
   ads: AdResult[];
   /** The debt positions the expenses make, by owner (artists' parts and sublabels' unrecovered parts). */
@@ -318,6 +324,9 @@ export async function calculate(
     confirmedOwners,
     documentStatus,
     documentKind,
+    labelName: (id) => labelIndex.labelName(id),
+    ownLabels: labelIndex.ownLabels(),
+    labelOfAccount: (account) => labelIndex.labelOfAccount(account),
     ads,
     adPositions: adPositionsByOwner(ads),
   };
@@ -342,6 +351,8 @@ export interface Reconciliation {
   ourShareNoSplit: Decimal;
   /** A − B − C − ourShare: must be 0; anything else means a layer lost or created money. */
   discrepancy: Decimal;
+  /** The row per label of record (by name, '?' = an unmapped string or publishing), D-168: Σ over the labels = the row. */
+  byLabel: Record<string, { A_received: Decimal; B_notOurs: Decimal; C_waiting: Decimal; ourShare: Decimal; ourShareNoSplit: Decimal }>;
 }
 
 /** Completeness check per source, account and month: A received = B not ours + C waiting + our share. */
@@ -363,38 +374,58 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
         ourShareByLabel: {},
         ourShareNoSplit: ZERO,
         discrepancy: ZERO,
+        byLabel: {},
       };
       rows.set(k, r);
     }
     return r;
   };
-  const addC = (r: Reconciliation, reason: CReason, v: Decimal) => {
+  const book = (r: Reconciliation, label: string) =>
+    (r.byLabel[label] ??= { A_received: ZERO, B_notOurs: ZERO, C_waiting: ZERO, ourShare: ZERO, ourShareNoSplit: ZERO });
+  const addC = (r: Reconciliation, label: string, reason: CReason, v: Decimal) => {
     r.C_waiting = r.C_waiting.add(v);
     r.C_breakdown[reason] = (r.C_breakdown[reason] ?? ZERO).add(v);
+    const b = book(r, label);
+    b.C_waiting = b.C_waiting.add(v);
   };
   for (const u of calc.units) {
     if (!unitInPeriod(u, f)) continue;
     const r = row('believe', u.account, (f.basis ?? 'report') === 'sales' ? u.salesMonth : u.reportingMonth);
+    const b = book(r, u.ourLabelName ?? '?');
     r.A_received = r.A_received.add(u.net);
+    b.A_received = b.A_received.add(u.net);
     for (const a of u.allocations) {
-      if (a.category === 'B') r.B_notOurs = r.B_notOurs.add(a.amount);
+      if (a.category === 'B') {
+        r.B_notOurs = r.B_notOurs.add(a.amount);
+        b.B_notOurs = b.B_notOurs.add(a.amount);
+      }
     }
     if (u.labelShareCategory === 'ours') {
       r.ourShare = r.ourShare.add(u.labelShare);
+      b.ourShare = b.ourShare.add(u.labelShare);
       const label = u.ourLabelName ?? '?';
       r.ourShareByLabel[label] = (r.ourShareByLabel[label] ?? ZERO).add(u.labelShare);
-      if (u.status === 'no_split') r.ourShareNoSplit = r.ourShareNoSplit.add(u.labelShare);
+      if (u.status === 'no_split') {
+        r.ourShareNoSplit = r.ourShareNoSplit.add(u.labelShare);
+        b.ourShareNoSplit = b.ourShareNoSplit.add(u.labelShare);
+      }
     }
   }
   for (const p of calc.publishing) {
     if (!pubInPeriod(p, f)) continue;
     const r = row('b17', 'b17', p.reportMonth);
+    const b = book(r, '?');
     r.A_received = r.A_received.add(p.payable);
-    if (p.ownerId && p.category === 'B') r.B_notOurs = r.B_notOurs.add(p.authorAmount);
+    b.A_received = b.A_received.add(p.payable);
+    if (p.ownerId && p.category === 'B') {
+      r.B_notOurs = r.B_notOurs.add(p.authorAmount);
+      b.B_notOurs = b.B_notOurs.add(p.authorAmount);
+    }
     r.ourShare = r.ourShare.add(p.labelAmount);
+    b.ourShare = b.ourShare.add(p.labelAmount);
   }
   // the C side: the very items the queue groups (queue.ts), so the two cannot drift
-  for (const it of cItems(calc, f)) addC(row(it.source, it.account, it.month), it.reason, it.amount);
+  for (const it of cItems(calc, f)) addC(row(it.source, it.account, it.month), it.unit?.ourLabelName ?? '?', it.reason, it.amount);
   for (const r of rows.values())
     r.discrepancy = r.A_received.sub(r.B_notOurs).sub(r.C_waiting).sub(r.ourShare);
   return [...rows.values()].sort((a, b) =>

@@ -64,7 +64,8 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
   const date = monthStart(ad.month);
   const labelString = ad.isrc ? ctx.labelStringOf(ad.isrc, ad.month) : undefined;
   const l = labelString !== undefined ? ctx.labelOf(labelString, date) : undefined;
-  const ourLabelId = l ? (l.kind === 'own' ? l.id : l.ownLabelId) : null;
+  // the label of the ISRC's line at the month; the record's own label when no line of the ISRC is mapped (D-168)
+  const ourLabelId = l ? (l.kind === 'own' ? l.id : l.ownLabelId) : ad.labelId;
   const rule = l && l.kind === 'sublabel' && l.rule && !l.rule.percent.isZero() ? l.rule : null;
   const canon = (id: string) => ctx.artistIndex.get(id);
 
@@ -164,6 +165,7 @@ export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[
         month: null,
         amount: p.recovered,
         scope: scopeOf(r, 'artist'),
+        labelId: r.ourLabelId,
         adId: r.adId,
         isrc: r.isrc,
         adMonth: r.month,
@@ -179,6 +181,7 @@ export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[
         month: null,
         amount: b.amount,
         scope: scopeOf(r, 'sublabel'),
+        labelId: r.ourLabelId,
         adId: r.adId,
         isrc: r.isrc,
         adMonth: r.month,

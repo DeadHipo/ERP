@@ -54,7 +54,7 @@ describe('recoupment is capped by the net income in scope', () => {
       documentId: a.contractDocId,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]));
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '100',
       artistId,
@@ -78,6 +78,7 @@ describe('recoupment is capped by the net income in scope', () => {
       isrc: I1,
       reportMonth: month,
       amount: D(amount),
+      labelId: null,
     });
     const p: Position = {
       id: 'p',
@@ -86,6 +87,7 @@ describe('recoupment is capped by the net income in scope', () => {
       month: null,
       amount: D(100),
       scope: { kind: 'master' },
+      labelId: null,
     };
     expect(recoup([p], [item('a', 100, '2026-06'), item('b', -60, '2026-07')])[0]?.recouped.toFixed()).toBe(
       '40',
@@ -102,6 +104,7 @@ describe('recoupment is capped by the net income in scope', () => {
         isrc: null,
         reportMonth: '2026-06',
         amount: D(50),
+        labelId: null,
       },
     ];
     const mk = (id: string): Position => ({
@@ -111,6 +114,7 @@ describe('recoupment is capped by the net income in scope', () => {
       month: '2026-01',
       amount: D(100),
       scope: { kind: 'any' },
+      labelId: null,
     });
     const r1 = recoup([mk('b'), mk('a')], inc);
     const r2 = recoup([mk('a'), mk('b')], inc);
@@ -124,7 +128,7 @@ describe('merged artists keep their settlements', () => {
     const f = await newFacade();
     const { a, artistId } = await ownerWithTracks(f);
     const dup = await f.modules.owners.createArtist({ pseudonym: 'A1 dup', ownerId: a.owner.id });
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '30',
       artistId: dup.id,
@@ -241,7 +245,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
   it('a credit (in, negative) adds to the payable amount once its document is approved', async () => {
     const f = await newFacade();
     const { a, artistId } = await owner200(f);
-    await f.createOperation({
+    await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'in',
       amount: '-25',
       artistId,
@@ -255,7 +259,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
   it('soft rollback: a deactivated operation drops out; a payout with returns cannot be deactivated; an unproven payout can', async () => {
     const f = await newFacade();
     const { a, artistId } = await owner200(f);
-    const ded = await f.createOperation({
+    const ded = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'in',
       amount: '50',
       artistId,
@@ -266,13 +270,13 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('150');
     await f.modules.settlements.deactivate(ded.id, 'entered by mistake');
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('200');
-    const p1 = await f.createPayout(a.owner.id);
+    const p1 = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     // a sent payout is rolled back only when the transfer failure is confirmed (D-101)
     await expect(async () => await f.modules.settlements.deactivate(p1.id, 'oops')).rejects.toThrow(
       /transfer failed/,
     );
     await f.modules.settlements.deactivate(p1.id, 'transfer rejected by the bank', { transferFailed: true });
-    const p2 = await f.createPayout(a.owner.id);
+    const p2 = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p2.id, { fileRef: 'dummy://proof' });
     await expect(
       async () => await f.attachPaymentProof(p2.id, { fileRef: 'dummy://proof2' }),
@@ -288,7 +292,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
     const f = await newFacade();
     const target = await confirmedOwner(f, 'Real Owner', ['R1']);
     const stub = await f.modules.owners.createOwner({ name: 'Stub Owner', kind: 'person' });
-    await f.createOperation({
+    await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '10',
       ownerId: stub.id,
@@ -304,7 +308,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
   it('period figures: paid and advances in the period by operation date', async () => {
     const f = await newFacade();
     const { a, artistId } = await owner200(f);
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '40',
       artistId,
@@ -334,7 +338,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
     });
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'in',
           amount: '5',
           artistId,
@@ -343,7 +347,7 @@ describe('settlements: credits, rollback, merge, proofs, period figures', () => 
           comment: 'x',
         }),
     ).rejects.toThrow(/cannot be based/);
-    const mig = await f.createOperation({
+    const mig = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '1',
       ownerId: a.owner.id,

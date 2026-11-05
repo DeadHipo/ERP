@@ -22,6 +22,7 @@ const totals: KpiTotals = {
     { source: 'believe', account: '2701100', ...sums('150', '82.5', '23.375', '44.125', '25') },
     { source: 'believe', account: '2701101', ...sums('57', '25', '7', '25') },
   ],
+  byLabel: {},
 };
 
 describe('pickTotals (D-160)', () => {

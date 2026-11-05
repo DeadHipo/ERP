@@ -64,7 +64,7 @@ describe('GET /settlements/operations filters (N14)', () => {
     const { owner, artists } = await confirmedOwner(f, 'Op Owner', ['Op Pseudonym']);
     const art = artists[0]?.id as string;
     const mk = (extra: object) =>
-      f.createOperation({
+      f.createOperation({ labelId: f.testLabels['0to8'],
         amount: '10',
         artistId: art,
         date: '2026-03-10',

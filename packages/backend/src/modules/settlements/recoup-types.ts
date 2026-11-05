@@ -26,6 +26,8 @@ export interface IncomeItem {
   isrc: string | null;
   reportMonth: string;
   amount: Decimal;
+  /** The label of record of the income (D-168): the unit's own label; publishing has none. */
+  labelId: string | null;
 }
 
 export interface Position {
@@ -39,6 +41,8 @@ export interface Position {
   month: string | null;
   amount: Decimal;
   scope: Scope;
+  /** The label of the position (D-168): recouped from the master income of that label only; null = any label. */
+  labelId: string | null;
 }
 
 export interface RecoupResult {

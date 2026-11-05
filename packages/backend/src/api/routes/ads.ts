@@ -20,13 +20,17 @@ export function adsRouter(facade: Facade) {
         ...(q.includeInactive === 'true' ? { includeInactive: true } : {}),
         ...(q.limit !== undefined ? { limit: q.limit } : {}),
         ...(q.offset !== undefined ? { offset: q.offset } : {}),
+        ...(q.label ? { labelId: q.label } : {}),
       }),
     );
   });
   r.post('/ads', async (req, res) =>
     res.status(201).json(await facade.createAds(parse(S.createAdsBody, req.body).items)),
   );
-  r.get('/ads/summary', async (req, res) => res.json(await facade.adsSummary(parse(S.adsSummaryQuery, req.query))));
+  r.get('/ads/summary', async (req, res) => {
+    const { label, ...f } = parse(S.adsSummaryQuery, req.query);
+    res.json(await facade.adsSummary({ ...f, ...(label ? { labelId: label } : {}) }));
+  });
   r.get('/ads/:id', async (req, res) => res.json(await facade.getAd(param(req, 'id'))));
   r.patch('/ads/:id', async (req, res) => res.json(await facade.updateAd(param(req, 'id'), parse(S.updateAdBody, req.body))));
   r.post('/ads/:id/deactivate', async (req, res) =>

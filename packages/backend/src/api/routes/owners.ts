@@ -14,7 +14,7 @@ export function ownersRouter(facade: Facade) {
     const q = parse(S.searchQuery, req.query);
     res.json(await facade.search(q.q, q.kinds));
   });
-  r.get('/owners', async (_req, res) => res.json(await owners.listOwners()));
+  r.get('/owners', async (req, res) => res.json(await facade.ownerList(parse(S.ownersQuery, req.query))));
   r.post('/owners', async (req, res) => {
     const b = parse(S.createOwnerBody, req.body);
     const similar = await owners.findSimilarOwners(b.name);
@@ -43,7 +43,8 @@ export function ownersRouter(facade: Facade) {
   r.get('/owners/:id', async (req, res) => res.json(await facade.ownerDetail(param(req, 'id'))));
   r.get('/owners/:id/balance', async (req, res) =>
     timed(`GET /owners/${param(req, 'id')}/balance`, async () => {
-      const b = await facade.ownerBalance(param(req, 'id'), parse(S.periodQuery, req.query));
+      const { label, ...period } = parse(S.labelPeriodQuery, req.query);
+      const b = await facade.ownerBalance(param(req, 'id'), period, label);
       timedSync('res.json (serialize + send)', () => res.json(b));
     }),
   );
@@ -52,7 +53,7 @@ export function ownersRouter(facade: Facade) {
     res.status(201).json(await facade.createPayout(param(req, 'id'), b));
   });
 
-  r.get('/artists', async (_req, res) => timed('GET /artists', async () => res.json(await facade.artistList())));
+  r.get('/artists', async (req, res) => timed('GET /artists', async () => res.json(await facade.artistList(parse(S.artistsQuery, req.query)))));
   r.post('/artists', async (req, res) => {
     const b = parse(S.createArtistBody, req.body);
     const similar = await owners.findSimilarArtists(b.pseudonym);
@@ -77,7 +78,8 @@ export function ownersRouter(facade: Facade) {
   r.get('/artists/:id', async (req, res) => res.json(await facade.artistDetail(param(req, 'id'))));
   r.get('/artists/:id/balance', async (req, res) =>
     timed(`GET /artists/${param(req, 'id')}/balance`, async () => {
-      const b = await facade.artistBalance(param(req, 'id'), parse(S.periodQuery, req.query));
+      const { label, ...period } = parse(S.labelPeriodQuery, req.query);
+      const b = await facade.artistBalance(param(req, 'id'), period, label);
       timedSync('res.json (serialize + send)', () => res.json(b));
     }),
   );

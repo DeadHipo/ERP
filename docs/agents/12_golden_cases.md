@@ -73,6 +73,7 @@ sublabel) → categorise.
 | G47 | settlement window with co-artists: legacy rows A 17.5, B 17.5, S 15 under one appendix, valid 2000-01-01 … 2026-02-01; from 2026-02-01 rows A 17.5, B 17.5 and participation S 15 `(net, label_share)` under the settlement document; the loader spreads S's 15 over A and B pro rata to 17.5 : 17.5 for the months before the window (owner decision 6, Main payment fact); units 2026-01 and 2026-02 | 2026-01: A 25, B 25, S 0; 2026-02: A 17.5, B 17.5, S 15 taken from the label share 65 | 50 and 50 | 0 | 50 and 50 | M35, M33, owner decision 6, D-138 |
 | G48 | owner A (row A 50, unit 100) earns 50; operations of the balance rule (10 §5), three tests: (i) a deduction `in` 10 (artist A, scope `any`, 2026-03-01) on a basis document that is not approved waits (payable 50, pending 1), approved it is a position recouped from the income: recouped 10, remaining 0, payable 40; (ii) the same deduction plus a credit `in` −5 (approved basis): recouped 10, credits 5, payable 45; (iii) a deduction 70 above the income: recouped 50, remaining 20, payable 0 | (i) 50 → 40; (ii) 45; (iii) 0 | 50 | 0 | 50 | S31 k4, 10 §5 |
 | G49 | owner A as in G48; three tests: (i) a migration payout 30 → payable 20; deactivated → paid 0, payable 50; (ii) a button payout 50 without proof does not count (payable 50, blocking 1); deactivated with `transferFailed` → blocking 0, gate allowed; (iii) deduction 10 → 40; credit −5 → 45; deduction deactivated → 55; the button pays 5500, proof attached → paid 55, payable 0; return of the payout (date = payout date) → operation `return` −5500, returns 55, payable 55 | (i) 20 → 50; (ii) 50; (iii) 40, 45, 55, 0, 55 | 50 | 0 | 50 | S31 k4, S22, 10 §5 |
+| G50 | owner A with rows A 50 on I(1) (`Test Label` → 0to8, unit 100) and on I(2) (`Echo8`, unit 60); an advance 40 without a label (migrated) and an advance 10 under Echo8, both of 2026-03; then the button under 0to8 | books: 0to8 earned 50, recouped 40 (the advance without a label takes I(1) first), payable 10; Echo8 earned 30, recouped 10 (its advance takes Echo8 alone), payable 20; the payout under 0to8 pays 10.00 and carries the label; after its proof 0to8 paid 10, payable 0; total payable 20 | 80 | 0 | 80 | D-168 |
 
 ## Publishing cases
 
@@ -137,3 +138,9 @@ sublabel) → categorise.
   removes it (50). A button payout is deferred and uncounted until the proof; it has an external reference, so its
   deactivation needs `transferFailed`. S31/k4: 50 − 10 = 40; + credit 5 = 45; deduction deactivated → 50 + 5 = 55; the
   payout 55 with proof → 55 − 55 = 0; the return +55 → 55 (earned 50 + credit 5 − paid 55 + returned 55).
+- G50 (D-168): the books of the labels partition every field of the balance. earned by the unit's label of record;
+  recouped by the label of the income consumed: the advance 40 without a label is recouped from any income in month
+  order (the income items of one month are ordered by id: I(1) before I(2)), so it takes 40 of the 50 of 0to8; the
+  advance under Echo8 is recouped from the master income of Echo8 only, 10 of 30. payable_L = earned_L − recouped_L −
+  paid_L − adsCharged_L + returns_L + credits_L: 0to8 10, Echo8 20, Σ = the total 30. The button under 0to8 pays the
+  0to8 book (10), records the label, and after the proof the 0to8 book is 0 while Echo8 keeps its 20.

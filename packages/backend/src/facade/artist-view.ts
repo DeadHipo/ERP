@@ -14,7 +14,7 @@ import type { splitsApi } from './splits';
  * is collected by every id the pseudonym had (the splits of a merged record are not rewritten, D-095).
  */
 export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof splitsApi>) {
-  const { db, owners, splits, settlements, modules, artistBalanceWithReach, opDocIds } = ctx;
+  const { db, owners, splits, settlements, modules, artistBalanceWithReach, opDocIds, labelContext, viewOf } = ctx;
   const api = {
     /**
      * Every live pseudonym of the registry as a row without money (P11, D-167): its owner (id, name, status), how many
@@ -22,7 +22,9 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
      * id), its split rows and participations not closed by today, the contracts naming it and the open rows and
      * participations without a document (their money waits). Additive over the former `GET /artists` item.
      */
-    artistList() {
+    async artistList(f: { label?: string } = {}) {
+      // under a label (D-168): the pseudonyms visible under it
+      const lc = await labelContext(f.label);
       return db.snapshot(async () => {
         const [idx, ownerList, splitList, partList, links, trackList, contractLinks] = await Promise.all([
           owners.artistIndex(),
@@ -67,7 +69,7 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
         }
         for (const c of contractLinks) of(canon(c.artistId)).contracts.add(c.contractId);
         return [...idx.entries()]
-          .filter(([id, a]) => id === a.id)
+          .filter(([id, a]) => id === a.id && (!lc || lc.visible.artistIds.has(id)))
           .map(([, a]) => {
             const g = of(a.id);
             const owner = a.ownerId ? ownerById.get(a.ownerId) : undefined;
@@ -97,8 +99,11 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
      * owner's payable (the payout stays the owner's, D-051). An unknown id is left out; a merged id answers for its
      * survivor, once.
      */
-    async artistBalances(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string } = {}) {
+    async artistBalances(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string; label?: string } = {}) {
       const only = f.ids === undefined ? undefined : parseIdList(f.ids);
+      // under a label (D-168): the pseudonyms visible under it, each row projected to the label's book
+      const lc = await labelContext(f.label);
+      const view = lc ? { labelId: lc.book.id } : undefined;
       const docIds = await timed('settlements.allOperations (document ids)', opDocIds, (r) => `${r.length} ids`);
       const { idx, ops } = await timed('pg snapshot: artistIndex + operations', () =>
         db.snapshot(async () => ({
@@ -109,7 +114,7 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
       const wanted = new Map<string, { id: string; pseudonym: string; ownerId: string | null }>();
       for (const raw of only ?? idx.keys()) {
         const e = idx.get(raw);
-        if (e) wanted.set(e.id, e);
+        if (e && (!lc || lc.visible.artistIds.has(e.id))) wanted.set(e.id, e);
       }
       const calc = only
         ? await timed('calculate (the union reach)', async () => {
@@ -126,7 +131,7 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           const m = artistBalance(calc, e.id, e.ownerId ? (opsOf.get(e.ownerId) ?? []) : [], f, {
             units: byArtist.units.get(e.id) ?? [],
             owner: e.ownerId ? (byArtist.owners.get(e.ownerId) ?? { units: [], publishing: [] }) : undefined,
-          });
+          }, view);
           const { earned, waiting, recouped, unrecouped, adsCharged, paid } = m.total;
           return {
             artistId: m.artistId,
@@ -212,9 +217,9 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
       });
     },
 
-    /** The money of one pseudonym from the units of its reach (D-165). */
-    artistBalance(artistId: string, f: PeriodFilter = {}) {
-      return artistBalanceWithReach(artistId, f);
+    /** The money of one pseudonym from the units of its reach (D-165); under a label its book (D-168). */
+    async artistBalance(artistId: string, f: PeriodFilter = {}, labelId?: string) {
+      return artistBalanceWithReach(artistId, f, await viewOf(labelId));
     },
 
     /** The reach of a pseudonym (D-165): its ids and the ISRCs its money can come from. */

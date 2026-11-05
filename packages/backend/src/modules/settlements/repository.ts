@@ -16,6 +16,8 @@ export interface OperationFilter {
   /** Inclusive dates YYYY-MM-DD. */
   from?: string;
   to?: string;
+  /** Operations of one own label (D-168); `null` = the operations without a label. */
+  labelId?: string | null;
 }
 
 /** All SQL of the settlements module lives here (schema `settlements`). */
@@ -72,6 +74,7 @@ export function createSettlementsRepository(db: Db) {
               : undefined,
             f.from ? gte(operations.date, f.from) : undefined,
             f.to ? lte(operations.date, f.to) : undefined,
+            f.labelId === undefined ? undefined : f.labelId === null ? isNull(operations.labelId) : eq(operations.labelId, f.labelId),
           ),
         )
         .orderBy(desc(operations.date), desc(operations.createdAt));
@@ -100,6 +103,9 @@ export function createSettlementsRepository(db: Db) {
     },
     setExternalRef: async (id: string, externalRef: string) => {
       await orm().update(operations).set({ externalRef }).where(eq(operations.id, id));
+    },
+    setLabel: async (id: string, labelId: string | null) => {
+      await orm().update(operations).set({ labelId }).where(eq(operations.id, id));
     },
     reassignOwner: async (fromOwnerId: string, intoOwnerId: string) => {
       await orm().update(operations).set({ ownerId: intoOwnerId }).where(eq(operations.ownerId, fromOwnerId));

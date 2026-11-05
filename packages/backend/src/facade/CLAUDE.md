@@ -52,6 +52,20 @@
   **A new way for money to reach a pseudonym** (a new layer, a new rule kind, a new kind of record) must extend
   `ownerReach`, and `tests/scope.test.ts` must pin balance-by-reach = full for it; `scripts/check-owner-scope.ts`
   proves it on the real data.
+- **The label as a book** (`label-scope.ts`, `balance.ts`, D-168): an own label is seen in the data only as the label
+  string of a unit, so the book of a label is `labelBook()` (its id, name and the raw label strings of its aliases and
+  its sublabels' aliases) and a read under a label is `scoped(modules, { labelStrings, publishingLines: false })` over
+  the unit scope plus `labelVisibility()` (the ISRCs of the strings, the pseudonyms with a row, participation, rule,
+  operation or ad under the label, their owners). The facade methods take the label as the last argument (`ctx.labelContext`
+  / `ctx.viewOf`); the routes pass `?label=`. `ownerBalance()` partitions **every** field by label key (the label id,
+  `''` = without a label; named `'?'` in the answer): earned / waiting by the unit's label of record, recouped by the
+  label of the income consumed, adsCharged by the charge, paid / returns / credits by the operation; a position under
+  a label is recouped from that label's master income only (`layers/recoup.ts`), one without a label from any income.
+  The recoup always runs over everything; a view under a label (`BalanceView`) is the same computation projected to one
+  book, never a separate calculation, so Σ books (without a label included) = total field by field. `Case.verify()`,
+  `tests/scope.test.ts` and `scripts/check-label-books.ts` pin it. Publishing has no label: its money sits in the
+  «without a label» book and is not paid by a label payout. `createPayout(owner, { labelId })` pays the book;
+  `createOperation` requires `labelId` (except a migrated one); `setOperationLabel` marks the history.
 - Category C reasons are one shared enum (`C_REASONS` / `CReason` in `packages/shared/src/api-responses.ts`), used by
   `C_breakdown` and `waitingBreakdown`; a new reason goes there first, then check the pages that show them
   (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.

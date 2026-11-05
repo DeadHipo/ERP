@@ -210,7 +210,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
 
   it('a payout without payment proof cannot be returned; returns cannot exceed the payout', async () => {
     const { f, a } = await owner100();
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await expect(
       async () => await f.returnPayout(p.id, { fileRef: 'dummy://r', date: '2026-08-01', comment: 'x' }),
     ).rejects.toThrow(/counted payout/);
@@ -224,7 +224,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
 
   it('an advance cannot be returned as if it were a payout', async () => {
     const { f, a, artistId } = await owner100();
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '50',
       artistId,
@@ -243,7 +243,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
     const { f, a } = await owner100();
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'out',
           amount: '10',
           ownerId: a.owner.id,
@@ -255,7 +255,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
 
   it('migrated payouts count without documents and do not block new payouts', async () => {
     const { f, a } = await owner100();
-    await f.createOperation({
+    await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '30',
       ownerId: a.owner.id,
@@ -264,7 +264,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       migration: true,
     });
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('70');
-    expect((await f.createPayout(a.owner.id)).amountCents).toBe(7000);
+    expect((await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).amountCents).toBe(7000);
   });
 
   it('an advance with an unapproved basis document is not applied', async () => {
@@ -275,7 +275,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       requiresApproval: true,
       ownerId: a.owner.id,
     });
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '50',
       artistId,
@@ -314,7 +314,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       documentId: a.contractDocId,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '500' }]));
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '100',
       artistId,
@@ -331,7 +331,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
 
   it('a deduction (scope any) reduces income earned before its date', async () => {
     const { f, a, artistId } = await owner100();
-    await f.createOperation({
+    await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'in',
       amount: '40',
       artistId,
@@ -362,7 +362,7 @@ describe('settlements: returns, manual payouts, migration, negative income', () 
       documentId: (await approvedAppendix(f)).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     expect(await Promise.all(calls)).toEqual(['1']);
     expect(p.externalRef).toBe('ext-1');
     const snap = (await f.modules.settlements.getSnapshot(p.id)) as {
@@ -452,7 +452,7 @@ describe('publishing: labels, similar names, numeric cells', () => {
 });
 
 describe('payout snapshot attribution', () => {
-  it('a publishing-scoped advance reduces the publishing part of the payout, not the artist master part', async () => {
+  it('a publishing-scoped advance reduces the publishing part, which stays in the «without a label» book: a payout under 0to8 pays the master part alone (D-168)', async () => {
     const f = await newFacade();
     const a = await confirmedOwner(f, 'Owner A', ['A1']);
     const artistId = a.artists[0]?.id as string;
@@ -472,7 +472,7 @@ describe('payout snapshot attribution', () => {
       documentId: a.contractDocId,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '400' }]));
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '150',
       artistId,
@@ -482,14 +482,23 @@ describe('payout snapshot attribution', () => {
       comment: 'adv',
     });
     await f.attachPaymentProof(adv.id, { fileRef: 'dummy://adv' });
-    const p = await f.createPayout(a.owner.id);
-    expect(p.amountCents).toBe(15000);
+    // the whole owner: master 100 + publishing 200 − the advance 150 recouped from publishing = 150 payable
+    const whole = await f.ownerBalance(a.owner.id);
+    expect([whole.total.payable.toFixed(), whole.publishingRecouped.toFixed()]).toEqual(['150', '150']);
+    const books = Object.fromEntries(Object.entries(whole.byLabel).map(([k, b]) => [k, [b.earned.toFixed(), b.recouped.toFixed(), b.payable.toFixed()]]));
+    expect(books).toEqual({ '0to8': ['100', '0', '100'], '?': ['200', '150', '50'] });
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
+    expect(p.amountCents).toBe(10000);
     const snap = JSON.parse(JSON.stringify(await f.modules.settlements.getSnapshot(p.id))) as {
+      labelId: string;
+      total: { payable: string };
       payoutByArtist: { label: string; shareOfPayout: string }[];
     };
-    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([
-      ['A1', '100'],
-      ['Publishing (owner)', '50'],
-    ]);
+    expect([snap.labelId, snap.total.payable]).toEqual([f.testLabels['0to8'], '100']);
+    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([['A1', '100']]);
+    // after it the 0to8 book is paid in full, the publishing 50 waits in «without a label»
+    await f.attachPaymentProof(p.id, { fileRef: 'dummy://p' });
+    const after = await f.ownerBalance(a.owner.id);
+    expect([after.total.payable.toFixed(), after.byLabel['0to8']?.payable.toFixed(), after.byLabel['?']?.payable.toFixed()]).toEqual(['50', '0', '50']);
   });
 });

@@ -201,6 +201,10 @@ describe('API contract', () => {
       (labelList as unknown as { rules: { recipientPseudonym: string }[] }[]).flatMap((l) => l.rules)[0]
         ?.recipientPseudonym,
     ).toBe('Synth Two');
+    // D-168: a Believe account under an own label; the seeded 0to8 is the label of every operation below
+    const zero = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === '0to8') as { id: string };
+    const withAccount = await call('post', '/labels/:id/accounts', { params: { id: own.id }, body: { account: '1052428' } });
+    expect(withAccount.accounts).toEqual(['1052428']);
     await call('post', '/labels/rules/:id/close', {
       params: { id: rule.id },
       body: { validTo: '2026-06-01' },
@@ -261,8 +265,11 @@ describe('API contract', () => {
       params: { id: owner.id },
       query: { from: '2026-07', to: '2026-07' },
     });
+    const underLabel = await call('get', '/owners/:id/balance', { params: { id: owner.id }, query: { label: zero.id } });
+    expect(underLabel.label).toEqual({ id: zero.id, name: '0to8' });
     await call('get', '/reconciliation', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/signals');
+    await call('get', '/signals', { query: { label: zero.id } });
     const overview = await call('get', '/overview', { query: { from: '2026-07', to: '2026-07' } });
     // D-160: the totals are the backend's sums of the rows (the client never sums); a one-row period equals its row
     const [oneRow] = overview.reconciliation as { A_received: string; account: string; source: string }[];
@@ -272,6 +279,7 @@ describe('API contract', () => {
     }
     expect(overview.totals.all.discrepancy).toBe('0');
     await call('get', '/queue/:reason', { params: { reason: 'split_unconfirmed' }, query: { limit: '10' } });
+    await call('get', '/queue/:reason', { params: { reason: 'split_unconfirmed' }, query: { limit: '10', label: zero.id } });
     await call('get', '/queue/:reason', {
       params: { reason: 'writer_unmapped' },
       query: { month: '2026-07' },
@@ -279,7 +287,16 @@ describe('API contract', () => {
     await call('get', '/tracks/:isrc/explain', { params: { isrc: I1 } });
     await call('get', '/owners/payables', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/owners/payables', { query: { ids: `${owner.id},${other.id}` } });
+    await call('get', '/owners/payables', { query: { label: zero.id } });
+    await call('get', '/owners', { query: { label: zero.id } });
+    await call('get', '/artists', { query: { label: zero.id } });
+    await call('get', '/artists/balances', { query: { label: zero.id } });
+    await call('get', '/artists/:id/balance', { params: { id: a1.id }, query: { label: zero.id } });
     await call('get', '/tracks/summary', { query: { month: '2026-07' } });
+    await call('get', '/tracks/summary', { query: { label: zero.id } });
+    await call('get', '/tracks/catalog', { query: { label: zero.id } });
+    await call('get', '/releases', { query: { label: zero.id } });
+    await call('get', '/releases/:upc', { params: { upc: UPC }, query: { label: zero.id } });
     await call('get', '/tracks/summary', { query: { isrcs: `${I1},${I2}` } });
     const catalogItems = await call('get', '/tracks/catalog');
     // D-166: the pseudonyms of the registry on the ISRC (the split row of a1), the artist string of the report apart
@@ -293,7 +310,8 @@ describe('API contract', () => {
     await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
     // settlements
-    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: {} });
+    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id } });
+    expect(payout.labelId).toBe(zero.id);
     await call('get', '/settlements/operations/:id/snapshot', { params: { id: payout.id } });
     await call('post', '/settlements/operations/:id/deferred', {
       params: { id: payout.id },
@@ -304,8 +322,10 @@ describe('API contract', () => {
       body: { fileRef: 'dummy://p.pdf' },
     });
     const deduction = await call('post', '/settlements/operations', {
-      body: { direction: 'in', amount: '1.00', artistId: a1.id, date: '2026-08-01', comment: 'penalty' },
+      body: { direction: 'in', amount: '1.00', artistId: a1.id, date: '2026-08-01', comment: 'penalty', labelId: zero.id },
     });
+    const relabelled = await call('patch', '/settlements/operations/:id', { params: { id: deduction.id }, body: { labelId: own.id } });
+    expect(relabelled.labelId).toBe(own.id);
     await call('post', '/settlements/operations/:id/deactivate', {
       params: { id: deduction.id },
       body: { reason: 'mistake' },
@@ -315,6 +335,7 @@ describe('API contract', () => {
       body: { fileRef: 'dummy://r.pdf', date: '2099-12-31', comment: 'bounced' },
     });
     await call('get', '/settlements/operations');
+    await call('get', '/settlements/operations', { query: { label: zero.id } });
     const needing = await call('get', '/settlements/operations', {
       query: { ownerId: owner.id, meaning: 'payout', direction: 'out', needsProof: 'true', active: 'true', from: '2000-01-01', to: '2100-01-01' },
     });
@@ -329,7 +350,7 @@ describe('API contract', () => {
       body: {
         items: [
           { isrc: I1, month: '2026-07', amount: '12.50', recoveryPercent: '50', externalRef: 'contract-ad-1' },
-          { month: '2026-07', amount: '3', artistId: a1.id, scope: 'any' },
+          { month: '2026-07', amount: '3', artistId: a1.id, scope: 'any', labelId: zero.id },
         ],
       },
     });
@@ -338,6 +359,8 @@ describe('API contract', () => {
     expect(adList.items[0].allocation.status).toBe('allocated');
     const adSummary = await call('get', '/ads/summary', { query: { from: '2026-01', to: '2026-12' } });
     expect(adSummary.totals.count).toBe(2);
+    await call('get', '/ads', { query: { label: zero.id } });
+    await call('get', '/ads/summary', { query: { label: zero.id } });
     const oneAd = await call('get', '/ads/:id', { params: { id: ads.created[0].id } });
     expect(oneAd.allocation.isrc).toBe(I1);
     const patched = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { recoveryPercent: '0' } });
@@ -394,7 +417,8 @@ describe('API contract', () => {
       doc.body.paths['/owners'].post.parameters as { name: string; in: string; required: boolean }[]
     ).find((p) => p.in === 'header');
     expect(header).toMatchObject({ name: 'X-Operator', required: true });
-    expect(doc.body.paths['/owners'].get.parameters ?? []).toEqual([]);
+    expect(doc.body.paths['/health'].get.parameters ?? []).toEqual([]);
+    expect((doc.body.paths['/owners'].get.parameters as { name: string }[]).map((p) => p.name)).toEqual(['label']); // D-168
     const ui = await request(app).get('/api/v1/docs/').expect(200);
     expect(ui.text).toContain('swagger');
   });

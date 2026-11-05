@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
-import type { AliasRow, LabelRow, RuleRow } from './repository';
+import type { AccountRow, AliasRow, LabelRow, RuleRow } from './repository';
 import { createLabelsRepository } from './repository';
 
 export type LabelKind = 'own' | 'sublabel';
@@ -26,6 +26,8 @@ export interface LabelView {
   ownLabelId: string | null;
   aliases: string[];
   rules: RuleView[];
+  /** The Believe accounts of an own label (D-168); empty for a sublabel. */
+  accounts: string[];
 }
 
 export interface LabelOfRecord {
@@ -73,13 +75,14 @@ const ruleView = (r: RuleRow): RuleView => ({
 export function createLabelsService(db: Db) {
   const repo = createLabelsRepository(db);
 
-  const view = (l: LabelRow, aliases: AliasRow[], rules: RuleRow[]): LabelView => ({
+  const view = (l: LabelRow, aliases: AliasRow[], rules: RuleRow[], accounts: AccountRow[]): LabelView => ({
     id: l.id,
     name: l.name,
     kind: l.kind,
     ownLabelId: l.ownLabelId,
     aliases: aliases.filter((a) => a.labelId === l.id).map((a) => a.alias),
     rules: rules.filter((r) => r.labelId === l.id).map(ruleView),
+    accounts: accounts.filter((a) => a.labelId === l.id).map((a) => a.account),
   });
 
   const service = {
@@ -191,10 +194,30 @@ export function createLabelsService(db: Db) {
     async getLabel(id: string): Promise<LabelView> {
       const l = await repo.getLabel(id);
       if (!l) throw new NotFoundError('Label', id);
-      const [aliases, rules] = await db.snapshot(() =>
-        Promise.all([repo.allAliases(), repo.rulesOfLabel(id)]),
+      const [aliases, rules, accounts] = await db.snapshot(() =>
+        Promise.all([repo.allAliases(), repo.rulesOfLabel(id), repo.allAccounts()]),
       );
-      return view(l, aliases, rules);
+      return view(l, aliases, rules, accounts);
+    },
+
+    /** A Believe account of an own label (D-168): an account belongs to one label. */
+    async addAccount(labelId: string, accountRaw: string): Promise<LabelView> {
+      const account = accountRaw.trim();
+      if (!account) throw new ValidationError('Account is empty');
+      return repo.transaction(async () => {
+        const l = await repo.getLabel(labelId);
+        if (!l) throw new NotFoundError('Label', labelId);
+        if (l.kind !== 'own') throw new RuleViolationError('A Believe account belongs to an own label', 'account_for_sublabel');
+        const taken = await repo.getAccount(account);
+        if (taken) throw new ConflictError(`Account ${account} already belongs to a label`, 'account_taken');
+        await repo.insertAccount({ account, labelId: l.id, createdAt: nowIso() });
+        return service.getLabel(l.id);
+      });
+    },
+
+    /** Every registered Believe account with its own label (D-168). */
+    async listAccounts(): Promise<{ account: string; labelId: string }[]> {
+      return (await repo.allAccounts()).map((a) => ({ account: a.account, labelId: a.labelId }));
     },
 
     async search(
@@ -207,18 +230,19 @@ export function createLabelsService(db: Db) {
     },
 
     async listLabels(): Promise<LabelView[]> {
-      const [rows, aliases, rules] = await db.snapshot(() =>
-        Promise.all([repo.allLabels(), repo.allAliases(), repo.allRules()]),
+      const [rows, aliases, rules, accounts] = await db.snapshot(() =>
+        Promise.all([repo.allLabels(), repo.allAliases(), repo.allRules(), repo.allAccounts()]),
       );
-      return rows.map((l) => view(l, aliases, rules));
+      return rows.map((l) => view(l, aliases, rules, accounts));
     },
 
     /** In-memory index, built once per facade calculation (one consistent read of the module). */
     async index() {
-      const [rows, aliases, rules] = await db.snapshot(() =>
-        Promise.all([repo.allLabels(), repo.allAliases(), repo.allRules()]),
+      const [rows, aliases, rules, accounts] = await db.snapshot(() =>
+        Promise.all([repo.allLabels(), repo.allAliases(), repo.allRules(), repo.allAccounts()]),
       );
       const byId = new Map(rows.map((l) => [l.id, l]));
+      const labelOfAccount = new Map(accounts.map((a) => [a.account, a.labelId]));
       const byAlias = new Map(aliases.map((a) => [a.aliasNorm, a.labelId]));
       const rulesOf = new Map<string, RuleRow[]>();
       for (const r of rules) rulesOf.set(r.labelId, [...(rulesOf.get(r.labelId) ?? []), r]);
@@ -226,6 +250,11 @@ export function createLabelsService(db: Db) {
         normalize: normalizeLabelString,
         /** The name of a label by id (the label of record of a sublabel is its own label). */
         labelName: (id: string): string | undefined => byId.get(id)?.name,
+        /** The own label a Believe account is registered under (D-168), undefined for an unregistered account. */
+        labelOfAccount: (account: string): string | undefined => labelOfAccount.get(account),
+        /** Every own label (id, name), by name. */
+        ownLabels: (): { id: string; name: string }[] =>
+          rows.filter((l) => l.kind === 'own').map((l) => ({ id: l.id, name: l.name })),
         /** Every document of a rule (the facade asks module 1 for their status). */
         documentIds: (): string[] => [
           ...new Set(rules.map((r) => r.documentId).filter((d): d is string => !!d)),

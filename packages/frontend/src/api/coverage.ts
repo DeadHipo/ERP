@@ -70,6 +70,7 @@ export const OPERATION_COVERAGE: Record<
 
   'GET /labels': { page: 'P17', route: '/labels' },
   'POST /labels': { page: 'P17', route: '/labels' },
+  'POST /labels/:id/accounts': { page: 'P17', route: '/labels/:id', note: 'action-add-account (D-168)' },
   'POST /labels/:id/aliases': { page: 'P17', route: '/labels/:id', note: 'action-add-alias; also the queue and the signals' },
   'POST /labels/:id/rules': { page: 'P17', route: '/labels/:id', note: 'action-set-rule; also the queue and the signals' },
   'POST /labels/rules/:id/close': { page: 'P17', route: '/labels/:id', note: 'action-close-rule' },
@@ -92,6 +93,7 @@ export const OPERATION_COVERAGE: Record<
 
   'GET /settlements/operations': { page: 'P20', route: '/operations', note: 'also the operations tab of P10' },
   'POST /settlements/operations': { page: 'P20', route: '/operations', note: 'action-create-operation' },
+  'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168); also P20' },
   'POST /settlements/operations/:id/proof': { page: 'P20', route: '/operations', note: 'action-proof; shared with P10' },
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },
   'POST /settlements/operations/:id/deactivate': { page: 'P20', route: '/operations', note: 'action-deactivate; shared with P10' },

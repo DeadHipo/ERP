@@ -98,6 +98,13 @@ export class Seed {
     return this.shared[`artist:${name}`];
   }
 
+  /** An own label of the shared seed (`0to8`, `Echo8`), D-168: every operation and payout is made under one. */
+  label(name: '0to8' | 'Echo8'): string {
+    const id = this.shared[`label:${name}`];
+    if (!id) throw new Error(`the shared seed has no label ${name}`);
+    return id;
+  }
+
   nextReportId(): string {
     return String(9_700_000 + ++this.reportSeq);
   }
@@ -484,6 +491,7 @@ export class Sc {
       scope: scope as never,
       documentId: basis.id,
       comment: 'advance',
+      labelId: this.g.label('0to8'),
     });
     await this.f.attachPaymentProof(op.id, { fileRef: 'dummy://proof.pdf' });
     this.keys.documents['advance-basis'] = basis.id;

@@ -2,7 +2,8 @@ import { bigint, boolean, date, numeric, pgSchema, text } from 'drizzle-orm/pg-c
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Advertising expenses (D-155, D-156): one immutable record per arrival of data; only the recovery percent, the
-// scope and the deactivation change. The DDL is migrations/postgres/0012_ads.sql (schema `ads`); change both.
+// scope and the deactivation change. The DDL is migrations/postgres/0012_ads.sql and 0014_label_books.sql (schema `ads`);
+// change both.
 
 const s = pgSchema('ads');
 
@@ -23,4 +24,6 @@ export const expenses = s.table('expenses', {
   createdAt: isoTimestamp('created_at').notNull(),
   deactivatedAt: isoTimestamp('deactivated_at'),
   deactivatedReason: text('deactivated_reason'),
+  /** The own label of a record without an ISRC (D-168); with an ISRC the line of the ISRC decides, this is the fallback. */
+  labelId: text('label_id'),
 });

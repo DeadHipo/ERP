@@ -209,6 +209,7 @@ export const labelSchema = z.object({
   ownLabelId: z.string().nullable(),
   aliases: z.array(z.string()),
   rules: z.array(labelRuleSchema),
+  accounts: z.array(z.string()).describe('The Believe accounts registered under the own label (D-168); empty for a sublabel'),
 });
 export const labelListItemSchema = labelSchema.extend({
   rules: z.array(
@@ -377,6 +378,9 @@ export const reconciliationRowSchema = z.object({
   discrepancy: money,
   fileTotal: money.nullable(),
   fileDiscrepancy: money.nullable(),
+  byLabel: z
+    .record(z.string(), z.object({ A_received: money, B_notOurs: money, C_waiting: money, ourShare: money, ourShareNoSplit: money }))
+    .describe("The row per label of record (by name, '?' = an unmapped string or publishing): Σ over the labels = the row (D-168)"),
 });
 export type ReconciliationRow = z.infer<typeof reconciliationRowSchema>;
 
@@ -456,6 +460,33 @@ export const signalsSchema = z.object({
       isrcs: z.array(z.string()),
     }),
   ),
+  operationsWithoutLabel: z
+    .array(
+      z.object({
+        operationId: z.string(),
+        ownerId: z.string().nullable(),
+        ownerName: z.string().nullable(),
+        artistId: z.string().nullable(),
+        pseudonym: z.string().nullable(),
+        meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']),
+        date,
+        amountCents: z.number().int(),
+      }),
+    )
+    .describe('Active operations without a label (D-168): the history before the split; the operator sets the label on P21'),
+  labelOutsideAccount: z
+    .array(
+      z.object({
+        account: z.string(),
+        month,
+        labelName: z.string().describe('The label string of the units'),
+        ourLabelName: z.string().describe('The own label the string leads to'),
+        accountLabelName: z.string().describe('The own label the account is registered under'),
+        net: money,
+        units: z.number().int(),
+      }),
+    )
+    .describe('Units of a Believe account whose label string leads to another own label than the account is registered under (D-168)'),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -518,8 +549,9 @@ export const overviewSchema = z.object({
       all: kpiSumsSchema,
       bySource: z.object({ believe: kpiSumsSchema, b17: kpiSumsSchema }),
       byAccount: z.array(kpiSumsSchema.extend({ source: z.enum(['believe', 'b17']), account: z.string() })),
+      byLabel: z.record(z.string(), kpiSumsSchema).describe("The same sums per label of record (by name, '?' = without a label), D-168"),
     })
-    .describe('The KPI cards of P1 over the reconciliation rows of the period: all, per source, per source × account (D-160)'),
+    .describe('The KPI cards of P1 over the reconciliation rows of the period: all, per source, per source × account, per label (D-160, D-168)'),
   queue: z.array(
     z.object({ reason: cReasonSchema, amount: money, groups: z.number().int(), isrcs: z.number().int() }),
   ),
@@ -539,10 +571,29 @@ export const payoutGateSchema = z.object({
 });
 export type PayoutGate = z.infer<typeof payoutGateSchema>;
 
+/** The book of one label of an owner (D-168): every money field of `total`, partitioned by label. */
+export const labelBookSchema = z.object({
+  labelId: z.string().nullable().describe('null = without a label (an unmapped label string, publishing, an operation or a charge without a label)'),
+  earned: money,
+  waiting: money,
+  recouped: money.describe('By the label of the income consumed: a position under a label is recouped from that label only'),
+  adsCharged: money,
+  paid: money,
+  returns: money,
+  credits: money,
+  payable: money,
+  payableShown: money,
+  payableNegative: z.boolean(),
+});
+export type LabelBook = z.infer<typeof labelBookSchema>;
+
+const labelRef = z.object({ id: z.string(), name: z.string() });
+
 export const balanceSchema = z.object({
   owner: ownerSchema,
   confirmed: z.boolean(),
   payout: payoutGateSchema,
+  label: labelRef.nullable().describe('The label the balance is restricted to (D-168); null = the whole owner'),
   period: z.object({
     from: z.string().nullable(),
     to: z.string().nullable(),
@@ -572,10 +623,8 @@ export const balanceSchema = z.object({
     payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
   }),
   byLabel: z
-    .record(z.string(), z.object({ earned: money, waiting: money }))
-    .describe(
-      "All-time master earned (B) and waiting (C) per label of record ('?' = unmapped); recouped and paid are one total (D-130)",
-    ),
+    .record(z.string(), labelBookSchema)
+    .describe("The book of every label (by name, '?' = without a label): Σ over the books = total, field by field (D-168); under a label view the one book"),
   artists: z.array(
     z.object({
       artistId: z.string(),
@@ -585,6 +634,10 @@ export const balanceSchema = z.object({
       recouped: money,
       unrecouped: money,
       tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
+      byLabel: z.record(
+        z.string(),
+        z.object({ labelId: z.string().nullable(), earned: money, waiting: money, recouped: money, unrecouped: money, recoupedFromMaster: money }),
+      ),
     }),
   ),
   publishing: z.array(
@@ -607,6 +660,7 @@ export const balanceSchema = z.object({
       remaining: money,
       scope: z.object({ kind: z.string() }),
       date,
+      labelId: z.string().nullable().describe('The label of the operation (D-168); null = recouped from any income'),
     }),
   ),
   ads: z
@@ -618,6 +672,7 @@ export const balanceSchema = z.object({
         artistId: z.string(),
         role: z.enum(['artist', 'sublabel']),
         amount: money,
+        labelId: z.string().nullable().describe("The label of record of the expense (D-168); null = none"),
       }),
     )
     .describe('Advertising charged to the owner (D-157): taken off payable at once, newest month first'),
@@ -633,6 +688,7 @@ export const artistBalanceSchema = z.object({
   artistId: z.string(),
   pseudonym: z.string(),
   ownerId: z.string().nullable(),
+  label: labelRef.nullable().describe('The label the money is restricted to (D-168); null = every book'),
   period: z.object({
     from: z.string().nullable(),
     to: z.string().nullable(),
@@ -651,7 +707,21 @@ export const artistBalanceSchema = z.object({
     adsCharged: money.describe('Advertising charged to this pseudonym, taken off the owner\'s payable at once (D-157)'),
     paid: money.describe('Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym)'),
   }),
-  byLabel: balanceSchema.shape.byLabel,
+  byLabel: z
+    .record(
+      z.string(),
+      z.object({
+        labelId: z.string().nullable(),
+        earned: money,
+        waiting: money,
+        recouped: money,
+        unrecouped: money,
+        recoupedFromMaster: money,
+        adsCharged: money,
+        paid: money,
+      }),
+    )
+    .describe("The book of every label of the pseudonym (by name, '?' = without a label): Σ books = total (D-168)"),
   tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
   positions: balanceSchema.shape.positions,
   ads: balanceSchema.shape.ads,
@@ -778,6 +848,8 @@ export const operationSchema = z.object({
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
   meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']),
+  labelId: z.string().nullable().describe('The own label of the operation (D-168); null = without a label'),
+  labelName: z.string().nullable().optional().describe('Present on GET /settlements/operations; null without a label'),
   ownerName: z
     .string()
     .nullable()
@@ -974,6 +1046,8 @@ export const documentUsesSchema = z.object({
 export const payoutSnapshotSchema = z.object({
   computedAt: timestamp,
   ownerId: z.string(),
+  labelId: z.string().optional().describe('The label the payout was made under (D-168); absent in snapshots before it'),
+  labelName: z.string().optional(),
   amountCents: z.number().int(),
   payableExact: money,
   total: balanceSchema.shape.total.extend({ adsCharged: money.optional() }),
@@ -1095,6 +1169,7 @@ export const adExpenseSchema = z.object({
   createdAt: timestamp,
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
+  labelId: z.string().nullable().describe('The own label of a record without an ISRC (D-168); the fallback for one with an ISRC'),
 });
 export type AdExpense = z.infer<typeof adExpenseSchema>;
 

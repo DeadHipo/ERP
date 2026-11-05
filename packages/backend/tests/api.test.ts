@@ -102,9 +102,14 @@ describe('JSON API', () => {
       .expect(200);
     expect(bal.body.total.payable).toBe('150.000000001');
     expect(bal.body.period.received).toBe('300.000000002');
-    const payout = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({}).expect(201);
+    // a payout is made under a label (D-168); without one: 400 label_required
+    const noLabel = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
+    expect([noLabel.status, noLabel.body.error.code]).toEqual([400, 'label_required']);
+    const labelId = f.testLabels['0to8'];
+    const payout = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({ labelId }).expect(201);
     expect(payout.body.amountCents).toBe(15000);
-    const blocked = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({});
+    expect(payout.body.labelId).toBe(labelId);
+    const blocked = await writer(app).post(`/api/v1/owners/${a.owner.id}/payouts`).send({ labelId });
     expect(blocked.status).toBe(422);
     expect(blocked.body.error.code).toBe('payout_blocked');
   });

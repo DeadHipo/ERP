@@ -26,6 +26,8 @@ export interface AdExpense {
   createdAt: string;
   active: boolean;
   deactivatedReason: string | null;
+  /** The own label of a record without an ISRC (D-168); with an ISRC the line of the ISRC decides, this is the fallback. */
+  labelId: string | null;
 }
 
 export interface AdExpenseInput {
@@ -40,6 +42,7 @@ export interface AdExpenseInput {
   source?: string;
   migration?: boolean;
   comment?: string;
+  labelId?: string | null;
 }
 
 export interface AdExpenseFilter {
@@ -83,6 +86,7 @@ const view = (r: ExpenseRow): AdExpense => ({
   createdAt: r.createdAt,
   active: r.deactivatedAt === null,
   deactivatedReason: r.deactivatedReason,
+  labelId: r.labelId,
 });
 
 const toRepoFilter = (f: AdExpenseFilter): ExpenseFilter => ({
@@ -109,6 +113,9 @@ export function createAdsService(db: Db) {
     if (!amount.gt(0)) throw new ValidationError(`Amount ${input.amount} must be above 0`);
     const scope = parseScope(input.scope);
     if (scope === 'isrc' && !isrc) throw new ValidationError('Scope "isrc" needs an ISRC');
+    const labelId = input.labelId?.trim() || null;
+    // a record without an ISRC has no line to take the label from (D-168)
+    if (!isrc && !labelId) throw new ValidationError('An expense without an ISRC needs the label it belongs to', undefined, 'label_required');
     return {
       id: newId(),
       isrc,
@@ -124,6 +131,7 @@ export function createAdsService(db: Db) {
       createdAt,
       deactivatedAt: null,
       deactivatedReason: null,
+      labelId,
     };
   }
 
@@ -139,7 +147,7 @@ export function createAdsService(db: Db) {
         try {
           return validate(i, now);
         } catch (e) {
-          if (e instanceof ValidationError) throw new ValidationError(`Item ${n + 1}: ${e.message}`, e.details);
+          if (e instanceof ValidationError) throw new ValidationError(`Item ${n + 1}: ${e.message}`, e.details, e.code);
           throw e;
         }
       });

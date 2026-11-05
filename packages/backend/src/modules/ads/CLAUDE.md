@@ -5,3 +5,5 @@ percent 0–100, scope (`any` / `publishing` / `isrc`), external ref (a repeated
 Every arrival of data is a new record; only the recovery percent, the scope and the deactivation change. No
 document is needed. It computes no money: who bears an expense and what it recoups is `src/facade/ads.ts`,
 recalculated from scratch inside `calculate()`. DDL `migrations/postgres/0012_ads.sql`, Drizzle `schema.ts`.
+A record without an ISRC needs `labelId` (the own label it belongs to, D-168, `label_required`); with an ISRC the
+line of the ISRC decides the label of record and the stored one is the fallback (migration `0014_label_books.sql`).

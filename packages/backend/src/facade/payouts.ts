@@ -5,7 +5,7 @@ import { type Scope } from '../modules/settlements';
 import type { FacadeContext } from './context';
 
 export function payoutsApi(ctx: FacadeContext) {
-  const { db, config, owners, settlements, publishing, payments, blockingPayoutsOf, balanceWithFiles } = ctx;
+  const { db, config, owners, settlements, publishing, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;
   const api = {
     /**
      * Adjustments (deduction, credit) and recoupable payouts (advance with scope). Settlements are tied to the artist;
@@ -25,10 +25,15 @@ export function payoutsApi(ctx: FacadeContext) {
       operationRef?: string | null;
       comment: string;
       migration?: boolean;
+      /** The own label the operation belongs to (D-168); required unless the operation is a migrated one. */
+      labelId?: string | null;
     }) {
       return db.transaction(async () => {
         const cents = new Decimal(input.amount).mul(100);
         if (!cents.isInteger()) throw new ValidationError('Settlement amounts are whole cents');
+        if (!input.labelId && !input.migration)
+          throw new ValidationError('An operation needs the label it belongs to (labelId)', undefined, 'label_required');
+        if (input.labelId) await assertOwnLabel(input.labelId);
         if (input.direction === 'out' && !input.scope && !input.migration) {
           throw new RuleViolationError(
             'A payout of earned money is made with the payout button; an advance needs a scope',
@@ -100,13 +105,17 @@ export function payoutsApi(ctx: FacadeContext) {
     /**
      * The "Payout" button: recalculates the owner, checks documents, blocking payouts and the threshold, records the
      * payout with its snapshot (deferred until the payment proof), then sends it to the (stub) payment service.
-     * One amount per owner. The checks, the calculation and the recorded payout are one write transaction (D-121);
-     * the payment service is called after it commits.
+     * One amount per owner and label (D-168): the button pays the payable of the label's book, the gate keeps its
+     * owner checks (the contract, the blocking payouts of the owner whatever their label). The checks, the calculation
+     * and the recorded payout are one write transaction (D-121); the payment service is called after it commits.
      */
-    async createPayout(ownerId: string, input: { comment?: string } = {}) {
+    async createPayout(ownerId: string, input: { labelId?: string; comment?: string } = {}) {
+      if (!input.labelId) throw new ValidationError('A payout is made under a label (labelId)', undefined, 'label_required');
+      const labelId = input.labelId;
       const { op, id, cents } = await db.transaction(async () => {
+        const label = await assertOwnLabel(labelId);
         const id = await owners.resolveOwnerId(ownerId);
-        const { balance, files: believeFiles } = await balanceWithFiles(id);
+        const { balance, files: believeFiles } = await balanceWithFiles(id, {}, { labelId });
         // One decision for the button and the screen (N19): the order owner_not_confirmed, payout_blocked,
         // nothing_to_pay, below_threshold is the order of payoutGate().
         const gate = balance.payout;
@@ -153,6 +162,8 @@ export function payoutsApi(ctx: FacadeContext) {
         const snapshot = {
           computedAt: new Date().toISOString(),
           ownerId: id,
+          labelId: label.id,
+          labelName: label.name,
           amountCents: cents,
           payableExact: balance.total.payable.toFixed(),
           total: balance.total,
@@ -183,6 +194,7 @@ export function payoutsApi(ctx: FacadeContext) {
           amountCents: cents,
           date: todayIso(),
           comment: input.comment ?? 'Payout on demand',
+          labelId: label.id,
           snapshot,
         });
         return { op, id, cents };
@@ -210,7 +222,13 @@ export function payoutsApi(ctx: FacadeContext) {
       });
     },
 
-    /** A payout that did not arrive: a separate return operation with a confirming document. */
+    /** The label of an existing operation (D-168): the history before the split is marked by the operator. */
+    async setOperationLabel(operationId: string, labelId: string) {
+      await assertOwnLabel(labelId);
+      return settlements.setLabel(operationId, labelId);
+    },
+
+    /** A payout that did not arrive: a separate return operation with a confirming document (under the payout's label). */
     returnPayout(operationId: string, input: { fileRef: string; date: string; comment: string }) {
       return db.transaction(async () => {
         const op = await settlements.getOperation(operationId);
@@ -236,6 +254,7 @@ export function payoutsApi(ctx: FacadeContext) {
           operationRef: op.id,
           documentId: doc.id,
           comment: input.comment,
+          labelId: op.labelId,
         });
       });
     },

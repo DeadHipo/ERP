@@ -10,7 +10,8 @@ import { type AdsService } from '../modules/ads';
 import { artistReach, ownerReach } from './owner-scope';
 import { scoped } from './scope';
 import { calculate, type PeriodFilter } from './calculation';
-import { artistBalance, ownerBalance } from './balance';
+import { artistBalance, ownerBalance, type BalanceView } from './balance';
+import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
 import { floorToCents } from '../shared/money';
 import { stubPaymentService, type PaymentService } from './payment-service';
@@ -142,13 +143,38 @@ export function createFacadeContext(
     };
   }
 
+  /** An own label by id (D-168): 404 for an unknown id, 400 `label_not_own` for a sublabel. */
+  async function assertOwnLabel(labelId: string) {
+    const l = await labels.getLabel(labelId);
+    if (l.kind !== 'own')
+      throw new ValidationError(`Label "${l.name}" is a sublabel; an operation belongs to an own label`, { labelId }, 'label_not_own');
+    return l;
+  }
+
+  /** The book of an own label and who is visible under it (D-168), or nothing when no label is asked. */
+  async function labelContext(labelId: string | undefined): Promise<{ book: LabelBook; visible: Awaited<ReturnType<typeof labelVisibility>> } | undefined> {
+    if (labelId === undefined) return undefined;
+    const book = await timed('labelBook', () => labelBook(modules, labelId), (b) => `${b.labelStrings.length} strings`);
+    const visible = await timed('labelVisibility', () => labelVisibility({ ...modules, settlements }, book), (v) => `${v.isrcs.size} ISRCs, ${v.artistIds.size} pseudonyms, ${v.ownerIds.size} owners`);
+    return { book, visible };
+  }
+
+  /** The view of a balance under a label (D-168): the label must be an own label. */
+  async function viewOf(labelId: string | undefined): Promise<BalanceView | undefined> {
+    if (labelId === undefined) return undefined;
+    await assertOwnLabel(labelId);
+    return { labelId };
+  }
+
   /**
    * The owner balance and the Believe files it was calculated from (a payout snapshot records them). The calculation
    * reads only the units of the owner's reach (`ownerReach`, D-163, D-164): the same balance, since the balance reads
    * only the units where the owner has an allocation and the reach is a superset of them (checked for every real
    * owner). The payout snapshot is this calculation; the file list it records comes from the registry and is complete.
+   * Under a label (D-168) the same calculation is projected to that label's book: the recoup needs every income of
+   * the owner, so the reach is never narrowed by the label.
    */
-  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}) {
+  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}, view?: BalanceView) {
     const id = await timed('owners.resolveOwnerId + getOwner', async () => {
       const id = await owners.resolveOwnerId(ownerId);
       await owners.getOwner(id);
@@ -171,7 +197,7 @@ export function createFacadeContext(
         })),
       (r) => `${r.operations.length} operations`,
     );
-    const balance = timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f));
+    const balance = timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f, {}, view));
     return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf(balance) } };
   }
 
@@ -180,7 +206,7 @@ export function createFacadeContext(
    * `ownerBalance()` builds, since that row reads only the units where the pseudonym has an allocation and recoups its
    * positions from its own master income and the owner's publishing (read whole). A merged id answers for the survivor.
    */
-  async function artistBalanceWithReach(artistId: string, f: PeriodFilter = {}) {
+  async function artistBalanceWithReach(artistId: string, f: PeriodFilter = {}, view?: BalanceView) {
     const entry = await timed('owners.artistIndex (resolve)', async () => {
       const e = (await owners.artistIndex()).get(artistId);
       if (!e) await owners.getArtist(artistId); // throws not_found
@@ -199,7 +225,7 @@ export function createFacadeContext(
         })),
       (r) => `${r.operations.length} operations`,
     );
-    const money = timedSync('artistBalance (JS)', () => artistBalance(calc, entry.id, operations, f));
+    const money = timedSync('artistBalance (JS)', () => artistBalance(calc, entry.id, operations, f, {}, view));
     return { artist, owner, ...money };
   }
 
@@ -233,6 +259,9 @@ export function createFacadeContext(
     balanceWithFiles,
     artistBalanceWithReach,
     gateOf,
+    assertOwnLabel,
+    labelContext,
+    viewOf,
   };
 }
 

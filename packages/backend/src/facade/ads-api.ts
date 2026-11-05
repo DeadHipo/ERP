@@ -21,6 +21,8 @@ export interface AdsQuery {
   status?: AdStatus;
   /** Also the deactivated records (they take part in nothing). */
   includeInactive?: boolean;
+  /** Records whose label of record is this own label (D-168): a filter of the result, the read stays by ISRC. */
+  labelId?: string;
   limit?: number;
   offset?: number;
 }
@@ -44,7 +46,7 @@ function viewOf(rec: AdExpense, r: AdResult | undefined, artistIndex: Calculatio
 
 /** Advertising expenses (D-155, D-156): records in the ads module, allocation recalculated from scratch. */
 export function adsApi(ctx: FacadeContext) {
-  const { ads, owners, modules } = ctx;
+  const { ads, owners, modules, assertOwnLabel } = ctx;
 
   async function checkArtists(ids: (string | null | undefined)[]) {
     const unique = [...new Set(ids.filter((x): x is string => !!x))];
@@ -58,6 +60,7 @@ export function adsApi(ctx: FacadeContext) {
     /** A batch of expenses: every arrival of data is a new record; a known external ref is skipped. */
     async createAds(items: AdExpenseInput[]) {
       await checkArtists(items.map((i) => i.artistId));
+      for (const id of new Set(items.map((i) => i.labelId).filter((x): x is string => !!x))) await assertOwnLabel(id);
       return ads.createMany(items);
     },
 
@@ -72,6 +75,7 @@ export function adsApi(ctx: FacadeContext) {
     /** Records with their allocation, newest month first; filters on the record and on the allocation. */
     async listAds(q: AdsQuery = {}) {
       if (q.ownerId) await owners.getOwner(await owners.resolveOwnerId(q.ownerId));
+      if (q.labelId) await assertOwnLabel(q.labelId);
       const records = await ads.list({
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.from ? { from: q.from } : {}),
@@ -87,6 +91,7 @@ export function adsApi(ctx: FacadeContext) {
       for (const rec of records) {
         const r = byId.get(rec.id);
         if (q.status && r?.status !== q.status) continue;
+        if (q.labelId && r?.ourLabelId !== q.labelId) continue;
         if (artistId) {
           const hit =
             (rec.artistId && (calc.artistIndex.get(rec.artistId)?.id ?? rec.artistId) === artistId) ||
@@ -115,12 +120,14 @@ export function adsApi(ctx: FacadeContext) {
     },
 
     /** Per month and label of record: the expense, what artists return, what sublabels and we bear (YYYY-MM). */
-    async adsSummary(f: { from?: string; to?: string } = {}) {
+    async adsSummary(f: { from?: string; to?: string; labelId?: string } = {}) {
       for (const m of [f.from, f.to])
         if (m && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new ValidationError(`Invalid month "${m}"`);
+      if (f.labelId) await assertOwnLabel(f.labelId);
       // every active record takes part: the units of their ISRCs (all months: the label of an earlier month may decide)
       const calc = await calculate(scoped(modules, { isrcs: isrcsOf(await ads.list({ active: true })), publishingLines: false }));
-      const rows = adSummary(calc.ads, f.from, f.to);
+      // under a label: the records whose label of record is that label (D-168)
+      const rows = adSummary(f.labelId ? calc.ads.filter((r) => r.ourLabelId === f.labelId) : calc.ads, f.from, f.to);
       const total = (k: 'amount' | 'recoveredFromArtists' | 'borneBySublabels' | 'borneByUs' | 'noSplit') =>
         rows.reduce((s, r) => s.add(r[k]), ZERO);
       return {

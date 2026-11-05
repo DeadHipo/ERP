@@ -23,6 +23,7 @@ const row = (
   ourShareByLabel: {},
   ourShareNoSplit: new Decimal(noSplit),
   discrepancy: new Decimal(A).sub(B).sub(C).sub(ours),
+  byLabel: {},
 });
 
 const text = (s: Partial<KpiSums>) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v.toJSON()]));

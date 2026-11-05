@@ -71,7 +71,7 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
 const sortedMonths = (units: UnitResult[]) => [...new Set(units.map((u) => u.reportingMonth))].sort();
 
 export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof splitsApi>) {
-  const { owners, splits, sources, settlements, modules, db, opDocIds, gateOf } = ctx;
+  const { owners, splits, sources, settlements, modules, db, opDocIds, gateOf, labelContext } = ctx;
   const calcWithOps = async () => calculate(modules, await opDocIds());
   /** The same calculation narrowed to a unit scope (D-161). */
   const calcScoped = async (scope: UnitScope) => calculate(scoped(modules, scope), await opDocIds());
@@ -91,11 +91,14 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * The payables list (N4): one calculation, a per-owner index of the units and publishing lines, then the very
      * `ownerBalance()` per owner. `from` / `to` / `basis` shape `waitingBreakdown` only (the totals are all-time).
      */
-    async ownerPayables(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string } = {}) {
-      // `ids` (the visible rows of P9, D-163): only these owners, from a calculation of the units of their reach
+    async ownerPayables(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string; label?: string } = {}) {
+      // `ids` (the visible rows of P9, D-163): only these owners, from a calculation of the units of their reach;
+      // under a label (D-168): the owners visible under it, each balance projected to the label's book
       const only = f.ids === undefined ? undefined : parseIdList(f.ids);
+      const lc = await labelContext(f.label);
+      const view = lc ? { labelId: lc.book.id } : undefined;
       const { list, ops } = await db.snapshot(async () => ({
-        list: (await owners.listOwners()).filter((o) => only === undefined || only.has(o.id)),
+        list: (await owners.listOwners()).filter((o) => (only === undefined || only.has(o.id)) && (!lc || lc.visible.ownerIds.has(o.id))),
         ops: await settlements.listOperations({}),
       }));
       const calc = only
@@ -107,8 +110,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         (o) => o.ownerId as string,
       );
       const items = list.map((o) => {
-        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], f, index.get(o.id) ?? { units: [], publishing: [] });
-        const payouts = (opsOf.get(o.id) ?? []).filter((x) => x.active && x.meaning === 'payout');
+        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], f, index.get(o.id) ?? { units: [], publishing: [] }, view);
+        const payouts = (opsOf.get(o.id) ?? []).filter((x) => x.active && x.meaning === 'payout' && (!view || x.labelId === view.labelId));
         return {
           ownerId: o.id,
           name: o.name,
@@ -139,14 +142,18 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * and one report month), joined with the tracks of module 1 and the names of the report. A track without money
      * shows zeros. Units without an ISRC are not tracks and are left out (they are on the signals page).
      */
-    async trackSummary(f: { account?: string; month?: string; isrcs?: string } = {}) {
+    async trackSummary(f: { account?: string; month?: string; isrcs?: string; label?: string } = {}) {
       // one account and/or one report month, or a list of ISRCs (the visible rows of P5): only those units, splits,
-      // tracks and names can appear in the answer, and the B17 side is not read (D-161, D-162)
-      const only = f.isrcs === undefined ? undefined : parseIsrcList(f.isrcs);
+      // tracks and names can appear in the answer, and the B17 side is not read (D-161, D-162); under a label the
+      // units of its strings and the ISRCs that carry them (D-168)
+      const lc = await labelContext(f.label);
+      const asked = f.isrcs === undefined ? undefined : parseIsrcList(f.isrcs);
+      const only = lc ? (asked ?? [...lc.visible.isrcs].sort()).filter((i) => lc.visible.isrcs.has(i)) : asked;
       const calc = await calcScoped({
         ...(f.account !== undefined ? { accounts: [f.account] } : {}),
         ...(f.month !== undefined ? { from: f.month, to: f.month, basis: 'report' as const } : {}),
         ...(only ? { isrcs: only } : {}),
+        ...(lc ? { labelStrings: lc.book.labelStrings } : {}),
         publishingLines: false,
       });
       const byIsrcs = only ? { isrcs: only } : {};
@@ -159,6 +166,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
       });
       const { attrs, byIsrc } = await nameMaps(byIsrcs);
+      const onlySet = only ? new Set(only) : undefined;
       const units = calc.units.filter(
         (u) =>
           u.isrc !== '' &&
@@ -173,7 +181,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const withSplit = new Set(splitList.map((s) => s.isrc));
       const withParts = new Set(partList.map((p) => p.isrc));
       // `only` is also a filter of the answer (not just of the read): the same rows with the scope switched off
-      const isrcs = new Set([...unitsOf.keys(), ...tracksOf.keys()].filter((i) => only === undefined || only.includes(i)));
+      const isrcs = new Set([...unitsOf.keys(), ...tracksOf.keys()].filter((i) => onlySet === undefined || onlySet.has(i)));
       const items = [...isrcs].sort().map((isrc) => {
         const us = unitsOf.get(isrc) ?? [];
         const ts = tracksOf.get(isrc) ?? [];
@@ -200,7 +208,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * registered, with its UPCs, names and whether it has a split or participations. No calculation; the money of
      * the visible rows comes from `trackSummary({ isrcs })`. The ISRC set is the one of `trackSummary()`.
      */
-    async trackCatalog() {
+    async trackCatalog(f: { label?: string } = {}) {
+      // under a label (D-168): the ISRCs that carry the label's strings; a registered track without units is «Все» only
+      const lc = await labelContext(f.label);
       const { tracks, splitList, partList, artistsOf } = await db.snapshot(async () => {
         const tracks = await owners.listTracks();
         const splitList = await splits.listSplits();
@@ -221,7 +231,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       );
       const withSplit = new Set(splitList.map((s) => s.isrc));
       const withParts = new Set(partList.map((p) => p.isrc));
-      const isrcs = new Set([...upcsOf.keys(), ...tracksOf.keys()]);
+      const isrcs = new Set([...upcsOf.keys(), ...tracksOf.keys()].filter((i) => !lc || lc.visible.isrcs.has(i)));
       const items = [...isrcs].sort().map((isrc) => {
         const ts = tracksOf.get(isrc) ?? [];
         const upcs = [...new Set([...(upcsOf.get(isrc) ?? []), ...ts.map((t) => t.upc).filter((x): x is string => !!x)])].sort();
@@ -314,10 +324,12 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     },
 
     /** Releases (N8): the tracks of module 1 grouped by UPC with the net of the loaded files; no calculation. */
-    async releases(q?: string) {
+    async releases(q?: string, label?: string) {
+      // under a label (D-168): the tracks of the label's ISRCs and the net of the label's units
+      const lc = await labelContext(label);
       const [{ tracks, artistsOf }, net, { attrs }] = await Promise.all([
         db.snapshot(async () => {
-          const tracks = await owners.listTracks();
+          const tracks = (await owners.listTracks()).filter((t) => !lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc)));
           // the pseudonyms of a UPC (D-166): those of its tracks (rows, participations, registry links)
           const [splitList, partList, { links, index }] = await Promise.all([
             splits.listSplits(),
@@ -326,7 +338,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           ]);
           return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
         }),
-        sources.netByUpc(),
+        sources.netByUpc(lc ? { labelStrings: lc.book.labelStrings } : {}),
         nameMaps(),
       ]);
       const byUpc = groupBy(
@@ -370,10 +382,11 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     },
 
     /** One release (N9): its tracks and report months with B, C and ours, from one calculation. */
-    async release(upc: string) {
-      const calc = await calcScoped({ upcs: [upc], publishingLines: false });
+    async release(upc: string, label?: string) {
+      const lc = await labelContext(label);
+      const calc = await calcScoped({ upcs: [upc], ...(lc ? { labelStrings: lc.book.labelStrings } : {}), publishingLines: false });
       const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps({ upcs: [upc] })]);
-      const mine = tracks.filter((t) => t.upc === upc);
+      const mine = tracks.filter((t) => t.upc === upc && (!lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc))));
       const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');
       if (mine.length === 0 && units.length === 0) throw new NotFoundError('Release', upc);
       const pair = [...attrs.entries()].filter(([k]) => k.endsWith(`|${upc}`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];

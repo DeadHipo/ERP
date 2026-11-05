@@ -96,10 +96,11 @@ describe('operator header hook', () => {
 
     const op = await writer(app)
       .post('/api/v1/settlements/operations')
-      .send({ direction: 'in', amount: '1.50', artistId: artist.id, date: '2026-08-01', comment: 'secret words' })
+      .send({ direction: 'in', amount: '1.50', artistId: artist.id, date: '2026-08-01', comment: 'secret words', labelId: f.testLabels['0to8'] })
       .expect(201);
     const [opRow] = await f.auditOf(artist.id);
     expect(opRow?.summary).toEqual({ params: {}, body: { direction: 'in', amount: '1.50' } });
+    expect(opRow?.entityIds).toContain(f.testLabels['0to8']); // the label is an entity of the write (D-168)
     expect(op.body.id).toBeTruthy();
 
     // a failed write leaves no trace; reads are not recorded

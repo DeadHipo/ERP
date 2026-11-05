@@ -35,6 +35,7 @@ const ad = (over: Partial<AdExpense> = {}): AdExpense => ({
   createdAt: '2026-11-03T00:00:00.000Z',
   active: true,
   deactivatedReason: null,
+  labelId: null,
   ...over,
 });
 

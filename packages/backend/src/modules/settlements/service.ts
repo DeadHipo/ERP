@@ -28,6 +28,8 @@ export interface OperationView {
   deactivatedReason: string | null;
   /** Derived meaning, for display only (there are no operation types in the model). */
   meaning: 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
+  /** The own label of the operation (D-168); null = without a label. */
+  labelId: string | null;
 }
 
 export interface OperationInput {
@@ -45,6 +47,7 @@ export interface OperationInput {
   migration?: boolean;
   comment: string;
   externalRef?: string | null;
+  labelId?: string | null;
 }
 
 const SCOPE_KINDS: ScopeKind[] = ['any', 'master', 'publishing', 'master_publishing', 'isrcs'];
@@ -78,6 +81,7 @@ function view(o: OperationRow): OperationView {
     active: o.deactivatedAt === null,
     deactivatedReason: o.deactivatedReason,
     meaning: meaningOf(o),
+    labelId: o.labelId,
   };
 }
 
@@ -145,7 +149,8 @@ export function createSettlementsService(db: Db) {
             .reduce((s, o) => s - o.amountCents, 0);
           if (returned - input.amountCents > ref.amountCents)
             throw new ValidationError('Returns cannot exceed the payout');
-          input = { ...input, ownerId: ref.ownerId };
+          // a return belongs to the label of its payout
+          input = { ...input, ownerId: ref.ownerId, labelId: input.labelId ?? ref.labelId };
           scope = null;
         } else {
           if (!input.artistId) throw new ValidationError('A credit is tied to an artist');
@@ -171,6 +176,7 @@ export function createSettlementsService(db: Db) {
           createdAt: nowIso(),
           deactivatedAt: null,
           deactivatedReason: null,
+          labelId: input.labelId ?? null,
         });
         return view(await get(id));
       });
@@ -259,6 +265,16 @@ export function createSettlementsService(db: Db) {
       await repo.setExternalRef(id, externalRef);
     },
 
+    /** The label of an operation (D-168): set by the operator on the history, or by the marking script. */
+    async setLabel(id: string, labelId: string | null): Promise<OperationView> {
+      return repo.transaction(async () => {
+        const o = await get(id);
+        if (o.deactivatedAt) throw new ValidationError('The operation is inactive');
+        await repo.setLabel(id, labelId);
+        return view(await get(id));
+      });
+    },
+
     /** Stores a payout to an owner together with its snapshot (per-artist breakdown, file hashes). */
     async recordPayout(input: {
       ownerId: string;
@@ -266,6 +282,7 @@ export function createSettlementsService(db: Db) {
       date: string;
       comment: string;
       externalRef?: string | null;
+      labelId?: string | null;
       snapshot: unknown;
     }): Promise<OperationView> {
       return repo.transaction(async () => {
@@ -283,6 +300,7 @@ export function createSettlementsService(db: Db) {
           comment: input.comment,
           externalRef: input.externalRef ?? null,
           deferred: true,
+          labelId: input.labelId ?? null,
         });
         await repo.insertSnapshot({
           operationId: op.id,

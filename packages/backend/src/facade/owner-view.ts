@@ -3,8 +3,14 @@ import type { OperationFilter } from '../modules/settlements';
 import type { FacadeContext } from './context';
 
 export function ownerViewApi(ctx: FacadeContext) {
-  const { db, owners, settlements, publishing } = ctx;
+  const { db, owners, settlements, publishing, labels, labelContext } = ctx;
   const api = {
+    /** The owners (merged ones hidden); under a label (D-168) those visible under it. */
+    async ownerList(f: { label?: string } = {}) {
+      const lc = await labelContext(f.label);
+      return (await owners.listOwners()).filter((o) => !lc || lc.visible.ownerIds.has(o.id));
+    },
+
     ownerDetail(ownerId: string) {
       return db.snapshot(async () => {
         const owner = await owners.getOwner(ownerId);
@@ -29,16 +35,19 @@ export function ownerViewApi(ctx: FacadeContext) {
      */
     listOperations(filter: OperationFilter = {}) {
       return db.snapshot(async () => {
-        const [ops, ownerList, idx] = await Promise.all([
+        const [ops, ownerList, idx, labelList] = await Promise.all([
           settlements.listOperations(filter),
           owners.listOwners(),
           owners.artistIndex(),
+          labels.listLabels(),
         ]);
         const ownerName = new Map(ownerList.map((o) => [o.id, o.name]));
+        const labelName = new Map(labelList.map((l) => [l.id, l.name]));
         return ops.map((o) => ({
           ...o,
           ownerName: o.ownerId ? (ownerName.get(o.ownerId) ?? null) : null,
           pseudonym: o.artistId ? (idx.get(o.artistId)?.pseudonym ?? null) : null,
+          labelName: o.labelId ? (labelName.get(o.labelId) ?? null) : null,
         }));
       });
     },

@@ -14,6 +14,8 @@ function eligible(p: Position, i: IncomeItem): boolean {
   }
   // Master income recoups only positions of the same artist.
   if (i.artistId !== p.artistId) return false;
+  // A position under a label is recouped from the master income of that label only (D-168).
+  if (p.labelId !== null && i.labelId !== p.labelId) return false;
   if (k === 'isrcs') return i.isrc !== null && (p.scope.isrcs ?? []).includes(i.isrc);
   return k === 'any' || k === 'master' || k === 'master_publishing';
 }

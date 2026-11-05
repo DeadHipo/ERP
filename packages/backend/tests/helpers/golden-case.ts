@@ -215,10 +215,18 @@ export class Case {
 
   /** 12 §"Checks every master case also asserts". */
   async verify(o: { skipOwners?: string[] } = {}) {
+    const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.add(x), ZERO).toFixed();
     for (const r of await this.f.reconciliation()) {
       expect(r.discrepancy.toFixed(), `discrepancy ${r.account} ${r.month}`).toBe('0');
       expect(r.B_notOurs.add(r.C_waiting).add(r.ourShare).toFixed()).toBe(r.A_received.toFixed());
       if (r.fileDiscrepancy !== null) expect(r.fileDiscrepancy.toFixed()).toBe('0');
+      // the label books of the row add up to the row (D-168)
+      const books = Object.values(r.byLabel);
+      expect(sum(books.map((b) => b.A_received)), `Σ byLabel A ${r.account} ${r.month}`).toBe(r.A_received.toFixed());
+      expect(sum(books.map((b) => b.B_notOurs))).toBe(r.B_notOurs.toFixed());
+      expect(sum(books.map((b) => b.C_waiting))).toBe(r.C_waiting.toFixed());
+      expect(sum(books.map((b) => b.ourShare))).toBe(r.ourShare.toFixed());
+      expect(sum(books.map((b) => b.ourShareNoSplit))).toBe(r.ourShareNoSplit.toFixed());
     }
     const earned = new Map<string, Decimal>();
     const waiting = new Map<string, Decimal>();
@@ -240,8 +248,17 @@ export class Case {
       }
     }
     for (const [name, owner] of this.owners) {
-      if (o.skipOwners?.includes(name)) continue;
       const b = await this.f.ownerBalance(owner);
+      // the books of every label, «without a label» included, add up to the total, field by field (D-168)
+      const books = Object.values(b.byLabel);
+      for (const k of ['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const)
+        expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
+      for (const a of b.artists) {
+        const rows = Object.values(a.byLabel);
+        for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster'] as const)
+          expect(sum(rows.map((x) => x[k])), `Σ books ${k} of ${a.pseudonym}`).toBe(a[k].toFixed());
+      }
+      if (o.skipOwners?.includes(name)) continue;
       expect(b.total.earned.toFixed(), `earned of ${name}`).toBe((earned.get(owner) ?? ZERO).toFixed());
       expect(b.total.waiting.toFixed(), `waiting of ${name}`).toBe((waiting.get(owner) ?? ZERO).toFixed());
     }

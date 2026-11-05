@@ -15,6 +15,16 @@ export const periodQuery = z.object({
 });
 export type PeriodQuery = z.infer<typeof periodQuery>;
 
+/**
+ * The label view (D-168): the id of an own label. The answer is restricted to the label's book (its units, the
+ * pseudonyms and owners visible under it, the operations and advertising under it); without it: «Все» (every label).
+ */
+export const labelQuery = z.object({
+  label: z.string().optional().describe('Id of an own label: the answer restricted to that label (D-168); 404 unknown, 400 label_not_own'),
+});
+export const labelPeriodQuery = periodQuery.extend(labelQuery.shape);
+export type LabelQuery = z.infer<typeof labelQuery>;
+
 export const createOwnerBody = z.object({
   name: z.string().min(1),
   kind: z.enum(['label', 'person']),
@@ -144,9 +154,15 @@ export const createOperationBody = z.object({
   paymentProofId: z.string().nullish(),
   operationRef: z.string().nullish(),
   comment: z.string().min(1),
+  labelId: z.string().nullish().describe('The own label the operation belongs to (D-168): required, 400 label_required without it'),
 });
 
-export const createPayoutBody = z.object({ comment: z.string().optional() });
+export const createPayoutBody = z.object({
+  labelId: z.string().optional().describe('The own label the payout is made under (D-168): pays the payable of its book; 400 label_required without it'),
+  comment: z.string().optional(),
+});
+/** `PATCH /settlements/operations/:id` (D-168): the label of an existing operation. */
+export const setOperationLabelBody = z.object({ labelId: z.string().min(1) });
 export const proofBody = z.object({ fileRef: z.string().min(1), title: z.string().optional() });
 export const deactivateBody = z.object({ reason: z.string().min(1), transferFailed: z.boolean().optional() });
 export const deferredBody = z.object({ deferred: z.boolean() });
@@ -165,6 +181,7 @@ export const queueQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   ...periodQuery.shape,
+  ...labelQuery.shape,
 });
 
 export const listQuery = z.object({
@@ -199,7 +216,12 @@ export const operationsQuery = z.object({
   active: flag.optional(),
   from: date.optional(),
   to: date.optional(),
+  ...labelQuery.shape,
 });
+
+/** `GET /owners`, `GET /artists`: the list, restricted to the owners / pseudonyms visible under a label (D-168). */
+export const ownersQuery = labelQuery;
+export const artistsQuery = labelQuery;
 
 /** `GET /search` (N10): `kinds` is a comma list of owners, artists, tracks, documents, labels. */
 export const searchQuery = z.object({
@@ -239,6 +261,8 @@ export const createLabelBody = z.object({
   ownLabelId: z.string().nullish(),
 });
 export const addAliasBody = z.object({ alias: z.string().min(1) });
+/** `POST /labels/:id/accounts` (D-168): a Believe account of an own label. */
+export const addAccountBody = z.object({ account: z.string().min(1) });
 export const createLabelRuleBody = z.object({
   percent,
   recipientArtistId: z.string().min(1),
@@ -277,15 +301,15 @@ export type AuditQuery = z.infer<typeof auditQuery>;
 // ---- money aggregates (D-142) ----
 
 /** `GET /owners/payables`: the period only shapes `waitingBreakdown`; the totals are all-time like the balance. */
-export const payablesQuery = periodQuery.extend({
+export const payablesQuery = labelPeriodQuery.extend({
   ids: z
     .string()
     .optional()
-    .describe('Comma-separated owner ids (at most 500): only these owners, from a calculation of the units of their reach (D-163)'),
+    .describe('Comma-separated owner ids (at most 200): only these owners, from a calculation of the units of their reach (D-163)'),
 });
 
 /** `GET /artists/balances` (P11, D-167): the money of a list of pseudonyms from one calculation of their union reach. */
-export const artistBalancesQuery = periodQuery.extend({
+export const artistBalancesQuery = labelPeriodQuery.extend({
   ids: z
     .string()
     .optional()
@@ -300,9 +324,12 @@ export const trackSummaryQuery = z.object({
     .string()
     .optional()
     .describe('Comma-separated ISRCs (at most 500): only these tracks, from a calculation of their units alone (D-162)'),
+  ...labelQuery.shape,
 });
+export const trackCatalogQuery = labelQuery;
 
-export const releasesQuery = z.object({ q: z.string().optional() });
+export const releasesQuery = z.object({ q: z.string().optional(), ...labelQuery.shape });
+export const releaseQuery = labelQuery;
 
 // ---- advertising expenses (D-155, D-156) ----
 
@@ -319,6 +346,7 @@ export const adExpenseInput = z.object({
   externalRef: z.string().nullish().describe('A post link or a source row; a known one is skipped'),
   source: z.string().optional(),
   comment: z.string().optional(),
+  labelId: z.string().nullish().describe('The own label of a record without an ISRC (D-168): required then, 400 label_required; with an ISRC the fallback when no line of the ISRC is mapped'),
 });
 export const createAdsBody = z.object({ items: z.array(adExpenseInput).min(1).max(20000) });
 export const updateAdBody = z
@@ -335,5 +363,6 @@ export const adsQuery = z.object({
   includeInactive: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(5000).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  ...labelQuery.shape,
 });
-export const adsSummaryQuery = z.object({ from: month.optional(), to: month.optional() });
+export const adsSummaryQuery = z.object({ from: month.optional(), to: month.optional(), ...labelQuery.shape });

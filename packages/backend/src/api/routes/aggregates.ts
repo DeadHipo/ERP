@@ -13,13 +13,18 @@ export function aggregatesRouter(facade: Facade) {
   r.get('/tracks/summary', async (req, res) =>
     res.json(await facade.trackSummary(parse(S.trackSummaryQuery, req.query))),
   );
-  r.get('/tracks/catalog', async (_req, res) => res.json(await facade.trackCatalog()));
+  r.get('/tracks/catalog', async (req, res) => res.json(await facade.trackCatalog(parse(S.trackCatalogQuery, req.query))));
   r.get('/tracks/:isrc/money', async (req, res) => res.json(await facade.trackMoney(param(req, 'isrc'))));
   r.get('/tracks/:isrc/breakdown/:month', async (req, res) =>
     res.json(await facade.trackBreakdown(param(req, 'isrc'), param(req, 'month'))),
   );
-  r.get('/releases', async (req, res) => res.json(await facade.releases(parse(S.releasesQuery, req.query).q)));
-  r.get('/releases/:upc', async (req, res) => res.json(await facade.release(param(req, 'upc'))));
+  r.get('/releases', async (req, res) => {
+    const q = parse(S.releasesQuery, req.query);
+    res.json(await facade.releases(q.q, q.label));
+  });
+  r.get('/releases/:upc', async (req, res) =>
+    res.json(await facade.release(param(req, 'upc'), parse(S.releaseQuery, req.query).label)),
+  );
   r.get('/documents/:id/uses', async (req, res) => res.json(await facade.documentUses(param(req, 'id'))));
 
   return r;

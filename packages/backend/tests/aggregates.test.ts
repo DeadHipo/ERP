@@ -23,7 +23,7 @@ async function g27(threshold = 0) {
   await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
   await c.load('2026-04', [{ isrc: I(1), net: '100' }]);
   const basis = await approvedDoc(c.f, 'advance_basis', c.owners.get('P'));
-  const op = await c.f.createOperation({
+  const op = await c.f.createOperation({ labelId: c.f.testLabels['0to8'],
     direction: 'out',
     amount: '10',
     artistId: c.id('P'),
@@ -63,14 +63,14 @@ describe('the payout gate field and the payout button agree (N19)', () => {
     const c = await g27();
     const p = c.owners.get('P') as string;
     expect((await c.f.ownerBalance(p)).payout).toEqual({ allowed: true, reason: null, amountCents: 500 });
-    const op = await c.f.createPayout(p);
+    const op = await c.f.createPayout(p, { labelId: c.f.testLabels['0to8'] });
     expect(op.amountCents).toBe(500);
     const blocked = (await c.f.ownerBalance(p)).payout;
     expect(blocked).toEqual({ allowed: false, reason: 'payout_blocked', amountCents: 500 });
-    await expect(c.f.createPayout(p)).rejects.toMatchObject({ code: 'payout_blocked' });
+    await expect(c.f.createPayout(p, { labelId: c.f.testLabels['0to8'] })).rejects.toMatchObject({ code: 'payout_blocked' });
     await c.f.attachPaymentProof(op.id, { fileRef: 'dummy://proof.pdf' });
     expect((await c.f.ownerBalance(p)).payout).toMatchObject({ allowed: false, reason: 'nothing_to_pay' });
-    await expect(c.f.createPayout(p)).rejects.toMatchObject({ code: 'nothing_to_pay' });
+    await expect(c.f.createPayout(p, { labelId: c.f.testLabels['0to8'] })).rejects.toMatchObject({ code: 'nothing_to_pay' });
     // the owner with no income at all
     const a = c.owners.get('A') as string;
     expect((await c.f.ownerBalance(a)).payout.allowed).toBe(true);
@@ -81,7 +81,7 @@ describe('the payout gate field and the payout button agree (N19)', () => {
     const p = c.owners.get('P') as string;
     const gate = (await c.f.ownerBalance(p)).payout;
     expect(gate).toEqual({ allowed: false, reason: 'below_threshold', amountCents: 500 });
-    await expect(c.f.createPayout(p)).rejects.toMatchObject({ code: 'below_threshold' });
+    await expect(c.f.createPayout(p, { labelId: c.f.testLabels['0to8'] })).rejects.toMatchObject({ code: 'below_threshold' });
   });
 
   it('owner_not_confirmed: an owner without an approved contract', async () => {
@@ -98,7 +98,7 @@ describe('the payout gate field and the payout button agree (N19)', () => {
     });
     const gate = (await c.f.ownerBalance(u.owner.id)).payout;
     expect(gate.reason).toBe('owner_not_confirmed');
-    await expect(c.f.createPayout(u.owner.id)).rejects.toMatchObject({ code: 'owner_not_confirmed' });
+    await expect(c.f.createPayout(u.owner.id, { labelId: c.f.testLabels['0to8'] })).rejects.toMatchObject({ code: 'owner_not_confirmed' });
   });
 
   it('a balance over the API carries payout', async () => {
@@ -139,7 +139,7 @@ async function world() {
     { isrc: I(2), net: '20', label: 'Other Label' },
   ]);
   const basis = await approvedDoc(c.f, 'advance_basis', c.owners.get('P'));
-  const adv = await c.f.createOperation({
+  const adv = await c.f.createOperation({ labelId: c.f.testLabels['0to8'],
     direction: 'out',
     amount: '10',
     artistId: c.id('P'),
@@ -149,7 +149,7 @@ async function world() {
     comment: 'advance',
   });
   await c.f.attachPaymentProof(adv.id, { fileRef: 'dummy://proof.pdf' });
-  await c.f.createOperation({
+  await c.f.createOperation({ labelId: c.f.testLabels['0to8'],
     direction: 'out',
     amount: '5',
     ownerId: c.owners.get('M') as string,
@@ -157,7 +157,7 @@ async function world() {
     comment: 'migration',
     migration: true,
   });
-  await c.f.createPayout(c.owners.get('A') as string); // deferred: blocks A
+  await c.f.createPayout(c.owners.get('A') as string, { labelId: c.f.testLabels['0to8'] }); // deferred: blocks A
   return { c, u };
 }
 
@@ -435,7 +435,7 @@ describe('GET /documents/:id/uses (N13)', () => {
 describe('the payout snapshot (N15)', () => {
   it('the stored snapshot fits payoutSnapshotSchema', async () => {
     const c = await g27();
-    const op = await c.f.createPayout(c.owners.get('P') as string);
+    const op = await c.f.createPayout(c.owners.get('P') as string, { labelId: c.f.testLabels['0to8'] });
     const res = await request(appOf(c)).get(`/api/v1/settlements/operations/${op.id}/snapshot`).expect(200);
     const { payoutSnapshotSchema } = await import('@erp/shared/api-responses');
     expect(payoutSnapshotSchema.parse(res.body).amountCents).toBe(500);

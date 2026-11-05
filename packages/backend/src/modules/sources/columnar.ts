@@ -11,6 +11,36 @@ export interface UnitsFilter {
   basis?: 'report' | 'sales';
   isrcs?: string[];
   upcs?: string[];
+  /** Raw label strings of the units (the label book of the facade, D-168); an empty list = nothing. */
+  labelStrings?: string[];
+}
+
+/** The unit filters a read may be narrowed by, as `WHERE` clauses with their bound parameters. */
+function unitsWhere(fileIds: string[], filter: UnitsFilter): { where: string; params: Record<string, unknown>; empty: boolean } {
+  const column = (filter.basis ?? 'report') === 'report' ? 'reporting_month' : 'sales_month';
+  const where = ['file_id IN {ids:Array(UUID)}'];
+  const params: Record<string, unknown> = { ids: fileIds };
+  let empty = fileIds.length === 0;
+  if (filter.from) {
+    where.push(`${column} >= {from:Date}`);
+    params.from = `${filter.from}-01`;
+  }
+  if (filter.to) {
+    where.push(`${column} <= {to:Date}`);
+    params.to = `${filter.to}-01`;
+  }
+  // A unit scope of the facade (D-161, D-168): only these ISRCs / UPCs / label strings; an empty list means no unit.
+  const list = (key: 'isrcs' | 'upcs' | 'labelStrings', column: string) => {
+    const v = filter[key];
+    if (!v) return;
+    if (v.length === 0) empty = true;
+    where.push(`${column} IN {${key}:Array(String)}`);
+    params[key] = v;
+  };
+  list('isrcs', 'isrc');
+  list('upcs', 'upc');
+  list('labelStrings', 'label_name');
+  return { where: where.join(' AND '), params, empty };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -220,29 +250,8 @@ export function createBelieveColumnar(
         net: string;
       }[]
     > {
-      if (fileIds.length === 0) return [];
-      const column = (filter.basis ?? 'report') === 'report' ? 'reporting_month' : 'sales_month';
-      const where = ['file_id IN {ids:Array(UUID)}'];
-      const params: Record<string, unknown> = { ids: fileIds };
-      if (filter.from) {
-        where.push(`${column} >= {from:Date}`);
-        params.from = `${filter.from}-01`;
-      }
-      if (filter.to) {
-        where.push(`${column} <= {to:Date}`);
-        params.to = `${filter.to}-01`;
-      }
-      // A unit scope of the facade (D-161): only these ISRCs / UPCs; an empty list means no unit at all.
-      if (filter.isrcs) {
-        if (filter.isrcs.length === 0) return [];
-        where.push('isrc IN {isrcs:Array(String)}');
-        params.isrcs = filter.isrcs;
-      }
-      if (filter.upcs) {
-        if (filter.upcs.length === 0) return [];
-        where.push('upc IN {upcs:Array(String)}');
-        params.upcs = filter.upcs;
-      }
+      const { where, params, empty } = unitsWhere(fileIds, filter);
+      if (empty) return [];
       // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
       // The view is answered from the `units_by_label` projection of believe.rows (D-122, D-124). Hundreds of thousands of units:
       // compact rows (arrays in the order of the SELECT).
@@ -251,7 +260,7 @@ export function createBelieveColumnar(
       >(
         `SELECT toString(file_id) AS fid, isrc, upc, toString(reporting_month) AS rm,
                 toString(sales_month) AS sm, label_name AS label, toString(net_revenue) AS net
-         FROM ${DB}.units WHERE ${where.join(' AND ')}
+         FROM ${DB}.units WHERE ${where}
          ORDER BY isrc, upc, reporting_month, sales_month, label_name, file_id`,
         params,
       );
@@ -341,13 +350,16 @@ export function createBelieveColumnar(
       }));
     },
 
-    /** Net per UPC over the given (loaded) files, from the `units` view (equal keys summed); exact decimal text. */
-    async netByUpc(fileIds: string[]): Promise<{ upc: string; net: string }[]> {
-      if (fileIds.length === 0) return [];
+    /**
+     * Net per UPC over the given (loaded) files, from the `units` view (equal keys summed); exact decimal text. The
+     * filter narrows the units summed (the label book of the facade, D-168).
+     */
+    async netByUpc(fileIds: string[], filter: UnitsFilter = {}): Promise<{ upc: string; net: string }[]> {
+      const { where, params, empty } = unitsWhere(fileIds, filter);
+      if (empty) return [];
       return json<{ upc: string; total: string }>(
-        `SELECT upc, toString(sum(net_revenue)) AS total FROM ${DB}.units
-         WHERE file_id IN {ids:Array(UUID)} GROUP BY upc`,
-        { ids: fileIds },
+        `SELECT upc, toString(sum(net_revenue)) AS total FROM ${DB}.units WHERE ${where} GROUP BY upc`,
+        params,
       ).then((rows) => rows.map((r) => ({ upc: r.upc, net: r.total })));
     },
 

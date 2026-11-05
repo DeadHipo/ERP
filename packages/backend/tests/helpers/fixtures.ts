@@ -168,7 +168,8 @@ export async function newFacade(threshold = 0, opts: { paymentService?: PaymentS
   await labels.addAlias(zero.id, '0to8');
   const echo = await labels.createLabel({ name: 'Echo8', kind: 'own' });
   await labels.addAlias(echo.id, 'Echo8');
-  return facade;
+  // every operation and payout is made under a label (D-168): the tests use the seeded 0to8 unless they say otherwise
+  return Object.assign(facade, { testLabels: { '0to8': zero.id, Echo8: echo.id } });
 }
 
 export type TestFacade = Awaited<ReturnType<typeof newFacade>>;

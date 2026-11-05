@@ -13,4 +13,6 @@ export const signals = {
   tracksWithNote: 'Треки с заметкой',
   participantsWithoutOwner: 'Участники без владельца',
   assumptions: 'Допущения',
+  operationsWithoutLabel: 'Операции без лейбла',
+  labelOutsideAccount: 'Строки лейбла вне своего счёта',
 } as const satisfies Record<Exclude<keyof typeof signalsSchema.shape, 'counts'>, string>;

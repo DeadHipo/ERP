@@ -168,14 +168,14 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const f = await newFacade();
     const { ownerB } = await world(f);
     await loadJuly(f);
-    await expect(f.createPayout(ownerB.id)).rejects.toThrow(/approved contract/);
+    await expect(f.createPayout(ownerB.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/approved contract/);
   });
 
   it('payout: one amount per owner, rounded down to cents, with snapshot; blocks until the payment proof exists', async () => {
     const f = await newFacade();
     const { a, a1 } = await world(f);
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100.123456789012' }]));
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     expect(p.amountCents).toBe(5006); // 50% of 100.123456789012 = 50.061728394506 -> 50.06
     expect(p.direction).toBe('out');
     const snap = (await f.modules.settlements.getSnapshot(p.id)) as {
@@ -188,20 +188,20 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     expect(snap.payableExact).toBe('50.061728394506');
     // no proof yet: not counted, and new payouts are blocked
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('50.061728394506');
-    await expect(f.createPayout(a.owner.id)).rejects.toThrow(/blocked/);
+    await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/blocked/);
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('0.001728394506');
-    await expect(f.createPayout(a.owner.id)).rejects.toThrow(/Nothing to pay/);
+    await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/Nothing to pay/);
   });
 
   it('a deferred payment blocks payouts; a return is a separate operation linked by operation id', async () => {
     const f = await newFacade();
     const { a } = await world(f);
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     await f.modules.settlements.setDeferred(p.id, true);
-    await expect(f.createPayout(a.owner.id)).rejects.toThrow(/blocked/);
+    await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/blocked/);
     await f.modules.settlements.setDeferred(p.id, false);
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('0');
     const ret = await f.returnPayout(p.id, {
@@ -219,7 +219,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const { a } = await world(f);
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('50');
-    await expect(f.createPayout(a.owner.id)).rejects.toThrow(/threshold/);
+    await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/threshold/);
   });
 
   it('advance with scope: recouped only in scope after its date; deduction needs a document; negative balance shown as 0', async () => {
@@ -227,7 +227,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const { a, a1, a2 } = await world(f);
     await loadJuly(f); // A1 earns 60, A2 earns 40 (master)
     const basis = await approvedDoc(f, 'advance_basis', a.owner.id);
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '1000',
       artistId: a1.id,
@@ -247,7 +247,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     // a recoupable payout must carry a scope and a basis document
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'out',
           amount: '10',
           artistId: a1.id,
@@ -263,7 +263,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
       requiresApproval: true,
       ownerId: a.owner.id,
     });
-    await f.createOperation({
+    await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'in',
       amount: '30',
       artistId: a2.id,
@@ -282,7 +282,7 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const f = await newFacade();
     const { a, a1, a2 } = await world(f);
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]));
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     // retroactive change confirmed by a new appendix: artist shares go down
     const doc = await approvedDoc(f, 'appendix', a.owner.id);
@@ -349,7 +349,7 @@ describe('facade: publishing B17 (08)', () => {
     const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing');
     expect(stub?.status).toBe('waiting_documents');
     expect((await f.ownerBalance(stub?.id as string)).total.waiting.toFixed()).toBe('50');
-    await expect(f.createPayout(stub?.id as string)).rejects.toThrow(/approved contract/);
+    await expect(f.createPayout(stub?.id as string, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/approved contract/);
     await f.mergeOwners(stub?.id as string, a.owner.id, 'same person');
     expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('50');
   });
@@ -368,7 +368,7 @@ describe('facade: publishing B17 (08)', () => {
     await loadJuly(f); // master: 100 confirmed
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '400' }])); // author 200
     const basis = await approvedDoc(f, 'advance_basis', a.owner.id);
-    const adv = await f.createOperation({
+    const adv = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '1500',
       artistId: a1.id,

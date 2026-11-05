@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Decimal } from '../src/shared/money';
 import { ACC1, ACC2, Case, I, UPC } from './helpers/golden-case';
 import type { SnapshotFilter } from '../src/modules/sources';
 import { testStack } from './helpers/test-sources';
@@ -216,7 +217,7 @@ describe('unit scope of the facade (D-161)', () => {
   it('a record on a pseudonym alone needs no unit; the full methods stay full', async () => {
     const { c } = await world();
     const f = c.f;
-    const { created } = await f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-03', amount: '5' }]);
+    const { created } = await f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-03', amount: '5', labelId: f.testLabels['0to8'] }]);
     const reads = await spy();
     const id = (created[0] as { id: string }).id;
     const one = text(await f.getAd(id));
@@ -237,7 +238,7 @@ describe('unit scope of the facade (D-161)', () => {
     const full = await withFullReads(c, () => f.ownerBalance(id));
     expect(full.payout.allowed).toBe(true);
     const reads = await spy();
-    const op = await f.createPayout(id);
+    const op = await f.createPayout(id, { labelId: f.testLabels['0to8'] });
     expect(reads.map((r) => [r.filter.isrcs, r.units])).toEqual([[[I(1)], 2]]); // the payout calculated the reach only
     const snapshot = (await f.modules.settlements.getSnapshot(op.id)) as { amountCents: number; total: unknown; perArtist: unknown; publishing: unknown; positions: unknown; files: { believe: unknown[] } };
     expect(snapshot.amountCents).toBe(full.payout.amountCents);
@@ -281,7 +282,7 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
       ownerId: c.owners.get('A') as string,
       requiresApproval: false,
     });
-    const advance = await f.createOperation({
+    const advance = await f.createOperation({ labelId: f.testLabels['0to8'],
       direction: 'out',
       amount: '30',
       artistId: c.id('A'),
@@ -441,5 +442,249 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     expect(r.labelRules.map((x) => [x.labelName, x.recipientArtistId])).toEqual([['Sub One', c.id('R')]]);
     await expect(f.artistDetail('no-such-artist')).rejects.toThrow();
     await expect(f.artistBalance('no-such-artist')).rejects.toThrow();
+  });
+});
+
+describe('the label as a book (D-168)', () => {
+  /**
+   * A: splits on I(1) (0to8) and I(2) (Echo8); B: an unconfirmed split on I(3) (0to8); E: an unconfirmed split on I(4)
+   * (Echo8). Account 1 (0to8) carries the Echo8 units of March; account 2 (Echo8) the April unit. A has an advance
+   * without a label (60), an advance of Echo8 (20), an ad on I(1) (10, 0to8) and a pseudonym-only ad under Echo8 (5).
+   */
+  async function labelWorld() {
+    const c = await Case.start();
+    const f = c.f;
+    await c.person('A', 'B', 'E');
+    for (const n of [1, 2, 3, 4]) await c.track(I(n));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['A', '50']]);
+    await c.split(I(3), [['B', '50']], { doc: null });
+    await c.split(I(4), [['E', '30']], { doc: null });
+    await c.load('2026-03', [
+      { isrc: I(1), net: '100' },
+      { isrc: I(2), net: '60', label: 'Echo8' },
+      { isrc: I(3), net: '40' },
+      { isrc: I(4), net: '50', label: 'Echo8' },
+    ]);
+    await c.load('2026-04', [{ isrc: I(2), net: '40', label: 'Echo8' }], ACC2);
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    await f.modules.labels.addAccount(zero, ACC1);
+    await f.modules.labels.addAccount(echo, ACC2);
+    const basis = (await f.modules.owners.createDocument({
+      kind: 'advance_basis',
+      title: 'Advance basis A',
+      fileRef: 'dummy://advance-basis-a.pdf',
+      ownerId: c.owners.get('A') as string,
+      requiresApproval: false,
+    })).id;
+    const advance = async (amount: string, labelId: string | null) => {
+      const op = await f.createOperation({
+        direction: 'out',
+        amount,
+        artistId: c.id('A'),
+        date: '2026-03-01',
+        scope: { kind: 'any' },
+        documentId: basis,
+        comment: 'advance',
+        ...(labelId ? { labelId } : { migration: true }),
+      });
+      if (labelId) await f.attachPaymentProof(op.id, { fileRef: 'dummy://proof.pdf' });
+      return op;
+    };
+    const unlabelled = await advance('60', null); // a migrated advance: without a label, as the history before the split
+    const echoAdvance = await advance('20', echo);
+    await f.createAds([
+      { isrc: I(1), month: '2026-03', amount: '10' },
+      { isrc: null, artistId: c.id('A'), month: '2026-03', amount: '5', labelId: echo },
+    ]);
+    return { c, f, zero, echo, unlabelled, echoAdvance };
+  }
+
+  const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.add(x), new Decimal(0)).toFixed();
+  const bookText = (b: { earned: Decimal; waiting: Decimal; recouped: Decimal; adsCharged: Decimal; paid: Decimal; returns: Decimal; credits: Decimal; payable: Decimal }) =>
+    [b.earned, b.waiting, b.recouped, b.adsCharged, b.paid, b.returns, b.credits, b.payable].map((x) => x.toFixed());
+
+  it('the books of the labels and «without a label» add up to the total; a view under a label is the book of that label', async () => {
+    const { c, f, zero, echo } = await labelWorld();
+    const a = await f.ownerBalance(c.owners.get('A') as string);
+    // A: 0to8 earned 50 (I1), Echo8 earned 30 + 20 (I2). The advance of 60 without a label is recouped from any income in
+    // month order (50 of 0to8, then 10 of Echo8); the advance of Echo8 (20) from Echo8 alone. Ads: 10 under 0to8, 5 under Echo8.
+    expect(Object.fromEntries(Object.entries(a.byLabel).map(([k, b]) => [k, bookText(b)]))).toEqual({
+      '0to8': ['50', '0', '50', '10', '0', '0', '0', '-10'],
+      Echo8: ['50', '0', '30', '5', '0', '0', '0', '15'],
+    });
+    expect(bookText(a.total)).toEqual(['100', '0', '80', '15', '0', '0', '0', '5']);
+    expect([a.byLabel['0to8']?.labelId, a.byLabel.Echo8?.labelId, a.label]).toEqual([zero, echo, null]);
+    for (const k of ['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const)
+      expect(sum(Object.values(a.byLabel).map((b) => b[k])), k).toBe(a.total[k].toFixed());
+    // the artist row is partitioned the same way: recouped by the income consumed, unrecouped by the position
+    const row = a.artists.find((x) => x.artistId === c.id('A'));
+    expect(Object.fromEntries(Object.entries(row?.byLabel ?? {}).map(([k, b]) => [k, [b.earned, b.recouped, b.unrecouped, b.recoupedFromMaster].map((x) => x.toFixed())]))).toEqual({
+      '0to8': ['50', '50', '0', '50'],
+      Echo8: ['50', '30', '0', '30'],
+    });
+    expect(a.positions.map((p) => [p.labelId, p.recouped.toFixed()])).toEqual([[null, '60'], [echo, '20']]);
+    expect(a.ads.map((p) => [p.labelId, p.amount.toFixed()]).sort()).toEqual([[zero, '10'], [echo, '5']].sort());
+    // the view under a label: the same computation projected to the book
+    for (const [name, id] of [['0to8', zero], ['Echo8', echo]] as const) {
+      const v = await f.ownerBalance(c.owners.get('A') as string, {}, id);
+      expect(bookText(v.total), name).toEqual(bookText(a.byLabel[name] as NonNullable<(typeof a.byLabel)[string]>));
+      expect(Object.keys(v.byLabel), name).toEqual([name]);
+      expect([v.label, v.payout.amountCents], name).toEqual([{ id, name }, name === 'Echo8' ? 1500 : 0]);
+      expect(text(v.positions), name).toBe(text(a.positions.filter((p) => p.labelId === id)));
+      expect(text(v.ads), name).toBe(text(a.ads.filter((p) => p.labelId === id)));
+      expect(v.artists.find((x) => x.artistId === c.id('A'))?.byLabel, name).toEqual({ [name]: row?.byLabel[name] });
+      const m = await f.artistBalance(c.id('A'), {}, id);
+      expect([m.label, Object.keys(m.byLabel), m.total.earned.toFixed(), m.total.recouped.toFixed(), m.total.adsCharged.toFixed()], name).toEqual([
+        { id, name },
+        [name],
+        '50',
+        name === 'Echo8' ? '30' : '50',
+        name === 'Echo8' ? '5' : '10',
+      ]);
+    }
+    // the pseudonym: Σ books = total too
+    const m = await f.artistBalance(c.id('A'));
+    for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster', 'adsCharged', 'paid'] as const)
+      expect(sum(Object.values(m.byLabel).map((b) => b[k])), k).toBe(m.total[k].toFixed());
+    await c.verify();
+    // a sublabel or an unknown id is refused as a view
+    await c.sublabel('Sub One', '0to8', 'B');
+    const sub = await c.labelId('Sub One');
+    await expect(f.ownerBalance(c.owners.get('A') as string, {}, sub)).rejects.toMatchObject({ code: 'label_not_own' });
+    await expect(f.ownerBalance(c.owners.get('A') as string, {}, 'no-such-label')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('a payout under a label pays the book of that label and carries it; an operation needs a label', async () => {
+    const { c, f, zero, echo } = await labelWorld();
+    const id = c.owners.get('A') as string;
+    await expect(f.createPayout(id)).rejects.toMatchObject({ code: 'label_required' });
+    await expect(f.createPayout(id, { labelId: zero })).rejects.toMatchObject({ code: 'nothing_to_pay' }); // the 0to8 book is −10
+    const op = await f.createPayout(id, { labelId: echo });
+    expect([op.amountCents, op.labelId]).toEqual([1500, echo]);
+    const snapshot = (await f.modules.settlements.getSnapshot(op.id)) as { labelId: string; labelName: string; total: { payable: string } };
+    expect([snapshot.labelId, snapshot.labelName, snapshot.total.payable]).toEqual([echo, 'Echo8', '15']);
+    await f.attachPaymentProof(op.id, { fileRef: 'dummy://proof-echo.pdf' });
+    const after = await f.ownerBalance(id);
+    expect([after.byLabel.Echo8?.paid.toFixed(), after.byLabel.Echo8?.payable.toFixed(), after.byLabel['0to8']?.paid.toFixed(), after.total.payable.toFixed()]).toEqual(['15', '0', '0', '-10']);
+    // a return inherits the label of its payout
+    const ret = await f.returnPayout(op.id, { fileRef: 'dummy://return.pdf', date: '2099-12-31', comment: 'bounced' });
+    expect(ret.labelId).toBe(echo);
+    expect((await f.ownerBalance(id)).byLabel.Echo8?.returns.toFixed()).toBe('15');
+    // an operation needs an own label
+    const basis = (await f.modules.owners.createDocument({ kind: 'adjustment_basis', title: 'adj', fileRef: 'dummy://adj.pdf', ownerId: id, requiresApproval: false })).id;
+    const deduction = { direction: 'in' as const, amount: '1', artistId: c.id('A'), date: '2026-05-01', documentId: basis, comment: 'deduction' };
+    await expect(f.createOperation(deduction)).rejects.toMatchObject({ code: 'label_required' });
+    await expect(f.createOperation({ ...deduction, labelId: 'no-such-label' })).rejects.toMatchObject({ statusCode: 404 });
+    await c.sublabel('Sub One', '0to8', 'B');
+    await expect(f.createOperation({ ...deduction, labelId: await c.labelId('Sub One') })).rejects.toMatchObject({ code: 'label_not_own' });
+    const d = await f.createOperation({ ...deduction, labelId: zero });
+    expect(d.labelId).toBe(zero);
+    // an ad without an ISRC needs a label; an own one
+    await expect(f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-05', amount: '1' }])).rejects.toMatchObject({ code: 'label_required' });
+    await expect(f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-05', amount: '1', labelId: await c.labelId('Sub One') }])).rejects.toMatchObject({ code: 'label_not_own' });
+    // the accounts of a label
+    await expect(f.modules.labels.addAccount(echo, ACC1)).rejects.toMatchObject({ code: 'account_taken' });
+    await expect(f.modules.labels.addAccount(await c.labelId('Sub One'), '9')).rejects.toMatchObject({ code: 'account_for_sublabel' });
+    expect((await f.listLabels()).map((l) => [l.name, l.accounts])).toEqual(expect.arrayContaining([['0to8', [ACC1]], ['Echo8', [ACC2]], ['Sub One', []]]));
+  });
+
+  it('setting the label of an operation without one makes it recoup from that label only (D-168)', async () => {
+    const { c, f, zero, unlabelled } = await labelWorld();
+    const id = c.owners.get('A') as string;
+    const before = await f.signals();
+    expect(before.operationsWithoutLabel.map((o) => [o.operationId, o.meaning, o.pseudonym])).toEqual([[unlabelled.id, 'recoupable_payout', 'A']]);
+    const set = await f.setOperationLabel(unlabelled.id, zero);
+    expect(set.labelId).toBe(zero);
+    expect((await f.signals()).operationsWithoutLabel).toEqual([]);
+    // the advance of 60 now takes the 0to8 income alone (50) and keeps 10 unrecouped; the Echo8 advance takes 20 of Echo8
+    const a = await f.ownerBalance(id);
+    expect(Object.fromEntries(Object.entries(a.byLabel).map(([k, b]) => [k, [b.recouped.toFixed(), b.payable.toFixed()]]))).toEqual({
+      '0to8': ['50', '-10'],
+      Echo8: ['20', '25'],
+    });
+    expect(a.positions.map((p) => [p.labelId, p.recouped.toFixed(), p.remaining.toFixed()])).toEqual([[zero, '50', '10'], [f.testLabels.Echo8, '20', '0']]);
+    await expect(f.setOperationLabel(unlabelled.id, 'no-such-label')).rejects.toMatchObject({ statusCode: 404 });
+    await c.verify();
+  });
+
+  it('every read under a label is the full answer restricted to the label', async () => {
+    const { c, f, zero, echo } = await labelWorld();
+    const owner = (n: string) => c.owners.get(n) as string;
+    const reads = await spy();
+    // who is visible: 0to8 → A (I1), B (I3); Echo8 → A (I2), E (I4)
+    expect((await f.ownerList({ label: zero })).map((o) => o.id).sort()).toEqual([owner('A'), owner('B')].sort());
+    expect((await f.ownerList({ label: echo })).map((o) => o.id).sort()).toEqual([owner('A'), owner('E')].sort());
+    expect((await f.artistList({ label: echo })).map((a) => a.pseudonym)).toEqual(['A', 'E']);
+    expect((await f.artistList()).map((a) => a.pseudonym)).toEqual(['A', 'B', 'E']);
+    // the payables under a label: the visible owners, each the book of the label (the gate on its payable)
+    const full = (await f.ownerPayables()).items;
+    reads.length = 0;
+    const underEcho = (await f.ownerPayables({ label: echo })).items;
+    expect(reads.map((r) => [r.filter, r.units])).toEqual([[{}, 5]]); // the recoup needs every unit: the calculation stays full
+    expect(underEcho.map((i) => i.ownerId).sort()).toEqual([owner('A'), owner('E')].sort());
+    const aFull = await f.ownerBalance(owner('A'));
+    const aEcho = underEcho.find((i) => i.ownerId === owner('A'));
+    expect(aEcho && [aEcho.earned, aEcho.recouped, aEcho.payable, aEcho.payout.amountCents].map(String)).toEqual(['50', '30', '15', '1500']);
+    expect(full.find((i) => i.ownerId === owner('A'))?.payable.toFixed()).toBe(aFull.total.payable.toFixed());
+    const byIds = (await f.ownerPayables({ label: echo, ids: owner('A') })).items;
+    expect(text(byIds)).toBe(text(underEcho.filter((i) => i.ownerId === owner('A'))));
+    // the balances of the pseudonyms under a label: the artist book, `remaining` of it
+    const rows = (await f.artistBalances({ label: echo })).items;
+    expect(rows.map((r) => [r.pseudonym, r.earned.toFixed(), r.recouped.toFixed(), r.adsCharged.toFixed(), r.remaining.toFixed()])).toEqual([
+      ['A', '50', '30', '5', '15'],
+      ['E', '0', '0', '0', '0'],
+    ]);
+    expect(text((await f.artistBalances({ label: echo, ids: c.id('A') })).items)).toBe(text(rows.filter((r) => r.artistId === c.id('A'))));
+    // the tracks: the summary and the catalog under Echo8 are the full ones restricted to its ISRCs (its units only)
+    const summary = (await f.trackSummary()).items;
+    reads.length = 0;
+    const summaryEcho = (await f.trackSummary({ label: echo })).items;
+    expect(reads.map((r) => [r.filter.labelStrings, r.filter.isrcs, r.units])).toEqual([[['Echo8'], [I(2), I(4)], 3]]);
+    expect(text(summaryEcho)).toBe(text(summary.filter((i) => i.isrc === I(2) || i.isrc === I(4))));
+    expect(text((await f.trackSummary({ label: echo, isrcs: `${I(1)},${I(2)}` })).items)).toBe(text(summary.filter((i) => i.isrc === I(2))));
+    const catalog = (await f.trackCatalog()).items;
+    expect(text((await f.trackCatalog({ label: echo })).items)).toBe(text(catalog.filter((i) => i.isrc === I(2) || i.isrc === I(4))));
+    // the releases: the UPC with the Echo8 tracks only, the net of the Echo8 units
+    const releases = (await f.releases(undefined, echo)).items;
+    expect(releases.map((r) => [r.upc, r.trackCount, r.net])).toEqual([[UPC, 2, '150']]);
+    expect((await f.releases()).items.map((r) => [r.trackCount, r.net])).toEqual([[4, '290']]);
+    const release = await f.release(UPC, echo);
+    expect(release.tracks.map((t) => [t.isrc, t.net.toFixed()])).toEqual([[I(2), '100'], [I(4), '50']]);
+    expect(release.months.map((m) => [m.reportingMonth, m.net.toFixed()])).toEqual([['2026-03', '110'], ['2026-04', '40']]);
+    // the queue: the unconfirmed split of E (Echo8) alone; of B under 0to8
+    const q = await f.queue('split_unconfirmed');
+    expect(q.groups.map((g) => g.key.label).sort()).toEqual([I(3), I(4)]);
+    expect(text((await f.queue('split_unconfirmed', {}, {}, echo)).groups)).toBe(text(q.groups.filter((g) => g.key.label === I(4))));
+    expect(text((await f.queue('split_unconfirmed', {}, {}, zero)).groups)).toBe(text(q.groups.filter((g) => g.key.label === I(3))));
+    // the signals: the Echo8 units inside the 0to8 account are a signal, seen whole and under Echo8, not under 0to8
+    const s = await f.signals();
+    expect(s.labelOutsideAccount.map((x) => [x.account, x.month, x.labelName, x.ourLabelName, x.accountLabelName, x.net.toFixed(), x.units])).toEqual([
+      [ACC1, '2026-03', 'Echo8', 'Echo8', '0to8', '110', 2],
+    ]);
+    expect(text((await f.signals({}, echo)).labelOutsideAccount)).toBe(text(s.labelOutsideAccount));
+    expect((await f.signals({}, zero)).labelOutsideAccount).toEqual([]);
+    expect(s.counts.labelOutsideAccount).toBe(1);
+    // the operations and the advertising under a label
+    expect((await f.listOperations({ labelId: echo })).map((o) => [o.amountCents, o.labelName])).toEqual([[2000, 'Echo8']]);
+    expect((await f.listOperations({ labelId: null })).map((o) => o.amountCents)).toEqual([6000]);
+    expect((await f.listAds({ labelId: echo })).items.map((a) => [a.amountCents, a.allocation?.ourLabelName])).toEqual([[500, 'Echo8']]);
+    expect((await f.listAds({ labelId: zero })).items.map((a) => a.amountCents)).toEqual([1000]);
+    expect((await f.adsSummary({ labelId: echo })).rows.map((r) => [r.label, r.amount.toFixed()])).toEqual([['Echo8', '5']]);
+    expect((await f.adsSummary()).totals.amount.toFixed()).toBe('15');
+    // the reconciliation and the overview: «Все» with the books of the labels on every row
+    const row = (await f.reconciliation()).find((r) => r.account === ACC1 && r.month === '2026-03');
+    expect(row && Object.fromEntries(Object.entries(row.byLabel).map(([k, b]) => [k, [b.A_received, b.B_notOurs, b.C_waiting, b.ourShare].map((x) => x.toFixed())]))).toEqual({
+      '0to8': ['140', '50', '20', '70'],
+      Echo8: ['110', '30', '15', '65'],
+    });
+    const overview = await f.overview();
+    expect(Object.entries(overview.totals.byLabel).map(([k, v]) => [k, v.received.toFixed(), v.discrepancy.toFixed()])).toEqual([
+      ['0to8', '140', '0'],
+      ['Echo8', '150', '0'],
+    ]);
+    expect(sum(Object.values(overview.totals.byLabel).map((v) => v.received))).toBe(overview.totals.all.received.toFixed());
+    await c.verify();
   });
 });

@@ -20,9 +20,13 @@ export function settlementsRouter(facade: Facade) {
         ...(q.active ? { active: q.active === 'true' } : {}),
         ...(q.from ? { from: q.from } : {}),
         ...(q.to ? { to: q.to } : {}),
+        ...(q.label ? { labelId: q.label } : {}),
       }),
     );
   });
+  r.patch('/settlements/operations/:id', async (req, res) =>
+    res.json(await facade.setOperationLabel(param(req, 'id'), parse(S.setOperationLabelBody, req.body).labelId)),
+  );
   r.post('/settlements/operations', async (req, res) =>
     res.status(201).json(await facade.createOperation(parse(S.createOperationBody, req.body))),
   );

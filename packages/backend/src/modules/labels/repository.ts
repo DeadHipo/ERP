@@ -1,11 +1,12 @@
 import { asc, eq, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { Decimal } from '../../shared/money';
-import { labelAliases, labelRules, labels } from './schema';
+import { labelAccounts, labelAliases, labelRules, labels } from './schema';
 
 export type LabelRow = typeof labels.$inferSelect;
 export type AliasRow = typeof labelAliases.$inferSelect;
 export type RuleRow = typeof labelRules.$inferSelect;
+export type AccountRow = typeof labelAccounts.$inferSelect;
 
 /** PostgreSQL pads numeric(9,6) with zeros; the application keeps percents as they were entered. */
 const canonicalRule = (r: RuleRow): RuleRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
@@ -63,6 +64,13 @@ export function createLabelsRepository(db: Db) {
       ),
     setRuleValidTo: async (id: string, validTo: string | null) => {
       await orm().update(labelRules).set({ validTo }).where(eq(labelRules.id, id));
+    },
+    /** The Believe accounts of the labels (D-168). */
+    allAccounts: () => orm().select().from(labelAccounts).orderBy(asc(labelAccounts.account)),
+    getAccount: async (account: string) =>
+      (await orm().select().from(labelAccounts).where(eq(labelAccounts.account, account)))[0],
+    insertAccount: async (row: typeof labelAccounts.$inferInsert) => {
+      await orm().insert(labelAccounts).values(row);
     },
   };
 }

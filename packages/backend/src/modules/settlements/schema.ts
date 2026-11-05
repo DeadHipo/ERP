@@ -4,7 +4,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 // Settlements and payouts: every balance change is an operation `in` or `out` with a signed amount in integer cents.
 // There are no operation types; optional fields (artist, period, scope, document, payment proof, operation ref) say
 // what an operation is.
-// The DDL is migrations/postgres/0004_settlements.sql (schema `settlements`); change both.
+// The DDL is migrations/postgres/0004_settlements.sql and 0014_label_books.sql (schema `settlements`); change both.
 
 const s = pgSchema('settlements');
 
@@ -28,6 +28,8 @@ export const operations = s.table('operations', {
   createdAt: isoTimestamp('created_at').notNull(),
   deactivatedAt: isoTimestamp('deactivated_at'),
   deactivatedReason: text('deactivated_reason'),
+  /** The own label the operation belongs to (D-168); null = without a label (the history before the split). */
+  labelId: text('label_id'),
 });
 
 export const payoutSnapshots = s.table('payout_snapshots', {

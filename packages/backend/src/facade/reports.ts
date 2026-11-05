@@ -3,10 +3,11 @@ import { inMonthRange } from '../shared/dates';
 import { assertIsrc } from '../shared/identifiers';
 import { calculate, reconcile, type Calculation, type PeriodFilter, type Reconciliation } from './calculation';
 import { cQueue, type QueueOptions } from './queue';
-import { periodScope, scoped } from './scope';
+import { periodScope, scoped, type UnitScope } from './scope';
 import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
+import type { LabelVisibility } from './label-scope';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
 export interface KpiSums {
@@ -45,12 +46,25 @@ export function overviewTotals(rows: readonly Reconciliation[]) {
   let all = zeroSums();
   const bySource = { believe: zeroSums(), b17: zeroSums() };
   const byAccount = new Map<string, { source: 'believe' | 'b17'; account: string; sums: KpiSums }>();
+  const byLabel = new Map<string, KpiSums>();
   for (const r of rows) {
     all = addRow(all, r);
     bySource[r.source] = addRow(bySource[r.source], r);
     const k = `${r.source}|${r.account}`;
     const a = byAccount.get(k) ?? { source: r.source, account: r.account, sums: zeroSums() };
     byAccount.set(k, { ...a, sums: addRow(a.sums, r) });
+    // the same six sums per label of record (D-168): the discrepancy of a label is A − B − C − ours of its book
+    for (const [label, b] of Object.entries(r.byLabel)) {
+      const s = byLabel.get(label) ?? zeroSums();
+      byLabel.set(label, {
+        received: s.received.add(b.A_received),
+        notOurs: s.notOurs.add(b.B_notOurs),
+        waiting: s.waiting.add(b.C_waiting),
+        ourShare: s.ourShare.add(b.ourShare),
+        ourShareNoSplit: s.ourShareNoSplit.add(b.ourShareNoSplit),
+        discrepancy: s.discrepancy.add(b.A_received.sub(b.B_notOurs).sub(b.C_waiting).sub(b.ourShare)),
+      });
+    }
   }
   return {
     all,
@@ -58,6 +72,7 @@ export function overviewTotals(rows: readonly Reconciliation[]) {
     byAccount: [...byAccount.values()]
       .sort((a, b) => (a.source !== b.source ? (a.source < b.source ? -1 : 1) : a.account < b.account ? -1 : a.account > b.account ? 1 : 0))
       .map(({ source, account, sums }) => ({ source, account, ...sums })),
+    byLabel: Object.fromEntries([...byLabel.entries()].sort(([a], [b]) => (a === '?' ? 1 : b === '?' ? -1 : a.localeCompare(b)))),
   };
 }
 
@@ -100,12 +115,16 @@ export async function reconciliationFrom(
  * limit). Needs the sources, owners, splits and publishing modules for the lists that are not in the calculation.
  */
 export async function signalsFrom(
-  ctx: Pick<FacadeContext, 'owners' | 'splits' | 'sources' | 'publishing' | 'modules'>,
+  ctx: Pick<FacadeContext, 'owners' | 'splits' | 'sources' | 'publishing' | 'modules' | 'settlements'>,
   calc: Calculation,
   f: PeriodFilter = {},
+  /** Under a label (D-168): the reference lists are restricted to the label's ISRCs (the units already are). */
+  visible?: LabelVisibility,
 ) {
-  const { owners, splits, sources, publishing, modules } = ctx;
+  const { owners, splits, sources, publishing, modules, settlements } = ctx;
   const attrs = await sources.pairAttributes();
+  const inLabel = (isrc: string | null) => !visible || (isrc !== null && visible.isrcs.has(isrc));
+  const outsideAccount = new Map<string, { account: string; month: string; labelName: string; ourLabelName: string; accountLabelName: string; net: Decimal; units: number }>();
   const unknown = new Map<string, { isrc: string; upc: string; net: Decimal; months: Set<string> }>();
   const noSplit = new Map<string, Decimal>();
   const unmapped = new Map<string, Decimal>();
@@ -144,6 +163,23 @@ export async function signalsFrom(
       continue;
     }
     if (u.status === 'no_split') noSplit.set(u.isrc, (noSplit.get(u.isrc) ?? ZERO).add(u.net));
+    // the unit's own label differs from the one its Believe account is registered under (D-168)
+    const accountLabel = calc.labelOfAccount(u.account);
+    if (accountLabel !== undefined && u.ourLabelId !== null && u.ourLabelId !== accountLabel) {
+      const k = `${u.account}|${u.reportingMonth}|${u.labelName}`;
+      const r = outsideAccount.get(k) ?? {
+        account: u.account,
+        month: u.reportingMonth,
+        labelName: u.labelName,
+        ourLabelName: u.ourLabelName ?? '?',
+        accountLabelName: calc.labelName(accountLabel) ?? '?',
+        net: ZERO,
+        units: 0,
+      };
+      r.net = r.net.add(u.net);
+      r.units += 1;
+      outsideAccount.set(k, r);
+    }
     if (u.labelShareCategory === 'label_unmapped')
       unmapped.set(u.labelName, (unmapped.get(u.labelName) ?? ZERO).add(u.net));
     unfunded.push(...u.shortfalls);
@@ -204,9 +240,12 @@ export async function signalsFrom(
       reportArtist: attrs.get(k)?.artistName ?? '',
     }))
     .sort((a, b) => b.net.cmp(a.net));
-  const { tracks, parts } = await modules.db.snapshot(async () => ({
+  const { tracks, parts, unlabelled, ownerNames } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
     parts: await splits.listParticipations(),
+    // active operations without a label (D-168): the history before the split, marked by the operator on P21
+    unlabelled: await settlements.listOperations({ labelId: null, active: true }),
+    ownerNames: new Map((await owners.listOwners()).map((o) => [o.id, o.name])),
   }));
   const partById = new Map(parts.map((p) => [p.id, p]));
   const lists = {
@@ -233,10 +272,10 @@ export async function signalsFrom(
       .map(([labelName, net]) => ({ labelName, net }))
       .sort((a, b) => b.net.cmp(a.net)),
     tracksWithNote: tracks
-      .filter((t) => t.note)
+      .filter((t) => t.note && inLabel(t.isrc))
       .map((t) => ({ trackId: t.id, isrc: t.isrc, upc: t.upc, title: t.title, note: t.note as string })),
     participantsWithoutOwner: parts
-      .filter((p) => !calc.artistIndex.get(p.artistId)?.ownerId)
+      .filter((p) => !calc.artistIndex.get(p.artistId)?.ownerId && inLabel(p.isrc))
       .map((p) => ({
         participationId: p.id,
         isrc: p.isrc,
@@ -262,6 +301,21 @@ export async function signalsFrom(
         isrcs: [...a.isrcs].sort(),
       }))
       .sort((a, b) => b.amount.abs().cmp(a.amount.abs())),
+    operationsWithoutLabel: unlabelled
+      .map((o) => ({
+        operationId: o.id,
+        ownerId: o.ownerId,
+        ownerName: o.ownerId ? (ownerNames.get(o.ownerId) ?? null) : null,
+        artistId: o.artistId,
+        pseudonym: o.artistId ? (calc.artistIndex.get(o.artistId)?.pseudonym ?? null) : null,
+        meaning: o.meaning,
+        date: o.date,
+        amountCents: o.amountCents,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || a.operationId.localeCompare(b.operationId)),
+    labelOutsideAccount: [...outsideAccount.values()].sort(
+      (a, b) => a.account.localeCompare(b.account) || a.month.localeCompare(b.month) || a.labelName.localeCompare(b.labelName),
+    ),
   };
   const counts: Record<string, number> = {
     unallocated: lists.unallocated.pairs.length,
@@ -279,9 +333,9 @@ export function reportsApi(ctx: FacadeContext) {
       return reconciliationFrom(ctx, await calculate(modules), f);
     },
 
-    /** The owner balance from the units of the owner's reach (D-163, D-164). */
-    async ownerBalance(ownerId: string, f: PeriodFilter = {}) {
-      return (await balanceWithFiles(ownerId, f)).balance;
+    /** The owner balance from the units of the owner's reach (D-163, D-164); under a label its book (D-168). */
+    async ownerBalance(ownerId: string, f: PeriodFilter = {}, labelId?: string) {
+      return (await balanceWithFiles(ownerId, f, await ctx.viewOf(labelId))).balance;
     },
 
     /** The reach of an owner (D-163): its pseudonyms and the ISRCs their money can come from. */
@@ -294,8 +348,11 @@ export function reportsApi(ctx: FacadeContext) {
      * layers (D-127): shortfalls of carves (`unfunded`), unmapped label strings with their net, tracks with a note,
      * participations whose recipient has no owner, money under assumptions grouped by document.
      */
-    async signals(f: PeriodFilter = {}) {
-      return signalsFrom(ctx, await calculate(modules), f);
+    async signals(f: PeriodFilter = {}, labelId?: string) {
+      // under a label (D-168): the units of the label's strings only, no B17 lines (publishing has no label)
+      const lc = await ctx.labelContext(labelId);
+      const scope: UnitScope = lc ? { labelStrings: lc.book.labelStrings, publishingLines: false } : {};
+      return signalsFrom(ctx, await calculate(scoped(modules, scope)), f, lc?.visible);
     },
 
     /** Everything on the overview page from ONE calculation (17 N1). */
@@ -319,9 +376,12 @@ export function reportsApi(ctx: FacadeContext) {
     },
 
     /** One reason of the C queue, grouped by what the operator fixes (17 N3). */
-    async queue(reason: CReason, f: PeriodFilter = {}, o: Omit<QueueOptions, 'reason'> = {}) {
-      // the groups hold only the items of the period: the units outside it are not read (D-161)
-      const calc = await calculate(scoped(modules, periodScope(f)), await ctx.opDocIds());
+    async queue(reason: CReason, f: PeriodFilter = {}, o: Omit<QueueOptions, 'reason'> = {}, labelId?: string) {
+      // the groups hold only the items of the period: the units outside it are not read (D-161); under a label only
+      // the units of its strings and no B17 lines (D-168)
+      const lc = await ctx.labelContext(labelId);
+      const scope: UnitScope = { ...periodScope(f), ...(lc ? { labelStrings: lc.book.labelStrings, publishingLines: false } : {}) };
+      const calc = await calculate(scoped(modules, scope), await ctx.opDocIds());
       const ownerList = await owners.listOwners();
       const { groups } = cQueue(
         calc,

@@ -15,8 +15,9 @@ The account comes from the registry per file.
   A process crash leaves `loading`; recovery is manual (SQL in D-112).
 - Reads always start from the registry: take `loaded` files, then query ClickHouse with `file_id IN (...)`.
   A file that is not `loaded` must never count. `snapshot()` returns files and units together for one calculation;
-  its `SnapshotFilter` (month range on a basis, `isrcs`, `upcs`, `accounts`; an empty list = no unit) narrows the
-  units read, never the list of files (the facade's unit scope, D-161).
+  its `SnapshotFilter` (month range on a basis, `isrcs`, `upcs`, `accounts`, `labelStrings` (the raw label strings
+  of a label book, D-168); an empty list = no unit) narrows the units read, never the list of files (the facade's
+  unit scope, D-161). `labelStringsOfAliases` / `isrcsOfLabelStrings` serve the label book.
 - Equal line keys are **not** merged at load; the views `sum()` them. Do not switch to SummingMergeTree (D-102).
 - `believe.rows` has an aggregate projection `units_by_label` (D-122, D-124): the `units` view is answered from it. The unit key includes `label_name`, so `SourceUnit.labelName` is the label string and one ISRC/UPC/month can give several units; `columnar.units()` has a fixed `ORDER BY`. The stage table
   must stay `CREATE TABLE … AS believe.rows` so that a file's parts carry it; a part without it still counts, only

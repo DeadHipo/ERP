@@ -7,3 +7,8 @@ it for the label of record of a unit and the rule in force at a date (`index().l
 
 Storage: PostgreSQL schema `labels` (`migrations/postgres/0006_labels.sql`, Drizzle in `schema.ts`); artist and
 document ids are checked by the facade, there is no foreign key to other modules.
+
+`label_accounts` (D-168, migration `0014_label_books.sql`): the Believe accounts registered under an own label
+(`addAccount`, 409 `account_taken`, `accounts` on the label view; `index().labelOfAccount`, `ownLabels`). An account
+is never a label boundary for money (the unit's label string is): the facade only reports the units of an account that
+lead to another own label (`labelOutsideAccount`).

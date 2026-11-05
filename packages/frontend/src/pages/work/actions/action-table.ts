@@ -43,4 +43,6 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   tracksWithNote: { action: 'NoteDialog' },
   participantsWithoutOwner: { action: 'AssignOwnerDialog' },
   assumptions: { action: 'ReplaceDocumentDialog' },
+  operationsWithoutLabel: { information: true, note: 'the history before the split (D-168): the operator sets the label on the row of P21 (action-set-label)' },
+  labelOutsideAccount: { information: true, note: 'units of an account that lead to another own label (D-168): the known history, nothing to fix' },
 };

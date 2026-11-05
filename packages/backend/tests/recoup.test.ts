@@ -18,6 +18,7 @@ const master = (
   isrc,
   reportMonth: month,
   amount: D(amount),
+  labelId: null,
 });
 const pub = (id: string, amount: number, month = '2026-06'): IncomeItem => ({
   id,
@@ -27,6 +28,7 @@ const pub = (id: string, amount: number, month = '2026-06'): IncomeItem => ({
   isrc: null,
   reportMonth: month,
   amount: D(amount),
+  labelId: null,
 });
 const pos = (
   id: string,
@@ -42,6 +44,7 @@ const pos = (
   month,
   amount: D(amount),
   scope: { kind, ...extra },
+  labelId: null,
 });
 
 describe('scope of recoupment (07 "Охват погашения")', () => {

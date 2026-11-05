@@ -288,7 +288,7 @@ describe('final review: dates, adjustment documents, label guard, contracts', ()
     });
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'in',
           amount: '-50',
           artistId: a.artists[0]?.id as string,
@@ -362,7 +362,7 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
     });
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'out',
           amount: '10',
           artistId: artist.id,
@@ -382,10 +382,10 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
       documentId: (await approvedDoc(f, 'appendix')).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
-    await f.createPayout(a.owner.id); // no proof yet
+    await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] }); // no proof yet
     await expect(
       async () =>
-        await f.createOperation({
+        await f.createOperation({ labelId: f.testLabels['0to8'],
           direction: 'out',
           amount: '10',
           artistId,
@@ -423,7 +423,7 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
       documentId: (await approvedDoc(f, 'appendix')).id,
     });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '200' }]));
-    const p = await f.createPayout(a.owner.id);
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof' });
     await expect(
       async () => await f.returnPayout(p.id, { fileRef: 'dummy://r', date: '2000-01-01', comment: 'x' }),

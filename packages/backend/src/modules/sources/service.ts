@@ -203,6 +203,21 @@ export function createSourcesService(deps: SourcesDeps) {
       return columnar.isrcsOfLabelStrings(ids, raw);
     },
 
+    /** The raw label strings of the loaded files that normalise to one of `normalizedAliases` (the label book, D-168). */
+    async labelStringsOfAliases(normalizedAliases: string[], normalize: (raw: string) => string): Promise<string[]> {
+      if (normalizedAliases.length === 0) return [];
+      const files = await registry.loaded();
+      const wanted = new Set(normalizedAliases);
+      return (await columnar.labelStrings(files.map((f) => f.id))).filter((s) => wanted.has(normalize(s)));
+    },
+
+    /** The ISRCs whose units carry one of the raw label strings, over the loaded files (D-168). */
+    async isrcsOfLabelStrings(labelStrings: string[]): Promise<string[]> {
+      if (labelStrings.length === 0) return [];
+      const files = await registry.loaded();
+      return columnar.isrcsOfLabelStrings(files.map((f) => f.id), labelStrings);
+    },
+
     /** Explanation of one ISRC: platforms, countries, subscription and sales types per month. */
     async breakdown(isrc: string, reportingMonth?: string) {
       const files = await registry.loaded();
@@ -289,10 +304,12 @@ export function createSourcesService(deps: SourcesDeps) {
       };
     },
 
-    /** Net per UPC over the loaded files (exact decimal text), one ClickHouse GROUP BY. */
-    async netByUpc(): Promise<Map<string, string>> {
+    /** Net per UPC over the loaded files (exact decimal text), one ClickHouse GROUP BY; the filter narrows the units (D-168). */
+    async netByUpc(filter: SnapshotFilter = {}): Promise<Map<string, string>> {
       const files = await registry.loaded();
-      const rows = await columnar.netByUpc(files.map((f) => f.id));
+      const { accounts, ...unitsFilter } = filter;
+      const read = accounts ? files.filter((f) => accounts.includes(f.account)) : files;
+      const rows = await columnar.netByUpc(read.map((f) => f.id), unitsFilter);
       return new Map(rows.map((r) => [r.upc, picoToString(parsePico(r.net))]));
     },
 

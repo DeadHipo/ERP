@@ -24,6 +24,7 @@ describe('C reasons', () => {
       discrepancy: '0',
       fileTotal: null,
       fileDiscrepancy: null,
+      byLabel: {},
     };
     expect(reconciliationRowSchema.safeParse({ ...recon, C_breakdown: { assumption: '1' } }).success).toBe(true);
     expect(reconciliationRowSchema.safeParse({ ...recon, C_breakdown: { made_up: '1' } }).success).toBe(false);

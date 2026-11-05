@@ -606,7 +606,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
 
   async function advance(c: Case, name: string, amount: string, scope: object, date = '2026-03-01') {
     const basis = await approvedDoc(c.f, 'advance_basis', c.owners.get(name));
-    const op = await c.f.createOperation({
+    const op = await c.f.createOperation({ labelId: c.f.testLabels['0to8'],
       direction: 'out',
       amount,
       artistId: c.id(name),
@@ -619,7 +619,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     return op;
   }
   const migrationPayout = (c: Case, name: string, amount: string, date = '2026-04-01') =>
-    c.f.createOperation({
+    c.f.createOperation({ labelId: c.f.testLabels['0to8'],
       direction: 'out',
       amount,
       ownerId: c.owners.get(name) as string,
@@ -1092,7 +1092,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       return c;
     }
     const deduction = async (c: Case, amount: string, basis: { id: string }) =>
-      c.f.createOperation({
+      c.f.createOperation({ labelId: c.f.testLabels['0to8'],
         direction: 'in',
         amount,
         artistId: c.id('A'),
@@ -1167,7 +1167,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     });
     it('a button payout without proof does not count; deactivated (transfer failed) it unblocks', async () => {
       const c = await base();
-      const op = await c.f.createPayout(c.owners.get('A') as string);
+      const op = await c.f.createPayout(c.owners.get('A') as string, { labelId: c.f.testLabels['0to8'] });
       expect(op.amountCents).toBe(5000);
       let b = await c.balance('A');
       expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '50']);
@@ -1180,7 +1180,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       const c = await base();
       const basis = await approvedDoc(c.f, 'adjustment_basis', c.owners.get('A'));
       const make = (amount: string) =>
-        c.f.createOperation({
+        c.f.createOperation({ labelId: c.f.testLabels['0to8'],
           direction: 'in',
           amount,
           artistId: c.id('A'),
@@ -1195,7 +1195,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect(await payable()).toBe('45');
       await c.f.modules.settlements.deactivate(ded.id, 'entered by mistake');
       expect(await payable()).toBe('55');
-      const payout = await c.f.createPayout(c.owners.get('A') as string);
+      const payout = await c.f.createPayout(c.owners.get('A') as string, { labelId: c.f.testLabels['0to8'] });
       expect(payout.amountCents).toBe(5500);
       await c.f.attachPaymentProof(payout.id, { fileRef: 'dummy://proof.pdf' });
       let b = await c.balance('A');
@@ -1214,6 +1214,41 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       ]);
       await c.verify({ skipOwners: ['A'] });
     });
+  });
+});
+
+describe('G50 (D-168): the label as a book', () => {
+  it('one owner under both labels: an advance without a label, an advance of Echo8, a payout under 0to8', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    await c.person('A');
+    await c.track(I(1));
+    await c.track(I(2));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['A', '50']]);
+    await c.load('2026-03', [
+      { isrc: I(1), net: '100' },
+      { isrc: I(2), net: '60', label: 'Echo8' },
+    ]);
+    const owner = c.owners.get('A') as string;
+    const basis = await approvedDoc(f, 'advance_basis', owner);
+    // the advance without a label (migrated: the history before the split) is recouped from any income, I(1) first
+    await f.createOperation({ direction: 'out', amount: '40', artistId: c.id('A'), date: '2026-03-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance', migration: true });
+    const echo = await f.createOperation({ direction: 'out', amount: '10', artistId: c.id('A'), date: '2026-03-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance Echo8', labelId: f.testLabels.Echo8 });
+    await f.attachPaymentProof(echo.id, { fileRef: 'dummy://proof.pdf' });
+    const books = async () => {
+      const b = await c.balance('A');
+      return {
+        total: [b.total.earned, b.total.recouped, b.total.paid, b.total.payable].map((x) => x.toFixed()),
+        ...Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, [x.earned, x.recouped, x.paid, x.payable].map((v) => v.toFixed())])),
+      };
+    };
+    expect(await books()).toEqual({ total: ['80', '50', '0', '30'], '0to8': ['50', '40', '0', '10'], Echo8: ['30', '10', '0', '20'] });
+    const p = await f.createPayout(owner, { labelId: f.testLabels['0to8'] });
+    expect([p.amountCents, p.labelId]).toEqual([1000, f.testLabels['0to8']]);
+    await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof-2.pdf' });
+    expect(await books()).toEqual({ total: ['80', '50', '10', '20'], '0to8': ['50', '40', '10', '0'], Echo8: ['30', '10', '0', '20'] });
+    await c.verify({ skipOwners: ['A'] });
   });
 });
 

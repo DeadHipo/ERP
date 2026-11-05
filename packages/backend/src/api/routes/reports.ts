@@ -15,8 +15,8 @@ export function reportsRouter(facade: Facade) {
   r.get('/overview', async (req, res) => res.json(await facade.overview(parse(S.periodQuery, req.query))));
   r.get('/queue/:reason', async (req, res) => {
     const reason = parse(cReasonSchema, req.params.reason);
-    const { limit, offset, q, account, month, ownerId, ...period } = parse(S.queueQuery, req.query);
-    const { calculatedAt, groups } = await facade.queue(reason, period, { q, account, month, ownerId });
+    const { limit, offset, q, account, month, ownerId, label, ...period } = parse(S.queueQuery, req.query);
+    const { calculatedAt, groups } = await facade.queue(reason, period, { q, account, month, ownerId }, label);
     res.json({
       calculatedAt,
       total: groups.length,
@@ -25,7 +25,8 @@ export function reportsRouter(facade: Facade) {
     });
   });
   r.get('/signals', async (req, res) => {
-    const s = await facade.signals(parse(S.periodQuery, req.query));
+    const { label, ...period } = parse(S.labelPeriodQuery, req.query);
+    const s = await facade.signals(period, label);
     const limit = parse(S.listQuery, req.query).limit ?? 100;
     const cut = <T>(xs: T[]) => xs.slice(0, limit);
     res.json({
@@ -41,6 +42,8 @@ export function reportsRouter(facade: Facade) {
       tracksWithNote: cut(s.tracksWithNote),
       participantsWithoutOwner: cut(s.participantsWithoutOwner),
       assumptions: cut(s.assumptions),
+      operationsWithoutLabel: cut(s.operationsWithoutLabel),
+      labelOutsideAccount: cut(s.labelOutsideAccount),
     });
   });
 
