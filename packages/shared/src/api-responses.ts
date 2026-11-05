@@ -382,7 +382,9 @@ export const reconciliationRowSchema = z.object({
   fileDiscrepancy: money.nullable(),
   byLabel: z
     .record(z.string(), z.object({ A_received: money, B_notOurs: money, C_waiting: money, ourShare: money, ourShareNoSplit: money }))
-    .describe("The row per label of record (by name, '?' = an unmapped string or publishing): Σ over the labels = the row (D-168)"),
+    .describe(
+      "The row per book (by name, '?' = without a label): a Believe row is the book of the label its files were loaded under, one key (D-169); Σ over the books = the row (D-168)",
+    ),
 });
 export type ReconciliationRow = z.infer<typeof reconciliationRowSchema>;
 
@@ -483,12 +485,24 @@ export const signalsSchema = z.object({
         month,
         labelName: z.string().describe('The label string of the units'),
         ourLabelName: z.string().describe('The own label the string leads to'),
-        accountLabelName: z.string().describe('The own label the account is registered under'),
+        accountLabelName: z.string().describe('The own label the file of the units was loaded under: their book (D-169)'),
         net: money,
         units: z.number().int(),
       }),
     )
-    .describe('Units of a Believe account whose label string leads to another own label than the account is registered under (D-168)'),
+    .describe(
+      'Units whose label string leads to another own label than the one their file was loaded under, the book (D-168, D-169); the money stays in the book of the file',
+    ),
+  filesWithoutLabel: z
+    .array(
+      z.object({
+        fileId: z.string(),
+        account: z.string(),
+        reportingMonth: month,
+        fileName: z.string(),
+      }),
+    )
+    .describe("Loaded Believe files without a label (D-169): their units sit in the book '?'; empty under a label"),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -551,7 +565,7 @@ export const overviewSchema = z.object({
       all: kpiSumsSchema,
       bySource: z.object({ believe: kpiSumsSchema, b17: kpiSumsSchema }),
       byAccount: z.array(kpiSumsSchema.extend({ source: z.enum(['believe', 'b17']), account: z.string() })),
-      byLabel: z.record(z.string(), kpiSumsSchema).describe("The same sums per label of record (by name, '?' = without a label), D-168"),
+      byLabel: z.record(z.string(), kpiSumsSchema).describe("The same sums per book (by name, '?' = without a label): the label a file or statement was loaded under, D-168, D-169"),
     })
     .describe('The KPI cards of P1 over the reconciliation rows of the period: all, per source, per source × account, per label (D-160, D-168)'),
   queue: z.array(
@@ -626,7 +640,9 @@ export const balanceSchema = z.object({
   }),
   byLabel: z
     .record(z.string(), labelBookSchema)
-    .describe("The book of every label (by name, '?' = without a label): Σ over the books = total, field by field (D-168); under a label view the one book"),
+    .describe(
+      "The book of every label (by name, '?' = without a label): master money goes by the label its file was loaded under (D-169); Σ over the books = total, field by field (D-168); under a label view the one book",
+    ),
   artists: z.array(
     z.object({
       artistId: z.string(),
@@ -957,7 +973,9 @@ export const trackMoneyMonthSchema = z.object({
   reportingMonth: month,
   salesMonth: month,
   labelName: z.string(),
-  ourLabelName: z.string().nullable(),
+  ourLabelName: z.string().nullable().describe('The own label the label string leads to: decides the sublabel rule and «ours»'),
+  bookLabelId: z.string().nullable().describe("The book of the unit: the label its file was loaded under (D-169); null = '?'"),
+  bookLabelName: z.string().nullable(),
   sublabelName: z.string().nullable(),
   rule: z.string().nullable().describe('Id of the sublabel rule in force at the report month'),
   net: money,

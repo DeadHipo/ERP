@@ -156,23 +156,25 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G08b (D-130): one owner, an Echo8 unit and a 0to8 unit: the balance shows B and C per label of record', async () => {
+  it('G08b (D-130, D-169): one owner, an Echo8 unit and a 0to8 unit: the balance shows B and C per book', async () => {
     const c = await Case.start();
     await c.person('A');
     for (const n of [1, 2, 3]) await c.track(I(n));
     await c.split(I(1), [['A', '50']]);
     await c.split(I(2), [['A', '50']], { doc: null }); // no document: C split_unconfirmed
     await c.split(I(3), [['A', '50']]);
+    // R6 (D-169): the book is the label of the file. The Echo8 unit comes in the file of the Echo8 account; the
+    // unmapped string sits in the 0to8 file, so its money is in the 0to8 book (no longer '?')
     await c.load('2026-03', [
-      { isrc: I(1), net: '100', label: 'Echo8' },
       { isrc: I(2), net: '60', label: 'Test Label' },
       { isrc: I(3), net: '40', label: 'Mystery Records' },
     ]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100', label: 'Echo8' }], ACC2);
     const b = await c.balance('A');
     const byLabel = Object.fromEntries(
       Object.entries(b.byLabel).map(([k, v]) => [k, [v.earned.toFixed(), v.waiting.toFixed()]]),
     );
-    expect(byLabel).toEqual({ Echo8: ['50', '0'], '0to8': ['0', '30'], '?': ['20', '0'] });
+    expect(byLabel).toEqual({ Echo8: ['50', '0'], '0to8': ['20', '30'] });
     expect([b.total.earned.toFixed(), b.total.waiting.toFixed()]).toEqual(['70', '30']);
     await c.verify();
   });
@@ -1226,10 +1228,9 @@ describe('G50 (D-168): the label as a book', () => {
     await c.track(I(2));
     await c.split(I(1), [['A', '50']]);
     await c.split(I(2), [['A', '50']]);
-    await c.load('2026-03', [
-      { isrc: I(1), net: '100' },
-      { isrc: I(2), net: '60', label: 'Echo8' },
-    ]);
+    // two files of one month in two accounts (D-169): I(1) in the 0to8 account, I(2) in the Echo8 account
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-03', [{ isrc: I(2), net: '60', label: 'Echo8' }], ACC2);
     const owner = c.owners.get('A') as string;
     const basis = await approvedDoc(f, 'advance_basis', owner);
     // the advance without a label (migrated: the history before the split) is recouped from any income, I(1) first
@@ -1249,6 +1250,67 @@ describe('G50 (D-168): the label as a book', () => {
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof-2.pdf' });
     expect(await books()).toEqual({ total: ['80', '50', '10', '20'], '0to8': ['50', '40', '10', '0'], Echo8: ['30', '10', '0', '20'] });
     await c.verify({ skipOwners: ['A'] });
+  });
+});
+
+describe('G51, G52 (D-169): the book of a unit is the label of its file', () => {
+  it('G51: a foreign «Echo8» line in the 0to8 account sits in the 0to8 book; the string still leads to Echo8', async () => {
+    const c = await single(async (c) => {
+      await c.person('A');
+      await c.split(I(1), [['A', '50']]);
+    }, '100', 'Echo8');
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    const r = (await f.reconciliation()).find((x) => x.account === ACC1 && x.month === '2026-03');
+    expect(r && Object.fromEntries(Object.entries(r.byLabel).map(([k, b]) => [k, [b.A_received, b.B_notOurs, b.ourShare].map((x) => x.toFixed())]))).toEqual({
+      '0to8': ['100', '50', '50'],
+    });
+    // the reference invariant: ourShareByLabel stays by the label string
+    expect(await c.row()).toMatchObject({ A: '100', B: '50', ours: '50', byLabel: { Echo8: '50' } });
+    const [m] = (await f.trackMoney(I(1))).months;
+    expect(m && [m.bookLabelId, m.bookLabelName, m.ourLabelName, m.labelName]).toEqual([zero, '0to8', 'Echo8', 'Echo8']);
+    const s = await f.signals();
+    expect(s.labelOutsideAccount.map((x) => [x.account, x.labelName, x.ourLabelName, x.accountLabelName, x.net.toFixed()])).toEqual([
+      [ACC1, 'Echo8', 'Echo8', '0to8', '100'],
+    ]);
+    expect(s.counts.labelOutsideAccount).toBe(1);
+    const a = c.owners.get('A') as string;
+    expect(Object.keys((await f.ownerBalance(a)).byLabel)).toEqual(['0to8']);
+    const underEcho = await f.ownerBalance(a, {}, echo);
+    expect([underEcho.total.earned.toFixed(), underEcho.total.payable.toFixed()]).toEqual(['0', '0']);
+    expect((await f.ownerBalance(a, {}, zero)).total.earned.toFixed()).toBe('50');
+    await c.verify();
+  });
+
+  /** A: row A 50 on I(1); an advance 100 under 0to8 of 2026-03; I(1) earns 120 in the 0to8 account, 80 in the Echo8 one. */
+  async function moved(echoMonth: string) {
+    const c = await Case.start();
+    const f = c.f;
+    await c.person('A');
+    await c.track(I(1));
+    await c.split(I(1), [['A', '50']]);
+    const owner = c.owners.get('A') as string;
+    const basis = await approvedDoc(f, 'advance_basis', owner);
+    const adv = await f.createOperation({ direction: 'out', amount: '100', artistId: c.id('A'), date: '2026-03-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance 0to8', labelId: f.testLabels['0to8'] });
+    await f.attachPaymentProof(adv.id, { fileRef: 'dummy://proof.pdf' });
+    await c.load('2026-03', [{ isrc: I(1), net: '120' }]);
+    await c.load(echoMonth, [{ isrc: I(1), net: '80', label: 'Echo8' }], ACC2);
+    const b = await c.balance('A');
+    expect({
+      total: [b.total.earned, b.total.recouped, b.total.payable].map((x) => x.toFixed()),
+      ...Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, [x.earned, x.recouped, x.payable].map((v) => v.toFixed())])),
+    }).toEqual({ total: ['100', '60', '40'], '0to8': ['60', '60', '0'], Echo8: ['40', '0', '40'] });
+    expect(b.positions.map((p) => [p.recouped.toFixed(), p.remaining.toFixed()])).toEqual([['60', '40']]);
+    await c.verify();
+  }
+
+  it('G52: an ISRC moved from the 0to8 account to the Echo8 one: the 0to8 advance is recouped from the 0to8 income only', async () => {
+    await moved('2026-04');
+  });
+
+  it('G52, the same month: both accounts report the ISRC in one month: two income items, the same books', async () => {
+    await moved('2026-03');
   });
 });
 

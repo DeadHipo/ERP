@@ -194,7 +194,12 @@ test('G38: the label string decides per month; G08a/G08b: the label of record', 
   await expect(monthRow(page, account(6, 1), upc(6, 1, 1)).getByTestId('label-string')).toHaveText('Ahh Music');
   await expect(monthRow(page, account(6, 1), upc(6, 1, 1)).getByTestId('label-of-record')).toHaveText('0to8');
   await openTrack(page, isrc(6, 2, 1));
-  await expect(monthRow(page, account(6, 2), upc(6, 2, 1)).getByTestId('label-of-record')).toHaveText('Echo8');
+  const echo = monthRow(page, account(6, 2), upc(6, 2, 1));
+  await expect(echo.getByTestId('label-of-record')).toHaveText('Echo8');
+  // D-169: the string `Echo8` decides the label of record (the sublabel rule), the book is the label of the file: 0to8
+  await expect(echo).toHaveAttribute('data-label', 'Echo8');
+  await expect(echo).toHaveAttribute('data-book', '0to8');
+  await expect(echo.getByTestId('month-book')).toHaveText('0to8');
 });
 
 test('G45, G46, G47: two months each', async ({ page }) => {
@@ -240,6 +245,8 @@ test('an unknown pair (S10/2 QZTST2710209): no allocation, the label share is C 
   await expect(cell(row, 'net')).toHaveAttribute('title', '7');
   await expect(row.locator('[data-col="ours"]').getByTestId('chip-unknown_pair')).toBeVisible();
   await expect(row.locator('[data-col="status"] [data-value]')).toHaveAttribute('data-value', 'unknown_pair');
+  // account(1) is Echo8's: the file and so the book of the unit (D-169)
+  await expect(row).toHaveAttribute('data-book', 'Echo8');
 });
 
 test('G24 on P6: one ISRC under two UPCs, a month row per UPC; the breakdown loads the platform rows of a month', async ({ page }) => {

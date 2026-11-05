@@ -16,6 +16,9 @@ import { monthKey, monthRowId, type Allocation, type Layer, type Month } from '.
 const t = ru.catalog.track;
 const m = ru.catalog.money;
 
+/** The `data-book` of a month row: the label its file was loaded under (D-169), '?' without one (the API's book key). */
+const bookOf = (month: Month) => month.bookLabelName ?? '?';
+
 /** The months of the ISRC (account × UPC × report month); a month expands into allocations, layers and the breakdown. */
 export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -26,7 +29,7 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   return (
     <SimpleTable
       testId="track-months"
-      headers={[c.expand, c.account, c.upc, c.reportingMonth, c.salesMonth, c.labelName, m.net, m.labelShare, m.ours, c.status]}
+      headers={[c.expand, c.account, c.upc, c.reportingMonth, c.salesMonth, c.book, c.labelName, m.net, m.labelShare, m.ours, c.status]}
     >
       {data.months.map((month) => {
         const id = monthRowId(month);
@@ -39,10 +42,11 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
                 data-testid={`month-detail-${monthKey(month)}`}
                 data-sales-month={month.salesMonth}
                 data-label={month.labelName}
+                data-book={bookOf(month)}
                 data-row-id={id}
                 className="bg-default/30"
               >
-                <td colSpan={10} className="px-3 py-3">
+                <td colSpan={11} className="px-3 py-3">
                   <MonthDetail isrc={isrc} month={month} pseudonyms={pseudonyms} />
                 </td>
               </tr>
@@ -60,6 +64,7 @@ function MonthRow({ month, isOpen, onToggle }: { month: Month; isOpen: boolean; 
       data-testid={`month-${monthKey(month)}`}
       data-sales-month={month.salesMonth}
       data-label={month.labelName}
+      data-book={bookOf(month)}
       data-row-id={monthRowId(month)}
       className="border-t border-border"
     >
@@ -74,6 +79,11 @@ function MonthRow({ month, isOpen, onToggle }: { month: Month; isOpen: boolean; 
       </Td>
       <Td col="reportingMonth">{month.reportingMonth}</Td>
       <Td col="salesMonth">{month.salesMonth}</Td>
+      <Td col="book">
+        <span data-testid="month-book" title={t.bookHint}>
+          {month.bookLabelName ?? t.noBook}
+        </span>
+      </Td>
       <Td col="label">
         <div data-testid="label-string">{month.labelName}</div>
         <div className="text-xs text-muted">

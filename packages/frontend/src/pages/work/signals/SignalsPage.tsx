@@ -3,21 +3,16 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { Signals } from '@erp/shared/api-responses';
-import { documentQueries } from '../../api/queries/documents';
-import { reportQueries } from '../../api/queries/reports';
-import { ActionButton, OperatorNotice } from '../../components/ActionButton';
-import { EntityLink } from '../../components/EntityLink';
-import { Money } from '../../components/Money';
-import { PageHeader } from '../../components/PageHeader';
-import { PageState, QueryView } from '../../components/PageState';
-import { StatusChip } from '../../components/StatusChip';
-import { DataGrid } from '../../components/grid/DataGrid';
-import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
-import { compareDecimal } from '../../lib/money';
-import { useLabel } from '../../lib/label';
-import { fmt, ru } from '../../i18n/ru';
-import { centsToText } from '../owners/components/cents';
-import { useOwnerNames } from '../reference/shared';
+import { documentQueries } from '../../../api/queries/documents';
+import { reportQueries } from '../../../api/queries/reports';
+import { OperatorNotice } from '../../../components/ActionButton';
+import { EntityLink } from '../../../components/EntityLink';
+import { PageHeader } from '../../../components/PageHeader';
+import { PageState, QueryView } from '../../../components/PageState';
+import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
+import { useLabel } from '../../../lib/label';
+import { ru } from '../../../i18n/ru';
+import { useOwnerNames } from '../../reference/shared';
 import {
   AssignOwnerDialog,
   CloseRuleDialog,
@@ -27,19 +22,17 @@ import {
   NoteDialog,
   RecreateParticipationDialog,
   RegisterTrackDialog,
-  SetOperationLabelDialog,
   SetRuleDialog,
   SublabelRuleDialog,
-} from './actions/dialogs';
-import { SIGNAL_ACTIONS } from './actions/action-table';
+} from '../actions/dialogs';
+import { SIGNAL_ACTIONS, type SignalName } from '../actions/action-table';
+import { LABEL_SIGNALS, type LabelSignalName } from './label-signals';
+import { actionCol, btn, c, Grid, info, isrcCol, moneyCol, t, textCol, type Open } from './signal-grid';
 
-const t = ru.signalsPage;
-const c = t.cols;
 const a = ru.actions;
 
 /** Every list of `GET /signals` in the order of the page (16 §2.7). */
-export const SIGNAL_NAMES = Object.keys(ru.signals) as (keyof typeof ru.signals)[];
-type SignalName = (typeof SIGNAL_NAMES)[number];
+export const SIGNAL_NAMES = Object.keys(ru.signals) as SignalName[];
 
 /**
  * One call for every list, cut to the API's cap per list (5000; `counts` has the full lengths): every row is reachable
@@ -81,80 +74,6 @@ function SignalIndex({ data }: { data: Signals }) {
   );
 }
 
-type Open = (dialog: ReactNode) => void;
-
-function Grid<T>(props: {
-  name: SignalName;
-  rows: readonly T[];
-  columns: ColDef<T>[];
-  /** The key of the test hook `signal-row-<name>-<key>` (D-145). */
-  rowKey: (r: T) => string;
-  /** The grid's row id when the key is not unique (unfunded: one row per sales month). */
-  rowId?: (r: T) => string;
-  count: number;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="text-sm" data-testid="signal-total">
-        {t.count}: {props.count}
-        {props.rows.length < props.count ? ` · ${fmt(t.shown, { limit: props.rows.length, count: props.count })}` : ''}
-      </div>
-      {props.rows.length === 0 ? (
-        <PageState variant="empty" message={t.empty} />
-      ) : (
-        <DataGrid
-          rowData={props.rows}
-          columnDefs={props.columns}
-          getRowId={props.rowId ?? props.rowKey}
-          rowTestId={(r) => `signal-row-${props.name}-${props.rowKey(r)}`}
-          autoHeight
-          pageSize={100}
-          gridStateKey="grid"
-        />
-      )}
-    </div>
-  );
-}
-
-const isrcCol = <T,>(get: (r: T) => string | null): ColDef<T> => ({
-  colId: 'isrc',
-  headerName: c.isrc,
-  valueGetter: (p) => (p.data ? get(p.data) : null),
-  cellRenderer: (p: { data?: T }) => {
-    const v = p.data ? get(p.data) : null;
-    return v ? <EntityLink kind="isrc" id={v} /> : <span className="text-muted">—</span>;
-  },
-});
-const moneyCol = <T,>(colId: string, headerName: string, get: (r: T) => string): ColDef<T> => ({
-  colId,
-  headerName,
-  minWidth: 120,
-  comparator: compareDecimal,
-  valueGetter: (p) => (p.data ? get(p.data) : null),
-  cellRenderer: (p: { data?: T }) => (p.data ? <span data-col={colId}><Money value={get(p.data)} /></span> : null),
-});
-const textCol = <T,>(colId: string, headerName: string, get: (r: T) => string): ColDef<T> => ({
-  colId,
-  headerName,
-  valueGetter: (p) => (p.data ? get(p.data) : ''),
-});
-const actionCol = <T,>(render: (r: T) => ReactNode): ColDef<T> => ({
-  colId: 'action',
-  headerName: c.action,
-  minWidth: 300,
-  autoHeight: true,
-  wrapText: true,
-  sortable: false,
-  filter: false,
-  cellRenderer: (p: { data?: T }) => (p.data ? <div className="flex flex-wrap items-center gap-1 py-1">{render(p.data)}</div> : null),
-});
-const btn = (name: string, label: string, onPress: () => void) => (
-  <ActionButton key={name} name={name} variant="secondary" compact onPress={onPress}>
-    {label}
-  </ActionButton>
-);
-const info = (text: string) => <span className="text-xs text-muted">{text}</span>;
-
 function SignalList({ name, data }: { name: SignalName; data: Signals }) {
   const [dialog, setDialog] = useState<ReactNode>(null);
   const close = () => setDialog(null);
@@ -167,11 +86,15 @@ function SignalList({ name, data }: { name: SignalName; data: Signals }) {
   return (
     <>
       <OperatorNotice />
-      {renderList(name, data, count, open, close, { owners, titles })}
+      {isLabelSignal(name)
+        ? LABEL_SIGNALS[name]({ data, count, open, close })
+        : renderList(name, data, count, open, close, { owners, titles })}
       {dialog}
     </>
   );
 }
+
+const isLabelSignal = (name: SignalName): name is LabelSignalName => name in LABEL_SIGNALS;
 
 type Names = { owners: Map<string, string>; titles: Map<string, string> };
 
@@ -183,7 +106,7 @@ const pseudonymCol = <T extends { artistId: string; pseudonym: string }>(): ColD
   cellRenderer: (p: { data?: T }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null),
 });
 
-function renderList(name: SignalName, data: Signals, count: number, open: Open, close: () => void, names: Names): ReactNode {
+function renderList(name: Exclude<SignalName, LabelSignalName>, data: Signals, count: number, open: Open, close: () => void, names: Names): ReactNode {
   switch (name) {
     case 'unallocated': {
       type R = Signals['unallocated']['pairs'][number];
@@ -401,64 +324,6 @@ function renderList(name: SignalName, data: Signals, count: number, open: Open, 
             actionCol((r) =>
               btn('assign-owner', a.assignOwner, () => open(<AssignOwnerDialog artistId={r.artistId} pseudonym={r.pseudonym} onClose={close} />)),
             ),
-          ]}
-        />
-      );
-    }
-    case 'operationsWithoutLabel': {
-      type R = Signals['operationsWithoutLabel'][number];
-      return (
-        <Grid<R>
-          name={name}
-          count={count}
-          rows={data.operationsWithoutLabel}
-          rowKey={(r) => r.operationId}
-          columns={[
-            textCol('date', c.date, (r) => r.date),
-            {
-              colId: 'owner',
-              headerName: c.owner,
-              minWidth: 160,
-              valueGetter: (p) => p.data?.ownerName ?? '',
-              cellRenderer: (p: { data?: R }) =>
-                p.data?.ownerId ? <EntityLink kind="owner" id={p.data.ownerId} label={p.data.ownerName ?? p.data.ownerId} /> : <span>—</span>,
-            },
-            {
-              colId: 'pseudonym',
-              headerName: c.pseudonym,
-              valueGetter: (p) => p.data?.pseudonym ?? '',
-              cellRenderer: (p: { data?: R }) =>
-                p.data?.artistId ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym ?? p.data.artistId} /> : <span>—</span>,
-            },
-            {
-              colId: 'meaning',
-              headerName: c.meaning,
-              valueGetter: (p) => p.data?.meaning,
-              cellRenderer: (p: { data?: R }) => (p.data ? <StatusChip kind="operationMeaning" value={p.data.meaning} /> : null),
-            },
-            moneyCol('amount', c.amount, (r) => centsToText(r.amountCents)),
-            actionCol((r) => btn('set-label', a.setLabel, () => open(<SetOperationLabelDialog operationId={r.operationId} onClose={close} />))),
-          ]}
-        />
-      );
-    }
-    case 'labelOutsideAccount': {
-      type R = Signals['labelOutsideAccount'][number];
-      return (
-        <Grid<R>
-          name={name}
-          count={count}
-          rows={data.labelOutsideAccount}
-          rowKey={(r) => `${r.account}|${r.month}|${r.labelName}`}
-          columns={[
-            textCol('account', c.account, (r) => r.account),
-            textCol('month', c.month, (r) => r.month),
-            textCol('label', c.label, (r) => r.labelName),
-            textCol('ourLabel', c.ourLabel, (r) => r.ourLabelName),
-            textCol('accountLabel', c.accountLabel, (r) => r.accountLabelName),
-            moneyCol('net', c.net, (r) => r.net),
-            textCol('units', c.units, (r) => String(r.units)),
-            actionCol(() => (SIGNAL_ACTIONS.labelOutsideAccount.information ? info(t.info) : null)),
           ]}
         />
       );

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, choose, expectMoneyCalls, isrc, openAs, openSignalList, sc, settled, signalRow, toastOk } from '../helpers';
+import { account, apiPost, choose, expectMoneyCalls, expectP1, isrc, openAs, openSignalList, overviewRow, sc, settled, signalRow, toastOk } from '../helpers';
 
 // The label as a book (19 §4 S38, D-168): the switch of the header («0to8 / Echo8 / Все»), the owner under both labels
 // (the books on P10, the view under a label), the payout under a label, the operation without a label in «Все» and on
@@ -36,6 +36,20 @@ test('S38 under «Все»: the books of 0to8 and Echo8 add up to the owner; the
   await expect(page.getByTestId(`position-${k.extra['advance-echo8']}`)).toBeVisible();
   await expect(page.getByTestId('action-pay')).toBeDisabled();
   await expect(page.getByTestId('payout-gate')).toContainText('выберите лейбл');
+});
+
+test('S38 P1 and P21 (D-169): a file per account, each row in its own book; no file without a label', async ({ page }) => {
+  await openAs(page, '/?label=');
+  await settled(page);
+  for (const [a, book, abco] of [[0, '0to8', '100 / 50 / 0 / 50'], [1, 'Echo8', '60 / 30 / 0 / 30']] as const) {
+    await expectP1(page, account(38, 1, a), '2026-03', abco);
+    const row = overviewRow(page, 'believe', account(38, 1, a), '2026-03');
+    await expect(row).toHaveAttribute('data-book', book);
+    await expect(row.locator('[data-col="book"] [data-testid^="book-"]')).toHaveCount(1);
+  }
+  await openSignalList(page, 'filesWithoutLabel');
+  await expect(page.getByTestId('signal-total')).toContainText('0');
+  await expect(page.locator('[data-testid^="signal-row-filesWithoutLabel-"]')).toHaveCount(0);
 });
 
 test('S38 the switch: under Echo8 the book of Echo8 alone, its advance only; the URL carries the label and a reload keeps it', async ({ page }) => {

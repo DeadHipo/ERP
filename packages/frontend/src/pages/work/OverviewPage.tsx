@@ -240,7 +240,7 @@ function ReconTable({ rows }: { rows: Row[] }) {
       <table className="w-full text-sm" data-testid="overview-table">
         <thead className="bg-default/50 text-left text-xs text-muted">
           <tr>
-            {[c.source, c.account, c.month, c.A, c.B, c.C, c.ours, c.noSplit, c.discrepancy, c.fileDiscrepancy].map((h) => (
+            {[c.source, c.account, c.month, c.book, c.A, c.B, c.C, c.ours, c.noSplit, c.discrepancy, c.fileDiscrepancy].map((h) => (
               <th key={h} className="px-3 py-2 font-medium">
                 {h}
               </th>
@@ -262,13 +262,19 @@ function ReconRow({ r }: { r: Row }) {
   const believe = r.source === 'believe';
   const reasons = Object.entries(r.C_breakdown) as [CReason, string][];
   const labels = Object.entries(r.ourShareByLabel);
+  // the book of the row (D-169): the label its files were loaded under ('?' = without one); a Believe row has one
+  const books = Object.keys(r.byLabel);
   const link = (to: string, value: string, col: string) => (
     <Link to={to} state={col === 'B' || col === 'ours' ? { sortBy: col } : undefined} className="hover:underline" data-col-link={col}>
       <Money value={value} />
     </Link>
   );
   return (
-    <tr data-testid={`overview-row-${r.source}-${r.account}-${r.month}`} className="border-t border-border align-top">
+    <tr
+      data-testid={`overview-row-${r.source}-${r.account}-${r.month}`}
+      data-book={books.join(',')}
+      className="border-t border-border align-top"
+    >
       <td className="px-3 py-2">{t.sources[r.source]}</td>
       <td className="px-3 py-2">
         {believe ? (
@@ -280,6 +286,13 @@ function ReconRow({ r }: { r: Row }) {
         )}
       </td>
       <td className="whitespace-nowrap px-3 py-2">{r.month}</td>
+      <td className="px-3 py-2" data-col="book" title={t.bookNote}>
+        {books.map((name) => (
+          <div key={name} data-testid={`book-${name}`}>
+            {name === '?' ? t.byLabelNone : name}
+          </div>
+        ))}
+      </td>
       <td className="px-3 py-2" data-col="A">
         <Money value={r.A_received} />
       </td>

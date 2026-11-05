@@ -18,15 +18,36 @@ export interface SourceUnit {
   salesMonth: string;
   /** Label string of the report line (`Label Name`); part of the unit key (D-124). */
   labelName: string;
+  /** The own label the file of the unit was loaded under (`source_files.label_id`, D-169): the book; null = none. */
+  labelId: string | null;
   netPico: bigint;
 }
 
 /**
  * What `snapshot()` may be narrowed to (the unit scope of the facade, D-161): a month range on one basis, ISRCs, UPCs,
- * Believe accounts. The files in force are always all of them; only the units read are fewer.
+ * Believe accounts, the labels the files were loaded under (D-169). The files in force are always all of them; only
+ * the units read are fewer.
  */
 export interface SnapshotFilter extends UnitsFilter {
   accounts?: string[];
+  /** Only the units of the files loaded under one of these labels (`source_files.label_id`, D-169); [] = nothing. */
+  labelIds?: string[];
+}
+
+/** The part of a snapshot filter ClickHouse applies to the units (the accounts and labels choose the files). */
+function unitsOf(filter: SnapshotFilter): UnitsFilter {
+  const { from, to, basis, isrcs, upcs } = filter;
+  return { from, to, basis, isrcs, upcs };
+}
+
+/** The files a filtered read takes: the loaded files of the accounts and labels asked for (D-161, D-169). */
+function filesOfFilter(files: SourceFileRecord[], filter: SnapshotFilter): SourceFileRecord[] {
+  const { accounts, labelIds } = filter;
+  return files.filter(
+    (f) =>
+      (!accounts || accounts.includes(f.account)) &&
+      (!labelIds || (f.labelId !== null && labelIds.includes(f.labelId))),
+  );
 }
 
 /** A file in force, as stored with every payout for reproducibility. */
@@ -169,9 +190,10 @@ export function createSourcesService(deps: SourcesDeps) {
         (r) => `${r.length} files`,
       );
       const accountOf = new Map(files.map((f) => [f.id, f.account]));
+      const labelOf = new Map(files.map((f) => [f.id, f.labelId]));
       // The unit scope (D-161) narrows the units read, never the list of files in force.
-      const { accounts, ...unitsFilter } = filter;
-      const read = accounts ? files.filter((f) => accounts.includes(f.account)) : files;
+      const unitsFilter = unitsOf(filter);
+      const read = filesOfFilter(files, filter);
       const rows = await timed(
         'clickhouse: units',
         () =>
@@ -196,6 +218,7 @@ export function createSourcesService(deps: SourcesDeps) {
           reportingMonth: r.reportingMonth,
           salesMonth: r.salesMonth,
           labelName: r.labelName,
+          labelId: labelOf.get(r.fileId) ?? null,
           netPico: parsePico(r.net),
         })),
       }));
@@ -216,20 +239,19 @@ export function createSourcesService(deps: SourcesDeps) {
       return columnar.isrcsOfLabelStrings(ids, raw);
     },
 
-    /** The raw label strings of the loaded files that normalise to one of `normalizedAliases` (the label book, D-168). */
-    async labelStringsOfAliases(normalizedAliases: string[], normalize: (raw: string) => string): Promise<string[]> {
-      if (normalizedAliases.length === 0) return [];
-      const files = await registry.loaded();
-      const wanted = new Set(normalizedAliases);
-      return (await columnar.labelStrings(files.map((f) => f.id))).filter((s) => wanted.has(normalize(s)));
+    /** The loaded files of one label (`source_files.label_id = labelId`, D-169): the files of its book. */
+    async filesOfLabel(labelId: string): Promise<SourceFileRecord[]> {
+      return (await registry.loaded()).filter((f) => f.labelId === labelId);
     },
 
-    /** The ISRCs whose units carry one of the raw label strings, over the loaded files (D-168). */
-    async isrcsOfLabelStrings(labelStrings: string[]): Promise<string[]> {
-      if (labelStrings.length === 0) return [];
-      const files = await registry.loaded();
-      return columnar.isrcsOfLabelStrings(files.map((f) => f.id), labelStrings);
-    },
+    /** Every ISRC of the given files (D-169: the tracks of a label = the ISRCs of its files). */
+    isrcsOfFiles: (fileIds: string[]): Promise<string[]> => columnar.isrcsOfFiles(fileIds),
+
+    /**
+     * Marks the label of a file that has none (D-169, the script `assign-label-books` only): the label of a file is never
+     * changed. Returns whether the row changed.
+     */
+    assignFileLabel: (fileId: string, labelId: string): Promise<boolean> => registry.assignLabel(fileId, labelId),
 
     /** Explanation of one ISRC: platforms, countries, subscription and sales types per month. */
     async breakdown(isrc: string, reportingMonth?: string) {
@@ -323,8 +345,8 @@ export function createSourcesService(deps: SourcesDeps) {
     /** Net per UPC over the loaded files (exact decimal text), one ClickHouse GROUP BY; the filter narrows the units (D-168). */
     async netByUpc(filter: SnapshotFilter = {}): Promise<Map<string, string>> {
       const files = await registry.loaded();
-      const { accounts, ...unitsFilter } = filter;
-      const read = accounts ? files.filter((f) => accounts.includes(f.account)) : files;
+      const unitsFilter = unitsOf(filter);
+      const read = filesOfFilter(files, filter);
       const rows = await columnar.netByUpc(read.map((f) => f.id), unitsFilter);
       return new Map(rows.map((r) => [r.upc, picoToString(parsePico(r.net))]));
     },

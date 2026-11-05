@@ -81,6 +81,24 @@ test('P1 rows of S01–S11: A / B / C / ours exact, discrepancy 0', async ({ pag
   expect(errors).toEqual([]);
 });
 
+test('P1 books (D-169): every Believe row sits in one book, the label of its file; ourShareByLabel stays by the string', async ({ page }) => {
+  await openAs(page, '/');
+  await settled(page);
+  // account(0) of a case is loaded under 0to8, account(1) under Echo8: the string `Echo8` of S06/2, S08/3, S10/2 in a
+  // file of account(0) books to 0to8 while its ours goes to `by-label-Echo8`
+  for (const [nn, k, a, month] of ROWS) {
+    const row = overviewRow(page, 'believe', account(nn, k, a), month);
+    const book = a === 1 ? 'Echo8' : '0to8';
+    await expect(row).toHaveAttribute('data-book', book);
+    await expect(row.locator('[data-col="book"] [data-testid^="book-"]')).toHaveCount(1);
+    await expect(row.getByTestId(`book-${book}`)).toBeVisible();
+  }
+  // every Believe row of the seed: one named book, never «без лейбла»
+  const books = await page.locator('[data-testid^="overview-row-believe-"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-book')));
+  expect(books.length).toBeGreaterThan(0);
+  expect(books.filter((b) => b === null || b === '' || b === '?' || b.includes(','))).toEqual([]);
+});
+
 test('P1 drill-down: the C cell of S10/2 opens the unknown_pair queue for that account and month', async ({ page }) => {
   await openAs(page, '/');
   await settled(page);

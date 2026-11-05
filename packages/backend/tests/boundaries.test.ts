@@ -31,6 +31,24 @@ describe('module boundaries (README 4)', () => {
     }
   });
 
+  it('the layers import only the shared helpers, each other and the fixed shapes of four modules (D-169: the book is no layer input)', () => {
+    const allowed = new Set([
+      '../../modules/labels',
+      '../../modules/publishing',
+      '../../modules/settlements',
+      '../../modules/splits',
+      '../../shared/dates',
+      '../../shared/identifiers',
+      '../../shared/money',
+      '@erp/shared/api-responses',
+    ]);
+    for (const file of filesOf(join(SRC, 'facade', 'layers'))) {
+      const imports = [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)].map((x) => x[1] as string);
+      for (const imp of imports) expect(imp.startsWith('./') || allowed.has(imp), `${file} imports ${imp}`).toBe(true);
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/bookLabel|labelIds|source_files/);
+    }
+  });
+
   it('only the facade composes modules; the API never opens a module database', () => {
     for (const file of filesOf(join(SRC, 'api'))) {
       expect(readFileSync(file, 'utf8')).not.toMatch(/open\w+Module|better-sqlite3/);

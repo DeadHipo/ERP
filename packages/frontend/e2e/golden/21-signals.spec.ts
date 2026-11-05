@@ -23,10 +23,12 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 13 lists with their counts and links', async ({ page }) => {
+test('the index lists the 14 lists with their counts and links', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(13);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(14);
+  // D-169: every seed file is loaded under a label, so «Файлы Believe без лейбла» is empty
+  await expect(page.getByTestId('signal-list-filesWithoutLabel').getByTestId('signal-count')).toHaveText('0');
   await page.getByTestId('signal-list-unfunded').getByRole('link').click();
   await expect(page).toHaveURL(/\/signals\/unfunded$/);
   await settled(page);

@@ -145,7 +145,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     async trackSummary(f: { account?: string; month?: string; isrcs?: string; label?: string } = {}) {
       // one account and/or one report month, or a list of ISRCs (the visible rows of P5): only those units, splits,
       // tracks and names can appear in the answer, and the B17 side is not read (D-161, D-162); under a label the
-      // units of its strings and the ISRCs that carry them (D-168)
+      // units of its files and the ISRCs of those files (D-168, D-169)
       const lc = await labelContext(f.label);
       const asked = f.isrcs === undefined ? undefined : parseIsrcList(f.isrcs);
       const only = lc ? (asked ?? [...lc.visible.isrcs].sort()).filter((i) => lc.visible.isrcs.has(i)) : asked;
@@ -153,7 +153,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         ...(f.account !== undefined ? { accounts: [f.account] } : {}),
         ...(f.month !== undefined ? { from: f.month, to: f.month, basis: 'report' as const } : {}),
         ...(only ? { isrcs: only } : {}),
-        ...(lc ? { labelStrings: lc.book.labelStrings } : {}),
+        ...(lc ? { labelIds: [lc.book.id] } : {}),
         publishingLines: false,
       });
       const byIsrcs = only ? { isrcs: only } : {};
@@ -209,7 +209,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * the visible rows comes from `trackSummary({ isrcs })`. The ISRC set is the one of `trackSummary()`.
      */
     async trackCatalog(f: { label?: string } = {}) {
-      // under a label (D-168): the ISRCs that carry the label's strings; a registered track without units is «Все» only
+      // under a label (D-168): the ISRCs of the label's files (D-169); a registered track without units is «Все» only
       const lc = await labelContext(f.label);
       const { tracks, splitList, partList, artistsOf } = await db.snapshot(async () => {
         const tracks = await owners.listTracks();
@@ -286,6 +286,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           salesMonth: u.salesMonth,
           labelName: u.labelName,
           ourLabelName: u.ourLabelName,
+          bookLabelId: u.bookLabelId,
+          bookLabelName: u.bookLabelName,
           sublabelName: u.sublabelName,
           rule: u.ruleId,
           net: u.net,
@@ -338,7 +340,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           ]);
           return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
         }),
-        sources.netByUpc(lc ? { labelStrings: lc.book.labelStrings } : {}),
+        sources.netByUpc(lc ? { labelIds: [lc.book.id] } : {}),
         nameMaps(),
       ]);
       const byUpc = groupBy(
@@ -384,7 +386,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     /** One release (N9): its tracks and report months with B, C and ours, from one calculation. */
     async release(upc: string, label?: string) {
       const lc = await labelContext(label);
-      const calc = await calcScoped({ upcs: [upc], ...(lc ? { labelStrings: lc.book.labelStrings } : {}), publishingLines: false });
+      const calc = await calcScoped({ upcs: [upc], ...(lc ? { labelIds: [lc.book.id] } : {}), publishingLines: false });
       const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps({ upcs: [upc] })]);
       const mine = tracks.filter((t) => t.upc === upc && (!lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc))));
       const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');

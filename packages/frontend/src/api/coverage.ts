@@ -44,7 +44,11 @@ export const OPERATION_COVERAGE: Record<
   },
   'GET /tracks/summary': { page: 'P5', route: '/tracks' },
   'GET /tracks/catalog': { page: 'P5', route: '/tracks', note: 'the first phase of P5 (D-162): the rows without money; the visible rows then ask /tracks/summary?isrcs=' },
-  'GET /tracks/:isrc/money': { page: 'P6', route: '/tracks/:isrc' },
+  'GET /tracks/:isrc/money': {
+    page: 'P6',
+    route: '/tracks/:isrc',
+    note: 'a month row shows its book (the label of its file, «Книга», month-book / data-book) and the label string → label of record → sublabel (data-label), D-169',
+  },
   'GET /tracks/:isrc/breakdown/:month': { page: 'P6', route: '/tracks/:isrc', note: 'action-breakdown of a month row' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
@@ -88,7 +92,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /publishing/terms': { page: 'P18', route: '/publishing', note: 'action-set-terms; also the queue' },
 
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
-  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client' },
+  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, D-169) in pages/work/signals/label-signals.tsx' },
   'GET /overview': { page: 'P1', route: '/', note: 'also the queue summary of P2' },
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 

@@ -26,7 +26,7 @@ import {
   type UnitAllocation,
   type UnitState,
 } from './layers';
-import { cItems } from './queue';
+import { cItems, type CItem } from './queue';
 import { pubInPeriod, unitInPeriod, type PeriodFilter } from './period';
 import { adPositionsByOwner, allocateAd, type AdPosition, type AdResult } from './ads';
 
@@ -50,9 +50,12 @@ export interface UnitResult {
   labelName: string;
   net: Decimal;
   status: UnitState['status'];
-  /** Our label of record (null for an unmapped label string). */
+  /** Our label of record (null for an unmapped label string): decides the sublabel rule and «ours / label_unmapped». */
   ourLabelId: string | null;
   ourLabelName: string | null;
+  /** The book of the unit's money: the own label its file was loaded under (D-169); null = a file without a label ('?'). */
+  bookLabelId: string | null;
+  bookLabelName: string | null;
   /** The sublabel of the label string and the rule in force at the report month (signals only, no amount). */
   sublabelId: string | null;
   sublabelName: string | null;
@@ -80,6 +83,8 @@ export interface PublishingResult {
   labelAmount: Decimal;
   category: Category;
   reason: CReason | null;
+  /** The book of the line (D-169): the label of its statement; null = without a label ('?'). */
+  labelId: string | null;
 }
 
 export interface Calculation {
@@ -95,8 +100,6 @@ export interface Calculation {
   labelName: (id: string) => string | undefined;
   /** Every own label (id, name). */
   ownLabels: { id: string; name: string }[];
-  /** The own label a Believe account is registered under (D-168), undefined when the account is not registered. */
-  labelOfAccount: (account: string) => string | undefined;
   /** Every active advertising expense with who bears it (D-155, D-156). */
   ads: AdResult[];
   /** The debt positions the expenses make, by owner (artists' parts and sublabels' unrecovered parts). */
@@ -229,6 +232,8 @@ export async function calculate(
       status: state.status,
       ourLabelId: state.ourLabelId,
       ourLabelName: state.ourLabelName,
+      bookLabelId: u.labelId,
+      bookLabelName: u.labelId === null ? null : (labelIndex.labelName(u.labelId) ?? null),
       sublabelId: state.sublabelId,
       sublabelName: state.sublabelName,
       ruleId: state.rule?.id ?? null,
@@ -280,6 +285,8 @@ export async function calculate(
         labelAmount: p.labelAmount,
         category: p.category,
         reason: p.reason,
+        // The statement's label reaches the line with D-169 commit 5; until then every line is without a label.
+        labelId: null,
       }));
     }),
   );
@@ -326,7 +333,6 @@ export async function calculate(
     documentKind,
     labelName: (id) => labelIndex.labelName(id),
     ownLabels: labelIndex.ownLabels(),
-    labelOfAccount: (account) => labelIndex.labelOfAccount(account),
     ads,
     adPositions: adPositionsByOwner(ads),
   };
@@ -351,7 +357,10 @@ export interface Reconciliation {
   ourShareNoSplit: Decimal;
   /** A − B − C − ourShare: must be 0; anything else means a layer lost or created money. */
   discrepancy: Decimal;
-  /** The row per label of record (by name, '?' = an unmapped string or publishing), D-168: Σ over the labels = the row. */
+  /**
+   * The row per book (by name, '?' = without a label), D-168, D-169: a Believe row is the book of its files' label (one
+   * key), a B17 row the label of its statements. Σ over the books = the row.
+   */
   byLabel: Record<string, { A_received: Decimal; B_notOurs: Decimal; C_waiting: Decimal; ourShare: Decimal; ourShareNoSplit: Decimal }>;
 }
 
@@ -388,10 +397,16 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
     const b = book(r, label);
     b.C_waiting = b.C_waiting.add(v);
   };
+  const bookOf = (it: CItem): string =>
+    (it.unit
+      ? it.unit.bookLabelName
+      : it.pub && it.pub.labelId !== null
+        ? calc.labelName(it.pub.labelId)
+        : undefined) ?? '?';
   for (const u of calc.units) {
     if (!unitInPeriod(u, f)) continue;
     const r = row('believe', u.account, (f.basis ?? 'report') === 'sales' ? u.salesMonth : u.reportingMonth);
-    const b = book(r, u.ourLabelName ?? '?');
+    const b = book(r, u.bookLabelName ?? '?');
     r.A_received = r.A_received.add(u.net);
     b.A_received = b.A_received.add(u.net);
     for (const a of u.allocations) {
@@ -414,7 +429,7 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
   for (const p of calc.publishing) {
     if (!pubInPeriod(p, f)) continue;
     const r = row('b17', 'b17', p.reportMonth);
-    const b = book(r, '?');
+    const b = book(r, (p.labelId === null ? undefined : calc.labelName(p.labelId)) ?? '?');
     r.A_received = r.A_received.add(p.payable);
     b.A_received = b.A_received.add(p.payable);
     if (p.ownerId && p.category === 'B') {
@@ -425,7 +440,7 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
     b.ourShare = b.ourShare.add(p.labelAmount);
   }
   // the C side: the very items the queue groups (queue.ts), so the two cannot drift
-  for (const it of cItems(calc, f)) addC(row(it.source, it.account, it.month), it.unit?.ourLabelName ?? '?', it.reason, it.amount);
+  for (const it of cItems(calc, f)) addC(row(it.source, it.account, it.month), bookOf(it), it.reason, it.amount);
   for (const r of rows.values())
     r.discrepancy = r.A_received.sub(r.B_notOurs).sub(r.C_waiting).sub(r.ourShare);
   return [...rows.values()].sort((a, b) =>

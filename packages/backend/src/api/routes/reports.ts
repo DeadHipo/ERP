@@ -44,6 +44,7 @@ export function reportsRouter(facade: Facade) {
       assumptions: cut(s.assumptions),
       operationsWithoutLabel: cut(s.operationsWithoutLabel),
       labelOutsideAccount: cut(s.labelOutsideAccount),
+      filesWithoutLabel: cut(s.filesWithoutLabel),
     });
   });
 

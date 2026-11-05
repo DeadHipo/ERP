@@ -56,7 +56,7 @@ const rows = await f.reconciliation();
 type Row = (typeof rows)[number];
 const find = (source: string, account: string, month: string): Row | undefined =>
   rows.find((r) => r.source === source && r.account === account && r.month === month);
-const p1 = (r: Row) => [r.A_received.toFixed(), r.B_notOurs.toFixed(), r.C_waiting.toFixed(), r.ourShare.toFixed()];
+const p1 = (r: Pick<Row, 'A_received' | 'B_notOurs' | 'C_waiting' | 'ourShare'>) => [r.A_received.toFixed(), r.B_notOurs.toFixed(), r.C_waiting.toFixed(), r.ourShare.toFixed()];
 const map = (o: Record<string, { toFixed(): string }>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.toFixed()]));
 
 interface Want {
@@ -65,7 +65,10 @@ interface Want {
   a?: number;
   m: string;
   row: [string, string, string, string];
+  /** `ourShareByLabel`: our share by the label string (the label of record), D-168. */
   byLabel?: Record<string, string>;
+  /** The book of the row (`byLabel` key): the label its file was loaded under, D-169; default the label of the account. */
+  book?: string;
   breakdown?: Record<string, string>;
   noSplit?: string;
 }
@@ -98,21 +101,22 @@ std('S05', 2, ['100', '85', '0', '15']);
 std('S05', 3, ['100', '100', '0', '0']);
 std('S05', 4, ['100', '50', '0', '50']);
 std('S06', 1, ['100', '50', '0', '50'], { byLabel: { '0to8': '50' } });
-std('S06', 2, ['100', '50', '0', '50'], { byLabel: { Echo8: '50' } });
+// the string `Echo8` in a file of account(0): our share by the string Echo8, the book 0to8 (D-169)
+std('S06', 2, ['100', '50', '0', '50'], { byLabel: { Echo8: '50' }, book: '0to8' });
 std('S06', 3, ['100', '75', '0', '25']);
 add('S06', 3, '2026-04', ['100', '50', '0', '50']);
 std('S07', 1, ['-100', '-78.75', '0', '-21.25']);
 std('S07', 2, ['0', '0', '0', '0']);
 std('S08', 1, ['100', '57.5', '23.375', '19.125']);
 std('S08', 2, ['100', '57.5', '23.375', '19.125']);
-std('S08', 3, ['100', '50', '25', '25'], { byLabel: { Echo8: '25' } });
+std('S08', 3, ['100', '50', '25', '25'], { byLabel: { Echo8: '25' }, book: '0to8' });
 std('S08', 4, ['100', '0', '50', '50'], { noSplit: '50' });
 std('S09', 1, ['100', '49.8', '0', '50.2']);
 std('S09', 2, ['100', '10', '0', '90']);
 std('S10', 1, ['100', '50', '0', '50'], { byLabel: { '0to8': '50' } });
-want.push({ s: 'S10', k: 1, a: 1, m: M3, row: ['50', '25', '0', '25'], byLabel: { Echo8: '25' } });
-std('S10', 2, ['100', '50', '0', '50'], { byLabel: { Echo8: '50' } });
-want.push({ s: 'S10', k: 2, a: 1, m: M3, row: ['57', '25', '7', '25'], byLabel: { Echo8: '25' }, breakdown: { unknown_pair: '7' } });
+want.push({ s: 'S10', k: 1, a: 1, m: M3, row: ['50', '25', '0', '25'], byLabel: { Echo8: '25' }, book: 'Echo8' });
+std('S10', 2, ['100', '50', '0', '50'], { byLabel: { Echo8: '50' }, book: '0to8' });
+want.push({ s: 'S10', k: 2, a: 1, m: M3, row: ['57', '25', '7', '25'], byLabel: { Echo8: '25' }, book: 'Echo8', breakdown: { unknown_pair: '7' } });
 std('S11', 1, ['150', '82.5', '0', '67.5']);
 std('S12', 1, ['100', '5', '50', '45']);
 add('S13', 1, M3, ['100', '30', '20', '50']);
@@ -139,6 +143,9 @@ std('S32', 1, ['100', '50', '5', '45']);
 std('S33', 1, ['200', '50', '50', '100']);
 std('S35', 4, ['100', '50', '5', '45']);
 for (const m of ['2026-03', '2026-04']) add('S37', 1, m, ['100', '75', '0', '25']);
+// S38 (G50, D-169): one file per account, each its own book
+std('S38', 1, ['100', '50', '0', '50'], { book: '0to8' });
+add('S38', 1, M3, ['60', '30', '0', '30'], { book: 'Echo8' }, 1);
 
 for (const w of want) {
   const c = case$(w.s, w.k);
@@ -152,6 +159,9 @@ for (const w of want) {
   }
   check(label, p1(r), w.row);
   if (w.byLabel) check(`${label} ourShareByLabel`, map(r.ourShareByLabel), w.byLabel);
+  // the book (D-169): one key, the label of the file (account(0) of a case is 0to8's, account(1) Echo8's), the whole row
+  const book = w.book ?? (w.a === 1 ? 'Echo8' : '0to8');
+  check(`${label} byLabel (book)`, Object.fromEntries(Object.entries(r.byLabel).map(([k, v]) => [k, p1(v)])), { [book]: w.row });
   if (w.breakdown) check(`${label} C_breakdown`, map(r.C_breakdown as never), w.breakdown);
   if (w.noSplit) check(`${label} ourShareNoSplit`, r.ourShareNoSplit.toFixed(), w.noSplit);
 }
@@ -166,6 +176,12 @@ for (const r of rows) {
   }
 }
 check(`identity A = B + C + ours, discrepancy 0 on all ${rows.length} rows`, bad, 0);
+
+// every Believe row sits in exactly one named book: every seed file is loaded under a label (D-169)
+const believe = rows.filter((r) => r.source === 'believe');
+const unbooked = believe.filter((r) => Object.keys(r.byLabel).length !== 1 || '?' in r.byLabel);
+for (const r of unbooked) console.log(`FAIL  book ${r.account} ${r.month} ${JSON.stringify(Object.keys(r.byLabel))}`);
+check(`one named book on all ${believe.length} Believe rows`, unbooked.length, 0);
 
 // ---- B17 rows (keyed by month) ----
 const b17 = (m: string) => find('b17', 'b17', m);

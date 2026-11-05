@@ -163,16 +163,16 @@ export async function signalsFrom(
       continue;
     }
     if (u.status === 'no_split') noSplit.set(u.isrc, (noSplit.get(u.isrc) ?? ZERO).add(u.net));
-    // the unit's own label differs from the one its Believe account is registered under (D-168)
-    const accountLabel = calc.labelOfAccount(u.account);
-    if (accountLabel !== undefined && u.ourLabelId !== null && u.ourLabelId !== accountLabel) {
+    // the own label of the unit's string differs from the label its file was loaded under, its book (D-168, D-169)
+    const accountLabel = u.bookLabelId;
+    if (accountLabel !== null && u.ourLabelId !== null && u.ourLabelId !== accountLabel) {
       const k = `${u.account}|${u.reportingMonth}|${u.labelName}`;
       const r = outsideAccount.get(k) ?? {
         account: u.account,
         month: u.reportingMonth,
         labelName: u.labelName,
         ourLabelName: u.ourLabelName ?? '?',
-        accountLabelName: calc.labelName(accountLabel) ?? '?',
+        accountLabelName: u.bookLabelName ?? '?',
         net: ZERO,
         units: 0,
       };
@@ -240,6 +240,13 @@ export async function signalsFrom(
       reportArtist: attrs.get(k)?.artistName ?? '',
     }))
     .sort((a, b) => b.net.cmp(a.net));
+  // loaded Believe files without a label (D-169): their units sit in the book '?'; under a label the list is empty
+  const filesWithoutLabel = visible
+    ? []
+    : (await sources.listFiles())
+        .filter((x) => x.status === 'loaded' && x.labelId === null)
+        .map((x) => ({ fileId: x.id, account: x.account, reportingMonth: x.reportingMonth, fileName: x.fileName }))
+        .sort((a, b) => a.account.localeCompare(b.account) || a.reportingMonth.localeCompare(b.reportingMonth));
   const { tracks, parts, unlabelled, ownerNames } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
     parts: await splits.listParticipations(),
@@ -316,6 +323,7 @@ export async function signalsFrom(
     labelOutsideAccount: [...outsideAccount.values()].sort(
       (a, b) => a.account.localeCompare(b.account) || a.month.localeCompare(b.month) || a.labelName.localeCompare(b.labelName),
     ),
+    filesWithoutLabel,
   };
   const counts: Record<string, number> = {
     unallocated: lists.unallocated.pairs.length,
@@ -349,9 +357,9 @@ export function reportsApi(ctx: FacadeContext) {
      * participations whose recipient has no owner, money under assumptions grouped by document.
      */
     async signals(f: PeriodFilter = {}, labelId?: string) {
-      // under a label (D-168): the units of the label's strings only, no B17 lines (publishing has no label)
+      // under a label (D-168, D-169): the units of the label's files only, no B17 lines (publishing has no label yet)
       const lc = await ctx.labelContext(labelId);
-      const scope: UnitScope = lc ? { labelStrings: lc.book.labelStrings, publishingLines: false } : {};
+      const scope: UnitScope = lc ? { labelIds: [lc.book.id], publishingLines: false } : {};
       return signalsFrom(ctx, await calculate(scoped(modules, scope)), f, lc?.visible);
     },
 
@@ -378,9 +386,9 @@ export function reportsApi(ctx: FacadeContext) {
     /** One reason of the C queue, grouped by what the operator fixes (17 N3). */
     async queue(reason: CReason, f: PeriodFilter = {}, o: Omit<QueueOptions, 'reason'> = {}, labelId?: string) {
       // the groups hold only the items of the period: the units outside it are not read (D-161); under a label only
-      // the units of its strings and no B17 lines (D-168)
+      // the units of its files and no B17 lines (D-168, D-169)
       const lc = await ctx.labelContext(labelId);
-      const scope: UnitScope = { ...periodScope(f), ...(lc ? { labelStrings: lc.book.labelStrings, publishingLines: false } : {}) };
+      const scope: UnitScope = { ...periodScope(f), ...(lc ? { labelIds: [lc.book.id], publishingLines: false } : {}) };
       const calc = await calculate(scoped(modules, scope), await ctx.opDocIds());
       const ownerList = await owners.listOwners();
       const { groups } = cQueue(

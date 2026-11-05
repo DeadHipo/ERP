@@ -11,8 +11,6 @@ export interface UnitsFilter {
   basis?: 'report' | 'sales';
   isrcs?: string[];
   upcs?: string[];
-  /** Raw label strings of the units (the label book of the facade, D-168); an empty list = nothing. */
-  labelStrings?: string[];
 }
 
 /** The unit filters a read may be narrowed by, as `WHERE` clauses with their bound parameters. */
@@ -29,8 +27,8 @@ function unitsWhere(fileIds: string[], filter: UnitsFilter): { where: string; pa
     where.push(`${column} <= {to:Date}`);
     params.to = `${filter.to}-01`;
   }
-  // A unit scope of the facade (D-161, D-168): only these ISRCs / UPCs / label strings; an empty list means no unit.
-  const list = (key: 'isrcs' | 'upcs' | 'labelStrings', column: string) => {
+  // A unit scope of the facade (D-161): only these ISRCs / UPCs; an empty list means no unit.
+  const list = (key: 'isrcs' | 'upcs', column: string) => {
     const v = filter[key];
     if (!v) return;
     if (v.length === 0) empty = true;
@@ -39,7 +37,6 @@ function unitsWhere(fileIds: string[], filter: UnitsFilter): { where: string; pa
   };
   list('isrcs', 'isrc');
   list('upcs', 'upc');
-  list('labelStrings', 'label_name');
   return { where: where.join(' AND '), params, empty };
 }
 
@@ -295,6 +292,16 @@ export function createBelieveColumnar(
       return rows.map((r) => r.isrc);
     },
 
+    /** Every distinct ISRC of the given files (the book of a label = the files loaded under it, D-169). */
+    async isrcsOfFiles(fileIds: string[]): Promise<string[]> {
+      if (fileIds.length === 0) return [];
+      const rows = await json<{ code: string }>(
+        `SELECT DISTINCT isrc AS code FROM ${DB}.units WHERE file_id IN {ids:Array(UUID)} ORDER BY code`,
+        { ids: fileIds },
+      );
+      return rows.map((r) => r.code);
+    },
+
     /**
      * "Why this amount" for one ISRC: platform, country, subscription and sales type per month, over the given files.
      * Written against the rows (not the `breakdown` view) so that only the given files are counted.
@@ -352,7 +359,7 @@ export function createBelieveColumnar(
 
     /**
      * Net per UPC over the given (loaded) files, from the `units` view (equal keys summed); exact decimal text. The
-     * filter narrows the units summed (the label book of the facade, D-168).
+     * filter narrows the units summed.
      */
     async netByUpc(fileIds: string[], filter: UnitsFilter = {}): Promise<{ upc: string; net: string }[]> {
       const { where, params, empty } = unitsWhere(fileIds, filter);

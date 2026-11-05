@@ -349,8 +349,11 @@ Close the rule at 2026-04-01 (`POST /labels/rules/:id/close`, dialog: the rule, 
 50, ours 50, no NG; P1 04 100 / 50 / 0 / 50; P21 `sublabelWithoutRule` [`Close Label 37`, 2026-04, `100`]; NG-371
 earned 50 → `25`.
 
-**S38 The label as a book (G50, D-168).** Seed: owner A with rows A 50 on j1 (`Test Label` → 0to8, unit 100) and j2
-(`Echo8`, unit 60) in one file of account 0; a migrated advance 40 without a label (`extra['advance-unlabelled']`,
+**S38 The label as a book (G50, D-168, D-169).** Seed: owner A with rows A 50 on j1 (`Test Label` → 0to8, unit 100) in
+the file of account 0 (loaded under 0to8) and j2 (`Echo8`, unit 60) in the file of account 1 (loaded under Echo8), one
+month; the numbers are those of one file. P1 (D-169): each account's row sits in one book, the label of its file
+(`overview-row-*[data-book]`, the cell `[data-col="book"]` with one `book-<name>`): account 0 `100 / 50 / 0 / 50` book
+0to8, account 1 `60 / 30 / 0 / 30` book Echo8; P21 `filesWithoutLabel` empty. A migrated advance 40 without a label (`extra['advance-unlabelled']`,
 recouped from any income in month order: 0to8 first) and an advance 10 under Echo8 (`extra['advance-echo8']`, its
 income only); `labels['0to8']`, `labels.Echo8`. P10 under «Все»: earned `80`, recouped `50`, payable `30`; the books
 (`by-label-<name>`, cols `earned|waiting|recouped|adsCharged|paid|returns|credits|payable`): 0to8 `50 / 40 / 10`,
@@ -363,6 +366,21 @@ label the API answers 400 `label_required`; after the proof 0to8 paid `10`, paya
 `operationsWithoutLabel`: the old advance (`40.00`), `action-set-label` → `field-op-label` → `action-set-label-submit`
 → the row goes; the books are unchanged (its only income is 0to8). P9 under Echo8 lists the owner with payable `20`;
 P11 under Echo8 the pseudonym with earned `30`; P5 under Echo8 the j2 track only.
+
+**The book on P1 and P6 for every scenario (D-169).** Every seed file is loaded under the label of its account
+(`account(0)` of a case 0to8, `account(1)` Echo8, `scripts/e2e/lib.ts`), so every Believe row of P1 has exactly one
+book (`data-book`, never `?`): the label string does not move it. S06/2, S08/3 and S10/2 (account 0) carry the string
+`Echo8` in a 0to8 file: book 0to8, while `by-label-Echo8` (`ourShareByLabel`, by the string) keeps their ours; S10
+account 1 rows are book Echo8. P6 shows both per month row: `month-book` / `data-book` (the file's label, «Книга») and
+`data-label` → `label-of-record` → sublabel (the string). S06/2 on P6: `data-book="0to8"`, `data-label="Echo8"`,
+`label-of-record` Echo8. P21 `filesWithoutLabel` (`signal-list-filesWithoutLabel`, rows
+`signal-row-filesWithoutLabel-<fileId>`) is empty on the seed; `verify-seed.ts` checks the book of every expected P1 row
+and one named book on every Believe row.
+
+**S39 (G51, D-169): not seeded yet** (commit 3 of stage 1): a dedicated case, row A 50, unit 100 with the string
+`Echo8` in `account(0)`: P1 `by-label-0to8` A 100, B 50, ours 50, no Echo8 book; P6 `data-book="0to8"`,
+`data-label="Echo8"`; P21 `labelOutsideAccount` 1; P10 under Echo8 earned `0`. Until then S06/2 covers the P1 and P6
+parts (above).
 
 **S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
 `validFrom` 2026-03-01; toast "начало округлено до 2026-03-01" (dates compared, no money). P6 A 50, ours 50 → A 50, P
@@ -446,14 +464,14 @@ branches). Within a file the tests run in order (`serial` where they share state
 
 | Order | File | Scenarios | Role |
 |---|---|---|---|
-| 10 | `10-overview.spec.ts` | S01–S11 on P1; SS1–SS3 on the real P1 | reads |
+| 10 | `10-overview.spec.ts` | S01–S11 on P1 (with the book of every row, D-169); SS1–SS3 on the real P1 | reads |
 | 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166) | reads |
-| 12 | `12-track.spec.ts` | S01–S11 on P6, G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
+| 12 | `12-track.spec.ts` | S01–S11 on P6 (the book of S06/2 and S10/2, D-169), G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
 | 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
 | 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before** | reads (creates `Ref spec doc`) |
 | 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous) | reads (adds W1 terms `Print`) |
 | 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
-| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30 | acts |
+| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 14 lists, `filesWithoutLabel` 0 | acts |
 | 22 | `22-duplicates.spec.ts` | S30 (assign owner, create split from the candidate) | acts |
 | 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
 | 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
@@ -467,7 +485,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`) | acts |
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
-| 35 | `35-label-switch.spec.ts` | S38 (D-168): the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=` | acts |
+| 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=` | acts |
 | – | `smoke.spec.ts` | the shell, every route renders | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
 

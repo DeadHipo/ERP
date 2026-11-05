@@ -154,7 +154,7 @@ export function createFacadeContext(
   /** The book of an own label and who is visible under it (D-168), or nothing when no label is asked. */
   async function labelContext(labelId: string | undefined): Promise<{ book: LabelBook; visible: Awaited<ReturnType<typeof labelVisibility>> } | undefined> {
     if (labelId === undefined) return undefined;
-    const book = await timed('labelBook', () => labelBook(modules, labelId), (b) => `${b.labelStrings.length} strings`);
+    const book = await timed('labelBook', () => labelBook(modules, labelId), (b) => `${b.fileIds.length} files`);
     const visible = await timed('labelVisibility', () => labelVisibility({ ...modules, settlements }, book), (v) => `${v.isrcs.size} ISRCs, ${v.artistIds.size} pseudonyms, ${v.ownerIds.size} owners`);
     return { book, visible };
   }

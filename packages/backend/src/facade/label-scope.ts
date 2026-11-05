@@ -1,20 +1,18 @@
 import { ValidationError } from '../shared/errors';
-import { normalizeLabelString } from '../modules/labels';
 import type { SettlementsService } from '../modules/settlements';
 import type { Modules } from './calculation';
 
 /**
- * The label as a book (D-168). An own label L is seen in the data at one place only: the label string of a Believe
- * unit (string → alias → L, or → a sublabel whose `own_label_id` is L). The book of L is therefore the set of raw label
- * strings of the loaded files that normalise to an alias of L or of one of its sublabels; a read under L narrows the
- * units to those strings (`SnapshotFilter.labelStrings`, over the unit scope of D-161), and the reference lists to the
- * ISRCs that carry them.
+ * The label as a book (D-168, D-169). The book of an own label L is the set of the `loaded` Believe files loaded under L
+ * (`source_files.label_id = L`, R6): the money of a unit sits in the book of its file, whatever its label string says
+ * (the string still decides the sublabel rule and «ours / label_unmapped»). A read under L narrows the units to those
+ * files (`SnapshotFilter.labelIds`, over the unit scope of D-161), and the reference lists to the ISRCs of those files.
  */
 export interface LabelBook {
   id: string;
   name: string;
-  /** The raw label strings of the loaded files that belong to the label (its aliases and its sublabels' aliases). */
-  labelStrings: string[];
+  /** The loaded Believe files loaded under the label. */
+  fileIds: string[];
 }
 
 /** The book of an own label; 404 for an unknown id, 400 `label_not_own` for a sublabel. */
@@ -23,15 +21,12 @@ export async function labelBook(modules: Pick<Modules, 'labels' | 'sources'>, la
   const l = await labels.getLabel(labelId);
   if (l.kind !== 'own')
     throw new ValidationError(`Label "${l.name}" is a sublabel; a label view takes an own label`, { labelId }, 'label_not_own');
-  const aliases = (await labels.listLabels())
-    .filter((x) => x.id === l.id || x.ownLabelId === l.id)
-    .flatMap((x) => x.aliases.map(normalizeLabelString));
-  return { id: l.id, name: l.name, labelStrings: await sources.labelStringsOfAliases(aliases, normalizeLabelString) };
+  return { id: l.id, name: l.name, fileIds: (await sources.filesOfLabel(l.id)).map((f) => f.id) };
 }
 
-/** The ISRCs whose units carry one of the label's strings (the catalog of the label). */
+/** The ISRCs of the label's files (the catalog of the label). */
 export async function labelIsrcs(modules: Pick<Modules, 'sources'>, book: LabelBook): Promise<string[]> {
-  return modules.sources.isrcsOfLabelStrings(book.labelStrings);
+  return modules.sources.isrcsOfFiles(book.fileIds);
 }
 
 export interface LabelVisibility {
@@ -43,7 +38,7 @@ export interface LabelVisibility {
 
 /**
  * Who is visible under a label (D-168, derived, never stored): a pseudonym that has a split row or a participation on
- * an ISRC of the label, is the recipient of a sublabel rule of the label, or carries an operation or an advertising
+ * an ISRC of the label's files (D-169), is the recipient of a sublabel rule of the label, or carries an operation or an advertising
  * record under it; an owner whose pseudonym is visible, or that carries an operation under the label.
  */
 export async function labelVisibility(

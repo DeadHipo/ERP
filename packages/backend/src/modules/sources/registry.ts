@@ -186,6 +186,12 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
       return rows.map(record);
     },
 
+    /** Sets the label of a file that has none (D-169, a migration script only); true when the row changed. */
+    async assignLabel(id: string, labelId: string): Promise<boolean> {
+      const r = await pool.query(`UPDATE source_files SET label_id = $2 WHERE id = $1 AND label_id IS NULL`, [id, labelId]);
+      return (r.rowCount ?? 0) > 0;
+    },
+
     /** The files a calculation may read: exactly the `loaded` ones. */
     async loaded(): Promise<SourceFileRecord[]> {
       const { rows } = await pool.query<Row>(

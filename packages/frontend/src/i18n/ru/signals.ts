@@ -15,4 +15,5 @@ export const signals = {
   assumptions: 'Допущения',
   operationsWithoutLabel: 'Операции без лейбла',
   labelOutsideAccount: 'Строки лейбла вне своего счёта',
+  filesWithoutLabel: 'Файлы Believe без лейбла',
 } as const satisfies Record<Exclude<keyof typeof signalsSchema.shape, 'counts'>, string>;

@@ -221,8 +221,9 @@ export class Case {
       expect(r.discrepancy.toFixed(), `discrepancy ${r.account} ${r.month}`).toBe('0');
       expect(r.B_notOurs.add(r.C_waiting).add(r.ourShare).toFixed()).toBe(r.A_received.toFixed());
       if (r.fileDiscrepancy !== null) expect(r.fileDiscrepancy.toFixed()).toBe('0');
-      // the label books of the row add up to the row (D-168)
+      // the label books of the row add up to the row (D-168); a Believe row is the book of its files' label (D-169)
       const books = Object.values(r.byLabel);
+      if (r.source === 'believe') expect(books.length, `one book of ${r.account} ${r.month}`).toBeLessThanOrEqual(1);
       expect(sum(books.map((b) => b.A_received)), `Σ byLabel A ${r.account} ${r.month}`).toBe(r.A_received.toFixed());
       expect(sum(books.map((b) => b.B_notOurs))).toBe(r.B_notOurs.toFixed());
       expect(sum(books.map((b) => b.C_waiting))).toBe(r.C_waiting.toFixed());

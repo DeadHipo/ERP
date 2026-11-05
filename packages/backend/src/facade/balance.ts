@@ -13,8 +13,8 @@ import {
 } from './calculation';
 
 /**
- * The money of one artist per label of record (D-168): the fields of the artist row, partitioned by the label key of
- * the unit (earned, waiting, recoupedFromMaster), of the income consumed (recouped) or of the position (unrecouped).
+ * The money of one artist per book (D-168, D-169): the fields of the artist row, partitioned by the book of the unit
+ * (the label its file was loaded under: earned, waiting, recoupedFromMaster), of the income consumed (recouped) or of the position (unrecouped).
  */
 export interface ArtistLabelBook {
   labelId: string | null;
@@ -35,7 +35,7 @@ export interface ArtistBalance {
   /** Part of this artist's master income consumed by recoupment (of any position). */
   recoupedFromMaster: Decimal;
   tracks: { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }[];
-  /** The row per label of record (by name, '?' = without a label); Σ over the books = the row (D-168). */
+  /** The row per book (by name, '?' = without a label); Σ over the books = the row (D-168, D-169). */
   byLabel: Record<string, ArtistLabelBook>;
 }
 
@@ -68,7 +68,7 @@ export interface AdChargeView {
 
 /**
  * The book of one label (D-168): every money field of the owner's total, partitioned by label. earned and waiting by
- * the unit's label of record (publishing has none); recouped by the label of the income consumed; adsCharged by the
+ * the label the unit's file was loaded under (D-169; publishing has none yet); recouped by the label of the income consumed; adsCharged by the
  * charge's label; paid, returns, credits by the operation's label. Σ over the books, «without a label» included,
  * equals the total field by field.
  */
@@ -321,7 +321,7 @@ export function ownerBalance(
   for (const u of index.units ?? calc.units) {
     const mine = u.allocations.filter((a) => a.ownerId === ownerId);
     if (mine.length === 0) continue;
-    const key = keyOf(u.ourLabelId);
+    const key = keyOf(u.bookLabelId);
     const book = books.of(key);
     const period = periods.of(key);
     const inP = unitInPeriod(u, f);
@@ -337,8 +337,10 @@ export function ownerBalance(
       const t = artist ? trackOf(artist, u.isrc) : undefined;
       if (a.category === 'B') {
         book.earned = book.earned.add(a.amount);
-        // Income items are netted per artist + ISRC + report month, so negative lines reduce recoup capacity.
-        const id = `m|${a.artistId}|${u.isrc}|${u.reportingMonth}`;
+        // Income items are netted per artist + ISRC + report month + book, so negative lines reduce recoup capacity;
+        // the book is a suffix (D-169): the order of the items in the recoup stays, and one ISRC-month from the files of
+        // two labels gives two items, each recouping only the positions of its own book.
+        const id = `m|${a.artistId}|${u.isrc}|${u.reportingMonth}|${key}`;
         const prev = incomeById.get(id);
         if (prev) prev.amount = prev.amount.add(a.amount);
         else {
@@ -350,7 +352,7 @@ export function ownerBalance(
             isrc: u.isrc,
             reportMonth: u.reportingMonth,
             amount: a.amount,
-            labelId: u.ourLabelId,
+            labelId: u.bookLabelId,
           };
           incomeById.set(id, item);
           income.push(item);
@@ -771,7 +773,7 @@ export function artistBalance(
   const earnedBy = new ByKey(() => ({ earned: ZERO, waiting: ZERO }));
   const trackAgg = new Map<string, TrackAcc>();
   for (const u of index.units ?? calc.units) {
-    const key = keyOf(u.ourLabelId);
+    const key = keyOf(u.bookLabelId);
     if (!inView(key)) continue;
     const mine = u.allocations.filter((a) => a.artistId === id);
     if (mine.length === 0) continue;

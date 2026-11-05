@@ -2,7 +2,7 @@ import { Route } from 'react-router-dom';
 import { ROUTE_PATHS } from './paths';
 import { OverviewPage } from '../pages/work/OverviewPage';
 import { QueuePage } from '../pages/work/QueuePage';
-import { SignalsPage } from '../pages/work/SignalsPage';
+import { SignalsPage } from '../pages/work/signals/SignalsPage';
 import { QuestionsPage } from '../pages/work/QuestionsPage';
 
 /** Работа: overview, the C queue, signals, the open questions. The payouts view is `/owners?view=payouts`. */

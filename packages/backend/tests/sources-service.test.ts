@@ -66,8 +66,8 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
         ),
       ),
     );
-    await s.ingestBelieve(
-      writeReport(
+    await s.ingestBelieve({
+      ...writeReport(
         dir,
         B,
         '2026-08',
@@ -79,7 +79,8 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           { month: '2026-08' },
         ),
       ),
-    );
+      labelId: 'label-b', // opaque text for the module (D-169)
+    });
     const units = await s.units();
     expect(units.map((u) => ({ ...u }))).toEqual(
       expect.arrayContaining([
@@ -91,6 +92,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           reportingMonth: '2026-07',
           salesMonth: '2026-06',
           labelName: 'Test Label',
+          labelId: null,
           netPico: pico('0.3'),
         },
         {
@@ -101,6 +103,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           reportingMonth: '2026-07',
           salesMonth: '2026-05',
           labelName: 'Test Label',
+          labelId: null,
           netPico: pico('0.5'),
         },
         {
@@ -111,6 +114,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           reportingMonth: '2026-07',
           salesMonth: '2026-07',
           labelName: 'Test Label',
+          labelId: null,
           netPico: pico('1'),
         },
         {
@@ -121,6 +125,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           reportingMonth: '2026-08',
           salesMonth: '2026-07',
           labelName: 'Test Label',
+          labelId: 'label-b',
           netPico: pico('0.3'),
         },
         {
@@ -131,12 +136,36 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
           reportingMonth: '2026-08',
           salesMonth: '2026-06',
           labelName: 'Test Label',
+          labelId: 'label-b',
           netPico: pico('2'),
         },
       ]),
     );
     expect(units).toHaveLength(5);
     expect(units.every((u) => typeof u.netPico === 'bigint')).toBe(true);
+  });
+
+  it('the label of a file (D-169): the units carry it, a snapshot narrows to the files of labels, a file without one is marked once', async () => {
+    const s = iso.service;
+    expect((await s.snapshot({ labelIds: ['label-b'] })).units.map(unitsKey).sort()).toEqual([
+      `${B} ${I1} 2026-08 2026-07`,
+      `${B} ${I3} 2026-08 2026-06`,
+    ]);
+    expect((await s.snapshot({ labelIds: [] })).units).toEqual([]);
+    // the files of the answer stay all the files in force (D-161)
+    expect((await s.snapshot({ labelIds: ['label-b'] })).files).toHaveLength(2);
+    expect([...(await s.netByUpc({ labelIds: ['label-b'] })).keys()].sort()).toEqual(['3617380000001', '3617380000003']);
+    const files = await s.filesOfLabel('label-b');
+    expect(files.map((f) => f.account)).toEqual([B]);
+    expect(await s.isrcsOfFiles(files.map((f) => f.id))).toEqual([I1, I3].sort());
+    expect(await s.isrcsOfFiles([])).toEqual([]);
+    const fileA = (await s.listFiles()).find((f) => f.account === A) as { id: string };
+    expect(await s.assignFileLabel(files[0]?.id as string, 'label-x')).toBe(false); // a label is never changed
+    expect(await s.assignFileLabel(fileA.id, 'label-a')).toBe(true);
+    expect(await s.assignFileLabel(fileA.id, 'label-x')).toBe(false);
+    expect((await s.units({ labelIds: ['label-a'] })).every((u) => u.account === A && u.labelId === 'label-a')).toBe(true);
+    // back as it was for the tests below
+    await iso.pg.pool.query(`UPDATE source_files SET label_id = NULL WHERE id = $1`, [fileA.id]);
   });
 
   it('filters units by report month and by sales month', async () => {
