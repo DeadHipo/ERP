@@ -7,6 +7,7 @@ import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
 import { trackQueries } from '../../api/queries/tracks';
 import { ActionButton } from '../../components/ActionButton';
+import { ArtistLinks, artistsText } from '../../components/ArtistLinks';
 import { EntityLink } from '../../components/EntityLink';
 import { FormDialog } from '../../components/FormDialog';
 import { Money } from '../../components/Money';
@@ -31,6 +32,7 @@ const rowOfSummary = (i: TrackSummaryItem): TrackRow => ({
   upcs: i.upcs,
   title: i.title,
   artistName: i.artistName,
+  artists: i.artists,
   hasSplit: i.hasSplit,
   hasParticipations: i.hasParticipations,
   money: i,
@@ -85,7 +87,8 @@ export function TracksPage() {
       // With an account or month scope the API still lists every track (zeros outside the scope): show those with units in it.
       (!scoped || (i.money?.months.count ?? 0) > 0) &&
       (hasSplit === '' || (hasSplit === 'yes') === i.hasSplit) &&
-      (needle === '' || [i.isrc, i.title, i.artistName, ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
+      (needle === '' ||
+        [i.isrc, i.title, i.artistName, ...i.artists.map((a) => a.pseudonym), ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
     [scoped, hasSplit, needle],
   );
   const fullRows = useMemo(() => (summary.data ? summary.data.items.map(rowOfSummary).filter(keep) : []), [summary.data, keep]);
@@ -224,7 +227,16 @@ function trackColumns(full: boolean): ColDef<TrackRow>[] {
       cellRenderer: (p: P) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null),
     },
     { colId: 'title', headerName: c.title, minWidth: 160, valueGetter: (p) => p.data?.title },
-    { colId: 'artist', headerName: c.artist, minWidth: 140, valueGetter: (p) => p.data?.artistName },
+    // The pseudonyms of the registry as links to P12 (D-166); the report string, muted, when the registry names none.
+    {
+      colId: 'artist',
+      headerName: c.artist,
+      minWidth: 160,
+      wrapText: true,
+      autoHeight: true,
+      valueGetter: (p) => (p.data ? artistsText(p.data.artists, p.data.artistName) : ''),
+      cellRenderer: (p: P) => (p.data ? <ArtistLinks artists={p.data.artists} reportName={p.data.artistName} /> : null),
+    },
     {
       colId: 'upcs',
       headerName: c.upcs,

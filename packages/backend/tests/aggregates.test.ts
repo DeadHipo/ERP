@@ -251,6 +251,35 @@ describe('GET /tracks/summary (N5)', () => {
     expect(unknown).toMatchObject({ net: '3', C: '3', cByReason: { unknown_pair: '3' } });
     expect(items.find((i) => i.isrc === I(2)).cByReason).toEqual({ label_unmapped: '10' });
     expect(t1.title).toBe(I(1));
+    // D-166: the pseudonyms of the registry on the ISRC (the row of A, the participation of P), by pseudonym; none for a bare ISRC
+    expect(t1.artists).toEqual([
+      { id: c.id('A'), pseudonym: 'A' },
+      { id: c.id('P'), pseudonym: 'P' },
+    ]);
+    expect(empty.artists).toEqual([]);
+    expect(unknown.artists).toEqual([]);
+    const catalog = (await request(appOf(c)).get('/api/v1/tracks/catalog').expect(200)).body.items as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(catalog.map((i) => [i.isrc, i.artists])).toEqual(items.map((i) => [i.isrc, i.artists]));
+    const page = (await request(appOf(c)).get('/api/v1/tracks/summary').query({ isrcs: I(1) }).expect(200)).body.items as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(page.map((i) => [i.isrc, i.artists])).toEqual([[I(1), t1.artists]]);
+    const money = (await request(appOf(c)).get(`/api/v1/tracks/${I(1)}/money`).expect(200)).body;
+    expect(money.artists).toEqual(t1.artists);
+  });
+
+  it('a registry link and a merged pseudonym: the link counts, the merged id answers as the survivor, once (D-166)', async () => {
+    const c = new Case();
+    c.f = await newFacade(0);
+    c.appendix = (await approvedAppendix(c.f)).id;
+    await c.person('A', 'L');
+    await c.second('A2', 'A');
+    await c.track(I(1), UPC, ['L']); // L is linked in the registry, has no row
+    await c.split(I(1), [['A2', '40']]);
+    await c.f.modules.owners.mergeArtists(c.id('A2'), c.id('A'), 'same person');
+    const items = (await request(appOf(c)).get('/api/v1/tracks/summary').expect(200)).body.items as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(items.find((i) => i.isrc === I(1)).artists).toEqual([
+      { id: c.id('A'), pseudonym: 'A' },
+      { id: c.id('L'), pseudonym: 'L' },
+    ]);
   });
 });
 
@@ -303,8 +332,11 @@ describe('releases (N8, N9)', () => {
     const app = appOf(c);
     const res = await request(app).get('/api/v1/releases').expect(200);
     expect(res.body.items).toEqual([expect.objectContaining({ upc: UPC, trackCount: 4, net: '233' })]);
+    // D-166: the pseudonyms over the tracks of the UPC (A and P on I1, M on I2, U on I4), by pseudonym; q finds a pseudonym too
+    expect(res.body.items[0].artists.map((a: { pseudonym: string }) => a.pseudonym)).toEqual(['A', 'M', 'P', 'U']);
     const hit = await request(app).get('/api/v1/releases').query({ q: UPC.slice(2, 6) }).expect(200);
     expect(hit.body.items).toHaveLength(1);
+    expect((await request(app).get('/api/v1/releases').query({ q: 'm' }).expect(200)).body.items).toHaveLength(1);
     const miss = await request(app).get('/api/v1/releases').query({ q: 'no-such-release' }).expect(200);
     expect(miss.body.items).toEqual([]);
   });
@@ -319,6 +351,9 @@ describe('releases (N8, N9)', () => {
       expect(sum(res.body.tracks, k)).toBe(sum(res.body.months, k));
     }
     expect(res.body.tracks.map((t: { isrc: string }) => t.isrc)).toEqual([I(1), I(2), I(3), I(4), I(7)]);
+    // D-166: the pseudonyms of every track and their union in the header
+    expect(res.body.tracks.map((t: { artists: { pseudonym: string }[] }) => t.artists.map((a) => a.pseudonym))).toEqual([['A', 'P'], ['M'], [], ['U'], []]);
+    expect(res.body.artists.map((a: { pseudonym: string }) => a.pseudonym)).toEqual(['A', 'M', 'P', 'U']);
     expect(res.body.months.map((m: { reportingMonth: string }) => m.reportingMonth)).toEqual(['2026-03', '2026-04']);
     expect(sum(res.body.tracks, 'net')).toBe('233');
     await request(app).get('/api/v1/releases/0000000000000').expect(404);

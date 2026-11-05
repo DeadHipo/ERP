@@ -78,6 +78,14 @@ export type Artist = z.infer<typeof artistSchema>;
 /** The artist list resolves merges, so it has no `origin`. */
 export const artistListItemSchema = artistSchema.omit({ origin: true });
 
+/**
+ * A pseudonym of the registry named by a catalog row (D-166): the surviving id (merges resolved) and its pseudonym.
+ * The pseudonyms of an ISRC are those of its split rows and participations (any period) and its registry links.
+ */
+export const artistRefSchema = z.object({ id: z.string(), pseudonym: z.string() });
+export type ArtistRef = z.infer<typeof artistRefSchema>;
+const artistRefs = z.array(artistRefSchema).describe('The pseudonyms of the registry on the ISRC (split rows, participations, registry links), by pseudonym');
+
 export const documentSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -811,7 +819,8 @@ export const trackSummaryItemSchema = z.object({
   isrc: z.string(),
   upcs: z.array(z.string()),
   title: z.string(),
-  artistName: z.string(),
+  artistName: z.string().describe('The artist string of the report pair (text, may name no pseudonym)'),
+  artists: artistRefs,
   ...moneySums,
   months: z.object({ from: month.nullable(), to: month.nullable(), count: z.number().int() }),
   hasSplit: z.boolean(),
@@ -827,7 +836,8 @@ export const trackCatalogItemSchema = z.object({
   isrc: z.string(),
   upcs: z.array(z.string()),
   title: z.string(),
-  artistName: z.string(),
+  artistName: z.string().describe('The artist string of the report pair (text, may name no pseudonym)'),
+  artists: artistRefs,
   hasSplit: z.boolean(),
   hasParticipations: z.boolean(),
   registered: z.boolean().describe('Registered in module 1 (a track row); false for an ISRC known from the reports only'),
@@ -866,7 +876,8 @@ export const trackMoneySchema = z.object({
   isrc: z.string(),
   tracks: z.array(trackSchema),
   title: z.string(),
-  artistName: z.string(),
+  artistName: z.string().describe('The artist string of the report pair (text, may name no pseudonym)'),
+  artists: artistRefs,
   splits: z.array(splitListItemSchema),
   participations: participationListSchema.shape.items,
   totals: z.object(moneySums),
@@ -896,7 +907,8 @@ export const releasesSchema = z.object({
     z.object({
       upc: z.string(),
       title: z.string(),
-      artistName: z.string(),
+      artistName: z.string().describe('The artist string of the first report pair of the UPC (text)'),
+      artists: z.array(artistRefSchema).describe('The pseudonyms of the registry over the tracks of the UPC, by pseudonym'),
       trackCount: z.number().int(),
       net: money.describe('Net of the loaded Believe files, all months'),
     }),
@@ -905,8 +917,9 @@ export const releasesSchema = z.object({
 export const releaseSchema = z.object({
   upc: z.string(),
   title: z.string(),
-  artistName: z.string(),
-  tracks: z.array(z.object({ isrc: z.string(), title: z.string(), ...moneySums })),
+  artistName: z.string().describe('The artist string of the first report pair of the UPC (text)'),
+  artists: z.array(artistRefSchema).describe('The pseudonyms of the registry over the tracks of the release, by pseudonym'),
+  tracks: z.array(z.object({ isrc: z.string(), title: z.string(), artists: artistRefs, ...moneySums })),
   months: z.array(z.object({ reportingMonth: month, ...moneySums })),
 });
 

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectMoneyCalls, isrc, openAs, settled, upc } from '../helpers';
+import { expectMoneyCalls, isrc, openAs, sc, settled, upc } from '../helpers';
 
 // P7 «Релизы» and P8 «Релиз» (19 §4 S11, G24): one ISRC under two UPCs; each release shows its own share of the
 // unit (UPC1 net 100, UPC2 net 50), track by track and month by month, exact strings in `title`.
@@ -32,9 +32,23 @@ test('S11 G24: UPC1 and UPC2 of one ISRC, tracks and months', async ({ page }) =
     await expectRow(page.getByTestId(`release-month-${M}`), net, B, '0', ours);
     await expect(page.getByTestId('release-tracks').locator('tbody tr')).toHaveCount(1);
     await expect(page.getByTestId('breadcrumbs')).toContainText(u);
+    // D-166: the pseudonyms of the release (the row of A, the participation of P) in the header and on the track row, links to P12
+    const k = sc(11, 1);
+    await expect(page.getByTestId('release-artists').getByTestId('artist-links')).toHaveText('A-111, P-111');
+    await expect(page.getByTestId('release-artists').getByTestId(`artist-link-${k.artists.A}`).getByRole('link')).toHaveAttribute('href', `/artists/${k.artists.A}`);
+    await expect(page.getByTestId(`release-track-${i}`).locator('[data-col="artists"]').getByTestId(`artist-link-${k.artists.P}`).getByRole('link')).toHaveAttribute(
+      'href',
+      `/artists/${k.artists.P}`,
+    );
   }
   await page.getByTestId(`release-track-${i}`).getByRole('link', { name: i }).click();
   await expect(page).toHaveURL(new RegExp(`/tracks/${i}$`));
+  // the track card names the same pseudonyms as links (D-166)
+  await settled(page);
+  await expect(page.getByTestId('track-artists')).toHaveText('A-111, P-111');
+  await page.getByTestId('track-artists').getByTestId(`artist-link-${sc(11, 1).artists.P}`).getByRole('link').click();
+  await expect(page).toHaveURL(new RegExp(`/artists/${sc(11, 1).artists.P}`));
+  await expect(page.getByTestId('artist-page-title')).toHaveText('P-111');
 });
 
 test('P7: the list has both UPCs with their net; the search is kept in the URL and opens the release', async ({ page }) => {
@@ -47,7 +61,15 @@ test('P7: the list has both UPCs with their net; the search is kept in the URL a
   ] as const) {
     const row = page.getByTestId(`release-${u}`);
     await expect(money(row, 'net')).toHaveAttribute('title', net);
+    // D-166: the pseudonyms over the tracks of the UPC, links to P12
+    await expect(row.getByTestId('artist-links')).toHaveText('A-111, P-111');
+    await expect(row.getByTestId(`artist-link-${sc(11, 1).artists.A}`).getByRole('link')).toHaveAttribute('href', `/artists/${sc(11, 1).artists.A}`);
   }
+  // the search finds a release by a pseudonym of its tracks
+  await page.getByTestId('field-releases-q').fill('P-111');
+  await expect(page).toHaveURL(/q=P-111/);
+  await expect(page.getByTestId(`release-${upc(11, 1, 1)}`)).toBeVisible();
+  await expect(page.getByTestId(`release-${upc(11, 1, 2)}`)).toBeVisible();
   await page.getByTestId('field-releases-q').fill(upc(11, 1, 2));
   await expect(page).toHaveURL(new RegExp(`q=${upc(11, 1, 2)}`));
   await expect(page.getByTestId(`release-${upc(11, 1, 1)}`)).toHaveCount(0);

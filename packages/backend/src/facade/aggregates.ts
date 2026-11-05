@@ -6,6 +6,7 @@ import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
 import { ownersReach } from './owner-scope';
+import { artistsByIsrc, readArtistLinks, unionArtists } from './track-artists';
 
 /**
  * The owner id list of `GET /owners/payables?ids=` (comma-separated). At most 200: UUIDs are long and the request line
@@ -149,11 +150,14 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         publishingLines: false,
       });
       const byIsrcs = only ? { isrcs: only } : {};
-      const { tracks, splitList, partList } = await db.snapshot(async () => ({
-        tracks: await owners.listTracks(byIsrcs),
-        splitList: await splits.listSplits(byIsrcs),
-        partList: await splits.listParticipations(byIsrcs),
-      }));
+      const { tracks, splitList, partList, artistsOf } = await db.snapshot(async () => {
+        const tracks = await owners.listTracks(byIsrcs);
+        const splitList = await splits.listSplits(byIsrcs);
+        const partList = await splits.listParticipations(byIsrcs);
+        // the pseudonyms of every ISRC (D-166): the links of these tracks, the rows and participations above
+        const { links, index } = await readArtistLinks(owners, tracks, only === undefined);
+        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+      });
       const { attrs, byIsrc } = await nameMaps(byIsrcs);
       const units = calc.units.filter(
         (u) =>
@@ -181,6 +185,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           upcs,
           title: ts[0]?.title ?? names?.trackTitle ?? '',
           artistName: names?.artistName ?? '',
+          artists: artistsOf.get(isrc) ?? [],
           ...sumUnits(calc, us),
           months: { from: ms[0] ?? null, to: ms.at(-1) ?? null, count: ms.length },
           hasSplit: withSplit.has(isrc),
@@ -196,11 +201,13 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * the visible rows comes from `trackSummary({ isrcs })`. The ISRC set is the one of `trackSummary()`.
      */
     async trackCatalog() {
-      const { tracks, splitList, partList } = await db.snapshot(async () => ({
-        tracks: await owners.listTracks(),
-        splitList: await splits.listSplits(),
-        partList: await splits.listParticipations(),
-      }));
+      const { tracks, splitList, partList, artistsOf } = await db.snapshot(async () => {
+        const tracks = await owners.listTracks();
+        const splitList = await splits.listSplits();
+        const partList = await splits.listParticipations();
+        const { links, index } = await readArtistLinks(owners, tracks, true);
+        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+      });
       const { attrs, byIsrc } = await nameMaps();
       const upcsOf = new Map<string, Set<string>>();
       for (const k of attrs.keys()) {
@@ -224,6 +231,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           upcs,
           title: ts[0]?.title ?? names?.trackTitle ?? '',
           artistName: names?.artistName ?? '',
+          artists: artistsOf.get(isrc) ?? [],
           hasSplit: withSplit.has(isrc),
           hasParticipations: withParts.has(isrc),
           registered: ts.length > 0,
@@ -250,11 +258,14 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const units = calc.units.filter((u) => u.isrc === isrc);
       const mine = tracks.filter((t) => t.isrc === isrc);
       const named = [...attrs.entries()].filter(([k]) => k.startsWith(`${isrc}|`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];
+      const links = await owners.artistLinks({ trackIds: mine.map((t) => t.id) });
+      const artistsOf = artistsByIsrc({ tracks: mine, links, splits: splitList.items, participations: partList.items, index: calc.artistIndex });
       return {
         isrc,
         tracks: mine,
         title: mine[0]?.title ?? named?.trackTitle ?? '',
         artistName: named?.artistName ?? '',
+        artists: artistsOf.get(isrc) ?? [],
         splits: splitList.items,
         participations: partList.items,
         totals: sumUnits(calc, units),
@@ -304,8 +315,17 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
 
     /** Releases (N8): the tracks of module 1 grouped by UPC with the net of the loaded files; no calculation. */
     async releases(q?: string) {
-      const [tracks, net, { attrs }] = await Promise.all([
-        owners.listTracks(),
+      const [{ tracks, artistsOf }, net, { attrs }] = await Promise.all([
+        db.snapshot(async () => {
+          const tracks = await owners.listTracks();
+          // the pseudonyms of a UPC (D-166): those of its tracks (rows, participations, registry links)
+          const [splitList, partList, { links, index }] = await Promise.all([
+            splits.listSplits(),
+            splits.listParticipations(),
+            readArtistLinks(owners, tracks, true),
+          ]);
+          return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+        }),
         sources.netByUpc(),
         nameMaps(),
       ]);
@@ -333,6 +353,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             upc,
             title: p?.releaseTitle ?? '',
             artistName: p?.artistName ?? '',
+            artists: unionArtists(artistsOf, ts.map((t) => t.isrc).filter((x): x is string => !!x)),
             trackCount: ts.length,
             net: net.get(upc) ?? '0',
           };
@@ -342,7 +363,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             !needle ||
             r.upc.includes(needle) ||
             r.title.toLowerCase().includes(needle) ||
-            r.artistName.toLowerCase().includes(needle),
+            r.artistName.toLowerCase().includes(needle) ||
+            r.artists.some((a) => a.pseudonym.toLowerCase().includes(needle)),
         );
       return { items };
     },
@@ -357,14 +379,25 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const pair = [...attrs.entries()].filter(([k]) => k.endsWith(`|${upc}`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];
       const titleOf = new Map(mine.map((t) => [t.isrc, t.title]));
       const unitsOf = groupBy(units, (u) => u.isrc);
-      const isrcs = new Set([...unitsOf.keys(), ...mine.map((t) => t.isrc).filter((x): x is string => !!x)]);
+      const isrcs = [...new Set([...unitsOf.keys(), ...mine.map((t) => t.isrc).filter((x): x is string => !!x)])].sort();
+      // the pseudonyms of the tracks of the release (D-166): the rows, participations and registry links of its ISRCs
+      const artistsOf = await db.snapshot(async () => {
+        const [splitList, partList, links] = await Promise.all([
+          splits.listSplits({ isrcs }),
+          splits.listParticipations({ isrcs }),
+          owners.artistLinks({ trackIds: mine.map((t) => t.id) }),
+        ]);
+        return artistsByIsrc({ tracks: mine, links, splits: splitList, participations: partList, index: calc.artistIndex });
+      });
       return {
         upc,
         title: pair?.releaseTitle ?? '',
         artistName: pair?.artistName ?? '',
-        tracks: [...isrcs].sort().map((isrc) => ({
+        artists: unionArtists(artistsOf, isrcs),
+        tracks: isrcs.map((isrc) => ({
           isrc,
           title: titleOf.get(isrc) ?? attrs.get(`${isrc}|${upc}`)?.trackTitle ?? '',
+          artists: artistsOf.get(isrc) ?? [],
           ...sumUnits(calc, unitsOf.get(isrc) ?? []),
         })),
         months: [...groupBy(units, (u) => u.reportingMonth).entries()]

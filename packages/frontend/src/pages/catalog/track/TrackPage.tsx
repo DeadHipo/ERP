@@ -6,6 +6,7 @@ import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { trackQueries } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
+import { ArtistLinks } from '../../../components/ArtistLinks';
 import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
 import { EntityCard } from '../../../components/EntityCard';
 import { EntityLink } from '../../../components/EntityLink';
@@ -49,7 +50,17 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
       subtitle={
         <div className="flex flex-col gap-1">
           <span>
-            ISRC <b data-testid="track-isrc">{isrc}</b> · {t.artist}: {data.artistName || '—'} · {t.upcs}:{' '}
+            ISRC <b data-testid="track-isrc">{isrc}</b> · {t.artist}:{' '}
+            <span data-testid="track-artists">
+              <ArtistLinks artists={data.artists} reportName={data.artistName} />
+            </span>
+            {data.artists.length > 0 && data.artistName.trim() !== '' ? (
+              <span className="text-muted" data-testid="track-report-artist">
+                {' '}
+                ({t.reportArtist}: {data.artistName})
+              </span>
+            ) : null}{' '}
+            · {t.upcs}:{' '}
             {upcs.length === 0
               ? '—'
               : upcs.map((u, i) => (

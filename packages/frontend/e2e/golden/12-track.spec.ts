@@ -299,9 +299,25 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await expect(row.locator('[data-col="B"] [data-testid="money"]')).toHaveAttribute('title', '82.5');
   await expect(row.locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '67.5');
   await expect(row.getByTestId('chip-has-split-yes')).toBeVisible();
+  // D-166: «Артисты» are the pseudonyms of the registry (the split row of A, the participation of P), each a link to P12
+  const k11 = sc(11, 1);
+  await expect(row.getByTestId('artist-links')).toHaveText(`A-111, P-111`);
+  await expect(row.getByTestId(`artist-link-${k11.artists.A}`).getByRole('link')).toHaveAttribute('href', `/artists/${k11.artists.A}`);
+  await expect(row.getByTestId(`artist-link-${k11.artists.P}`).getByRole('link')).toHaveAttribute('href', `/artists/${k11.artists.P}`);
+  await page.getByTestId(`artist-link-${k11.artists.A}`).getByRole('link').click();
+  await expect(page).toHaveURL(new RegExp(`/artists/${k11.artists.A}`));
+  await expect(page.getByTestId('artist-page-title')).toHaveText('A-111');
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/tracks\\?q=${i}`));
+  await expect(page.getByTestId(`track-${i}`).getByTestId('artist-links')).toHaveText('A-111, P-111');
   await page.getByTestId('field-tracks-q').fill(isrc(8, 4, 1));
   await expect(page).toHaveURL(/q=QZTST2708401/);
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).getByTestId('chip-has-split-no')).toBeVisible();
+  // an ISRC without a row, participation or registry link: the artist string of the report, text with the hint, no link
+  const bare = page.getByTestId(`track-${isrc(8, 4, 1)}`).getByTestId('artist-links');
+  await expect(bare.getByTestId('artist-unregistered')).toHaveText('Synthetic Artist');
+  await expect(bare.getByTestId('artist-unregistered')).toHaveAttribute('title', /Нет в реестре/);
+  await expect(bare.getByRole('link')).toHaveCount(0);
   // the new visible row gets its money by a second call of its own ISRC; the full calculation is one click away
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '50');
   await page.getByTestId('action-compute-all').click();
@@ -318,6 +334,10 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await expect(page.getByTestId('tracks-scope')).toBeVisible();
   await expect(page.getByTestId('tracks-count')).toHaveText('Строк: 1');
   await expect(page.getByTestId(`track-${isrc(10, 1, 2)}`).locator('[data-col="B"] [data-testid="money"]')).toHaveAttribute('title', '25');
+  // the quick search finds a track by its pseudonym (D-166)
+  await openAs(page, '/tracks?q=P-111');
+  await expect(page.getByTestId(`track-${i}`)).toBeVisible();
+  await expect(page.getByTestId('tracks-count')).toHaveText('Строк: 1');
 });
 
 test('P7 and P8 are reachable from the card: the UPC link opens the release', async ({ page }) => {

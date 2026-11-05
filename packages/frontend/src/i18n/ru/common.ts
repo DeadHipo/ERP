@@ -13,4 +13,9 @@ export const common = {
   no: 'нет',
   notFound: 'Страница не найдена',
   backHome: 'На главную',
+  /** `ArtistLinks` (D-166): the pseudonyms of a catalog row; the report string when the registry names none. */
+  artistLinks: {
+    title: 'Артисты',
+    notInRegistry: 'Нет в реестре: строка артиста из отчёта Believe, псевдоним не найден (сплит, участие или связь трек → артист)',
+  },
 } as const;

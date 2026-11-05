@@ -577,6 +577,11 @@ export function createOwnersService(db: Db) {
       }));
     },
 
+    /** The artist → track links of the registry (every one, or those of the given tracks); resolved by the facade (D-166). */
+    async artistLinks(filter: { trackIds?: string[] } = {}): Promise<{ artistId: string; trackId: string }[]> {
+      return (await repo.artistLinksOfTracks(filter.trackIds)).map((l) => ({ artistId: l.artistId, trackId: l.trackId }));
+    },
+
     async listTracks(filter: { isrcs?: string[] } = {}): Promise<TrackView[]> {
       return (await repo.allTracks(filter.isrcs)).map(toTrackView);
     },

@@ -144,7 +144,8 @@ describe('unit scope of the facade (D-161)', () => {
     expect(catalog.map((i) => [i.isrc, i.upcs, i.hasSplit, i.hasParticipations, i.registered])).toEqual(
       full.map((i) => [i.isrc, i.upcs, i.hasSplit, i.hasParticipations, i.isrc !== I(5)]),
     );
-    expect(catalog.map((i) => [i.title, i.artistName])).toEqual(full.map((i) => [i.title, i.artistName]));
+    expect(catalog.map((i) => [i.title, i.artistName, i.artists])).toEqual(full.map((i) => [i.title, i.artistName, i.artists]));
+    expect(full.map((i) => i.artists.map((a) => a.pseudonym))).toEqual([['A'], ['B'], [], [], []]); // D-166: rows and links, merged ids resolved
     await expect(f.trackSummary({ isrcs: 'not-an-isrc' })).rejects.toThrow();
     await expect(f.trackSummary({ isrcs: Array.from({ length: 501 }, (_, n) => I(n)).join(',') })).rejects.toThrow(/at most 500/);
   });

@@ -145,6 +145,14 @@ export function createOwnersRepository(db: Db) {
             .where(anyOf(artistTracks.artistId, artistIds)),
     artistLinksOfTrack: (trackId: string) =>
       orm().select().from(artistTracks).where(eq(artistTracks.trackId, trackId)),
+    /** Every artist → track link, or (the unit scope of the facade, D-166) only those of the given tracks. */
+    artistLinksOfTracks: (trackIds?: string[]) =>
+      trackIds && trackIds.length === 0
+        ? Promise.resolve([] as (typeof artistTracks.$inferSelect)[])
+        : orm()
+            .select()
+            .from(artistTracks)
+            .where(trackIds ? anyOf(artistTracks.trackId, trackIds) : undefined),
     moveArtistTracks: async (from: string, into: string) => {
       await db.query(
         `INSERT INTO owners.artist_tracks (artist_id, track_id)

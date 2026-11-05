@@ -4,6 +4,7 @@ import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
 import type { releasesSchema } from '@erp/shared/api-responses';
 import { releaseQueries } from '../../api/queries/releases';
+import { ArtistLinks, artistsText } from '../../components/ArtistLinks';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
@@ -62,7 +63,16 @@ function releaseColumns(): ColDef<Item>[] {
       cellRenderer: (p: { data?: Item }) => (p.data ? <EntityLink kind="upc" id={p.data.upc} /> : null),
     },
     { colId: 'title', headerName: c.title, minWidth: 180, valueGetter: (p) => p.data?.title },
-    { colId: 'artist', headerName: c.artist, minWidth: 160, valueGetter: (p) => p.data?.artistName },
+    // The pseudonyms over the tracks of the UPC as links to P12 (D-166); the report string when the registry names none.
+    {
+      colId: 'artist',
+      headerName: c.artist,
+      minWidth: 180,
+      wrapText: true,
+      autoHeight: true,
+      valueGetter: (p) => (p.data ? artistsText(p.data.artists, p.data.artistName) : ''),
+      cellRenderer: (p: { data?: Item }) => (p.data ? <ArtistLinks artists={p.data.artists} reportName={p.data.artistName} /> : null),
+    },
     { colId: 'trackCount', headerName: c.trackCount, maxWidth: 110, valueGetter: (p) => p.data?.trackCount },
     {
       colId: 'net',

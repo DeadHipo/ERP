@@ -6,7 +6,9 @@
   and spreads the method groups: `splits.ts`, `sources.ts` (B17 upload, writers, terms), `reports.ts`
   (reconciliation, owner balance, signals, track explanation), `owner-view.ts` (owner detail, merges),
   `payouts.ts` (operations, payout button, payment proof, returns), `artist-view.ts` (the card and the money of one
-  pseudonym, D-165). Shared checks live in `context.ts`.
+  pseudonym, D-165). Shared checks live in `context.ts`. `track-artists.ts` (D-166) is the pure helper the catalog
+  methods of `aggregates.ts` use to name the registry pseudonyms of an ISRC (split rows, participations, registry
+  links, merged ids resolved); the artist string of a report pair is never matched against the registry.
 - `calculation.ts` is the domain core: `calculate()` reads `sources.snapshot()` first, then every module inside one
   `db.snapshot()` (read-only REPEATABLE READ), so one request sees one version of the data (D-012, D-121). Keep new
   reads inside that snapshot. It builds the pure `LayerContext` and runs `allocateUnit` per unit; `reconcile()` is

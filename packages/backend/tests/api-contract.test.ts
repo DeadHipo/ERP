@@ -279,7 +279,11 @@ describe('API contract', () => {
     await call('get', '/owners/payables', { query: { ids: `${owner.id},${other.id}` } });
     await call('get', '/tracks/summary', { query: { month: '2026-07' } });
     await call('get', '/tracks/summary', { query: { isrcs: `${I1},${I2}` } });
-    await call('get', '/tracks/catalog');
+    const catalogItems = await call('get', '/tracks/catalog');
+    // D-166: the pseudonyms of the registry on the ISRC (the split row of a1), the artist string of the report apart
+    expect(catalogItems.items.find((i: { isrc: string }) => i.isrc === I1)?.artists).toEqual(
+      expect.arrayContaining([{ id: a1.id, pseudonym: 'Synth One' }]),
+    );
     await call('get', '/tracks/:isrc/money', { params: { isrc: I1 } });
     await call('get', '/tracks/:isrc/breakdown/:month', { params: { isrc: I1, month: '2026-07' } });
     await call('get', '/releases', { query: { q: UPC } });

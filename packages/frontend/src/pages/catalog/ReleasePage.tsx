@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { releaseQueries } from '../../api/queries/releases';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
+import { ArtistLinks } from '../../components/ArtistLinks';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
@@ -28,8 +29,8 @@ export function ReleasePage() {
               <span>
                 UPC <b data-testid="release-upc">{data.upc}</b>
               </span>
-              <span>
-                {ru.catalog.tracks.cols.artist}: {data.artistName || '—'}
+              <span data-testid="release-artists">
+                {ru.catalog.tracks.cols.artist}: <ArtistLinks artists={data.artists} reportName={data.artistName} />
               </span>
             </div>
             <section>
@@ -37,13 +38,16 @@ export function ReleasePage() {
               {data.tracks.length === 0 ? (
                 <p className="text-sm text-muted">{t.noTracks}</p>
               ) : (
-                <SimpleTable testId="release-tracks" headers={[t.cols.isrc, t.cols.title, m.net, m.B, m.C, m.ours]}>
+                <SimpleTable testId="release-tracks" headers={[t.cols.isrc, t.cols.title, t.cols.artists, m.net, m.B, m.C, m.ours]}>
                   {data.tracks.map((r) => (
                     <tr key={r.isrc} data-testid={`release-track-${r.isrc}`} className="border-t border-border">
                       <Td>
                         <EntityLink kind="isrc" id={r.isrc} />
                       </Td>
                       <Td>{r.title}</Td>
+                      <Td col="artists">
+                        <ArtistLinks artists={r.artists} />
+                      </Td>
                       <Td col="net">
                         <Money value={r.net} />
                       </Td>

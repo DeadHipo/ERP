@@ -175,7 +175,9 @@ export function BalanceTab(props: { ownerId: string; balance: Balance }) {
             {b.positions.map((p) => (
               <tr key={p.operationId} data-testid={`position-${p.operationId}`}>
                 <Td>{p.date}</Td>
-                <Td>{b.artists.find((a) => a.artistId === p.artistId)?.pseudonym ?? p.artistId}</Td>
+                <Td>
+                  <EntityLink kind="artist" id={p.artistId} label={b.artists.find((a) => a.artistId === p.artistId)?.pseudonym ?? p.artistId} />
+                </Td>
                 <Td col="amount">
                   <Money value={p.amount} />
                 </Td>
@@ -210,7 +212,9 @@ function AdsSection(props: { balance: Balance }) {
             <tr key={`${p.adId}-${p.artistId}-${p.role}`} data-testid={`ad-position-${p.adId}-${p.role}`}>
               <Td>{p.month}</Td>
               <Td>{p.isrc ? <EntityLink kind="isrc" id={p.isrc} label={p.isrc} /> : '—'}</Td>
-              <Td>{b.artists.find((x) => x.artistId === p.artistId)?.pseudonym ?? p.artistId}</Td>
+              <Td>
+                <EntityLink kind="artist" id={p.artistId} label={b.artists.find((x) => x.artistId === p.artistId)?.pseudonym ?? p.artistId} />
+              </Td>
               <Td col="role">{a.roles[p.role]}</Td>
               <Td col="amount">
                 <Money value={p.amount} />

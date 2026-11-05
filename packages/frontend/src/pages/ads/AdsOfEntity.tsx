@@ -50,7 +50,7 @@ export function AdsOfEntity(props: { isrc?: string; artistId?: string; pseudonym
                     <span className="flex flex-col text-xs">
                       {(a.allocation?.parts ?? []).map((p) => (
                         <span key={p.artistId}>
-                          {p.pseudonym} · <Money value={p.recovered} />
+                          <EntityLink kind="artist" id={p.artistId} label={p.pseudonym} /> · <Money value={p.recovered} />
                         </span>
                       ))}
                     </span>

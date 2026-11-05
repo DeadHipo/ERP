@@ -425,8 +425,8 @@ branches). Within a file the tests run in order (`serial` where they share state
 | Order | File | Scenarios | Role |
 |---|---|---|---|
 | 10 | `10-overview.spec.ts` | S01–S11 on P1; SS1–SS3 on the real P1 | reads |
-| 11 | `11-release.spec.ts` | S11 (P7, P8) | reads |
-| 12 | `12-track.spec.ts` | S01–S11 on P6, G36, S13 month 05, S16 **before**, P5 | reads |
+| 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166) | reads |
+| 12 | `12-track.spec.ts` | S01–S11 on P6, G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
 | 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
 | 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before** | reads (creates `Ref spec doc`) |
 | 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous) | reads (adds W1 terms `Print`) |

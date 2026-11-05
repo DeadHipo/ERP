@@ -84,7 +84,14 @@ export function DocumentsTab(props: { detail: OwnerDetail }) {
                 <Td>
                   <EntityLink kind="document" id={c.documentId} label={titleOf(c.documentId)} />
                 </Td>
-                <Td>{c.artistIds.map(pseudonymOf).join(', ')}</Td>
+                <Td>
+                  {c.artistIds.map((id, i) => (
+                    <span key={id}>
+                      {i > 0 ? ', ' : ''}
+                      <EntityLink kind="artist" id={id} label={pseudonymOf(id)} />
+                    </span>
+                  ))}
+                </Td>
               </tr>
             ))}
           </SimpleTable>
