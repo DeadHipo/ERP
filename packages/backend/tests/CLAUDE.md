@@ -59,3 +59,14 @@
   `expect(await f.method()).rejects` (that throws before expect). Two concurrent calls: `Promise.all([f.a(), f.b()])`
   without inner awaits. Lint (`no-floating-promises`) finds a missing await, not a wrong precedence:
   `(await f.x()).prop`.
+- **Stage 4 / onboarding (D-172):** `catalog.test.ts` holds **the money pin** of the catalog: `text(calculate())` plus
+  `GET /overview` without `signals` and `calculatedAt` must be byte for byte the same before and after the history
+  derivation, an operator interval, a replacement, a release import; the signals are asserted separately (they change on
+  purpose). Any new catalog feature (history, registry) adds its edit to that pin. `split-import-loader.test.ts` is the
+  **loader-equivalence test**: a synthetic `annex/splits_diff.json` loaded by the stage 4 `stepSplits --apply` in one
+  store and by `scripts/mvp/splits-diff-to-csv.ts` + `POST /splits/import` in another give the same `listSplits()` text;
+  it sets `MVP_LOAD_DIR` before the dynamic `await import` of the loader (static imports read `LOAD_DIR` first) and
+  fails with the cause if the step logs `split_error` / `unresolved_name`. `split-import.test.ts` (every row class, all
+  or nothing, the audit from the response, the 5 000-row timing with one `artistIndex` read), `assume.test.ts`,
+  `releases.test.ts` (synthetic export csv only), `onboarding.test.ts`; G61 in `golden.test.ts` (`label_decision` =
+  `contract` in money). A new organization operation still needs its line in `helpers/manager-answers.ts`.

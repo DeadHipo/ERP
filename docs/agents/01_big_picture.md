@@ -69,7 +69,7 @@ Three consequences that surprise newcomers:
 
 | Module | Owns | Storage | Docs | Key decisions |
 |---|---|---|---|---|
-| `owners` (module 1) | owners, artists (pseudonyms), tracks (ISRC+UPC, note), documents (incl. kind `assumption`), contracts, merges | PostgreSQL schema `owners` | 02, 99, ADR-001 | D-016…D-024, D-095 |
+| `owners` (module 1) | owners, artists (pseudonyms), tracks (ISRC+UPC, note), documents (incl. kinds `assumption` and `label_decision`), contracts, merges; the catalog: the label history of an ISRC (`track_labels`) and the release registry (`releases`), navigation, not money | PostgreSQL schema `owners` | 02, 99, ADR-001 | D-016…D-024, D-095, D-172 |
 | `labels` | our labels (0to8, Echo8), imprint aliases, sublabel rules (percent of the label share to a pseudonym), the Believe accounts of a label (the book of a file, D-169) | PostgreSQL schema `labels` | 10 §1 | D-123, D-125, D-130 |
 | `splits` | artist rows per ISRC with validity periods (each row may have its own document), participations (percent of a base, funded from top / artist pool / artist share / label share), buyouts | PostgreSQL schema `splits` | 04, ADR-003, 10 | D-025…D-030, D-126 |
 | `sources` | Believe file registry and report lines | PostgreSQL `source_files` + ClickHouse `believe.rows` | 03, 06 | D-031…D-038, D-102…D-114 |
@@ -77,7 +77,7 @@ Three consequences that surprise newcomers:
 | `settlements` | operations in/out, payouts, scope shape; the recoup algorithm moved to the facade | PostgreSQL schema `settlements` | 07 | D-047…D-056, D-072, D-094, D-127 |
 | `audit` | the trace of every API write (operator from `X-Operator`, route template, entity ids, a summary without free text); decides nothing | PostgreSQL schema `audit` | 17 §7 N16 | D-140, D-150 |
 | `ads` | advertising expenses: ISRC (or an allocated pseudonym), month, amount, recovery percent 0–100, scope; computes no money (the allocation is `facade/ads.ts`) | PostgreSQL schema `ads` | `docs/реклама_тз.md` | D-155, D-156 |
-| `facade` | nothing stored; composes all modules, runs the layers, recoup, balance, pays | — | 09, 10 | D-012, D-057…D-061, D-127 |
+| `facade` | nothing stored; composes all modules, runs the layers, recoup, balance, pays; the split import, the assumption, the catalog derivation and the onboarding checklists (D-172) | — | 09, 10 | D-012, D-057…D-061, D-127, D-172 |
 
 Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never imports another module, the facade
 or the API; the API never opens a module; only `src/facade/` calls several modules.
@@ -144,7 +144,7 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   L or without a label: `no_contract_for_label`) and the audit row records the label. The history was marked by
   `scripts/assign-label-books.ts` (files by account, the six statements and the advertising history → 0to8, the seven
   Echo8 operations → 0to8); `scripts/compare-reference.ts` and recipe 11 prove that only the books moved. Next stages
-  (organisation as tenant, operations for the payroll D-170, onboarding D-171, users and roles D-172) are in the brief.
+  (organisation as tenant, operations for the payroll, onboarding, users and roles) are in the brief; the log numbers them differently (D-170 the organization, D-171 roles, D-172 onboarding; the payroll stage is still to come).
 - **Stage 2 «Граница арендатора» (D-170, 2026-11-06):** the organization is the isolation boundary (variant A, the
   owner's decision of 2026-11-05): one database, `org_id NOT NULL` on every module table (migration 0016; the live `erp`
   is organization №1 with a fixed id), every module opened under an organization through one helper, one facade per
@@ -160,6 +160,15 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   rule on writes, scrypt 2^15; an `ability` on every API operation checked by one `authorize` against one rule table,
   `me.abilities` for the UI; record-dependent rights in the facade's `Viewer`. Users of the organization, system users
   and support grants (commit 4) and the frontend (commit 5) were in progress on 2026-11-06.
+- **Stage 4 «Онбординг через UI» (D-172, the brief's «D-171», 2026-11-06):** a new label is set up through the UI
+  (recipe 13): splits from a csv / xlsx template with a preview and an all-or-nothing apply through the facade
+  (`POST /splits/import`), «accept as an assumption» (`POST /splits/assume`: one `assumption` document, money in C
+  `assumption`), the document kind `label_decision` (approved = confirms like a contract, money in B), the label history
+  of an ISRC derived from the loaded files (`owners.track_labels`, `scripts/derive-track-labels.ts`: 2 436 ISRCs moved
+  0to8 → Echo8 from 2025-08) with operator corrections, the release registry from the Believe export
+  (`owners.releases`), four information signals, and the onboarding checklists (`GET /onboarding?label=`, the
+  organization's for its administrator). The catalog is navigation: no money moves (`tests/catalog.test.ts`). Starting
+  balances are out (a later «company accounts» entity). Frontend: P28 import, AssumeDialog, TrackLabelsDialog, the catalog column, the releases registry, the P1 checklist, UploadForm shared.
 - **Out of scope until asked:** ASCAP, a password policy and fine-grained rights of managers (D-171), a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,

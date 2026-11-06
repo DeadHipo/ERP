@@ -28,6 +28,11 @@ The account comes from the registry per file.
   (`label_required`, `not_found`, `label_not_own`, before the body is received), then the account of the file name
   (`account_unregistered`, `account_of_other_label`); then the module's own `duplicate_period`, sha256,
   `duplicate_file` inside the serial load. A refused upload leaves no registry row and no ClickHouse rows.
+- **Catalog reads** (D-172, no schema change): `isrcFilePairs(fileIds, isrcs?)` = the (ISRC, file, reporting month)
+  pairs of the given files in one `GROUP BY` (the observations of the label history of an ISRC); `isrcsOfUpcs(fileIds,
+  upcs?)` = the distinct ISRCs per UPC (release completeness); `labelStringsOfFiles(fileIds)` = the raw label strings of
+  the files (the checklist's unmapped strings). The caller passes `loaded` files of the registry. The streaming
+  `parseCsv` moved to `src/shared/csv.ts`; `csv.ts` here only re-exports it.
 - Equal line keys are **not** merged at load; the views `sum()` them. Do not switch to SummingMergeTree (D-102).
 - `believe.rows` has an aggregate projection `units_by_label` (D-122, D-124): the `units` view is answered from it. The unit key includes `label_name`, so `SourceUnit.labelName` is the label string and one ISRC/UPC/month can give several units; `columnar.units()` has a fixed `ORDER BY`. The stage table
   must stay `CREATE TABLE … AS believe.rows` so that a file's parts carry it; a part without it still counts, only

@@ -189,6 +189,13 @@ bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-m
   max(1.00, 2 %) and at 1.00 and the Σ per cause (`14` §9.3, §10). A warning names owners whose diff no longer
   matches the CSV (re-run `compare-main.ts`).
 - After any load: `GET /api/v1/reconciliation` must show discrepancy 0 on every row.
+- **A new label (D-172)**: do not extend the JSON inputs above; its splits come from the template import
+  (`POST /api/v1/splits/import?label=<id>`, the button on P15, columns `SPLIT_IMPORT_COLUMNS` of
+  `packages/shared/src/split-import.ts`; recipe 13). The loader stays the record of the 0to8 / Echo8 history. The
+  converter `npx tsx packages/backend/scripts/mvp/splits-diff-to-csv.ts [<load dir>] [--out <file.csv>]` writes the
+  stage 4 split diff as such a file (the same filters and order as the `splits` step; `tests/split-import-loader.test.ts`
+  proves import = step). `MVP_LOAD_DIR` (default `data/mvp-load`) is read by `scripts/mvp/lib.ts` too: with it, the
+  loader's inputs, logs, `connectOrg({ dataDir })` and `steps-main.ts` (`LOAD_DIR/../..`) move to that directory.
 
 ## 10. Snapshot and restore the stores (PostgreSQL + ClickHouse)
 
@@ -253,6 +260,11 @@ needs a grant and can never `approve`, `pay` or `admin`), and a `label_manager` 
    (34 → 0to8, 13 → Echo8; already done when the reports were loaded with `--label`), `statements` (→ 0to8), `ads`
    (2 653 → 0to8; the dry run lists the 117 disputable records, Σ 30 012,71), `operations-echo8` (exactly 7 → 0to8). A
    second dry run prints only `already_done`. `scripts/check-label-books.ts data/real`: (а) and (б) 0, (д) 0 expected once `statements` is applied.
+   Then (D-172) the label history of the ISRCs: `npx tsx packages/backend/scripts/derive-track-labels.ts data/real
+   --org <id>` (dry run: 2 436 ISRCs with two intervals 0to8 → Echo8, boundary 2025-08 for all, 1 tail, 18 249 with one
+   interval, 23 121 rows to insert applied 2026-11-06: 23 121 rows for 20 685 ISRCs, 2 436 with two intervals, boundary 2025-08), then `--apply`; a second dry run prints 0 changed.
+   It needs the files marked with their labels (files without a label are skipped and counted). Navigation only: step 8
+   is unchanged by it except the counters of the new signals.
 8. `npx tsx packages/backend/scripts/compare-reference.ts data/backup/2026-11-05-before-org/reference --api
    http://localhost:3001 --strict` against `AUTH_MODE=off ERP_DEFAULT_ORG=<id> PORT=3001 npx tsx packages/backend/src/main.ts data/real`: every section
    must print `0 differing` (`--strict` compares the books too; without it the books may move as a stage decides,
@@ -290,7 +302,8 @@ D-170. The stack starts without organizations and users; the first of each is ma
    -H "X-System-Key: $SYSTEM_ADMIN_KEY" -H 'X-Operator: admin' -d '{"name":"0to8"}'` → `201 { id, … }` (the id comes
    from the server). The system administrator's session in the browser (P24) does the same.
 6. `ERP_DEFAULT_ORG=<id>` in `.env` for the scripts (or `--org <id>` / `ERP_ORG` per run).
-7. Recipe 11, steps 1–8, with `--org <id>` (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
+7. Recipe 11, steps 1–8, with `--org <id>` (incl. `scripts/derive-track-labels.ts --org <id> --apply` after the
+   reports are loaded under their labels, D-172; re-run it after every later batch of reports) (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
    or, with `AUTH_MODE=on`, under the session of the `org_admin` of step 8; not with `X-System-Key` + `X-Org`, which
    is `403 support_required` since D-171).
 8. The users of the organization (D-171): the administrator `ERP_NEW_PASSWORD=… npx tsx
@@ -318,3 +331,42 @@ log in; migration 0017 turned every stage-2 user into an `org_admin` member of i
 `compare-reference` and `check-owner-scope --org <№1>` give 0 differing (recipe 11, step 8). Old `stored_path` values are
 absolute: the files are not moved. The Python extractors of recipe 9 read without an organization: valid only while
 the database holds one organization.
+
+## 13. A new label from zero through the UI (D-172)
+
+The order of the onboarding checklist (`GET /api/v1/onboarding?label=<id>`, P1 under the label): each step links to the
+page that fixes it, and the backend decides `done` / `todo`. An `org_admin` session (or `AUTH_MODE=off` on the dev
+stand); a `label_manager` of the label can upload files (2), correct the history and import releases (3), import
+splits (4: only create — new ISRCs, new pseudonyms and owners; a change of an existing split or an owner assignment is
+a `forbidden` row), create documents (6, not approve) and upload B17 (8), but not create labels or accounts (0–1),
+approve, or assume (7).
+
+0. The organization and the label: `GET /api/v1/onboarding/organization` (the administrator's checklist: labels,
+   members, accounts); create the own label on P17 (`POST /labels`) and its aliases (the label strings of its reports).
+1. **Accounts**: register the Believe account(s) of the label (`POST /labels/:id/accounts`, the «Счета» block of P17).
+   A file whose account is not registered under the label is refused (`account_unregistered`, D-169).
+2. **Files**: upload the Believe reports under the label (P19, `POST /sources/believe?label=<id>`, or
+   `scripts/load-believe.ts --label <label> --org <id> <files>`). The `files` step lists per account the first and last
+   month and the months without a file; `unmapped` lists label strings that are an alias of no label (add the alias on
+   P17 or a sublabel rule, recipe 2b).
+3. **Catalog**: `npx tsx packages/backend/scripts/derive-track-labels.ts --org <id>` (dry run), then `--apply`; a wrong
+   interval is corrected on P6 («История лейбла»: `POST /tracks/:isrc/label { labelId, from, to? }`; the same `from`
+   replaces). Releases: P7 «Импорт релизов» with the Believe release export of the account
+   (`POST /releases/import?label=<id>`, all or nothing; a repeat is `unchanged`). Signals `tracksWithoutLabel`,
+   `releasesIncomplete`, `releasesUnknown` on P21.
+4. **Splits**: download the template on P28 (from P15 «Загрузить из файла»), fill `isrc, pseudonym, percent, from`
+   (+ `to, owner, document, artist_id, note`), upload: the preview (`dryRun=1`) classifies every row; fix the file until
+   no `error` row is left (`artist_id` for `pseudonym_ambiguous`, a common `document` for a `change` group), then apply
+   (`dryRun=0`, all or nothing). `≤ 5 000` rows per file: split a larger catalogue. Rows without a document wait in C
+   `split_unconfirmed`.
+5. **Owners**: pseudonyms without an owner (`/artists?status=no_owner`, P11): the `owner` column of the import creates
+   or finds one; otherwise assign on the pseudonym card.
+6. **Documents**: upload and approve the contracts (P13 / P14; `createContract` for the owner; a decision of the label
+   without a contract is a document of kind `label_decision`, approved like a contract, money in B); split rows cite
+   their appendix or the split's document.
+7. **Assume** what has no document yet and is accepted by the label: «Принять как допущение» on P6 (all splits of an
+   ISRC) or P15 (one split) = `POST /splits/assume { labelId, isrcs | splitIds, reason }`; the money waits in C
+   `assumption` (never paid until a real document replaces it through `changeSplit`). An `org_admin`'s right only.
+8. **Publishing** (if any): B17 statements under the label (`POST /publishing/b17?label=<id>`); the step is `info`.
+9. The checklist green: every step but `publishing` is `done`; `GET /api/v1/reconciliation` discrepancy 0;
+   `scripts/check-label-books.ts` (D-169) as after any load.

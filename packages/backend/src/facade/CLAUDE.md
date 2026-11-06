@@ -115,3 +115,30 @@
   `approveDocument`, `createContract`, `updateTrack`, `setOperationDeferred`, `deactivateOperation`,
   `operationSnapshot`. The operation's own right (class, the label of the request) is decided before the route by
   `authorize`; a new record-dependent method takes a viewer and gets a case in `tests/viewer.test.ts`.
+- **The split import** (`split-import.ts`, D-172): `importSplits({ path, fileName, labelId, dryRun }, viewer)` reads a csv /
+  xlsx (`src/shared/csv.ts`, `src/shared/xlsx-rows.ts`; columns `SPLIT_IMPORT_COLUMNS`, ≤ 5 000 rows), groups rows by
+  (ISRC, floored `from`) and classifies the groups in file order over a model of the ISRC's splits that each earlier
+  group updates (`create` / `change` / `unchanged` / `blocked`, row classes `SPLIT_IMPORT_ISSUES` of
+  `packages/shared/src/split-import.ts`). The preview runs in one `db.snapshot()` (no write lock, nothing written, no
+  audit row); the apply repeats the classification inside ONE `db.transaction()` and writes through `owners.createOwner`
+  / `createArtist` / `assignArtistOwner` and `createSplit` / `changeSplit` (all or nothing: `422 import_invalid` with
+  `details.rows`, or `details.group` + `details.cause` for a refusal while writing). The pseudonym index is read once per
+  transaction: `createSplit` / `changeSplit` / `resolveShares` take an optional `opts: SplitWriteOpts = { index }`
+  (`context.ts` `artistIndexCache`, `cacheArtist`); routes never pass it. A viewer of some labels may only create (a
+  change or an owner assignment = a `forbidden` row). `assumeSplits` (`splits.ts`) = one `assumption` document under the
+  label + `splits.confirmSplit` per split without a document (`nothing_to_assume` when none).
+- **The catalog** (`catalog.ts`, `release-registry.ts`, D-172): navigation, not money. `deriveIsrc` (pure) builds the
+  label history of an ISRC from its observations (ISRC, reporting month, label of the loaded file; `sources.isrcFilePairs`):
+  runs by month (a new label opens a run, a label seen again is a tail while the current one is observed, else a
+  return), the boundary `min(max(last_A + 1, start_B), first_B)`, ties by `loaded_at` then label id, the `operator`
+  months cut out. `deriveTrackLabels({ apply, isrcs })` rewrites the `files` rows; `setTrackLabel` writes an operator
+  interval (same `from` = replace; `catalog_overlap`, `catalog_same_label`) and rebuilds that ISRC's `files` rows in the
+  same transaction. `catalogSignals` gives `catalogOutsideAccount` / `tracksWithoutLabel`, the registry its
+  `releasesIncomplete` / `releasesUnknown`; `trackCatalog` adds the catalog label (`catalog=current`). **Never** read the
+  history or the registry from `calculation.ts`, `layers/*`, `scope.ts`, `owner-scope.ts`, `balance.ts`,
+  `label-scope.ts` (`boundaries.test.ts`); `tests/catalog.test.ts` pins the money byte for byte.
+- **The onboarding checklists** (`onboarding.ts`, D-172): `labelChecklist(labelId, viewer)` reads PostgreSQL in one
+  `db.snapshot()` and at most three ClickHouse queries (`isrcFilePairs`, `labelStringsOfFiles`, `isrcsOfUpcs`) and never
+  calculates (the file must not import `./calculation`: `boundaries.test.ts`); the backend decides each step's state.
+  `organizationChecklist({ members, admins })` gets the member counts from its route (`api/routes/onboarding-org.ts` in
+  the org-admin router): the facade never imports `src/auth`.

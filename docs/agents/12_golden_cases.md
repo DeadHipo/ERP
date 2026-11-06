@@ -79,6 +79,7 @@ sublabel) → categorise.
 | G54 | row A 50 on I(1); unit 100 with the string `Echo8` in the file of the Echo8 account (2026-03); an ad 10 of 2026-03 on I(1), recovery 100 %, paid by 0to8 | books: 0to8 earned 0, adsCharged 10, payable −10; Echo8 earned 50, adsCharged 0, payable 50; total payable 40; `adOutsideBook` 1 (payer 0to8, book Echo8); `createAds` without `labelId` → `label_required` | 50 | 0 | 50 | D-169 |
 | G55 | row A 50 on I(1) (unit 100 in the 0to8 account, 2026-03); A's only contract is marked 0to8 and is the document of A's publishing terms 50 %; a B17 statement Q2 2026 loaded under Echo8 with one line of A, payable 60 | books: 0to8 earned 50, payable 50; Echo8 earned 30 (the publishing), payable 30; total 80; under Echo8 `confirmed` false, `payout.reason` `no_contract_for_label`, the publishing line 2026-Q2 30 B; under 0to8 no B17 line, payable 50; the B17 reconciliation row has the one book Echo8; `statementsWithoutLabel` 0 | 80 | 0 | 80 | D-169 |
 | G56 | rows A 50 on I(1) (unit 100 in the 0to8 account) and on I(2) (unit 60 in the Echo8 account), 2026-03; A's contract document first without a label, then marked 0to8 | without a label: confirmed and payable under both (0to8 50, Echo8 30, total 80); marked 0to8: under Echo8 `confirmed` false, `payout.reason` `no_contract_for_label`, the button and an Echo8 advance refused 422 `no_contract_for_label`; under 0to8 and in total unchanged; no approved contract at all stays `owner_not_confirmed`; the payout under 0to8 pays 50.00 | 80 | 0 | 80 | D-169 |
+| G61 | rows A 30, B 20 on I(1), participation P 10 `(net, top)`; B's owner is confirmed by a contract whose document is of kind `label_decision`; B's row and P's participation cite an approved `label_decision` | P 10; net 90: A 27, B 18, all B; before the contract document is approved B 18 C `owner_unconfirmed` (row B 37, C 18, ours 45); the same scenario with kind `contract` gives the same allocations, reconciliation row and balance of B (earned 18) | 55 | 0 | 45 | D-172 |
 
 ## Publishing cases
 
@@ -171,3 +172,7 @@ sublabel) → categorise.
   books do not move (0to8 100 × 50 % = 50, Echo8 60 × 50 % = 30, total 80): only the gate under Echo8 changes, to
   `no_contract_for_label` (an approved contract exists, none with Echo8); with no approved contract at all the reason
   stays `owner_not_confirmed`, under a label too.
+- G61 (D-172): an approved label decision confirms the owner exactly like a contract (`computeConfirmedOwners` looks at
+  the status and label of the contract document, not its kind) and a split row or participation exactly like an
+  appendix (`categorise` looks at the kind only for `assumption`): P 100 × 10 % = 10 off the top, net 90, A 90 × 30 % =
+  27, B 90 × 20 % = 18, ours 45. No layer changes; the case is the same numbers with kind `contract`.

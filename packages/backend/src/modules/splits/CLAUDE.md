@@ -15,3 +15,10 @@ Two deletes exist for the migration loader only (`scripts/mvp`, D-137): `deleteE
 period is empty (`valid_to = valid_from`, left when a split is replaced from its first day; never in force) and
 `deleteParticipations(ids)` removes participations the loader created (found by its note marker). No route or facade
 method calls them.
+
+Import and assumption (D-172) live in the facade, not here: `facade/split-import.ts` writes through `createSplit` /
+`changeSplit` (which call this module's methods as before; `origin = 'import'`), and `facade/splits.ts` `assumeSplits`
+creates one `assumption` document in owners and calls `confirmSplit(id, doc)` per split without a document. The module
+knows no pseudonym name, no file and no label; `confirmSplit` refuses a split that already has a document
+(`split_document_set`). Document kinds a split, row or participation may cite: `SPLIT_DOCUMENT_KINDS` in
+`packages/shared/src/document-kinds.ts` (checked by the facade, `label_decision` included).
