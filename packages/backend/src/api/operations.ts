@@ -41,6 +41,8 @@ interface OperationBase {
   headers?: { name: string; required: boolean; description: string }[];
   /** Error codes worth knowing, as `status code: meaning`. */
   errors?: string[];
+  /** D-178: the money answers: the meaning of the response fields goes into the description, for Claude and the docs. */
+  explain?: true;
 }
 
 /**
@@ -419,6 +421,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/owners/payables',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
@@ -438,6 +441,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/owners/:id/balance',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
@@ -477,6 +481,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/artists/balances',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'artists', scope: 'label' },
     tag: 'artists',
@@ -521,6 +526,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/artists/:id/balance',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'artists', scope: 'label' },
     tag: 'artists',
@@ -566,6 +572,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/tracks/summary',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'tracks', scope: 'label' },
     tag: 'tracks',
@@ -587,6 +594,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/tracks/:isrc/money',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'tracks', scope: 'org' },
     tag: 'tracks',
@@ -1026,6 +1034,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/reconciliation',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'reports', scope: 'org' },
     tag: 'reports',
@@ -1046,6 +1055,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/overview',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'reports', scope: 'org' },
     tag: 'reports',
@@ -1056,6 +1066,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/queue/:reason',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'reports', scope: 'label' },
     tag: 'reports',
@@ -1570,6 +1581,7 @@ const operations: ApiOperation[] = [
   {
     method: 'get',
     path: '/owners/payroll',
+    explain: true,
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',

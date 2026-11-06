@@ -17,6 +17,35 @@ function openApiPath(path: string): { path: string; params: string[] } {
 export const operationIdOf = (op: Pick<ApiOperation, 'method' | 'path'>): string =>
   [op.method, ...op.path.split('/').filter(Boolean).map((s) => (s.startsWith(':') ? `by_${s.slice(1)}` : s.replace(/-/g, '_')))].join('_');
 
+/** The field under `optional`, `nullable`, `default`. */
+function unwrap(schema: z.ZodType): z.ZodType {
+  let s = schema;
+  while (s instanceof z.ZodOptional || s instanceof z.ZodNullable || s instanceof z.ZodDefault) s = s.unwrap() as z.ZodType;
+  return s;
+}
+
+/** Every field of an answer with its description, two levels deep: `total.payable: what can be paid` (D-178). */
+export function responseFieldsOf(schema: z.ZodType, prefix = '', depth = 0): string[] {
+  let s = unwrap(schema);
+  if (s instanceof z.ZodArray) s = unwrap(s.element as z.ZodType);
+  if (!(s instanceof z.ZodObject) || depth > 1) return [];
+  return Object.entries(s.shape as Record<string, z.ZodType>).flatMap(([name, field]) => {
+    const path = `${prefix}${name}`;
+    const text = field.description ?? unwrap(field).description;
+    return [...(text && text !== 'Exact decimal string' ? [`- ${path}: ${text}`] : []), ...responseFieldsOf(field, `${path}.`, depth + 1)];
+  });
+}
+
+/** The description of an operation: the summary (a client may show only this field), the errors, the response fields. */
+function descriptionOf(op: ApiOperation): string {
+  const fields = op.explain ? responseFieldsOf(op.response) : [];
+  return [
+    op.summary,
+    ...(op.errors ? [`Errors:\n\n${op.errors.map((e) => `- ${e}`).join('\n')}`] : []),
+    ...(fields.length ? [`Response fields:\n\n${fields.join('\n')}`] : []),
+  ].join('\n\n');
+}
+
 /** The operations the read token may call (D-177): the reads of an organization. */
 export const readsWithToken = (op: ApiOperation): boolean =>
   op.access === 'org' && (op.ability.action === 'read' || op.ability.action === 'read_money');
@@ -54,7 +83,7 @@ export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
       security: [...security[op.access], ...(readsWithToken(op) ? ['readToken'] : [])].map((name) => ({ [name]: [] })),
       // the right the operation needs (D-171): action, subject and, in an organization, scope
       ...(op.ability ? { 'x-ability': { ...op.ability } } : {}),
-      ...(op.errors ? { description: `Errors:\n\n${op.errors.map((e) => `- ${e}`).join('\n')}` } : {}),
+      description: descriptionOf(op),
       request: {
         ...(params.length
           ? { params: z.object(Object.fromEntries(params.map((p) => [p, z.string()]))) }

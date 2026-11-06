@@ -11,9 +11,9 @@ const percent = z.string().regex(/^\d+(\.\d+)?$/, 'expected a decimal percent');
 const usd = z.string().regex(/^-?\d+(\.\d{1,2})?$/, 'expected USD with up to 2 decimals');
 
 export const periodQuery = z.object({
-  from: month.optional(),
-  to: month.optional(),
-  basis: z.enum(['report', 'sales']).optional(),
+  from: month.optional().describe('First month of the period, YYYY-MM'),
+  to: month.optional().describe('Last month of the period, YYYY-MM'),
+  basis: z.enum(['report', 'sales']).optional().describe('report: months of the reports (default); sales: months of the sales'),
 });
 export type PeriodQuery = z.infer<typeof periodQuery>;
 
@@ -107,7 +107,7 @@ export const createContractBody = z.object({
 
 export const shareSpec = z
   .object({
-    artistId: z.string().optional(),
+    artistId: z.string().optional().describe('Only this pseudonym (id)'),
     newArtistPseudonym: z.string().optional(),
     percent,
     documentId: z.string().nullish(),
@@ -213,33 +213,33 @@ export const mergeOwnersBody = z.object({
 });
 
 export const queueQuery = z.object({
-  account: z.string().optional(),
-  month: month.optional(),
-  ownerId: z.string().optional(),
-  q: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
+  account: z.string().optional().describe('The Believe account'),
+  month: month.optional().describe('One report month, YYYY-MM'),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
+  q: z.string().optional().describe('Text to find: a case-insensitive part of the name or title'),
+  limit: z.coerce.number().int().min(1).max(500).default(50).describe('Rows of the page'),
+  offset: z.coerce.number().int().min(0).default(0).describe('Rows to skip from the start of the list'),
   ...periodQuery.shape,
   ...labelQuery.shape,
 });
 
 export const listQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(5000).optional(),
-  isrc: z.string().optional(),
-  artistId: z.string().optional(),
-  ownerId: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional().describe('Rows of the page'),
+  isrc: z.string().optional().describe('Only this ISRC'),
+  artistId: z.string().optional().describe('Only this pseudonym (id)'),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
   /** Paging of `/splits` and `/participations` (N18). */
-  offset: z.coerce.number().int().min(0).optional(),
+  offset: z.coerce.number().int().min(0).optional().describe('Rows to skip from the start of the list'),
   /** `/splits` only: `unconfirmed` = the document is missing or not approved. */
-  status: z.enum(['unconfirmed']).optional(),
+  status: z.enum(['unconfirmed']).optional().describe('unconfirmed: the document is missing or not approved'),
 });
 
 /** `GET /documents` (N12): all filters optional; `q` is a case-insensitive substring of the title. */
 export const documentsQuery = z.object({
-  ownerId: z.string().optional(),
-  status: z.enum(['not_attached', 'not_approved', 'approved']).optional(),
-  kind: documentKind.optional(),
-  q: z.string().optional(),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
+  status: z.enum(['not_attached', 'not_approved', 'approved']).optional().describe('Only documents in this state'),
+  kind: documentKind.optional().describe('Only documents of this kind'),
+  q: z.string().optional().describe('Text to find: a case-insensitive part of the name or title'),
   ...pageQuery.shape,
   ...labelQuery.shape,
 });
@@ -248,8 +248,8 @@ const flag = z.enum(['true', 'false']);
 
 /** `GET /settlements/operations` (N14): filters; `from` / `to` are inclusive operation dates. */
 export const operationsQuery = z.object({
-  ownerId: z.string().optional(),
-  artistId: z.string().optional(),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
+  artistId: z.string().optional().describe('Only this pseudonym (id)'),
   meaning: z
     .enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return'])
     .optional()
@@ -259,11 +259,11 @@ export const operationsQuery = z.object({
     .enum([...LABEL_SOURCES, 'none'])
     .optional()
     .describe('Who set the label (D-173): one, default (the history put under 0to8 by default, D-168), operator, payout; none = not marked'),
-  direction: z.enum(['in', 'out']).optional(),
+  direction: z.enum(['in', 'out']).optional().describe('in or out'),
   needsProof: flag.optional().describe('true: payouts (out) that are active and have no payment proof'),
-  active: flag.optional(),
-  from: date.optional(),
-  to: date.optional(),
+  active: flag.optional().describe('true: only active rows; false: only deactivated'),
+  from: date.optional().describe('First day or month of the period'),
+  to: date.optional().describe('Last day or month of the period'),
   ...pageQuery.shape,
   ...labelQuery.shape,
 });
@@ -274,32 +274,32 @@ export const artistsQuery = labelQuery.extend(pageQuery.shape);
 
 /** `GET /search` (N10): `kinds` is a comma list of owners, artists, tracks, documents, labels. */
 export const searchQuery = z.object({
-  q: z.string().trim().min(1),
-  kinds: z.string().optional(),
+  q: z.string().trim().min(1).describe('Text to find: part of a name, alias, pseudonym, title, ISRC or UPC'),
+  kinds: z.string().optional().describe('Comma-separated: owners, artists, tracks, documents, labels; without it every kind'),
 });
 
 /** Lines of the Believe report files (the `lines` view). `fileId` is a comma-separated list of file ids. */
 export const sourceLinesQuery = z.object({
-  fileId: z.string().optional(),
-  isrc: z.string().optional(),
-  upc: z.string().optional(),
-  platform: z.string().optional(),
-  country: z.string().optional(),
+  fileId: z.string().optional().describe('Only these Believe files: comma-separated ids'),
+  isrc: z.string().optional().describe('Only this ISRC'),
+  upc: z.string().optional().describe('Only this UPC'),
+  platform: z.string().optional().describe('Only this store'),
+  country: z.string().optional().describe('Only this country'),
   /** '(none)' asks for the empty subscription type. */
-  subscriptionType: z.string().optional(),
-  salesType: z.string().optional(),
-  releaseType: z.string().optional(),
-  salesFrom: month.optional(),
-  salesTo: month.optional(),
-  sort: z.enum(['net', 'gross', 'quantity', 'reportingMonth', 'salesMonth', 'isrc']).optional(),
-  dir: z.enum(['asc', 'desc']).optional(),
-  limit: z.coerce.number().int().min(1).max(1000).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
+  subscriptionType: z.string().optional().describe('Only this subscription type'),
+  salesType: z.string().optional().describe('Only this sales type'),
+  releaseType: z.string().optional().describe('Only this release type'),
+  salesFrom: month.optional().describe('First sales month, YYYY-MM'),
+  salesTo: month.optional().describe('Last sales month, YYYY-MM'),
+  sort: z.enum(['net', 'gross', 'quantity', 'reportingMonth', 'salesMonth', 'isrc']).optional().describe('The column to sort by'),
+  dir: z.enum(['asc', 'desc']).optional().describe('The direction of the sort'),
+  limit: z.coerce.number().int().min(1).max(1000).optional().describe('Rows of the page'),
+  offset: z.coerce.number().int().min(0).optional().describe('Rows to skip from the start of the list'),
   ...labelQuery.shape,
 });
 export type SourceLinesQuery = z.infer<typeof sourceLinesQuery>;
 
-export const sourceFacetsQuery = z.object({ fileId: z.string().optional(), ...labelQuery.shape });
+export const sourceFacetsQuery = z.object({ fileId: z.string().optional().describe('Only these Believe files: comma-separated ids'), ...labelQuery.shape });
 
 /** `GET /sources/files`: under a label (`label=`) the files and statements loaded under it (D-169). */
 export const sourceFilesQuery = labelQuery;
@@ -366,8 +366,8 @@ export const createParticipationBody = z.object({
 // ---- audit (D-140) ----
 
 export const auditQuery = z.object({
-  entityId: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(500).optional(),
+  entityId: z.string().optional().describe('Only the writes that touched this record (id)'),
+  limit: z.coerce.number().int().min(1).max(500).optional().describe('Rows of the page'),
   label: z
     .string()
     .optional()
@@ -398,8 +398,8 @@ export const artistBalancesQuery = labelPeriodQuery.extend({
 /** `GET /tracks/summary`: only the units of one Believe account and/or one report month. */
 export const trackSummaryQuery = z.object({
   ...pageQuery.shape,
-  account: z.string().optional(),
-  month: month.optional(),
+  account: z.string().optional().describe('The Believe account'),
+  month: month.optional().describe('One report month, YYYY-MM'),
   isrcs: z
     .string()
     .optional()
@@ -414,7 +414,7 @@ export const trackCatalogQuery = labelQuery.extend({
     .describe('D-172: `current` = only the ISRCs whose open label-history interval is the label (or any, without a label); default the files of the label too'),
 });
 
-export const releasesQuery = z.object({ q: z.string().optional(), ...pageQuery.shape, ...labelQuery.shape });
+export const releasesQuery = z.object({ q: z.string().optional().describe('Text to find in the title, the artist or the UPC'), ...pageQuery.shape, ...labelQuery.shape });
 export const releaseQuery = labelQuery;
 
 // ---- advertising expenses (D-155, D-156) ----
@@ -444,18 +444,18 @@ export const updateAdBody = z
   .refine((b) => b.recoveryPercent !== undefined || b.scope !== undefined || b.labelId !== undefined, 'recoveryPercent, scope or labelId');
 export const deactivateAdBody = z.object({ reason: z.string().min(1) });
 export const adsQuery = z.object({
-  isrc: z.string().optional(),
-  artistId: z.string().optional(),
-  ownerId: z.string().optional(),
-  from: month.optional(),
-  to: month.optional(),
-  status: z.enum(['allocated', 'pre_allocated', 'no_split', 'no_artist']).optional(),
-  includeInactive: z.enum(['true', 'false']).optional(),
-  limit: z.coerce.number().int().min(1).max(5000).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
+  isrc: z.string().optional().describe('Only this ISRC'),
+  artistId: z.string().optional().describe('Only this pseudonym (id)'),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
+  from: month.optional().describe('First day or month of the period'),
+  to: month.optional().describe('Last day or month of the period'),
+  status: z.enum(['allocated', 'pre_allocated', 'no_split', 'no_artist']).optional().describe('Only expenses in this state of the allocation'),
+  includeInactive: z.enum(['true', 'false']).optional().describe('true: deactivated records too'),
+  limit: z.coerce.number().int().min(1).max(5000).optional().describe('Rows of the page'),
+  offset: z.coerce.number().int().min(0).optional().describe('Rows to skip from the start of the list'),
   ...labelQuery.shape,
 });
-export const adsSummaryQuery = z.object({ from: month.optional(), to: month.optional(), ...labelQuery.shape });
+export const adsSummaryQuery = z.object({ from: month.optional().describe('First month, YYYY-MM'), to: month.optional().describe('Last month, YYYY-MM'), ...labelQuery.shape });
 
 // ---- the login and the organizations (stage 2, D-170) ----
 
@@ -562,7 +562,7 @@ export const assumeSplitsBody = z
 // ---- the release registry (D-172) ----
 
 /** `GET /releases/registry`: under a label its rows (`label=`), under «Все» every label's; `q` filters UPC, title, version, artist, catalog number. */
-export const releaseRegistryQuery = z.object({ q: z.string().optional(), ...labelQuery.shape });
+export const releaseRegistryQuery = z.object({ q: z.string().optional().describe('Text to find in the title, the artist or the UPC'), ...labelQuery.shape });
 
 // ---- the onboarding checklist (D-172) ----
 
@@ -584,7 +584,7 @@ export const operationImportQuery = z.object({
 // ---- the admission (D-176) ----
 
 export const admissionQuery = z.object({
-  ownerId: z.string().optional(),
+  ownerId: z.string().optional().describe('Only this owner (id)'),
   label: z.string().optional().describe('Id of an own label: the owners of the book and the holds / answers of it (or of every book); a manager must name one'),
   active: z.enum(['true', 'false']).optional().describe('true (default): only the active rows; false: every row'),
 });

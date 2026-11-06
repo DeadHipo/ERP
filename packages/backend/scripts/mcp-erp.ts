@@ -15,6 +15,12 @@ if (!token) {
   console.error('MCP_READ_TOKEN is not set: add it to .env (openssl rand -hex 32) and restart the API');
   process.exit(1);
 }
+const INSTRUCTIONS = [
+  'The royalty ERP of a music label, read only. Every dollar received is split: A = B + C + ours. A: received from Believe (master) and B17 statements (publishing). B: confirmed money of owners. C: money that waits, always with a reason (a document, a mapping, a contract is missing). ours: the share of the label. Answers are recalculated from the report lines, nothing is stored.',
+  'An owner is the party who is paid; a pseudonym (artist) belongs to one owner; splits and money are per ISRC. A book is the own label a file was loaded under. In a balance, total.payable is what can be paid today and payout.allowed with payout.reason say whether the button works; period is for reading, not for paying. Advances are recouped from income of the same pseudonym.',
+  'Money is an exact decimal string in USD; fields ending in Cents are integer cents. Never round or add money by eye: quote the fields. Months are YYYY-MM. Long lists give 50 rows with total: use limit, offset, and filters. Find ids with get-search first, then ask about one owner or one ISRC: the calculation of a list takes about 10 seconds.',
+].join('\n\n');
+
 const api = (process.env.ERP_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '') + '/api/v1';
 
 const child = spawn(
@@ -41,7 +47,7 @@ const child = spawn(
     '--verbose',
     'false',
   ],
-  { stdio: 'inherit', env: { ...process.env, API_HEADERS: `Authorization:Bearer ${token}` } },
+  { stdio: 'inherit', env: { ...process.env, API_HEADERS: `Authorization:Bearer ${token}`, SERVER_INSTRUCTIONS: INSTRUCTIONS } },
 );
 child.on('exit', (code) => process.exit(code ?? 1));
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
