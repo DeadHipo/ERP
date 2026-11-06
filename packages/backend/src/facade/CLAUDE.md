@@ -88,3 +88,11 @@
 - Recoupment itself is in `layers/recoup.ts` (moved from the settlements module, D-127; the shapes `Scope`, `IncomeItem`,
   `Position` stay in `modules/settlements`); `balance.ts` feeds it income items and positions.
 - `audit.ts`: `recordAction(input)`, `auditOf(entityId, limit, labelId?)`, `recentActions(limit, labelId?)` over the `audit` module (D-140; the label of a write, D-169, is chosen by the hook: `labelOfWrite`). The API hook `api/audit.ts` calls `recordAction` after every successful write (needs `X-Operator`); a facade method never records by itself.
+- **The organization** (D-170): a facade is opened per organization. `openFacade({ db, orgId, sources, dataDir, … })`
+  calls `openModules(db, orgScope(orgId), { publishingDir })` (`modules.ts`: the seven PostgreSQL modules, every
+  repository statement filtered by `shared/org-scope.ts`) and asserts `sources.orgId === orgId` (the caller opens the
+  sources with `sourcesFor(stores, orgId, dataDir)`); B17 files go to `<dataDir>/orgs/<orgId>/files/publishing`.
+  `src/orgs/facades.ts` sits above it: one facade and router per organization, opened lazily (single-flight, the
+  `orgs.organizations` row checked first). The facade never imports `src/orgs` / `src/auth` and never reads an
+  organization from a request; `calculation.ts`, `layers/*`, `balance.ts`, `owner-scope.ts` did not change (the filter
+  sits in the repositories, so `calculate()` sees only the organization's rows).

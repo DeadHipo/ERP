@@ -21,6 +21,12 @@
     the e2e seed scenarios.
   - `sources-stack.ts` sits on `src/shared/private-stores.ts` (`createPrivateStores(name, { dropFirst })`: PostgreSQL
     `erp_<name>` + ClickHouse `believe_<name>` and `_stage`, all migrations; the e2e uses a fixed name).
+  - **Organizations (D-170):** `createPrivateStores` writes `schema_migrations` and creates its test organization once
+    (`stores.orgId`); `orgs` and `auth` are not module schemas, so a reset keeps them. `newFacade()` opens on
+    `stores.orgId`. A second organization in the same store: create it with `createOrgsService(stack.db).createOrganization(...)`
+    and open a second facade on it (`org-scope.test.ts`, `concurrency.test.ts`). `api-contract.test.ts` runs in two
+    blocks: `off` (`createApp(f)`, `/orgs*` with `X-System-Key`, the route list) and `on` (`createServerApp`, a login,
+    every operation with the cookie). `auth.test.ts`, `http-errors.test.ts` cover the login and the constant 500.
   - `tmp-root.ts`: every test file writes under its own `data/test-tmp/run-*`, removed after the file.
 - Layer tests: `layers/*.test.ts` are pure (no stack) over the hand-built world in `layers/world.ts`; one file per
   layer, `index.test.ts` pins the order, `exactness.test.ts` is the seeded random exactness test (12 decimals).
@@ -35,6 +41,8 @@
 - `Hook timed out in 10000ms` across many stack test files, with a run of minutes instead of seconds, means the
   Docker VM is starved for CPU (a busy host), not a code bug: check `docker stats` / `uptime` and rerun. Timed-out
   runs can leave `believe_t_*` databases in ClickHouse; they are test scratch.
+- On a loaded machine run the suite serially: `REQUIRE_STACK=1 npx vitest run --no-file-parallelism
+  --testTimeout=300000 --hookTimeout=120000` (in `packages/backend`).
 - Everything is async: `await expect(f.method()).rejects.toThrow()` — not `expect(() => …).toThrow()` and not
   `expect(await f.method()).rejects` (that throws before expect). Two concurrent calls: `Promise.all([f.a(), f.b()])`
   without inner awaits. Lint (`no-floating-promises`) finds a missing await, not a wrong precedence:

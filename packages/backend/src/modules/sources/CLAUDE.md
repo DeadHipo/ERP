@@ -41,3 +41,11 @@ The account comes from the registry per file.
 - Schema changes: `packages/backend/migrations/clickhouse/NNNN_*.sql` (`npm run migrate:ch`) and
   `migrations/postgres/NNNN_*.sql` (`npm run migrate:pg`). Tests create private databases per test file
   (`tests/helpers/test-sources.ts`), so a migration is exercised by `REQUIRE_STACK=1 npm test`.
+- **The organization** (D-170): `createSourceFilesRegistry(pool, org)` filters and stamps every statement with the
+  organization (`$1` = the organization, `org_id` on every row), so `loaded()` and every ClickHouse read that follows
+  are the organization's; ClickHouse has no organization column. `source_files_scope (org_id, source, account,
+  reporting_month)` and `source_files_sha (org_id, sha256)` kept their names, so `409 duplicate_period` /
+  `duplicate_file` are per organization (one account in two organizations is allowed). Opened by `sourcesFor(stores,
+  orgId, dataDir)` (`src/connect-sources.ts`); stored copies in `<dataDir>/orgs/<orgId>/files/sources`, upload temp
+  files in `<dataDir>/orgs/<orgId>/tmp`. The upload queue (`serial()`) is per service instance = per module and
+  organization; between processes the partial unique index decides (`tests/concurrency.test.ts`).

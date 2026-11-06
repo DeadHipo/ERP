@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-159 by topic)
+# Decision index (D-001 … D-170 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -17,7 +17,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-006 Reference check vs old ERP · in force
 - D-009 Layout and module boundaries, enforced by tests · in force (paths: D-116)
 - D-011 Portability to PostgreSQL · in force
-- D-013 No auth, stubbed payment service, payout threshold · in force
+- D-013 No auth, stubbed payment service, payout threshold · in force; «no auth» *refined by* D-170 (a minimal login with a JWT cookie; roles in stage 3)
 - D-014 Sensitive sources (bank, wio, payroll, tipalti) not used · in force
 - D-015 Start scripts, data directory · *refined by* D-112 (no demo mode), D-116 (paths)
 - D-077 Handover package · *refined by* D-093 (two archives)
@@ -29,13 +29,18 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-115 One repo; docs in `docs/`, reference data in `context_data/` · in force
 - D-116 npm workspaces `packages/{backend,frontend,shared}` · in force
 - D-117 `repository.ts` in every module, facade split by topic, private test folders · in force
-- D-121 Modules owners/splits/settlements/publishing on PostgreSQL (schema per module, soft cross-module refs, async, global write lock, cross-module transactions, data transfer script) · in force
+- D-121 Modules owners/splits/settlements/publishing on PostgreSQL (schema per module, soft cross-module refs, async, global write lock, cross-module transactions, data transfer script) · in force; *refined by* D-170 (still one database and one schema per module, now `org_id NOT NULL` on every table and every module opened under an organization)
 - D-118 Routers per topic, `/api/v1` · in force
-- D-119 API contract as data, OpenAPI, Swagger · in force
+- D-119 API contract as data, OpenAPI, Swagger · in force; *refined by* D-170 (every operation in `operations.ts` has `access: public | user | system | org`; `X-Operator` on writes with `access !== 'public'`; security schemes)
 - D-120 Agent guides in `docs/agents/`, nested CLAUDE.md files · in force
+- D-170 The organization is the isolation boundary (variant A, owner 2026-11-05): one database, `orgs.organizations`, `org_id NOT NULL` on the 26 tables (migration 0016; №1 with the fixed id only on a base with data); `shared/org-scope.ts` (`orgWhere`, `orgRow(s)`, `orgFree`, `orgQuery`), `openModules(db, org)`, `openFacade({ orgId })`; `connectStores` / `sourcesFor` / `connectOrg` (`--org` → `ERP_ORG` → `ERP_DEFAULT_ORG`); storage `<dataDir>/orgs/<id>/`; O7 (optimistic PATCHes) dropped by answer 10 · in force
+- D-170 API: the minimal login (`src/auth`: scrypt, JWT HS256 in the cookie `erp_session`, 12 h, the user row re-read per request; `AUTH_MODE` on by default, off = `ERP_DEFAULT_ORG`; `X-System-Key`), the chain `requestId → express.json → authenticateOrSystemKey → system router → resolveOrg → operatorTrace → labelGuard → v1`, the organization only from the session (`X-Org` for the system administrator), `/auth/*`, `/orgs*`, `access` on all 84 operations, codes `unauthenticated` / `invalid_credentials` / `forbidden` / `org_required` / `org_not_found` / `org_name_taken` / `login_taken`, malformed JSON = 400, the constant 500 with `requestId` · in force
+- D-170 Scripts: every script opens its organization (`connectOrg`: `--org`, `ERP_ORG`, `ERP_DEFAULT_ORG`); `scripts/create-user.ts` (`--org`, `--system`, `--reset-password`, `--disable`, `--enable`; the password from `ERP_NEW_PASSWORD` or stdin); the Python extractors of stage 4 only with one organization (В11) · in force
+- D-170 Tests: `createPrivateStores` writes `schema_migrations` and owns a test organization (`stores.orgId`; `orgs`/`auth` survive `resetModules`); `org-scope.test.ts` (static, two organizations, the API walk), `auth.test.ts`, `http-errors.test.ts`, `postgres.test.ts` (0016), the contract test in `off` and `on` · in force
 
-- D-140 Operator trace: `X-Operator` required on writes, the `audit` module and `GET /audit`; private stores shared by tests and e2e; `CLICKHOUSE_DATABASE` honoured by `connectSources` (corrects D-121) · in force, *refined by* D-150 (a failed record after a committed write answers 2xx with `X-Audit: failed`); допущение: one operator role
+- D-140 Operator trace: `X-Operator` required on writes, the `audit` module and `GET /audit`; private stores shared by tests and e2e; `CLICKHOUSE_DATABASE` honoured by `connectSources` (corrects D-121) · in force, *refined by* D-150 (a failed record after a committed write answers 2xx with `X-Audit: failed`) and D-170 (with `AUTH_MODE=on` the operator is the session's login; the header stays required); допущение: one operator role
 - D-169 The audit row carries the label of the write (R11: `?label=` → body `labelId` → the one label of `items[]` → the response `labelId` for an explicit route list → empty; never a rule's sublabel); `GET /audit?label=` strictly; the history is not back-filled · in force
+- D-170 The audit of an organization holds only its rows; the operator = the session's login in `on`; a system administrator's write (`POST /orgs`, `POST /orgs/:id/users`) is recorded in the target organization's audit (`systemTrace`); login and logout leave no row · in force
 
 ## Money and consistency
 - D-002 Exact decimals, cents for operations, round only at payout · *refined by* D-010
@@ -76,6 +81,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-080 Zero catalogue as a second catalogue source · in force
 - D-095 Merged artists in splits and buyouts · in force
 - D-169 A document may carry a label (R10: `documents.label_id`, empty = any label; `POST /documents { labelId }`, `PATCH /documents/:id`, `GET /documents?label=`); the gate under L needs an approved contract of L or without a label (`no_contract_for_label`); the 1,400 history documents stay unmarked (Н1) · in force
+- D-170 The owners module opened under an organization (`openOwnersModule(db, org)`); `tracks_org_isrc_upc (org_id, isrc, upc)`: one ISRC, one owner name, one alias in two organizations without a conflict; a foreign id = not found · in force
 
 ## Splits
 - D-025 Report date, exclusive end · in force
@@ -85,16 +91,19 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-029 ISRC without split → our share · in force
 - D-030 Base split templates not implemented · in force
 - D-126 Participations, per-row documents, month-start rule dates · *refined by* D-130 (end dates floored too, `empty_period`; overlap key with the source artist)
+- D-170 Splits and participations opened under an organization; `splits_no_overlap` / `participations_no_overlap` with `org_id WITH =` first (one ISRC in two organizations) · in force
 
 ## Labels
 - D-125 Labels module (own labels, aliases, sublabel rules); tracks.note; document kind assumption · in force
 - D-169 The book of a unit is the label of its file's account (R6: `source_files.label_id`, `UnitResult.bookLabelId`; the label string still decides the sublabel rule and «ours / `label_unmapped`»); a label book = its loaded files (`LabelBook { fileIds }`, `SnapshotFilter.labelIds`); B17 in the book of its statement (R8, `underLabel`); `POST /labels/:id/accounts/:account/remove` (409 `account_has_files`); `scripts/assign-label-books.ts` (`files`, `statements`, `ads`, `operations-echo8`), `check-label-books`, `compare-reference.ts` · in force (owner answers 2026-11-05)
+- D-170 Labels per organization: `labels_org_name (org_id, name)` (`409 label_name_taken`), aliases `(org_id, alias_norm)`, accounts `(org_id, account)` (one Believe account in two organizations, answer 4); a foreign label is `404 not_found` (`api/label-guard.ts`, before the route; `label_not_own` stays the facade's) · in force
 
 ## Sources (Believe)
 - D-031 File name, account, month, generation date · in force
 - D-032 Line key, summing, control check · in force; ⚠ which fields to store
 - D-033 Duplicates and the original file · in force
-- D-034 Upload robustness (serialized per module) · in force (plus one advisory lock over all writes, D-121)
+- D-034 Upload robustness (serialized per module) · in force (plus one advisory lock over all writes, D-121); *refined by* D-170 (serialized per module **and** organization; between processes the per-organization index `source_files_scope` decides)
+- D-170 The file registry per organization (`createSourceFilesRegistry(pool, org)`; `source_files_scope` / `source_files_sha` keep their names with `org_id` first, so `409 duplicate_period` / `duplicate_file` are per organization); files in `<dataDir>/orgs/<id>/files/sources`, upload `tmp` per organization; ClickHouse untouched (reads start from the organization's `loaded` files) · in force
 - ⚠ D-035 Lines without ISRC and negative lines (M10)
 - D-036 Unit of calculation · in force
 - D-037 Performance target · historical (measurements: D-111)
@@ -128,6 +137,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-086 Full history in data/real, writer legal names as aliases · in force (8 rights-holders: operator maps them)
 - D-087 Line belongs to our writers in `songwriters`, equal parts · in force; ⚠ equal parts until contract shares
 - D-090 Handover contains name links (owner's instruction) · in force
+- D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 
 ## Settlements and payouts
 - D-047 Operations: direction, sign, meaning · in force
@@ -158,6 +168,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-166 The pseudonyms of the catalog: `artists: [{ id, pseudonym }]` (split rows, participations, registry links of the ISRC; merged ids resolved) on `/tracks/catalog`, `/tracks/summary`, `/tracks/:isrc/money`, `/releases` and `/releases/:upc` (the union over the tracks); `ArtistLinks` renders them as links to P12 everywhere, the report string as text «нет в реестре» when the registry names none · in force
 - D-167 P11 «Псевдонимы» as a table: `GET /artists` rows without money (owner, merged ids, tracks, open split rows and participations, contracts, rows without a document); `GET /artists/balances?ids=` (≤200) from one calculation of the union reach (`artistsReach`), the `artistBalance` row of each with `remaining` = earned − recouped − ads − paid; P11 asks the money of the visible rows (two phases as P9), «Посчитать все» one full call · in force
 - D-168 The label as a book: operations and advertising carry `label_id` (migration 0014, `label_required` for new ones, `PATCH /settlements/operations/:id`, `scripts/assign-operation-labels.ts`: the one-label rule, the undecidable history to 0to8 by the owner's decision); `ownerBalance().byLabel` = the book of every label (earned, waiting, recouped by the income consumed, adsCharged, paid, returns, credits, payable), Σ books incl. «without a label» = total field by field; a view under a label (`?label=`) on owners, artists, tracks, releases, queue, signals, ads, operations through `SnapshotFilter.labelStrings` and `facade/label-scope.ts`; `createPayout(owner, { labelId })` pays the book; `labels.label_accounts` and the signals `labelOutsideAccount`, `operationsWithoutLabel`; the overview and reconciliation stay «Все» with `byLabel`; the label switch in the header (URL `?label=` wins) · in force (owner decisions 2026-11-05); the book by the label string, `labelStrings`, «B17 only in Все» and the ads label by the ISRC's string *refined by* D-169 (the book = the label of the file's account, `labelIds`, the payer)
+- D-170 Settlements and ads per organization (`operations`, `payout_snapshots`, `ads.expenses (org_id, external_ref)`); the calculation, the balance and the payout unchanged (the facade is opened per organization); O7 (expected values on the money PATCHes) dropped by the owner's answer 10 · in force
 
 ## Facade
 - D-057 Completeness check A/B/C and alarms · *refined by* D-127 (per account, ours from the layer state, discrepancy = A − B − C − ours)
@@ -172,6 +183,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-142 Money aggregates for the screens: `payoutGate` (one path with `createPayout`), `balance.payout`, `GET /owners/payables`, `/tracks/summary`, `/tracks/:isrc/money`, `/tracks/:isrc/breakdown/:month`, `/releases`, `/releases/:upc`, `/documents/:id/uses`, `payoutSnapshotSchema`; `setImmediate` yield every 50,000 units kept; G48, G49 · in force
 - D-143 Search, duplicate pseudonyms, list filters and paging: `GET /search` (facade, `pg_trgm`, 10 per kind), `GET /artists/duplicates` (+ candidate ISRCs without a split), filters on `GET /documents` and `GET /settlements/operations` (with `ownerName`, `pseudonym`), `limit` / `offset` on `/participations`, `offset` and `status=unconfirmed` on `/splits`; the open-question list is static data in `@erp/shared` (A3), arrays without paging for documents and operations (A6). Accepted.
 - D-136 Signals `sublabelWithoutRule`, `ruleRecipientIsRow`, `twoRowsOneOwner` (no amount changes); catalogue M53–M58 and the out-of-scope list completed · in force
+- D-170 The facade is opened per organization (`openFacade({ orgId })`, `openModules(db, org)`, `sources.orgId` asserted); `src/orgs/facades.ts` keeps one facade and router per organization (single-flight, the row checked first, `org_not_found`); `calculation.ts` and `layers/*` unchanged · in force
 
 ## Data import, demo, reference checks
 - D-008 Reconstructed files for the demo · *refined by* D-079 (real reports exist), D-112 (no demo mode)

@@ -51,6 +51,12 @@ Written 2026-11-01 (D-120), extended 2026-11-03 (D-123…D-135) after reading al
 | D-168 advertising | a record with an ISRC takes the label of the ISRC's string at the month (44,605.93 under Echo8, 6,972.44 under `'?'`) | The label of a record is its payer and the book it charges (R9); the string decides only the sublabel rule; the history → 0to8, 117 records (30,012.71) whose income book is Echo8 are the signal `adOutsideBook` (D-169) |
 | D-168 accounts, `labels/CLAUDE.md` before D-169 | «an account is never a label boundary for money»; a loaded file is never refused | The account decides the book; an upload under a label whose account is not registered under it is refused (`account_unregistered`, `account_of_other_label`, D-169 R7) |
 | D-134 Known limits | the first load of the two-quarter B17 file stopped with an unexplained `validation_error` | Explained: the archive stores `sharedStrings.xml` after the sheets; `b17-format.ts` falls back to reading it in memory (D-169, commit 0) |
+| `README.md` (out of scope: authentication), `HANDOVER.md`, D-013, `CLAUDE.md` before D-170 | no authentication; the operator is a free text header | A minimal login since D-170: `POST /auth/login`, a JWT in the cookie `erp_session`, `AUTH_MODE` on by default (`off` only for tests, scripts, the local stand); with `on` the audit operator is the session's login. Roles and memberships: stage 3 |
+| «One store per `.env`» (gap below), D-121 | one store per `.env` = one data set; a tenant would be a separate database | Still one store per `.env`, but a tenant is an **organization inside it** (`org_id` on every row, D-170); the consilium's database pair per tenant was not chosen |
+| D-121 wording | «one PostgreSQL database, one schema per module», modules opened on `db` | Same database and schemas, plus `org_id NOT NULL` on every table and every module opened under an organization (`openModules(db, org)`, D-170) |
+| D-034 wording | uploads serialized per module | Serialized per module **and** organization (the services of the organization's facade); between processes the per-organization index `source_files_scope` decides (D-170) |
+| D-169, the brief | «D-170» = ведомость, «D-171» = onboarding, «D-172» = users | Working names of stages; D-170 in the log is the organization boundary, the later stages take the next free numbers |
+| recipe 11 before D-170, `load-believe.ts --storage` | copies in `data/real/files/sources`; scripts without an organization | `load-believe.ts --data <dir>`, copies in `<dir>/orgs/<id>/files/sources`; every script needs `--org` / `ERP_ORG` / `ERP_DEFAULT_ORG` (D-170) |
 
 The architecture documents and `context_data/` are not edited (README §6); this table is the correction layer.
 
@@ -58,7 +64,8 @@ The architecture documents and `context_data/` are not edited (README §6); this
 
 - **One store per `.env`.** Since D-121 every module lives in the PostgreSQL database of `.env` (and Believe lines
   in its ClickHouse), whatever directory `main.ts <dir>` gets; the directory only holds original files. Switch data
-  sets with `DB_DATABASE` / `CLICKHOUSE_DATABASE` (or a separate compose project).
+  sets with `DB_DATABASE` / `CLICKHOUSE_DATABASE` (or a separate compose project). Since D-170 tenants share the store
+  as organizations (`ERP_DEFAULT_ORG`, `--org`), not as stores.
 - **The data archive (D-093) predates the move (D-110).** If it contains only `data/real/*.sqlite`, the Believe
   history must be reloaded through the API (`POST /api/v1/sources/believe`, ~11 min for 47 files, D-111) into
   the local stack before the real numbers appear.

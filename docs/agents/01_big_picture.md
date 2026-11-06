@@ -82,8 +82,13 @@ Three consequences that surprise newcomers:
 Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never imports another module, the facade
 or the API; the API never opens a module; only `src/facade/` calls several modules.
 
-Request path: React page → `packages/frontend/src/api/client.ts` → Express router `src/api/routes/<topic>.ts`
-(zod schemas from `@erp/shared`) → `facade.<method>` → module services → repositories (all SQL).
+Request path: React page → `packages/frontend/src/api/client.ts` → (D-170) the session cookie → `resolveOrg` picks the
+facade of the session's organization → Express router `src/api/routes/<topic>.ts` (zod schemas from `@erp/shared`) →
+`facade.<method>` → module services → repositories (all SQL, every statement filtered by the organization).
+
+Every module in the table above is opened under one organization (`openModules(db, org)`, D-170): its tables carry
+`org_id NOT NULL` and its repository filters through `src/shared/org-scope.ts`; `src/orgs` (organizations, the facade
+per organization) and `src/auth` (users, the login) sit above the facade and are not modules.
 
 ## 4. Money and dates in one table
 
@@ -137,7 +142,14 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   `scripts/assign-label-books.ts` (files by account, the six statements and the advertising history → 0to8, the seven
   Echo8 operations → 0to8); `scripts/compare-reference.ts` and recipe 11 prove that only the books moved. Next stages
   (organisation as tenant, operations for the payroll D-170, onboarding D-171, users and roles D-172) are in the brief.
-- **Out of scope until asked:** ASCAP, authentication and roles, a real payment-service integration (stubbed in
+- **Stage 2 «Граница арендатора» (D-170, 2026-11-06):** the organization is the isolation boundary (variant A, the
+  owner's decision of 2026-11-05): one database, `org_id NOT NULL` on every module table (migration 0016; the live `erp`
+  is organization №1 with a fixed id), every module opened under an organization through one helper, one facade per
+  organization; a minimal login (`/auth/login`, a JWT in the cookie `erp_session`, `AUTH_MODE` on by default), the
+  organization only from the session (`X-Org` for the system administrator), `/orgs*` for the system administrator,
+  `scripts/create-user.ts`, the constant 500 with a `requestId`. Labels (0to8, Echo8) stay books inside the
+  organization. Roles, memberships and abilities are stage 3. Clean stack: recipe 12.
+- **Out of scope until asked:** ASCAP, roles and memberships (the minimal login exists, D-170), a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,
   D-041, D-043, D-045, D-049 ("largest"), D-068, D-083 (writer merge), D-087 (equal parts), D-096. D-067 (sub-label)

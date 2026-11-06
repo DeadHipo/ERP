@@ -18,3 +18,4 @@ computes the author share: that moved to the facade layers.
   statement for a loaded quarter (D-041 ⚠) is unchanged. `assignStatementLabel(id, labelId, { refresh })` marks only a
   statement without a label (`already_done` otherwise) and refreshes the view; `refreshLinesByKey()` on its own. The books,
   the reads under a label (`underLabel`) and the payout are the facade's (`facade/CLAUDE.md`).
+- Organization (D-170): the module is opened under one (`openPublishingModule(db, org, dir)`, every statement through `shared/org-scope.ts`), files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load of the same statement deletes its stored copy only when `repo.statementBySha(sha256)?.storedPath !== storedPath` (it never removes the winner's original; `tests/concurrency.test.ts`).

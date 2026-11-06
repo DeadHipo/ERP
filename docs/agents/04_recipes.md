@@ -210,8 +210,15 @@ Done on 2026-11-05/06 before the «label from zero» work (`docs/идеи/лей
 API JSON in `data/backup/2026-11-05-before-org/reference/` (git-ignored). The whole state is rebuilt from files on
 disk, in this order (every step idempotent; the stack from `docker compose … up -d`, then `npm run migrate:pg`):
 
+**Since D-170 every step runs inside one organization.** On a clean stack create it first (recipe 12, steps 1–6);
+on the live `erp` it is №1 (`00000000-0000-4000-8000-000000000001`, created by migration 0016). Put
+`ERP_DEFAULT_ORG=<id>` in `.env` (every script resolves `--org <id>` → `ERP_ORG` → `ERP_DEFAULT_ORG`, else exits 1
+listing the organizations), or pass `--org <id>` to each script below. The dev stand for the API steps (5, 6, 8) runs
+with `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` (no login, the operator from `X-Operator`); with `AUTH_MODE=on` log in first
+or send `X-System-Key` + `X-Org`. Stored copies land in `<dataDir>/orgs/<id>/files/{sources,publishing}`.
+
 1. Believe: the 47 report files (34 of account 1052428 from `context_data/ERP_data/believe/raw`, 13 of 1055956 from
-   `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --storage data/real/files/sources <files>`
+   `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --data data/real [--org <id>] <files>` (since D-170 `--data`; the copies go to `data/real/orgs/<id>/files/sources`)
    (the July 2026 Echo8 file is stored there under a name with a trailing ` 2`: copy it under its proper name first,
    the loader takes the account and month from the name). Expect 75 744 752 rows, Σ net 16 338 476,404666051188.
    Since D-169 the labels and the two accounts exist on a clean stack only after `load.ts labels` (step 3) and step 5,
@@ -237,14 +244,43 @@ disk, in this order (every step idempotent; the stack from `docker compose … u
    (2 653 → 0to8; the dry run lists the 117 disputable records, Σ 30 012,71), `operations-echo8` (exactly 7 → 0to8). A
    second dry run prints only `already_done`. `scripts/check-label-books.ts data/real`: (а) and (б) 0, (д) 0 expected once `statements` is applied.
 8. `npx tsx packages/backend/scripts/compare-reference.ts data/backup/2026-11-05-before-org/reference --api
-   http://localhost:3001 --strict` against `PORT=3001 npx tsx packages/backend/src/main.ts data/real`: every section
+   http://localhost:3001 --strict` against `AUTH_MODE=off ERP_DEFAULT_ORG=<id> PORT=3001 npx tsx packages/backend/src/main.ts data/real`: every section
    must print `0 differing` (`--strict` compares the books too; without it the books may move as a stage decides,
    and the script prints the movement per label). `--strict` held at the D-169 commit 0 (the reference predates
    D-169); since D-169 (the 33 ISRC-less ads already carry the payer 0to8, then step 7) run without `--strict`: the invariants (totals, the 54 reconciliation rows, owners'
    `total.*`, tracks, queue, labels, signal counters) print `0 differing`, Σ Δ recouped = Σ Δ payable = 0, and the books
    move as D-169 records (the «Echo8» string of 1052428, 222 129,81, from Echo8 to 0to8; ads and B17 from `'?'` to 0to8).
-   Then `scripts/check-owner-scope.ts data/real` (0 differing).
+   Then `scripts/check-owner-scope.ts data/real --org <id>` (0 differing).
 
 Counts after the rebuild (= the snapshot README): owners 1 151, artists 2 134, tracks 26 305, documents 1 400,
 contracts 803, splits 24 107 / shares 42 070, participations 283, operations 2 663, statements 6 (lines 1 162 586),
 labels 17, ads 2 686.
+
+## 12. A clean stack with an organization and a login
+
+D-170. The stack starts without organizations and users; the first of each is made by the system administrator.
+
+1. `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`, then `npm run migrate:pg` (and
+   `npm run migrate:ch`). Migration 0016 creates `orgs` and `auth` but no organization on an empty base.
+2. `.env` (see `.env.example`): `AUTH_MODE=on`, `AUTH_SECRET=$(openssl rand -hex 32)` (≥ 32 bytes, never
+   `change_me…`), `SYSTEM_ADMIN_KEY=$(openssl rand -hex 24)`; `AUTH_COOKIE_SECURE=1` only behind https.
+3. The system administrator: `ERP_NEW_PASSWORD=… npx tsx packages/backend/scripts/create-user.ts admin --system`
+   (or the password on stdin; never in argv; prints the id).
+4. Start the server: `npm run dev` (or `PORT=3001 npx tsx packages/backend/src/main.ts data/real`).
+5. The organization: `curl -X POST localhost:3000/api/v1/orgs -H 'Content-Type: application/json'
+   -H "X-System-Key: $SYSTEM_ADMIN_KEY" -H 'X-Operator: admin' -d '{"name":"0to8"}'` → `201 { id, … }` (the id comes
+   from the server). The system administrator's session in the browser (P24) does the same.
+6. `ERP_DEFAULT_ORG=<id>` in `.env` for the scripts (or `--org <id>` / `ERP_ORG` per run).
+7. Recipe 11, steps 1–8, with `--org <id>` (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
+   or with `X-System-Key` + `X-Org: <id>`).
+8. The users of the organization: `create-user.ts <login> --org <id>` (or `POST /api/v1/orgs/:id/users` by the system
+   administrator); later `--reset-password`, `--disable`, `--enable`.
+9. Restart with `AUTH_MODE=on` and log in (`/login` in the client, or `POST /api/v1/auth/login { login, password }` →
+   cookie `erp_session`). The organization comes from the session; a system administrator chooses one (`X-Org`).
+
+**The live `erp`** (data before D-170): `npm run migrate:pg` creates organization №1
+`00000000-0000-4000-8000-000000000001` (`Организация №1`) and stamps every row; set `ERP_DEFAULT_ORG` to it; run the
+server and the scripts as before (`AUTH_MODE=off` on the dev stand, or create users with `--org <№1>` and log in);
+`compare-reference` and `check-owner-scope --org <№1>` give 0 differing (recipe 11, step 8). Old `stored_path` values are
+absolute: the files are not moved. The Python extractors of recipe 9 read without an organization: valid only while
+the database holds one organization.
