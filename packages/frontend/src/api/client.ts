@@ -105,6 +105,35 @@ export async function call<Schema extends z.ZodType>(
   return parsed.data;
 }
 
+/**
+ * A file download (D-173: the payroll csv): the same session, `X-Org` and error mapping as `call()`, the body kept as a
+ * Blob, the file name from `Content-Disposition` (its `filename*` first) or `fallback`.
+ */
+export async function download(url: string, query: QueryParams, fallback: string): Promise<{ blob: Blob; fileName: string }> {
+  const headers: Record<string, string> = {};
+  const org = orgHeader();
+  if (org) headers['X-Org'] = org;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${url}${queryString(query)}`, { method: 'GET', headers, credentials: 'same-origin' });
+  } catch (e) {
+    throw new ApiError(e instanceof Error ? e.message : String(e), 0, 'network_error');
+  }
+  if (!res.ok) {
+    const parsed = R.errorBody.safeParse(await res.json().catch(() => undefined));
+    if (parsed.success) {
+      const { code, message, details, requestId } = parsed.data.error;
+      if (res.status === 401 && code === 'unauthenticated') toLogin();
+      throw new ApiError(message, res.status, code, details, requestId ?? res.headers.get('X-Request-Id') ?? undefined);
+    }
+    throw new ApiError(res.statusText || 'Request failed', res.status, 'http_error');
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const plain = /filename="([^"]+)"/i.exec(disposition)?.[1];
+  return { blob: await res.blob(), fileName: star ? decodeURIComponent(star) : (plain ?? fallback) };
+}
+
 const id = encodeURIComponent;
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
@@ -176,8 +205,11 @@ export const owners = {
     call('POST', '/owners/merge', { body, schema: R.ownerSchema }),
   get: (ownerId: string) => call('GET', `/owners/${id(ownerId)}`, { schema: R.ownerDetailSchema }),
   /** Under a label (`label`, D-168): the book of that label alone. */
-  balance: (ownerId: string, query: z.input<typeof S.labelPeriodQuery> = {}) =>
+  balance: (ownerId: string, query: z.input<typeof S.balanceQuery> = {}) =>
     call('GET', `/owners/${id(ownerId)}/balance`, { query, schema: R.balanceSchema }),
+  /** One sheet of the payroll of a label as csv (D-173 §1.4): the file is saved by the page. */
+  payrollCsv: (query: Omit<z.input<typeof S.payrollQuery>, 'format'>) =>
+    download('/owners/payroll', { ...query, format: 'csv' }, 'payroll.csv'),
   payout: (ownerId: string, body: z.input<typeof S.createPayoutBody> = {}) =>
     call('POST', `/owners/${id(ownerId)}/payouts`, { body, schema: R.operationSchema }),
 };
@@ -312,6 +344,13 @@ export const publishing = {
   mapWriter: (norm: string, body: z.input<typeof S.mapWriterBody>) =>
     call('POST', `/publishing/writers/${id(norm)}/map`, { body, schema: R.ownerSchema }),
   resolveWriters: () => call('POST', '/publishing/writers/resolve', { schema: R.resolveWritersSchema }),
+  /** A corrected file of the same quarters for a loaded statement, under the same own label (D-173). */
+  replaceStatement: (statementId: string, file: File, labelId: string) =>
+    call('POST', `/publishing/statements/${id(statementId)}/replace`, {
+      query: uploadQuery(labelId),
+      body: fileForm(file),
+      schema: R.b17ReplaceSchema,
+    }),
   setTerms: (body: z.input<typeof S.publishingTermsBody>) =>
     call('POST', '/publishing/terms', { body, schema: R.publishingTermsSchema }),
 };
@@ -349,6 +388,16 @@ export const settlements = {
     call('POST', `/settlements/operations/${id(operationId)}/deactivate`, { body, schema: R.operationSchema }),
   returnPayout: (operationId: string, body: z.input<typeof S.returnBody>) =>
     call('POST', `/settlements/operations/${id(operationId)}/return`, { body, schema: R.operationSchema }),
+  /** The forgiveness of an advance from a date (D-173): at most its unrecouped part. */
+  forgive: (operationId: string, body: z.input<typeof S.forgiveBody>) =>
+    call('POST', `/settlements/operations/${id(operationId)}/forgive`, { body, schema: R.operationSchema }),
+  /** The operation import (D-173, P29): `dryRun` true = the preview (nothing written), false = the apply (all or nothing). */
+  importFile: (file: File, labelId: string, dryRun: boolean, documentId?: string) =>
+    call('POST', '/settlements/operations/import', {
+      query: { label: labelId, dryRun: dryRun ? '1' : '0', ...(documentId ? { documentId } : {}) } satisfies z.input<typeof S.operationImportQuery>,
+      body: fileForm(file),
+      schema: R.operationImportSchema,
+    }),
 };
 
 /** `GET /search`. Optional `kinds` restricts the result to one or more kinds (EntityPicker). */

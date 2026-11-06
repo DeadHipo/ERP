@@ -44,6 +44,7 @@ test('S22/1 before: earned 15, recouped 10, remaining 0, payable 5; Pay → the 
   await page.getByTestId('action-pay').click();
   const dialog = page.getByTestId('confirm-dialog');
   await expect(dialog).toContainText('Лейбл: 0to8');
+  await expect(dialog).toContainText('Область: мастер; к выплате в области 5,00'); // D-173: master by default
   await expect(dialog).toContainText('К выплате: 5,00 (будет отправлено 500 центов)');
   await expect(dialog).toContainText('Заработано 15,00 − удержано 10,00 − выплачено 0,00');
   await expect(dialog).toContainText('P-221: заработано 15,00, удержано 10,00');
@@ -84,7 +85,7 @@ test('S22/1 the operation: payout 5.00, deferred, no proof; the Операции
   const k = sc(22, 1);
   await openOwner(page, k.owners.P ?? '', 'operations');
   await expect(page.getByTestId('operations-blocked')).toBeVisible();
-  await expect(opCol(page, payoutId, 'meaning')).toContainText('выплата');
+  await expect(opCol(page, payoutId, 'kind')).toContainText('выплата');
   await expect(opCol(page, payoutId, 'amount').getByTestId('money')).toHaveAttribute('title', '5.00');
   await expect(opCol(page, payoutId, 'deferred')).toHaveAttribute('data-value', 'true');
   await expect(opCol(page, payoutId, 'proof')).toHaveAttribute('data-value', 'no');
@@ -195,9 +196,10 @@ test('S43 a 0to8 contract does not open Echo8 («нет договора с эт
   expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
 });
 
-// D-169 (R8): the B17 statement of the seed is loaded under 0to8, so the publishing of an owner is the book 0to8 and the
-// payout under 0to8 pays it with the master. S31/1 (master 50 + publishing 30) is only read here: 27-operations acts on it.
-test('S31/1 under 0to8 the Pay dialog states master + publishing (80,00), one book and no «?»; cancelled', async ({ page }) => {
+// D-169 (R8): the B17 statement of the seed is loaded under 0to8, so the publishing of an owner is the book 0to8. D-173
+// (FIX-8): the payout pays one area, master by default; «мастер и паблишинг» pays the whole book. S31/1 (master 50 +
+// publishing 30) is only read here: 27-operations acts on it.
+test('S31/1 under 0to8 the Pay dialog: master 50,00 by default, the whole book 80,00 with «мастер и паблишинг»; cancelled', async ({ page }) => {
   const ownerId = sc(31, 1).owners.A ?? '';
   await openAs(page, `/owners/${ownerId}?tab=balance&label=`);
   await settled(page);
@@ -212,13 +214,16 @@ test('S31/1 under 0to8 the Pay dialog states master + publishing (80,00), one bo
   await page.getByTestId('action-pay').click();
   const dialog = page.getByTestId('confirm-dialog');
   await expect(dialog).toContainText('Лейбл: 0to8');
+  await expect(dialog).toContainText('К выплате: 50,00 (будет отправлено 5000 центов)');
+  await expect(page.getByTestId('balance-area-master').locator('[data-col="payable"]').getByTestId('money')).toHaveAttribute('title', '50');
+  await choose(page, 'pay-area', 'мастер и паблишинг');
   await expect(dialog).toContainText('К выплате: 80,00 (будет отправлено 8000 центов)');
   await expect(dialog).toContainText('Заработано 80,00 − удержано 0,00 − выплачено 0,00');
   await page.getByTestId('confirm-dialog-cancel').click();
   await expect(dialog).toHaveCount(0);
 });
 
-test('S18 W1 (publishing only) under 0to8: the payout pays the publishing book, 100.00; Echo8 has nothing to pay', async ({ page, request }) => {
+test('S18 W1 (publishing only) under 0to8: master has nothing to pay; the area «паблишинг» pays 100.00; Echo8 has nothing to pay', async ({ page, request }) => {
   const ownerId = sc(18).owners.W1 ?? '';
   const echo = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
   expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
@@ -227,7 +232,12 @@ test('S18 W1 (publishing only) under 0to8: the payout pays the publishing book, 
   await expect(gate(page, 'allowed')).toBeVisible();
   await page.getByTestId('action-pay').click();
   const dialog = page.getByTestId('confirm-dialog');
+  // D-173: the master area (the default) of a publishing-only owner has nothing: the OK is closed with the gate's reason
+  await expect(dialog.getByTestId('confirm-dialog-blocked')).toContainText('нечего выплачивать');
+  await expect(dialog.getByTestId('confirm-dialog-ok')).toBeDisabled();
+  await choose(page, 'pay-area', 'паблишинг');
   await expect(dialog).toContainText('К выплате: 100,00 (будет отправлено 10000 центов)');
+  await expect(dialog.getByTestId('confirm-dialog-blocked')).toHaveCount(0);
   const paid = page.waitForResponse((r) => r.url().endsWith(`/owners/${ownerId}/payouts`) && r.request().method() === 'POST');
   await dialog.getByTestId('confirm-dialog-ok').click();
   const body = (await (await paid).json()) as { id: string; amountCents: number; labelId: string };

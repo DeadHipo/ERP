@@ -129,6 +129,7 @@ test('S38 P21 «Операции без лейбла»: the old advance, set to 
   await expect(row.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '40.00');
   await row.getByTestId('action-set-label').click();
   await choose(page, 'op-label', '0to8');
+  await page.getByTestId('field-op-label-reason').fill('e2e: the history of the owner is 0to8'); // required (D-173)
   await page.getByTestId('action-set-label-submit').click();
   await toastOk(page, 'Лейбл операции задан: 0to8');
   await settled(page);

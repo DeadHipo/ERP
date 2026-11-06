@@ -24,13 +24,13 @@ const row = (page: Page, opId: string) => page.getByTestId(`operation-${opId}`);
 const position = (page: Page, opId: string, col: string) =>
   page.getByTestId(`position-${opId}`).locator(`[data-col="${col}"]`).getByTestId('money');
 
-type OpInput = { direction?: 'in'; amount: string; date: string; scope?: string; isrcs?: string; file: string };
+type OpInput = { kind?: 'удержание' | 'зачисление'; amount: string; date: string; scope?: string; isrcs?: string; file: string };
 
-/** «Аванс / вычет / кредит» on the open Операции tab: the fields, the basis document (create + approve), the confirmation. */
+/** «Операция» on the open Операции tab: the kind (D-173; an advance by default), the fields, the basis document (create + approve), the confirmation. */
 async function createOperation(page: Page, input: OpInput, expectLines: string[]): Promise<string> {
   await page.getByTestId('action-create-operation').click();
   const dialog = page.getByTestId('form-dialog');
-  if (input.direction === 'in') await choose(page, 'op-direction', 'к нам (удержание, зачисление)');
+  if (input.kind) await choose(page, 'op-kind', input.kind);
   await dialog.getByTestId('field-op-amount').fill(input.amount);
   await dialog.getByTestId('field-op-date').fill(input.date);
   if (input.scope) await choose(page, 'op-scope', input.scope);
@@ -84,10 +84,10 @@ test('S31/1 (i) advance 40, scope publishing: unproved → payable 80, pending a
   const adv = await createOperation(
     page,
     { amount: '40', date: '2026-01-01', scope: 'паблишинг', file: 'dummy://e2e-advance-311.pdf' },
-    ['Направление: от нас (аванс)', 'Сумма: 40,00', 'Псевдоним: A-311', 'Область: паблишинг', 'Основание:'],
+    ['Вид: аванс', 'Сумма: 40,00', 'Псевдоним: A-311', 'Область: паблишинг', 'Основание:'],
   );
   advance1 = adv;
-  await expect(row(page, adv).locator('[data-col="meaning"]')).toContainText('аванс');
+  await expect(row(page, adv).locator('[data-col="kind"]')).toContainText('аванс');
   await expect(row(page, adv).locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '40.00');
   await expect(page.getByTestId('operations-blocked')).toBeVisible();
   await tab(page, 'balance');
@@ -157,21 +157,21 @@ test('S31/4 deduction 10 → recouped 10, payable 40; credit −5 → credits 5,
   });
   deduction = await createOperation(
     page,
-    { direction: 'in', amount: '10', date: '2026-03-01', file: 'dummy://e2e-adjustment-314a.pdf' },
-    ['Направление: к нам', 'Сумма: 10,00', 'Область: без области'],
+    { kind: 'удержание', amount: '10', date: '2026-03-01', file: 'dummy://e2e-adjustment-314a.pdf' },
+    ['Вид: удержание', 'Сумма: 10,00', 'Область: без области'],
   );
   deductionBody = lastBody;
-  await expect(row(page, deduction).locator('[data-col="meaning"]')).toContainText('удержание');
+  await expect(row(page, deduction).locator('[data-col="kind"]')).toContainText('удержание');
   await tab(page, 'balance');
   await expectTotals(page, { recouped: '10', payable: '40' });
   await tab(page, 'operations');
   const credit = await createOperation(
     page,
-    { direction: 'in', amount: '-5', date: '2026-03-01', file: 'dummy://e2e-adjustment-314b.pdf' },
+    { kind: 'зачисление', amount: '5', date: '2026-03-01', file: 'dummy://e2e-adjustment-314b.pdf' },
     ['Сумма: -5,00'],
   );
   creditBody = lastBody;
-  await expect(row(page, credit).locator('[data-col="meaning"]')).toContainText('зачисление');
+  await expect(row(page, credit).locator('[data-col="kind"]')).toContainText('зачисление');
   await tab(page, 'balance');
   await expectTotals(page, { credits: '5', payable: '45' });
 });
@@ -234,7 +234,7 @@ test('S31/4 return the payout («необратимо») → a return of -55.00,
   expect([ret.amountCents, ret.meaning, ret.date]).toEqual([-5500, 'return', date]);
   await toastOk(page, 'Возврат записан: -55,00');
   await expect(row(page, ret.id).locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '-55.00');
-  await expect(row(page, ret.id).locator('[data-col="meaning"]')).toContainText('возврат');
+  await expect(row(page, ret.id).locator('[data-col="kind"]')).toContainText('возврат');
   await tab(page, 'balance');
   await expectTotals(page, { paid: '55', returns: '55', payable: '55' });
   const again = await apiPost(request, `/settlements/operations/${payout}/return`, {

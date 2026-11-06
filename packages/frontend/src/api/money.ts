@@ -10,7 +10,7 @@ const id = encodeURIComponent;
 
 export const money = {
   /** Every owner with the balance fields and the payout gate, from one calculation (N4). */
-  payables: (query: z.input<typeof S.payablesQuery> = {}) =>
+  payables: (query: z.input<typeof S.payablesAsOfQuery> = {}) =>
     call('GET', '/owners/payables', { query, schema: R.payablesSchema }),
   /** Operations with the owner name and the pseudonym, filtered (N14). */
   operations: (query: z.input<typeof S.operationsQuery> = {}) =>

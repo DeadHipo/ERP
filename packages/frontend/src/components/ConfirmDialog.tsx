@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertDialog, Button } from '@heroui/react';
 import { HiddenRacDialogAnchor } from './HiddenRacDialogAnchor';
 import { useOperator } from '../lib/operator';
@@ -21,6 +22,10 @@ export function ConfirmDialog(props: {
    * and the dialog says «идёт пересчёт» until it arrives (`confirm-dialog-loading`).
    */
   isLoading?: boolean;
+  /** A choice the lines depend on (the area of the payout, D-173), above the lines. */
+  children?: ReactNode;
+  /** The backend refuses what the lines describe (its gate): OK stays disabled and the reason is shown (`confirm-dialog-blocked`). */
+  blockedReason?: string;
 }) {
   const { operator, hasOperator } = useOperator();
   return (
@@ -34,12 +39,18 @@ export function ConfirmDialog(props: {
               <AlertDialog.Heading>{props.title}</AlertDialog.Heading>
             </AlertDialog.Header>
             <AlertDialog.Body>
+              {props.children ? <div className="mb-3 flex flex-col gap-2">{props.children}</div> : null}
               <div className="mb-1 text-sm font-medium">{ru.dialog.whatChanges}</div>
               <ul className="list-disc pl-5 text-sm">
                 {props.lines.map((line, i) => (
                   <li key={i}>{line}</li>
                 ))}
               </ul>
+              {props.blockedReason && !props.isLoading ? (
+                <div className="mt-2 text-sm text-danger" data-testid="confirm-dialog-blocked">
+                  {props.blockedReason}
+                </div>
+              ) : null}
               {props.isLoading ? (
                 <div className="mt-2 text-sm text-accent" data-testid="confirm-dialog-loading">
                   {ru.shell.recalc}
@@ -61,7 +72,7 @@ export function ConfirmDialog(props: {
               </Button>
               <Button
                 data-testid="confirm-dialog-ok"
-                isDisabled={props.isPending === true || props.isLoading === true || !hasOperator}
+                isDisabled={props.isPending === true || props.isLoading === true || props.blockedReason !== undefined || !hasOperator}
                 isPending={props.isPending}
                 onPress={props.onConfirm}
               >

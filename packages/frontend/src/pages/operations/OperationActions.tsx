@@ -17,15 +17,17 @@ import { formatMoney } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { SimpleTable, Td } from '../owners/components/Fact';
+import { SetOperationLabelDialog } from '../work/actions/label-dialogs';
+import { ForgiveDialog } from './ForgiveDialog';
 
 const t = ru.money.actions;
 
 /** The dialog of one row action, opened by the grid (P10 Операции and P20 share it). */
-export type OperationAction = { action: 'proof' | 'deactivate' | 'return' | 'snapshot'; op: Operation };
+export type OperationAction = { action: 'proof' | 'deactivate' | 'return' | 'snapshot' | 'forgive' | 'relabel'; op: Operation };
 
 const amountText = (op: Operation) => formatMoney(centsToText(op.amountCents));
 const opLine = (op: Operation) =>
-  fmt(t.confirmLines.operation, { meaning: statusLabel('operationMeaning', op.meaning), amount: amountText(op), date: op.date });
+  fmt(t.confirmLines.operation, { meaning: statusLabel('operationKind', op.kind), amount: amountText(op), date: op.date });
 
 /**
  * The buttons of an operation row. Which buttons a row shows follows its fields (an inactive operation has none, a
@@ -38,8 +40,11 @@ export function OperationButtons(props: { op: Operation; open: (a: OperationActi
     invalidate: 'all',
     success: (o) => fmt(t.deferredToast, { value: o.deferred ? ru.common.yes : ru.common.no }),
   });
-  const out = op.direction === 'out';
-  const payout = op.meaning === 'payout';
+  // the payment proof and the deferred flag belong to a payout, an advance and a buyout (D-173 FIX-4)
+  const out = op.kind === 'payout' || op.kind === 'advance' || op.kind === 'buyout';
+  const payout = op.kind === 'payout';
+  // a return and a forgiveness inherit the label of the operation they refer to (label source `payout`)
+  const relabel = op.active && op.kind !== 'return' && op.kind !== 'forgiveness';
   return (
     <div className="flex flex-wrap items-center gap-1 py-1">
       {op.active && out && !op.paymentProofId ? (
@@ -55,6 +60,16 @@ export function OperationButtons(props: { op: Operation; open: (a: OperationActi
       {op.active && payout ? (
         <ActionButton name="return" op="POST /settlements/operations/:id/return" variant="secondary" compact onPress={() => props.open({ action: 'return', op })}>
           {t.returnPayout}
+        </ActionButton>
+      ) : null}
+      {op.active && op.kind === 'advance' ? (
+        <ActionButton name={`forgive-${op.id}`} op="POST /settlements/operations/:id/forgive" variant="secondary" compact onPress={() => props.open({ action: 'forgive', op })}>
+          {ru.operations.forgive.action}
+        </ActionButton>
+      ) : null}
+      {relabel ? (
+        <ActionButton name="relabel" op="PATCH /settlements/operations/:id" variant="secondary" compact onPress={() => props.open({ action: 'relabel', op })}>
+          {ru.operations.relabel.action}
         </ActionButton>
       ) : null}
       {op.active ? (
@@ -82,6 +97,10 @@ export function OperationActionHost(props: { active: OperationAction; onClose: (
       return <ReturnDialog op={op} onClose={props.onClose} />;
     case 'snapshot':
       return <SnapshotDialog op={op} onClose={props.onClose} />;
+    case 'forgive':
+      return <ForgiveDialog advance={op} onClose={props.onClose} />;
+    case 'relabel':
+      return <SetOperationLabelDialog operationId={op.id} currentLabel={op.labelName} onClose={props.onClose} />;
   }
 }
 
@@ -138,7 +157,7 @@ function DeactivateDialog(props: { op: Operation; onClose: () => void }) {
       >
         <div className="text-sm">{opLine(props.op)}</div>
         <TextField name="deactivate-reason" label={t.reason} value={reason} onChange={setReason} isRequired />
-        {props.op.meaning === 'payout' ? (
+        {props.op.kind === 'payout' ? (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" data-testid="field-transfer-failed" checked={failed} onChange={(e) => setFailed(e.target.checked)} />
             {t.transferFailed}

@@ -17,6 +17,8 @@ import { ru } from '../../i18n/ru';
 import { usePeriod } from '../work/OverviewPage';
 import { useUrlParam } from '../catalog/components/url';
 import { CreateOwnerDialog } from './components/CreateOwnerDialog';
+import { AsOfField, asOfQuery, useAsOf } from './components/AsOfField';
+import { PayrollExportButton } from './components/PayrollExport';
 import { PeriodBar } from './components/PeriodBar';
 
 const t = ru.money.owners;
@@ -43,10 +45,13 @@ export function OwnersPage() {
   const payouts = params.get('view') === 'payouts';
   const [all, setAll] = useUrlParam('all');
   const [period, setPeriod] = usePeriod();
+  // the cut at the end of a month (D-173): one more input of the same money call
+  const [asOf] = useAsOf();
+  const moneyPeriod = { ...period, ...asOfQuery(asOf) };
   // the label view (D-168): the owners visible under it, each the book of that label
   const { labelId } = useLabel();
   const full = payouts || all === '1';
-  const payables = useQuery({ ...ownerQueries.payables(period, labelId), enabled: full });
+  const payables = useQuery({ ...ownerQueries.payables(moneyPeriod, labelId), enabled: full });
   const list = useQuery({ ...ownerQueries.list(labelId), enabled: !full });
   const [visible, setVisible] = useState<readonly string[]>([]);
   const [asked, setAsked] = useState<readonly string[]>([]);
@@ -61,7 +66,7 @@ export function OwnersPage() {
     return out;
   }, [asked]);
   const pageMoney = useQueries({
-    queries: chunks.map((ids) => ({ ...ownerQueries.payablesOf(ids, period, labelId), enabled: !full })),
+    queries: chunks.map((ids) => ({ ...ownerQueries.payablesOf(ids, moneyPeriod, labelId), enabled: !full })),
     combine: (results) => ({
       items: results.flatMap((r) => r.data?.items ?? []),
       updatedAt: results.map((r) => r.dataUpdatedAt).join(','),
@@ -80,7 +85,7 @@ export function OwnersPage() {
   useEffect(() => {
     moneyRef.current.clear();
     setMoneyVersion((v) => v + 1);
-  }, [period.from, period.to, period.basis, labelId]);
+  }, [period.from, period.to, period.basis, asOf, labelId]);
   const onVisibleRowsChanged = useCallback((rows: OwnerRow[]) => {
     const next = rows.map((r) => r.ownerId).sort();
     setVisible((prev) => (prev.join(',') === next.join(',') ? prev : next));
@@ -145,6 +150,8 @@ export function OwnersPage() {
         toolbar={
           <>
             <PeriodBar period={period} onApply={setPeriod} />
+            <AsOfField />
+            <PayrollExportButton asOf={asOf} />
             <ActionButton name="create-owner" op="POST /owners" onPress={() => setCreating(true)}>
               {t.create}
             </ActionButton>

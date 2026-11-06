@@ -92,5 +92,4 @@ export const splitImport = {
     label_forbidden: 'ISRC другого лейбла',
     forbidden: 'недостаточно прав',
   } satisfies Record<SplitImportIssueCode, string>,
-  severity: { error: 'ошибка', warning: 'предупреждение', info: 'сведения' },
 } as const;

@@ -22,6 +22,7 @@ const WITHOUT_OP = [
   'onboarding-collapse',
   'operations-apply',
   'operations-reset',
+  'operation-import-template',
   'page-next',
   'page-prev',
   'period-apply',

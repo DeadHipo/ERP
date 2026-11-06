@@ -3,7 +3,8 @@ import { possibleDuplicateDetailsSchema } from '@erp/shared/api-responses';
 import { DuplicateCandidates } from '../../../../components/DuplicateDialog';
 import { EntityLink } from '../../../../components/EntityLink';
 import { fmt, ru } from '../../../../i18n/ru';
-import { IssueChips, issueText } from './IssueChips';
+import { IssueChips } from '../../../../components/IssueChips';
+import { issueText } from './issue-text';
 import type { ImportGroup, ImportRow } from './types';
 
 const t = ru.splitImport;
@@ -98,7 +99,7 @@ export function importColumns(): ColDef<PreviewRow>[] {
       wrapText: true,
       sortable: false,
       valueGetter: (p) => (p.data ? p.data.issues.map(issueText).join(', ') : ''),
-      cellRenderer: (p: P) => (p.data ? <IssueChips issues={p.data.issues} /> : null),
+      cellRenderer: (p: P) => (p.data ? <IssueChips issues={p.data.issues} text={issueText} /> : null),
     },
   ];
 }

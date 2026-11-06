@@ -33,6 +33,7 @@ export const nav = {
     sourceLines: 'Строки отчётов',
     artistDuplicates: 'Дубликаты',
     splitImport: 'Импорт сплитов',
+    operationImport: 'Импорт операций',
     states: 'Состояния (стенд)',
   },
   collapse: 'Свернуть меню',

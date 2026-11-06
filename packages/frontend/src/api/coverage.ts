@@ -1,6 +1,6 @@
 /**
  * Where every operation of `packages/backend/src/api/operations.ts` is used on a screen, or why it is not.
- * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P28`
+ * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P29`
  * (see `docs/agents/17_frontend_model.md` section 3) or `shell` (the global search and the pickers on every page), and its `route`
  * is a pattern of `src/routes/paths.ts`. A `refusal` says in words why no screen calls the operation.
  */
@@ -39,10 +39,11 @@ export const OPERATION_COVERAGE = {
   },
   'POST /owners': { page: 'P9', route: '/owners', note: 'action-create-owner with the duplicate dialog' },
   'POST /owners/merge': { page: 'P10', route: '/owners/:id', note: 'action-merge' },
-  'GET /owners/payables': { page: 'P9', route: '/owners', note: 'also the payouts view /owners?view=payouts (P4 of revision 1)' },
+  'GET /owners/payables': { page: 'P9', route: '/owners', note: 'also the payouts view /owners?view=payouts (P4 of revision 1); asOf of field-as-of (D-173); no area (the gate of the book)' },
+  'GET /owners/payroll': { page: 'P9', route: '/owners', note: 'D-173: action-payroll-export (closed under «Все») → field-payroll-area (master by default), field-payroll-sheet, action-payroll-download: format=csv saved as the server names it, with asOf of the page; the json form has no screen (the csv is the export)' },
   'GET /owners/:id': { page: 'P10', route: '/owners/:id' },
-  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs (under a label its book: master of its files and publishing of its statements, D-169); also the merge confirmation (the merged owner, once)' },
-  'POST /owners/:id/payouts': { page: 'P10', route: '/owners/:id', note: 'action-pay on the balance tab: pays the book of the label, master and publishing (D-169)' },
+  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs (under a label its book: master of its files and publishing of its statements, D-169); asOf of field-as-of, the book fields buyouts / forgiven / writtenOff / adjustments and byArea (balance-area-<area>, D-173); also the merge confirmation (the merged owner, once) and the pay dialog (area= of field-pay-area: the gate of that area)' },
+  'POST /owners/:id/payouts': { page: 'P10', route: '/owners/:id', note: 'action-pay on the balance tab: pays the book of the label (D-169), the area of field-pay-area (master by default, D-173 FIX-8); closed under a cut asOf' },
 
   'GET /artists': { page: 'P11', route: '/artists', note: 'also the pseudonyms of the rows of P14 that carry only an artist id (useArtistNames)' },
   'GET /artists/duplicates': { page: 'P11', route: '/artists/duplicates' },
@@ -113,6 +114,7 @@ export const OPERATION_COVERAGE = {
   'GET /sources/lines/facets': { page: 'P19', route: '/sources/lines', note: 'label= of the switch (D-169)' },
   'POST /sources/believe': { page: 'P19', route: '/sources', note: 'field-upload-believe under the label of the switch, closed under «Все» (upload-closed-reason); account_unregistered opens register-account-dialog and repeats (D-169)' },
   'POST /publishing/b17': { page: 'P19', route: '/sources', note: 'field-upload-b17 under the label of the switch, closed under «Все» (D-169)' },
+  'POST /publishing/statements/:id/replace': { page: 'P19', route: '/sources', note: 'D-173: action-replace-statement-<id> on a loaded statement → ReplaceStatementDialog (the shared UploadForm field-replace-statement-file, action-replace-statement-submit) under the label of the switch; the superseded row shows chip-superseded and statement-replaced-by-<id>' },
 
   'GET /publishing/writers': { page: 'P18', route: '/publishing' },
   'POST /publishing/writers/:norm/map': { page: 'P18', route: '/publishing', note: 'action-map-writer; also the queue and the signals' },
@@ -127,8 +129,10 @@ export const OPERATION_COVERAGE = {
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 
   'GET /settlements/operations': { page: 'P20', route: '/operations', note: 'also the operations tab of P10' },
-  'POST /settlements/operations': { page: 'P20', route: '/operations', note: 'action-create-operation' },
-  'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168)' },
+  'POST /settlements/operations': { page: 'P20', route: '/operations', note: 'action-create-operation (the owner\'s Операции tab): field-op-kind, the fields of the kind (D-173)' },
+  'POST /settlements/operations/:id/forgive': { page: 'P20', route: '/operations', note: 'D-173: action-forgive-<id> on an active advance → ForgiveDialog (field-forgive-amount, field-forgive-date, field-forgive-document, action-forgive-submit); shared with P10' },
+  'POST /settlements/operations/import': { page: 'P29', route: '/operations/import', note: 'D-173: dryRun=1 = action-operation-import-preview (field-operation-import-file on the shared UploadForm), dryRun=0 = action-operation-import-apply (closed while errors > 0); entered from P20 action-import-operations; the template is a Blob of OPERATION_IMPORT_COLUMNS' },
+  'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168) and operationsDefaultLabel (D-173); also action-relabel of a P20 row; the reason is required (field-op-label-reason)' },
   'POST /settlements/operations/:id/proof': { page: 'P20', route: '/operations', note: 'action-proof; shared with P10' },
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },
   'POST /settlements/operations/:id/deactivate': { page: 'P20', route: '/operations', note: 'action-deactivate; shared with P10' },

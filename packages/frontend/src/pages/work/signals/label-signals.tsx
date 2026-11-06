@@ -5,7 +5,7 @@ import type { Signals } from '@erp/shared/api-responses';
 import { useOwnLabels } from '../../../components/LabelSwitch';
 import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
-import { ru } from '../../../i18n/ru';
+import { fmt, ru } from '../../../i18n/ru';
 import { centsToText } from '../../owners/components/cents';
 import { EditAdByIdDialog, SetOperationLabelDialog, TrackLabelsDialog } from '../actions/dialogs';
 import { SIGNAL_ACTIONS } from '../actions/action-table';
@@ -235,6 +235,73 @@ export const LABEL_SIGNALS = {
       />
     );
   },
+  // D-173: the history put under 0to8 by default (label source `default`, D-168): the operator relabels with a reason
+  operationsDefaultLabel: ({ data, count, open, close }: ListProps): ReactNode => {
+    type R = Signals['operationsDefaultLabel'][number];
+    return (
+      <Grid<R>
+        name="operationsDefaultLabel"
+        count={count}
+        rows={data.operationsDefaultLabel}
+        rowKey={(r) => r.operationId}
+        columns={[
+          textCol('date', c.date, (r) => r.date),
+          ownerCol<R>(),
+          pseudonymOfCol<R>(),
+          {
+            colId: 'kind',
+            headerName: ru.operations.kind.field,
+            valueGetter: (p) => p.data?.kind,
+            cellRenderer: (p: { data?: R }) => (p.data ? <StatusChip kind="operationKind" value={p.data.kind} /> : null),
+          },
+          moneyCol('amount', c.amount, (r) => centsToText(r.amountCents)),
+          labelCol<R>('label', c.label, (r) => r.labelId),
+          actionCol((r) =>
+            btn('set-label', ru.actions.setLabel, () =>
+              open(<SetOperationLabelDialog operationId={r.operationId} onClose={close} />),
+            ),
+          ),
+        ]}
+      />
+    );
+  },
+  // D-173: an advance whose recorded forgiveness is above the effective one (the income before the date came later)
+  forgivenessReduced: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['forgivenessReduced'][number];
+    return (
+      <Grid<R>
+        name="forgivenessReduced"
+        count={count}
+        rows={data.forgivenessReduced}
+        rowKey={(r) => r.operationId}
+        columns={[
+          ownerCol<R>(),
+          pseudonymOfCol<R>(),
+          labelCol<R>('label', c.label, (r) => r.labelId),
+          moneyCol('recorded', ru.operations.signals.recorded, (r) => r.recorded),
+          moneyCol('effective', ru.operations.signals.effective, (r) => r.effective),
+          {
+            colId: 'operations',
+            headerName: ru.operations.signals.advance,
+            valueGetter: (p) => p.data?.operationId ?? '',
+            cellRenderer: (p: { data?: R }) =>
+              p.data ? (
+                <Link to={`/operations?ownerId=${encodeURIComponent(p.data.ownerId)}&kind=advance`} className="text-xs text-accent hover:underline" data-testid="link-advance">
+                  {ru.operations.signals.toAdvance}
+                </Link>
+              ) : null,
+          },
+          informationCol<R>('forgivenessReduced'),
+        ]}
+      />
+    );
+  },
+  // D-173: a counter, not a list (the operations relabelled by the operator; the trail is in the audit)
+  operationsRelabelled: ({ data }: ListProps): ReactNode => (
+    <p className="text-sm" data-testid="signal-operationsRelabelled" data-value={data.operationsRelabelled}>
+      {fmt(ru.operations.signals.relabelled, { n: data.operationsRelabelled })}
+    </p>
+  ),
 } satisfies Partial<Record<keyof typeof SIGNAL_ACTIONS, (props: ListProps) => ReactNode>>;
 
 export type LabelSignalName = keyof typeof LABEL_SIGNALS;
@@ -242,6 +309,29 @@ export type LabelSignalName = keyof typeof LABEL_SIGNALS;
 /** The action column of an information list (`SIGNAL_ACTIONS[name].information`): the note, no button. */
 function informationCol<T>(name: LabelSignalName): ColDef<T> {
   return actionCol<T>(() => (SIGNAL_ACTIONS[name].information ? info(t.info) : null));
+}
+
+/** The owner of a row as a link to P10 («—» without one). */
+function ownerCol<T extends { ownerId: string | null; ownerName: string | null }>(): ColDef<T> {
+  return {
+    colId: 'owner',
+    headerName: c.owner,
+    minWidth: 160,
+    valueGetter: (p) => p.data?.ownerName ?? '',
+    cellRenderer: (p: { data?: T }) =>
+      p.data?.ownerId ? <EntityLink kind="owner" id={p.data.ownerId} label={p.data.ownerName ?? p.data.ownerId} /> : <span>—</span>,
+  };
+}
+
+/** The pseudonym of a row as a link to P12 («—» without one). */
+function pseudonymOfCol<T extends { artistId: string | null; pseudonym: string | null }>(): ColDef<T> {
+  return {
+    colId: 'pseudonym',
+    headerName: c.pseudonym,
+    valueGetter: (p) => p.data?.pseudonym ?? '',
+    cellRenderer: (p: { data?: T }) =>
+      p.data?.artistId ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym ?? p.data.artistId} /> : <span>—</span>,
+  };
 }
 
 /** The month of an advertising record as the link to its card (P22 `/ads/:id`). */

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { LABEL_SOURCES, OPERATION_KINDS } from '@erp/shared/operation-kinds';
 import { useQuery } from '@tanstack/react-query';
 import type { z } from 'zod';
 import type { operationsQuery } from '@erp/shared/api-schemas';
@@ -19,16 +20,20 @@ import { OperationsGrid } from './OperationsGrid';
 const t = ru.money.operations;
 const f = t.filters;
 type Filter = z.input<typeof operationsQuery>;
-const MEANINGS = ['payout', 'recoupable_payout', 'deduction', 'credit', 'return'] as const;
-const KEYS = ['ownerId', 'meaning', 'needsProof', 'from', 'to', 'active'] as const;
+const KEYS = ['ownerId', 'kind', 'labelSource', 'needsProof', 'from', 'to', 'active'] as const;
+const LABEL_SOURCE_FILTER = [...LABEL_SOURCES, 'none'] as const;
+/** The old `meaning=` of a link (before D-173) is read as its kind: `recoupable_payout` = `advance`. */
+const kindOfParam = (kind: string | null, meaning: string | null) =>
+  OPERATION_KINDS.find((k) => k === kind) ?? OPERATION_KINDS.find((k) => k === (meaning === 'recoupable_payout' ? 'advance' : meaning));
 
-/** The filters of P20 from the URL (`ownerId`, `meaning`, `needsProof`, `from`, `to`, `active`), sent as they are. */
+/** The filters of P20 from the URL (`ownerId`, `kind`, `labelSource`, `needsProof`, `from`, `to`, `active`), sent as they are. */
 function useOperationsFilter(): [Filter, (f: Record<(typeof KEYS)[number], string>) => void] {
   const [params, setParams] = useSearchParams();
   const flag = (v: string | null) => (v === 'true' || v === 'false' ? v : undefined);
   const filter: Filter = {
     ownerId: params.get('ownerId') ?? undefined,
-    meaning: MEANINGS.find((m) => m === params.get('meaning')),
+    kind: kindOfParam(params.get('kind'), params.get('meaning')),
+    labelSource: LABEL_SOURCE_FILTER.find((v) => v === params.get('labelSource')),
     needsProof: flag(params.get('needsProof')),
     active: flag(params.get('active')),
     from: params.get('from') ?? undefined,
@@ -37,6 +42,7 @@ function useOperationsFilter(): [Filter, (f: Record<(typeof KEYS)[number], strin
   const apply = (next: Record<(typeof KEYS)[number], string>) =>
     setParams((prev) => {
       const p = new URLSearchParams(prev);
+      p.delete('meaning');
       for (const k of KEYS) {
         if (next[k]) p.set(k, next[k]);
         else p.delete(k);
@@ -54,7 +60,15 @@ export function OperationsPage() {
   const filtered = KEYS.some((k) => filter[k] !== undefined);
   return (
     <div data-testid="operations-page">
-      <PageHeader title={t.title} subtitle={t.subtitle} />
+      <PageHeader
+        title={t.title}
+        subtitle={t.subtitle}
+        toolbar={
+          <Link to="/operations/import" className="text-sm text-accent hover:underline" data-testid="action-import-operations">
+            {ru.operations.import.action}
+          </Link>
+        }
+      />
       <Filters filter={filter} onApply={apply} />
       <QueryView query={query} isEmpty={(d) => d.length === 0} emptyMessage={filtered ? t.emptyFiltered : t.empty}>
         {(rows) => <OperationsGrid rows={rows} gridStateKey="grid" />}
@@ -65,14 +79,16 @@ export function OperationsPage() {
 
 function Filters(props: { filter: Filter; onApply: (f: Record<(typeof KEYS)[number], string>) => void }) {
   const [owner, setOwner] = useState<string | null>(props.filter.ownerId ?? null);
-  const [meaning, setMeaning] = useState<string>(props.filter.meaning ?? 'all');
+  const [kind, setKind] = useState<string>(props.filter.kind ?? 'all');
+  const [labelSource, setLabelSource] = useState<string>(props.filter.labelSource ?? 'all');
   const [active, setActive] = useState<string>(props.filter.active ?? 'all');
   const [from, setFrom] = useState(props.filter.from ?? '');
   const [to, setTo] = useState(props.filter.to ?? '');
   const needsProof = props.filter.needsProof === 'true';
   const values = (over: Partial<Record<(typeof KEYS)[number], string>> = {}) => ({
     ownerId: owner ?? '',
-    meaning: meaning === 'all' ? '' : meaning,
+    kind: kind === 'all' ? '' : kind,
+    labelSource: labelSource === 'all' ? '' : labelSource,
     needsProof: needsProof ? 'true' : '',
     active: active === 'all' ? '' : active,
     from,
@@ -93,11 +109,24 @@ function Filters(props: { filter: Filter; onApply: (f: Record<(typeof KEYS)[numb
         </label>
         <div className="w-44">
           <SelectField
-            name="filter-meaning"
-            label={f.meaning}
-            value={meaning}
-            onChange={setMeaning}
-            options={[{ id: 'all', label: f.all }, ...MEANINGS.map((m) => ({ id: m, label: statusLabel('operationMeaning', m) }))]}
+            name="filter-kind"
+            label={ru.operations.kind.field}
+            value={kind}
+            onChange={setKind}
+            options={[{ id: 'all', label: f.all }, ...OPERATION_KINDS.map((m) => ({ id: m, label: statusLabel('operationKind', m) }))]}
+          />
+        </div>
+        <div className="w-44">
+          <SelectField
+            name="filter-label-source"
+            label={ru.operations.labelSource.filter}
+            value={labelSource}
+            onChange={setLabelSource}
+            options={[
+              { id: 'all', label: f.all },
+              ...LABEL_SOURCES.map((v) => ({ id: v, label: statusLabel('labelSource', v) })),
+              { id: 'none', label: ru.operations.labelSource.none },
+            ]}
           />
         </div>
         <div className="w-40">
@@ -131,11 +160,12 @@ function Filters(props: { filter: Filter; onApply: (f: Record<(typeof KEYS)[numb
           variant="secondary"
           onPress={() => {
             setOwner(null);
-            setMeaning('all');
+            setKind('all');
+            setLabelSource('all');
             setActive('all');
             setFrom('');
             setTo('');
-            props.onApply({ ownerId: '', meaning: '', needsProof: '', active: '', from: '', to: '' });
+            props.onApply({ ownerId: '', kind: '', labelSource: '', needsProof: '', active: '', from: '', to: '' });
           }}
         >
           {f.reset}

@@ -23,6 +23,11 @@ const TABLE = {
   operationMeaning: entries(ru.status.operationMeaning, {
     payout: 'success', recoupable_payout: 'accent', deduction: 'warning', credit: 'default', return: 'danger',
   }),
+  operationKind: entries(ru.status.operationKind, {
+    payout: 'success', advance: 'accent', deduction: 'warning', credit: 'default', return: 'danger',
+    buyout: 'default', forgiveness: 'accent', writeoff: 'warning', adjustment: 'default',
+  }),
+  labelSource: entries(ru.status.labelSource, { one: 'default', default: 'warning', operator: 'accent', payout: 'default' }),
   fileStatus: entries(ru.status.fileStatus, { loading: 'accent', loaded: 'success', failed: 'danger', superseded: 'default' }),
   signal: Object.fromEntries(
     Object.entries(ru.signals).map(([k, label]): [string, Entry] => [k, { label, color: 'warning' }]),

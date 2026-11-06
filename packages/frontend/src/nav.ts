@@ -139,6 +139,7 @@ export const SUBPAGES: Readonly<Record<string, string>> = {
   '/sources/lines': ru.nav.subpages.sourceLines,
   '/artists/duplicates': ru.nav.subpages.artistDuplicates,
   '/splits/import': ru.nav.subpages.splitImport,
+  '/operations/import': ru.nav.subpages.operationImport,
   '/dev/states': ru.nav.subpages.states,
 };
 

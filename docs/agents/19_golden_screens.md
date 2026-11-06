@@ -475,6 +475,51 @@ UPC `2748100000001`, one ISRC) uploaded on P19 and its track registered by API (
 `[data-col="registered"]` `data-value="true"`, `[data-col="registryTrackCount"]` 2; `?view=registry` row
 `registry-<0to8>-2748100000001` with `isrcsInUnits` 1; P8 `release-registry-<0to8>` with `release-incomplete` «1 из 2».
 
+### Stage 5 (D-173): the kinds of an operation, the forgiveness, the relabel, the payroll, the import, the B17 replacement
+
+**S49 (P10 «Операция», `41-operation-kinds`)** S24/1 owner A under 0to8 before: earned 50, paid 30, payable 20, buyouts 0,
+adjustments 0. `action-create-operation` → `field-op-kind` «выкуп» (no `field-op-artist`: an owner kind), 15, 2026-05-01,
+the basis document created and approved: confirmation «Вид: выкуп», «Сумма: 15,00», «Владелец: Owner A-241», «Область
+книги: мастер»; the row `[data-col="kind"]` `data-kind="buyout"`, no `operations-blocked` (a buyout never blocks); after
+`action-proof` `balance-buyouts` 15, payable still 20. Then «корректировка» with `field-op-sign` «в пользу владельца»,
+5 → «Сумма: -5,00»; `balance-adjustments` 5, payable 25; `balance-area-master` buyouts 15, payable 25,
+`balance-area-publishing` payable 0; `by-label-0to8 [data-col="adjustments"]` 5; the history tab has two rows
+`[data-route="POST /settlements/operations"]`; P20 `?kind=buyout` lists one row.
+
+**S50 (P20 forgiveness, `41-operation-kinds`)** the seeded advance 10 of S22/2 (proved, remaining 10): its row
+`action-forgive-<id>` → `forgive-position [data-col="remaining"]` 10; 20 from 2026-05-01 with a new basis document →
+toast `forgiveness_exceeds`; 4 → 201 `kind` forgiveness, 400 cents, toast «Аванс прощён: 4,00»; P10 `balance-forgiven` 4,
+payable 0, `position-<advance>` forgiven 4, remaining 6. Second press: 7 → 422 `forgiveness_exceeds`; the deactivation of
+the advance → 409 `has_forgiveness`.
+
+**S51 (P20 relabel, `41-operation-kinds`)** the S49 buyout under «Все»: `action-relabel` → `op-label-current` 0to8,
+Echo8, the submit closed until `field-op-label-reason` is filled; toast «Лейбл операции: 0to8 → Echo8», the row label
+Echo8, `[data-col="labelSource"]` `data-value="operator"`; a PATCH without a reason → 400 `reason_required`; the audit row
+of the PATCH carries `summary.body.reason`, `fromLabelId` = 0to8 and the label Echo8; the book 0to8 of the owner:
+buyouts 0, adjustments 5, payable 25.
+
+**S52 (P9 payroll and `asOf`, `42-payroll`, read only)** S31/3 owner A under 0to8 as 32-ads leaves it (P9 row filtered
+by name): earned 80, paid 20, advertising 5 (2026-01), payable 55 = the csv `payroll_0to8_all_all_payroll.csv`
+(`action-payroll-export` → `field-payroll-area` «мастер и паблишинг», `field-payroll-sheet` «ведомость»,
+`action-payroll-download`) total row 80 / 20 / 5 / 55 (pseudonym row earned 50) = the json `GET /owners/payroll?area=all`,
+`bookBMatches` true; area master: `payroll_0to8_all_master_payroll.csv` total earned 50, payable 25; the control sheet has
+discrepancy 0 on every row. Under «Все» the export is closed («выберите лейбл»). `field-as-of` 2026-03 (URL `asOf`): the
+P9 row earned 50, paid 0, payable 45, the csv `payroll_0to8_2026-03_all_payroll.csv` the same; P10 `?asOf=2026-03` the
+same facts and `action-pay` closed («уберите срез»).
+
+**S53 (P29 operation import, `43-operation-import`)** an owner of its own (`Owner S53 e2e`, by API). Under «Все» P29
+(from P20 `action-import-operations`) is closed. Under 0to8 a file of 4 rows: line 2 `create`, line 3 (a payout without
+external_id) `issue-external_ref_required` error, line 4 `issue-kind_not_importable`, line 5 `issue-owner_not_found`;
+the apply closed with `import-blocked-reason`. The corrected file (two payouts 10.00 and 2.50 with external ids): create 2
+→ apply 201 (two operation ids), `operation-import-result`; the same file again: unchanged 2, create 0,
+`issue-unchanged` (info), the apply closed «применять нечего»; P20 `?kind=payout` two rows; P10 paid 12.5.
+
+**S54 (P19 B17 replacement, `44-b17-replace`)** the e2e seed has one statement and no xlsx writer reusable by the specs:
+the replacement itself (superseded + `replacedBy`, the lines kept, the quarters moved, `periods_differ`,
+`replace_label_differs`, `replace_not_loaded`) is covered by `packages/backend/tests/b17-replace.test.ts`. Here the seeded
+statement row: `chip-loaded`, `action-replace-statement-<id>`, no `statement-replaced-by-<id>`; the dialog under «Все» is
+closed («выберите лейбл»); under 0to8 a file that is not a statement is refused (an error toast) and the row stays loaded.
+
 ### SS: page states (one spec, `page.route` mocks, no seed dependency)
 
 | Id | Mock | Expected |
@@ -542,12 +587,12 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169); `action-create-document` closed under «Все» («выберите лейбл»), `Ref spec doc` created under 0to8 as «любой лейбл» | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |
 | 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous); D-169 the B17 lines in the book 0to8 (P1 b17 rows, P19 `statement-label`, P10 W1 under «Все» / 0to8 / Echo8, S42 part) | reads (adds W1 terms `Print`) |
 | 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
-| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 21 lists (D-172: +4), `filesWithoutLabel`, `statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
+| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 24 lists (D-172: +4; D-173: +3, `operationsDefaultLabel` and `operationsRelabelled` 0), `filesWithoutLabel`, `statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
 | 22 | `22-duplicates.spec.ts` | S30 (assign owner, create split from the candidate) | acts |
 | 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
 | 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
 | 25 | `25-merge.spec.ts` | S33 | acts |
-| 26 | `26-payout.spec.ts` | S22; S43 (a 0to8 contract does not open Echo8, built by API on its own owner); D-169 S31/1 Pay dialog master + publishing (read, cancelled), S18 W1 paid under 0to8 (publishing 100) | acts |
+| 26 | `26-payout.spec.ts` | S22; S43 (a 0to8 contract does not open Echo8, built by API on its own owner); D-169 S31/1 Pay dialog (D-173: master 50 by default, «мастер и паблишинг» 80; read, cancelled), S18 W1 paid under 0to8 (D-173: the master area is refused in the dialog, «паблишинг» pays 100) | acts |
 | 27 | `27-operations.spec.ts` | S31 (the owner card under 0to8: every S31 book is 0to8); `action-create-operation` closed under «Все» (D-169) | acts |
 | 28 | `28-rules.spec.ts` | S25–S29, S13 **after**, S21 (read) | acts |
 | 29 | `29-labels.spec.ts` | S37 (and P17) | acts |
@@ -562,6 +607,10 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 38 | `38-split-import.spec.ts` | S44 (P28 preview, blocked file, apply, replay), S45 (the P15 assumption) | acts (A: two splits on `QZTST27441xx`, pseudonyms `Import Artist 38A/B`, owner `Import Owner 38A`, one assumption document) |
 | 39 | `39-onboarding.spec.ts` | S46 (the label checklist from an empty label; the organization checklist under «Все») | acts (A: the own label `Onboard e2e`, account `2746100`, one report) |
 | 40 | `40-catalog.spec.ts` | S47 (the label history on P6, the P5 column and filter), S48 (the release registry: import, P7, the registry view, P8) | acts (A: one operator interval on `QZTST2747101`; account `2748100` of 0to8 with one report; the registry row of 0to8) |
+| 41 | `41-operation-kinds.spec.ts` | S49 (a buyout and an adjustment from the dialog, S24/1), S50 (the forgiveness of the S22/2 advance), S51 (the relabel with a reason and its audit) | acts (S24/1: a buyout under Echo8, an adjustment; S22/2: a forgiveness) |
+| 42 | `42-payroll.spec.ts` | S52 (the payroll csv and json of 0to8, the area, `asOf` on P9 / P10) | reads |
+| 43 | `43-operation-import.spec.ts` | S53 (P29: classes, apply, replay) | acts (A: `Owner S53 e2e` with two migrated payouts) |
+| 44 | `44-b17-replace.spec.ts` | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
 | – | `smoke.spec.ts` | the shell (the sidebar = `navFor` of `me.abilities`: an `org_admin` sees every section and «Организация»), the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders (also `/users`) | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks (`/auth/me` mocked as the login off, D-170) | no seed |
 
@@ -574,7 +623,8 @@ and a grant no other spec reads (36 counts the users of A before 37 adds one). T
 `AUTH_MODE=on` (a random `AUTH_SECRET` and `SYSTEM_ADMIN_KEY` per run, environment only); `e2e/global-setup.ts` signs in
 once as `e2e-operator` (the password from the keys file, `users`) and writes `data/test-tmp/e2e-state.json`, the
 `use.storageState` of every spec, so `page` and the `request` fixture (`apiPost`) carry the session and the golden specs
-are unchanged. Adding a spec: pick a number between the files it must follow and precede, and say so here.
+are unchanged. 41 follows 24 and 26 (they read S24/1 and S22/2 before 41 acts on them); 42 reads S31/3 after 32-ads (the advertising stays),
+no spec after changes it; 43 and 44 own their data. Adding a spec: pick a number between the files it must follow and precede, and say so here.
 
 Request counts (17 R2): `openAs` restarts a per-page count of the money endpoints (overview, reconciliation, signals,
 queue, balance, owners/payables, tracks/summary, tracks/:isrc/money, releases/:upc, documents/:id/uses);

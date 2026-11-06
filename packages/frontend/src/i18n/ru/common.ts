@@ -13,6 +13,8 @@ export const common = {
   no: 'нет',
   notFound: 'Страница не найдена',
   backHome: 'На главную',
+  /** The severity of an import class (`IssueChips`: P28, P29). */
+  severity: { error: 'ошибка', warning: 'предупреждение', info: 'сведения' },
   /** `ArtistLinks` (D-166): the pseudonyms of a catalog row; the report string when the registry names none. */
   artistLinks: {
     title: 'Артисты',

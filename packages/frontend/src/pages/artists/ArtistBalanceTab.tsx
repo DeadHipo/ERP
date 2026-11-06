@@ -26,7 +26,7 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
   const opText = (id: string) => {
     const op = (ops.data ?? []).find((o) => o.id === id);
     return op
-      ? fmt(b.operationLine, { date: op.date, meaning: statusLabel('operationMeaning', op.meaning), amount: formatMoney(centsToText(op.amountCents)), pseudonym: '' })
+      ? fmt(b.operationLine, { date: op.date, meaning: statusLabel('operationKind', op.kind), amount: formatMoney(centsToText(op.amountCents)), pseudonym: '' })
       : id;
   };
   return (
@@ -115,7 +115,7 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
         {m.positions.length === 0 ? (
           <span className="text-sm text-muted">{b.none}</span>
         ) : (
-          <SimpleTable head={[b.date, b.positionAmount, ru.money.owners.cols.recouped, b.remaining, b.scope]}>
+          <SimpleTable head={[b.date, b.positionAmount, ru.money.owners.cols.recouped, ru.operations.book.forgivenCol, b.remaining, b.scope]}>
             {m.positions.map((p) => (
               <tr key={p.operationId} data-testid={`position-${p.operationId}`}>
                 <Td>{p.date}</Td>
@@ -124,6 +124,9 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
                 </Td>
                 <Td col="recouped">
                   <Money value={p.recouped} />
+                </Td>
+                <Td col="forgiven">
+                  <Money value={p.forgiven} />
                 </Td>
                 <Td col="remaining">
                   <Money value={p.remaining} />

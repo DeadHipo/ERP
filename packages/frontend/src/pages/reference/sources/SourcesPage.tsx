@@ -7,6 +7,7 @@ import type { sourceFileSchema, statementSchema } from '@erp/shared/api-response
 import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { sourceQueries } from '../../../api/queries/sources';
+import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
@@ -21,6 +22,7 @@ import { fmt, ru } from '../../../i18n/ru';
 import { useWriteLabel } from '../../../lib/label';
 import { useUrlParam } from '../../catalog/components/url';
 import { AddAccountDialog } from '../labels/AccountDialogs';
+import { ReplaceStatementDialog } from './ReplaceStatementDialog';
 
 const t = ru.reference.sources;
 type BelieveFile = z.output<typeof sourceFileSchema>;
@@ -96,6 +98,9 @@ export function SourcesPage() {
   const ownKey = JSON.stringify(own.map((l) => [l.id, l.name]));
   const names = useMemo(() => new Map(JSON.parse(ownKey) as [string, string][]), [ownKey]);
   const [q, setQ] = useUrlParam('q');
+  const [replacing, setReplacing] = useState<Statement | null>(null);
+  // the replacing statement of a superseded one is named by its file (D-173); the link filters the list to it
+  const statementNames = useMemo(() => new Map((query.data?.b17 ?? []).map((s) => [s.id, s.fileName])), [query.data]);
   const needle = q.trim().toLocaleLowerCase('ru');
   const believeCols = useMemo<ColDef<BelieveFile>[]>(
     () => [
@@ -119,8 +124,33 @@ export function SourcesPage() {
       { colId: 'lineCount', headerName: t.cols.lineCount, valueGetter: (p) => p.data?.lineCount, valueFormatter: (p) => (typeof p.value === 'number' ? formatCount(p.value) : '') },
       { colId: 'totalPayable', headerName: t.cols.totalPayable, comparator: compareDecimal, valueGetter: (p) => p.data?.totalPayable, cellRenderer: (p: { data?: Statement }) => (p.data ? <span data-col="totalPayable"><Money value={p.data.totalPayable} /></span> : null) },
       { colId: 'warnings', headerName: t.cols.warnings, minWidth: 200, valueGetter: (p) => p.data?.warnings.join('; ') },
+      {
+        colId: 'replace',
+        headerName: '',
+        minWidth: 200,
+        sortable: false,
+        filter: false,
+        valueGetter: (p) => (p.data?.replacedBy ? (statementNames.get(p.data.replacedBy) ?? p.data.replacedBy) : ''),
+        cellRenderer: (p: { data?: Statement }) => {
+          const st = p.data;
+          if (!st) return null;
+          if (st.replacedBy) {
+            const name = statementNames.get(st.replacedBy) ?? st.replacedBy;
+            return (
+              <Link to={`/sources?q=${encodeURIComponent(name)}`} className="text-xs text-accent hover:underline" data-testid={`statement-replaced-by-${st.id}`} data-statement-id={st.replacedBy}>
+                {ru.operations.replace.replacedBy} {name}
+              </Link>
+            );
+          }
+          return st.status === 'loaded' ? (
+            <ActionButton name={`replace-statement-${st.id}`} op="POST /publishing/statements/:id/replace" variant="secondary" compact onPress={() => setReplacing(st)}>
+              {ru.operations.replace.action}
+            </ActionButton>
+          ) : null;
+        },
+      },
     ],
-    [names],
+    [names, statementNames],
   );
   return (
     <div data-testid="sources-page">
@@ -157,6 +187,7 @@ export function SourcesPage() {
           </QueryView>
         </section>
       </div>
+      {replacing ? <ReplaceStatementDialog statement={replacing} onClose={() => setReplacing(null)} /> : null}
     </div>
   );
 }

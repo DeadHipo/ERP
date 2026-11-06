@@ -17,6 +17,7 @@ import { catalog } from './ru/catalog';
 import { money } from './ru/money';
 import { reference } from './ru/reference';
 import { splitImport } from './ru/splitImport';
+import { operations } from './ru/operations';
 import { onboarding } from './ru/onboarding';
 import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
@@ -42,6 +43,7 @@ export const ru = {
   money,
   reference,
   splitImport,
+  operations,
   onboarding,
   audit,
   ads,

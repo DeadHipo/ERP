@@ -53,4 +53,7 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   tracksWithoutLabel: { action: 'TrackLabelsDialog' },
   releasesIncomplete: { information: true, note: 'registry releases with fewer ISRCs in the units than # of track (D-172): information, nothing to fix here' },
   releasesUnknown: { information: true, note: 'UPCs of the units missing from the release registry of their label (D-172): import a fresh Believe export on P7' },
+  operationsDefaultLabel: { action: 'SetOperationLabelDialog' },
+  forgivenessReduced: { information: true, note: 'advances whose recorded forgiveness is above the effective one (D-173): income before the date came later; the recoup clamps it, nothing to fix (a link to the advances of the owner)' },
+  operationsRelabelled: { information: true, note: 'the number of operations relabelled by the operator (D-173): a counter, nothing to fix' },
 };

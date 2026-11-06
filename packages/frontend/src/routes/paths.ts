@@ -30,6 +30,8 @@ export const ROUTE_PATHS = {
   sources: 'sources',
   sourceLines: 'sources/lines',
   operations: 'operations',
+  /** P29 (D-173): entered from P20 only, no sidebar item (as P28). */
+  operationImport: 'operations/import',
   ads: 'ads',
   ad: 'ads/:id',
   devStates: 'dev/states',

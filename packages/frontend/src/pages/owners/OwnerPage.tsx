@@ -15,6 +15,7 @@ import { usePeriod } from '../work/OverviewPage';
 import { BalanceTab } from './BalanceTab';
 import { DocumentsTab } from './DocumentsTab';
 import { MergeOwnerDialog } from '../work/actions/dialogs';
+import { AsOfField, asOfQuery, useAsOf } from './components/AsOfField';
 import { PeriodBar } from './components/PeriodBar';
 import { ArtistsTab, HistoryTab, OperationsTab, PublishingTab } from './tabs';
 
@@ -31,7 +32,10 @@ export function OwnerPage() {
   // the label view (D-168): the money and the operations of that label; the card stays whole
   const { labelId } = useLabel();
   const detail = useQuery(ownerQueries.detail(id));
-  const balance = useQuery(ownerQueries.balance(id, period, labelId));
+  // the cut at the end of a month (D-173): an input of the same one money call
+  const [asOf] = useAsOf();
+  const moneyPeriod = { ...period, ...asOfQuery(asOf) };
+  const balance = useQuery(ownerQueries.balance(id, moneyPeriod, labelId));
   const [merging, setMerging] = useState(false);
   useBreadcrumbLabel(detail.data?.owner.name);
   return (
@@ -57,7 +61,10 @@ export function OwnerPage() {
               </div>
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <p className="text-sm text-muted">{t.subtitle}</p>
-                <PeriodBar period={period} onApply={setPeriod} />
+                <div className="flex flex-wrap items-end gap-2">
+                  <PeriodBar period={period} onApply={setPeriod} />
+                  <AsOfField />
+                </div>
               </div>
               <EntityCard
                 title={<span data-testid="owner-name">{d.owner.name}</span>}
@@ -98,7 +105,7 @@ export function OwnerPage() {
                     label: t.tabs.balance,
                     content: (
                       <QueryView query={balance} money>
-                        {(b) => <BalanceTab ownerId={d.owner.id} balance={b} />}
+                        {(b) => <BalanceTab ownerId={d.owner.id} balance={b} period={moneyPeriod} />}
                       </QueryView>
                     ),
                   },

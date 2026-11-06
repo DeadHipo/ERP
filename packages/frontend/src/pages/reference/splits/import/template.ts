@@ -1,4 +1,5 @@
 import { SPLIT_IMPORT_COLUMNS } from '@erp/shared/split-import';
+import { saveCsv } from '../../../../lib/download';
 
 // The import template (D-172, P28): a csv Blob built from `SPLIT_IMPORT_COLUMNS` with two synthetic example rows (one
 // split of two pseudonyms, our share 40 %); no API operation.
@@ -15,15 +16,7 @@ export function templateText(): string {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-/** Saves the template as `split-import-template.csv` through a temporary link. */
+/** Saves the template as `split-import-template.csv`. */
 export function downloadTemplate(): void {
-  const blob = new Blob([templateText()], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'split-import-template.csv';
-  document.body.append(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  saveCsv('split-import-template.csv', templateText());
 }

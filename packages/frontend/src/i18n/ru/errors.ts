@@ -86,6 +86,27 @@ export const errors: Record<string, string> = {
   catalog_same_label: 'Замена ничего не меняет',
   release_import_header: 'Это не экспорт релизов Believe: нет нужной колонки',
   release_import_invalid: 'Реестр не загружен: в файле есть неверные строки, ничего не записано',
+  // D-173: the replacement of a B17 statement
+  replace_not_loaded: 'Заменить можно только загруженную выписку: эта уже заменена',
+  replace_label_differs: 'Выписка загружена под другим лейблом: замена под этим лейблом невозможна',
+  periods_differ: 'Кварталы нового файла не совпадают с кварталами заменяемой выписки',
+  // D-173: the kinds of an operation
+  kind_direction: 'Направление не подходит виду операции',
+  kind_sign: 'Знак суммы не подходит виду операции',
+  owner_required: 'Укажите владельца',
+  artist_required: 'Укажите псевдоним',
+  scope_required: 'Укажите область погашения аванса',
+  scope_forbidden: 'У операции этого вида нет области погашения',
+  writeoff_area: 'Списание относится только к паблишингу',
+  document_kind: 'Документ этого вида не может быть основанием операции',
+  use_return_action: 'Возврат делается действием «Возврат» на строке выплаты',
+  use_forgive_action: 'Прощение делается действием «Простить» на строке аванса',
+  operation_ref_not_advance: 'Простить можно только действующий аванс',
+  forgiveness_exceeds: 'Сумма прощения больше непогашенного остатка аванса',
+  forgiveness_before_advance: 'Дата прощения раньше даты аванса',
+  writeoff_exceeds: 'Сумма списания больше доступного паблишинга',
+  has_forgiveness: 'Сначала отмените прощение этого аванса',
+  reason_required: 'Укажите причину',
 };
 
 /** The Russian text of an API error code, or `undefined` for a code the dictionary does not know. */

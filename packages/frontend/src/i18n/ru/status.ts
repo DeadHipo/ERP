@@ -1,3 +1,5 @@
+import type { LabelSource, OperationKind } from '@erp/shared/operation-kinds';
+
 export const status = {
   documentStatus: {
     not_attached: 'нет файла',
@@ -37,6 +39,25 @@ export const status = {
     credit: 'зачисление',
     return: 'возврат',
   },
+  /** The stored kind of an operation (D-173, `@erp/shared/operation-kinds`). */
+  operationKind: {
+    payout: 'выплата',
+    advance: 'аванс',
+    deduction: 'удержание',
+    credit: 'зачисление',
+    return: 'возврат',
+    buyout: 'выкуп',
+    forgiveness: 'прощение',
+    writeoff: 'списание',
+    adjustment: 'корректировка',
+  } satisfies Record<OperationKind, string>,
+  /** Who set the label of an operation (D-173): `default` = put under 0to8 by default (D-168), revisited by the owner. */
+  labelSource: {
+    one: 'по юнитам',
+    default: 'по умолчанию',
+    operator: 'оператор',
+    payout: 'по выплате',
+  } satisfies Record<LabelSource, string>,
   fileStatus: {
     loading: 'загружается',
     loaded: 'загружен',

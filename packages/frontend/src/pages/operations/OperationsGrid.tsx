@@ -3,7 +3,7 @@ import type { ColDef } from 'ag-grid-community';
 import type { Operation } from '@erp/shared/api-responses';
 import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
-import { StatusChip } from '../../components/StatusChip';
+import { StatusChip, statusLabel } from '../../components/StatusChip';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { OperatorNotice } from '../../components/ActionButton';
 import { ru } from '../../i18n/ru';
@@ -12,9 +12,12 @@ import { OperationActionHost, OperationButtons, type OperationAction } from './O
 
 const t = ru.money.operations;
 
+/** The kinds with a payment proof (D-173 FIX-4): a payout, an advance, a buyout. */
+const proofKind = (op: Operation) => op.kind === 'payout' || op.kind === 'advance' || op.kind === 'buyout';
+
 const stateText = (op: Operation) =>
   [
-    `${t.cols.proof}: ${op.direction === 'out' ? (op.paymentProofId ? t.proof.yes : t.proof.no) : t.proof.none}`,
+    `${t.cols.proof}: ${proofKind(op) ? (op.paymentProofId ? t.proof.yes : t.proof.no) : t.proof.none}`,
     `${t.cols.deferred}: ${op.deferred ? ru.common.yes : ru.common.no}`,
     `${t.cols.active}: ${op.active ? t.active.yes : t.active.no}`,
   ].join(' · ');
@@ -76,16 +79,17 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
         p.data?.artistId ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym ?? p.data.artistId} /> : null,
     },
     {
-      colId: 'meaning',
-      headerName: c.meaning,
+      colId: 'kind',
+      headerName: ru.operations.kind.field,
       minWidth: 150,
       wrapText: true,
       autoHeight: true,
-      valueGetter: (p) => p.data?.meaning,
+      valueGetter: (p) => (p.data ? statusLabel('operationKind', p.data.kind) : ''),
       cellRenderer: (p: P) =>
         p.data ? (
-          <span data-col="meaning" className="inline-flex flex-wrap items-center gap-1 py-1" title={t.direction[p.data.direction]}>
-            <StatusChip kind="operationMeaning" value={p.data.meaning} /> <span className="text-xs text-muted">{t.directionShort[p.data.direction]}</span>
+          <span data-col="kind" data-kind={p.data.kind} className="inline-flex flex-wrap items-center gap-1 py-1" title={t.direction[p.data.direction]}>
+            <StatusChip kind="operationKind" value={p.data.kind} /> <span className="text-xs text-muted">{t.directionShort[p.data.direction]}</span>
+            {p.data.area === 'publishing' ? <span className="text-xs text-muted" data-col="area">{ru.operations.kind.areas.publishing}</span> : null}
           </span>
         ) : null,
     },
@@ -111,6 +115,18 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
         ) : null,
     },
     {
+      colId: 'labelSource',
+      headerName: ru.operations.labelSource.col,
+      minWidth: 110,
+      valueGetter: (p) => (p.data?.labelSource ? statusLabel('labelSource', p.data.labelSource) : ''),
+      cellRenderer: (p: P) =>
+        p.data ? (
+          <span data-col="labelSource" data-value={p.data.labelSource ?? ''}>
+            {p.data.labelSource ? <StatusChip kind="labelSource" value={p.data.labelSource} /> : null}
+          </span>
+        ) : null,
+    },
+    {
       colId: 'state',
       headerName: c.state,
       minWidth: 170,
@@ -121,7 +137,7 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
         p.data ? (
           <span className="flex flex-col py-1 text-xs leading-tight" title={stateText(p.data)}>
             <span data-col="proof" data-value={p.data.paymentProofId ? 'yes' : 'no'}>
-              {t.short.proof}: {p.data.direction === 'out' ? (p.data.paymentProofId ? ru.common.yes : ru.common.no) : t.proof.none}
+              {t.short.proof}: {proofKind(p.data) ? (p.data.paymentProofId ? ru.common.yes : ru.common.no) : t.proof.none}
             </span>
             <span data-col="deferred" data-value={String(p.data.deferred)}>
               {t.short.deferred}: {p.data.deferred ? ru.common.yes : ru.common.no}

@@ -23,4 +23,7 @@ export const signals = {
   tracksWithoutLabel: 'Треки без лейбла каталога',
   releasesIncomplete: 'Релизы реестра с неполным составом',
   releasesUnknown: 'Релизы вне реестра лейбла',
+  operationsDefaultLabel: 'Операции с лейблом по умолчанию',
+  forgivenessReduced: 'Прощение аванса уменьшено расчётом',
+  operationsRelabelled: 'Операции со сменённым лейблом',
 } as const satisfies Record<Exclude<keyof typeof signalsSchema.shape, 'counts'>, string>;

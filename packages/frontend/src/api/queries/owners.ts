@@ -1,12 +1,13 @@
 import { queryOptions } from '@tanstack/react-query';
 import type { z } from 'zod';
-import type { periodQuery } from '@erp/shared/api-schemas';
+import type { balanceQuery } from '@erp/shared/api-schemas';
 import * as api from '../client';
 import { money } from '../money';
 import { labelQuery } from '../../lib/label';
 import { MONEY_QUERY } from './core';
 
-type QueryPeriod = z.input<typeof periodQuery>;
+/** The period of a money read with the cut `asOf` and the area of the gate (D-173); the label goes separately. */
+type QueryPeriod = Omit<z.input<typeof balanceQuery>, 'label'>;
 
 // Every money read takes the label view (D-168): `labelId` '' = «Все»; the key carries it, so a switch refetches.
 export const ownerKeys = {

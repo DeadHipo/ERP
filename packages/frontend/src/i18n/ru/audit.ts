@@ -66,6 +66,9 @@ export const audit = {
     'PATCH /ads/:id': 'изменён процент или область рекламы',
     'POST /ads/:id/deactivate': 'рекламный расход отменён',
     'POST /settlements/operations/:id/return': 'возврат выплаты',
+    'POST /settlements/operations/:id/forgive': 'прощение аванса',
+    'POST /publishing/statements/:id/replace': 'выписка B17 заменена',
+    'POST /settlements/operations/import': 'импорт операций из файла',
   } as Record<string, string>,
   fields: {
     amount: 'сумма',
@@ -82,5 +85,11 @@ export const audit = {
     active: 'активен',
     write: 'запись',
     expiresAt: 'до',
+    superseded: 'заменённая выписка',
+    statement: 'новая выписка',
+    periods: 'кварталы',
+    reason: 'причина',
+    fromLabelId: 'прежний лейбл',
+    byKind: 'суммы по видам',
   } as Record<string, string>,
 } as const;
