@@ -22,6 +22,9 @@ A payout freezes a snapshot of that calculation.
    MASTER LAYERS (src/facade/layers/index.ts, a pure fold per unit):
    1 label of record  label string ─► alias ─► our label (0to8 / Echo8); sublabel rule at the month;
                       unmapped string ─► "ours" waits in C label_unmapped (rows and carves still run)
+                      (the BOOK of the money is not the string: it is the label of the unit's file, i.e. the
+                       label its Believe account is registered under, D-169 R6; the string decides only the
+                       label of record, the sublabel rule and ours / label_unmapped)
    2 perimeter        no ISRC ─► C no_isrc; pair not in tracks ─► C unknown_pair (nothing else runs)
    3 off the top      participations (net, top): remixer etc.; scaledNet = net − Σ top
    4 split            artist rows × scaledNet; label share = scaledNet − Σ rows (no split: all label share)
@@ -67,7 +70,7 @@ Three consequences that surprise newcomers:
 | Module | Owns | Storage | Docs | Key decisions |
 |---|---|---|---|---|
 | `owners` (module 1) | owners, artists (pseudonyms), tracks (ISRC+UPC, note), documents (incl. kind `assumption`), contracts, merges | PostgreSQL schema `owners` | 02, 99, ADR-001 | D-016…D-024, D-095 |
-| `labels` | our labels (0to8, Echo8), imprint aliases, sublabel rules (percent of the label share to a pseudonym) | PostgreSQL schema `labels` | 10 §1 | D-123, D-125, D-130 |
+| `labels` | our labels (0to8, Echo8), imprint aliases, sublabel rules (percent of the label share to a pseudonym), the Believe accounts of a label (the book of a file, D-169) | PostgreSQL schema `labels` | 10 §1 | D-123, D-125, D-130 |
 | `splits` | artist rows per ISRC with validity periods (each row may have its own document), participations (percent of a base, funded from top / artist pool / artist share / label share), buyouts | PostgreSQL schema `splits` | 04, ADR-003, 10 | D-025…D-030, D-126 |
 | `sources` | Believe file registry and report lines | PostgreSQL `source_files` + ClickHouse `believe.rows` | 03, 06 | D-031…D-038, D-102…D-114 |
 | `publishing` | B17 statements, writers, terms by owner, period and operation type; computes no money | PostgreSQL schema `publishing` | 08 | D-039…D-046, D-083, D-087, D-128 |
@@ -125,6 +128,15 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   (`17_frontend_model.md`), e2e on private stores (`npm run e2e`); the old pages removed. Every API operation has a page or a
   documented refusal in `packages/frontend/src/api/coverage.ts` (guard test); notes: `packages/frontend/CLAUDE.md`.
   Stage 5 reworked the backend (D-150) and the screens (D-151: month row key, decimal sorting, one dialog per action, Russian errors); stage 6 clean-up is D-152; the result is `20_frontend_report.md`.
+- **The label as a book (D-168) and stage 1 of «label from zero» (D-169, `docs/идеи/лейбл_с_нуля/`):** every sum also
+  per own label (0to8, Echo8): the owner balance and the payout are per owner × book, a label switch sits in the header.
+  Since D-169 the book of a Believe unit is the label of its file (a file is uploaded under a label, its account must be
+  registered under that label), a B17 statement is uploaded under a label and its publishing income sits in that book, an
+  advertising record charges its payer's book, a document may carry a label (the payout gate under L needs a contract of
+  L or without a label: `no_contract_for_label`) and the audit row records the label. The history was marked by
+  `scripts/assign-label-books.ts` (files by account, the six statements and the advertising history → 0to8, the seven
+  Echo8 operations → 0to8); `scripts/compare-reference.ts` and recipe 11 prove that only the books moved. Next stages
+  (organisation as tenant, operations for the payroll D-170, onboarding D-171, users and roles D-172) are in the brief.
 - **Out of scope until asked:** ASCAP, authentication and roles, a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,

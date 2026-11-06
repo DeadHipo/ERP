@@ -11,3 +11,10 @@ computes the author share: that moved to the facade layers.
 - Terms: a term with an operation type wins for a line of that type, the term without a type covers the rest; overlap and closing are per (owner, operation type) and checked in the service (no database constraint).
 - Storage: schema `publishing` in PostgreSQL (`migrations/postgres/0005_publishing.sql`, `0009_pub_terms_operation_type.sql`), the original files in the data directory; all SQL is in `repository.ts`.
 - The module computes no money (D-128 part 2): `snapshotForCalculation()` returns `{ writers, terms, lines }` from one snapshot, and the facade layers (`facade/layers/{writer-parts,author-share,publishing-categorise}.ts`) work out the writer parts, the author share and B/C.
+- **A statement is loaded under a label (D-169, R8):** `ingestB17({ labelId })` stores `pub_statements.label_id` (opaque text:
+  the facade has checked it is an own label; the module never knows labels); the materialized view `pub_lines_by_key`
+  (0015) carries `label_id` of the statement in SELECT and GROUP BY, so `AggregatedLine.labelId` is the book of every line.
+  A period belongs to one statement (`pub_statement_periods`), so the label never splits a group and the refusal of a second
+  statement for a loaded quarter (D-041 ⚠) is unchanged. `assignStatementLabel(id, labelId, { refresh })` marks only a
+  statement without a label (`already_done` otherwise) and refreshes the view; `refreshLinesByKey()` on its own. The books,
+  the reads under a label (`underLabel`) and the payout are the facade's (`facade/CLAUDE.md`).

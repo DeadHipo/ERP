@@ -163,8 +163,19 @@ bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-m
   (D-135, reworked by D-137), `settlement-prestart`, `assumption-rows`, `hygiene` (D-137; `settlement-prestart` pro rata since D-138), `all`. Every step is idempotent (marker `mvp:<step>:<key>` in a
   note, or by title/alias): after `--apply` the same step in dry run must report only `already_done`. Logs:
   `data/mvp-load/log/`.
-- B17: `npx tsx packages/backend/scripts/mvp/load-b17.ts <statement.xlsx>` (the call of the upload route); `--reconcile`
-  prints the b17 reconciliation rows.
+- B17: `npx tsx packages/backend/scripts/mvp/load-b17.ts <statement.xlsx> [generatedAt] --label 0to8` (the call of the
+  upload route under an own label, D-169 R8; without `--label` the statement is loaded without one, a warning is
+  printed and it waits for `assign-label-books --step statements`); `--reconcile` prints the b17 reconciliation rows.
+- Believe reports: `npx tsx packages/backend/scripts/load-believe.ts --storage <dir> --label <own label> <files>` goes
+  through the facade like the upload route (D-169 R7). **Register the accounts before the reports**
+  (`POST /api/v1/labels/:id/accounts` 1052428 → 0to8, 1055956 → Echo8, or the «Счета» block of P17): a file whose
+  account is not registered under the label is refused with 422 `account_unregistered` / `account_of_other_label` and
+  leaves nothing behind. Without `--label` the files load without a label (the book `'?'`) until
+  `assign-label-books --step files`.
+- Advertising (`load.ts ads`): re-run `python3 -I packages/backend/scripts/mvp/extract-main-ads.py` first on every
+  rebuild (the mapping carries pseudonym ids, which the loader generates anew). The loader creates the records with an
+  ISRC without a payer (a migrated record may) and the 33 without an ISRC with the payer 0to8; then
+  `scripts/assign-label-books.ts --step ads --apply` (D-169 R9).
 - Compares (read-only, one `calculate()`): `compare-annex.ts` (net label share per ISRC and month vs the Annex
   workbook; `--refresh` rereads the workbook) and `compare-main.ts` (owner earned / paid / payable vs `0to8 Main.xlsx`),
   reports in `data/mvp-load/verify/`. `scripts/reconcile-erp.ts` (July 2026 vs the old ERP) still exists.
@@ -203,24 +214,36 @@ disk, in this order (every step idempotent; the stack from `docker compose … u
    `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --storage data/real/files/sources <files>`
    (the July 2026 Echo8 file is stored there under a name with a trailing ` 2`: copy it under its proper name first,
    the loader takes the account and month from the name). Expect 75 744 752 rows, Σ net 16 338 476,404666051188.
+   Since D-169 the labels and the two accounts exist on a clean stack only after `load.ts labels` (step 3) and step 5,
+   so the reports load here without `--label` (warning) and step 7 marks them by account. To load them under their
+   labels instead: run step 2 and `load.ts labels --apply` and register the two accounts first, then
+   `load-believe.ts --label 0to8 <the 34 files>` and `--label Echo8 <the 13 files>`.
 2. The base reference data: `npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts data/pub` (the four SQLite
    files of the format before D-121; columns added by later migrations stay at their defaults).
 3. Stage 4 loader, one step at a time with `--apply`: `labels tracks normalise-dates splits participations exclusions
    echo8 main terms contracts`, then the two B17 statements (`scripts/mvp/load-b17.ts
    context_data/ERP_data/publishing/raw/0to8_Q22025_Statement.xlsx` and `…/0to8_Q42024_Q12025_Publishing_Breakdown.xlsx`,
-   D-134), then `pairs label-fixes lunar b17-holders carves settlement-prestart assumption-rows hygiene`.
+   D-134; with `--label 0to8` since D-169, or marked by step 7), then `pairs label-fixes lunar b17-holders carves settlement-prestart assumption-rows hygiene`.
 4. Advertising: `python3 -I packages/backend/scripts/mvp/extract-main-ads.py` first (the mapping carries pseudonym
    ids, which the loader generates anew on every rebuild; the extractor is deterministic in money and ISRC), then
    `load.ts ads --apply` (2 686 records; the 33 without an ISRC are created with the payer label 0to8).
 5. `scripts/assign-operation-labels.ts data/real --apply` (D-168) and the two accounts: `POST /labels/:id/accounts`
-   1052428 → 0to8, 1055956 → Echo8.
+   1052428 → 0to8, 1055956 → Echo8 (if not registered already for step 1; an operator header is needed on every write).
 6. The seven manual API writes of 2026-11-03 (operator `13`: an approved `advance_basis` document, an operation out
    40.00 with its payment proof, an approved `appendix` document confirming the split of ISRC FRX202537544): replayed
    through the API with the same bodies; they are part of the reference.
-7. `npx tsx packages/backend/scripts/compare-reference.ts data/backup/2026-11-05-before-org/reference --api
+7. D-169: `npx tsx packages/backend/scripts/assign-label-books.ts data/real` (dry run), then `--apply`: steps `files`
+   (34 → 0to8, 13 → Echo8; already done when the reports were loaded with `--label`), `statements` (→ 0to8), `ads`
+   (2 653 → 0to8; the dry run lists the 117 disputable records, Σ 30 012,71), `operations-echo8` (exactly 7 → 0to8). A
+   second dry run prints only `already_done`. `scripts/check-label-books.ts data/real`: (а) and (б) 0, (д) 0 expected once `statements` is applied.
+8. `npx tsx packages/backend/scripts/compare-reference.ts data/backup/2026-11-05-before-org/reference --api
    http://localhost:3001 --strict` against `PORT=3001 npx tsx packages/backend/src/main.ts data/real`: every section
    must print `0 differing` (`--strict` compares the books too; without it the books may move as a stage decides,
-   and the script prints the movement per label). Then `scripts/check-owner-scope.ts data/real` (0 differing).
+   and the script prints the movement per label). `--strict` held at the D-169 commit 0 (the reference predates
+   D-169); since D-169 (the 33 ISRC-less ads already carry the payer 0to8, then step 7) run without `--strict`: the invariants (totals, the 54 reconciliation rows, owners'
+   `total.*`, tracks, queue, labels, signal counters) print `0 differing`, Σ Δ recouped = Σ Δ payable = 0, and the books
+   move as D-169 records (the «Echo8» string of 1052428, 222 129,81, from Echo8 to 0to8; ads and B17 from `'?'` to 0to8).
+   Then `scripts/check-owner-scope.ts data/real` (0 differing).
 
 Counts after the rebuild (= the snapshot README): owners 1 151, artists 2 134, tracks 26 305, documents 1 400,
 contracts 803, splits 24 107 / shares 42 070, participations 283, operations 2 663, statements 6 (lines 1 162 586),

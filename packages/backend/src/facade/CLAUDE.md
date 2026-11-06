@@ -27,11 +27,12 @@
 - Nothing is stored or cached: every method recalculates from scratch. Do not add accrual tables or caches
   without an owner decision (README §2: caches out of scope; 09 principle 7).
 - **Unit scope** (`scope.ts`, D-161, D-162): `calculate()` is never changed for speed; a method whose answer depends on a
-  subset of the Believe units passes `scoped(modules, { isrcs | upcs | accounts | from/to/basis, publishingLines })` so
+  subset of the Believe units passes `scoped(modules, { isrcs | upcs | accounts | labelIds | from/to/basis, publishingLines })` so
   that `sources.snapshot()` reads only that subset; with `isrcs` the split index and the known pairs are read for those
   ISRCs only, and `publishingLines: false` skips the B17 lines for the master-only answers (the allocation of a unit
   depends on the unit and the reference data of its ISRC alone, so the answer is byte for byte the full one). Used by
-  track money / explain (one ISRC), release (one UPC), track summary (account, month, or the ISRC list of the visible
+  track money / explain (one ISRC), release (one UPC), every read under a label (`labelIds`: the loaded files of
+  the label, D-169; the test's `withFullReads` ignores it), track summary (account, month, or the ISRC list of the visible
   rows of P5), the C queue (period), the ads list / card / summary (the ISRCs of the records). The list reads beside
   the calculation take the same filters (`owners.listTracks({ isrcs })`, `splits.listSplits({ isrcs })`,
   `sources.pairAttributes({ isrcs | upcs })`). Never for balances, payables, the overview, the reconciliation, the
@@ -52,20 +53,32 @@
   **A new way for money to reach a pseudonym** (a new layer, a new rule kind, a new kind of record) must extend
   `ownerReach`, and `tests/scope.test.ts` must pin balance-by-reach = full for it; `scripts/check-owner-scope.ts`
   proves it on the real data.
-- **The label as a book** (`label-scope.ts`, `balance.ts`, D-168): an own label is seen in the data only as the label
-  string of a unit, so the book of a label is `labelBook()` (its id, name and the raw label strings of its aliases and
-  its sublabels' aliases) and a read under a label is `scoped(modules, { labelStrings, publishingLines: false })` over
-  the unit scope plus `labelVisibility()` (the ISRCs of the strings, the pseudonyms with a row, participation, rule,
-  operation or ad under the label, their owners). The facade methods take the label as the last argument (`ctx.labelContext`
-  / `ctx.viewOf`); the routes pass `?label=`. `ownerBalance()` partitions **every** field by label key (the label id,
-  `''` = without a label; named `'?'` in the answer): earned / waiting by the unit's label of record, recouped by the
-  label of the income consumed, adsCharged by the charge, paid / returns / credits by the operation; a position under
-  a label is recouped from that label's master income only (`layers/recoup.ts`), one without a label from any income.
-  The recoup always runs over everything; a view under a label (`BalanceView`) is the same computation projected to one
-  book, never a separate calculation, so Σ books (without a label included) = total field by field. `Case.verify()`,
-  `tests/scope.test.ts` and `scripts/check-label-books.ts` pin it. Publishing has no label: its money sits in the
-  «without a label» book and is not paid by a label payout. `createPayout(owner, { labelId })` pays the book;
-  `createOperation` requires `labelId` (except a migrated one); `setOperationLabel` marks the history.
+- **The label as a book** (`label-scope.ts`, `balance.ts`, D-168, D-169): the book of a Believe unit is the own label its
+  **file** was loaded under (`source_files.label_id`, R6; `UnitResult.bookLabelId / bookLabelName`, set in `calculate()`
+  after `allocateUnit`, `LayerContext` untouched); the label string still decides the label of record, the sublabel rule
+  and «ours / `label_unmapped`» (`layers/label-of-record.ts`, `ourShareByLabel`, the signal `labelOutsideAccount`). A
+  file without a label is the book `'?'`. Publishing sits in the book of its statement (`PublishingResult.labelId`, R8),
+  an advertising charge in the book of its payer (`ad.labelId`, R9), an operation in its own label (D-168). The book of
+  an own label is `labelBook()` = `LabelBook { id, name, fileIds }` (its loaded files); a read under a label is
+  `scoped(modules, { labelIds: [L] })` over the unit scope, the reference lists restricted to `sources.isrcsOfFiles(fileIds)`,
+  and the B17 results filtered after the calculation by `underLabel(calc, L)`; `labelVisibility()` adds the pseudonyms
+  with a row or participation on those ISRCs, sublabel-rule recipients of L, operations and ads paid by L (and the split
+  rows of their ISRCs), the owners of L's publishing lines. The facade methods take the label as the last argument
+  (`ctx.labelContext` / `ctx.viewOf`); the routes pass `?label=`. `ownerBalance()` partitions **every** field by book
+  (the label id, `''` = without a label, named `'?'` in the answer): earned / waiting by the unit's book and the
+  statement's label, recouped by the book of the income consumed, adsCharged by the payer, paid / returns / credits by the
+  operation. The master income item carries its book in its id (`m|artist|isrc|month|<book>`), so one ISRC-month from
+  two accounts is two items; a position under a label is recouped from that book's master income only
+  (`layers/recoup.ts`), one without a label from any income (publishing stays eligible by scope: Open В1 of D-169).
+  The recoup always runs over everything; a view (`BalanceView`) is the same computation projected to one book, so
+  Σ books = total field by field (`Case.verify()`, `tests/scope.test.ts`, `scripts/check-label-books.ts`).
+  `createPayout(owner, { labelId })` pays the book: master **and** publishing of L, its snapshot takes the statements and
+  Believe files of L. Gate (`payout-gate.ts`): `owner_not_confirmed` (no approved contract at all, `confirmedAny`,
+  internal) → `no_contract_for_label` (none whose document is of L or without a label: `calc.confirmedOwnersUnder(L)`)
+  → the other checks; an advance under L in `createOperation` asks the same. `createOperation` requires `labelId`
+  (except a migrated one); `setOperationLabel` marks the history (no gate, Open В9). Uploads: `assertUploadLabel` runs
+  before the body is received, `ingestBelieve` checks the account (`account_unregistered`, `account_of_other_label`)
+  before the module's serial load; `removeLabelAccount` only while the account has no file.
 - Category C reasons are one shared enum (`C_REASONS` / `CReason` in `packages/shared/src/api-responses.ts`), used by
   `C_breakdown` and `waitingBreakdown`; a new reason goes there first, then check the pages that show them
   (`SourcesPage.tsx`, `OwnerBalancePage.tsx`) and the A = B + C + ours identity in `reconcile()`.
@@ -74,4 +87,4 @@
   snapshot of the very calculation it used, D-053) before calling `payment-service.ts` (a stub, D-013).
 - Recoupment itself is in `layers/recoup.ts` (moved from the settlements module, D-127; the shapes `Scope`, `IncomeItem`,
   `Position` stay in `modules/settlements`); `balance.ts` feeds it income items and positions.
-- `audit.ts`: `recordAction(input)`, `auditOf(entityId, limit)`, `recentActions(limit)` over the `audit` module (D-140). The API hook `api/audit.ts` calls `recordAction` after every successful write (needs `X-Operator`); a facade method never records by itself.
+- `audit.ts`: `recordAction(input)`, `auditOf(entityId, limit, labelId?)`, `recentActions(limit, labelId?)` over the `audit` module (D-140; the label of a write, D-169, is chosen by the hook: `labelOfWrite`). The API hook `api/audit.ts` calls `recordAction` after every successful write (needs `X-Operator`); a facade method never records by itself.
