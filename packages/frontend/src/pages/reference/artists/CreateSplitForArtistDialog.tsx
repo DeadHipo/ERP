@@ -41,7 +41,7 @@ export function CreateSplitForArtistDialog(props: { isrc: string; artistId: stri
       subtitle={t.createSplitSubtitle}
       footer={
         <ActionButton
-          name="split-submit"
+          name="split-submit" op="POST /splits"
           isPending={run.isPending}
           isDisabled={!ready}
           reason={ru.actions.hints.fillFields}

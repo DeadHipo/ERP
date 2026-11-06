@@ -1,90 +1,32 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { Member } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
-import { useAction } from '../../api/queries/core';
+import { authKeys } from '../../api/queries/auth';
 import { orgQueries } from '../../api/queries/orgs';
 import { ActionButton } from '../../components/ActionButton';
-import { FormDialog } from '../../components/FormDialog';
 import { PageHeader } from '../../components/PageHeader';
+import { notifyError } from '../../components/toast';
 import { QueryView } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
-import { SelectField } from '../../components/fields/SelectField';
-import { TextField } from '../../components/fields/TextField';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { formatDateTime } from '../../lib/datetime';
 import { setWorkOrg } from '../../lib/session';
+import { errorText } from '../../i18n/ru/errors';
 import { fmt, ru } from '../../i18n/ru';
+import { CreateMemberDialog, EditMemberDialog, labelNames } from '../users/member-dialogs';
 
 const t = ru.system.org;
 
-type MemberRole = Member['role'];
+type Dialog = { kind: 'create' } | { kind: 'add' } | { kind: 'edit'; member: Member } | null;
 
 /**
- * A new user of the organization with a role (D-171): an `org_admin` sees every own label; a `label_manager` gets one own
- * label of this organization here (several, and the change of a member, come with P26).
- */
-function CreateUserDialog(props: { orgId: string; onClose: () => void }) {
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<MemberRole>('org_admin');
-  const [labelId, setLabelId] = useState<string | null>(null);
-  const labels = useQuery({ ...orgQueries.labels(props.orgId), enabled: role === 'label_manager' });
-  const manager = role === 'label_manager';
-  const run = useAction(
-    () =>
-      api.orgs.createUser(props.orgId, {
-        login: login.trim(),
-        password,
-        role,
-        labelIds: manager && labelId ? [labelId] : [],
-      }),
-    {
-      invalidate: 'reference',
-      success: (u) => fmt(t.userCreated, { login: u.login }),
-    },
-  );
-  const roleOptions = (['org_admin', 'label_manager'] as const).map((r) => ({ id: r, label: t.roles[r] }));
-  const labelOptions = (labels.data ?? []).map((l) => ({ id: l.id, label: l.name }));
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={t.createUser}
-      subtitle={t.createUserSubtitle}
-      footer={
-        <ActionButton
-          name="create-user-submit"
-          isPending={run.isPending}
-          isDisabled={login.trim() === '' || password === '' || (manager && !labelId)}
-          reason={ru.actions.hints.fillFields}
-          onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}
-        >
-          {ru.common.create}
-        </ActionButton>
-      }
-    >
-      <TextField name="user-login" label={t.login} placeholder={t.loginHint} value={login} onChange={setLogin} autoComplete="off" isRequired />
-      <TextField name="user-password" label={t.password} type="password" value={password} onChange={setPassword} autoComplete="new-password" isRequired />
-      <SelectField name="user-role" label={t.role} value={role} onChange={(v) => setRole(v as MemberRole)} options={roleOptions} isRequired />
-      {manager ? (
-        labels.data && labelOptions.length === 0 ? (
-          <p className="text-sm text-warning" data-testid="user-no-labels">
-            {t.noLabels}
-          </p>
-        ) : (
-          <SelectField name="user-label" label={t.label} placeholder={t.labelHint} value={labelId} onChange={setLabelId} options={labelOptions} isRequired />
-        )
-      ) : null}
-    </FormDialog>
-  );
-}
-
-/**
- * P25 «Организация» `/system/orgs/:id` (D-170): its counts and users, `action-create-user`, and «Работать в организации»
- * (`sessionStorage` `erp.org`: the client then sends `X-Org`, this tab only). No money.
+ * P25 «Организация» `/system/orgs/:id` (D-170, D-171): its counts and members (role, labels; `action-create-user`,
+ * `action-add-member`, `action-edit-member`), and «Работать в организации»: `POST /orgs/:id/support/enter` under a live
+ * support grant of its administrator, then `sessionStorage` `erp.org` (the client sends `X-Org`, this tab only); closed
+ * with the sentence of `support_required` without a grant (`org-support`). No money.
  */
 export function OrgPage() {
   const { id = '' } = useParams();
@@ -92,26 +34,51 @@ export function OrgPage() {
   const queryClient = useQueryClient();
   const org = useQuery(orgQueries.detail(id));
   const users = useQuery(orgQueries.users(id));
-  const [creating, setCreating] = useState(false);
+  const labels = useQuery(orgQueries.labels(id));
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const close = () => setDialog(null);
   useBreadcrumbLabel(org.data?.name);
+  const own = labels.data?.map((l) => ({ id: l.id, name: l.name }));
+  // the own labels are a read inside the organization: without a support grant the API refuses it (D-171)
+  const labelsUnavailable = labels.error instanceof api.ApiError ? (errorText(labels.error.code) ?? labels.error.message) : undefined;
   const columns = useMemo<ColDef<Member>[]>(
     () => [
       { colId: 'login', headerName: t.cols.login, minWidth: 200, valueGetter: (p) => p.data?.login },
       { colId: 'role', headerName: t.cols.role, minWidth: 200, valueGetter: (p) => (p.data ? t.roles[p.data.role] : '') },
-      { colId: 'labels', headerName: t.cols.labels, maxWidth: 120, valueGetter: (p) => (p.data?.role === 'label_manager' ? p.data.labelIds.length : '') },
+      { colId: 'labels', headerName: t.cols.labels, minWidth: 140, valueGetter: (p) => (p.data ? labelNames(p.data.labelIds, own) : '') },
       { colId: 'active', headerName: t.cols.active, maxWidth: 150, valueGetter: (p) => (p.data?.active ? ru.common.yes : ru.common.no) },
       { colId: 'createdAt', headerName: t.cols.createdAt, valueGetter: (p) => (p.data ? formatDateTime(p.data.createdAt) : '') },
       { colId: 'createdBy', headerName: t.cols.createdBy, valueGetter: (p) => p.data?.createdBy },
       { colId: 'disabled', headerName: t.cols.disabled, maxWidth: 130, valueGetter: (p) => (p.data?.disabled ? ru.common.yes : ru.common.no) },
+      {
+        colId: 'actions',
+        headerName: t.cols.actions,
+        sortable: false,
+        filter: false,
+        cellRenderer: (p: { data?: Member }) =>
+          p.data ? (
+            <ActionButton name="edit-member" op="PATCH /orgs/:id/users/:userId" variant="secondary" compact onPress={() => p.data && setDialog({ kind: 'edit', member: p.data })}>
+              {t.edit}
+            </ActionButton>
+          ) : null,
+      },
     ],
-    [],
+    [own],
   );
-  const work = () => {
-    // the data of another organization must not stay in the cache under the same keys
-    setWorkOrg(id);
-    queryClient.clear();
-    void navigate('/');
-  };
+  // no invalidation (useAction would refetch `me` without the organization): the answer is the session in it
+  const enter = useMutation<Awaited<ReturnType<typeof api.orgs.enterSupport>>, api.ApiError>({
+    mutationFn: () => api.orgs.enterSupport(id),
+    onError: notifyError,
+    onSuccess: (me) => {
+      // the data of another organization must not stay in the cache under the same keys; the session is support there
+      // (`clear()` would leave the shell's observer of `me` on the removed query, with the old answer)
+      setWorkOrg(id);
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== authKeys.me()[0] });
+      queryClient.setQueryData(authKeys.me(), me);
+      void navigate('/');
+    },
+  });
+  const work = () => enter.mutate();
   return (
     <div data-testid="org-page" data-org-id={id}>
       <QueryView query={org}>
@@ -122,17 +89,33 @@ export function OrgPage() {
               subtitle={t.subtitle}
               toolbar={
                 <>
-                  <ActionButton name="work-in-org" write={false} variant="secondary" onPress={work}>
+                  <ActionButton
+                    name="work-in-org"
+                    op="POST /orgs/:id/support/enter"
+                    variant="secondary"
+                    isPending={enter.isPending}
+                    isDisabled={o.support === null}
+                    reason={errorText('support_required')}
+                    onPress={work}
+                  >
                     {t.work}
                   </ActionButton>
-                  <ActionButton name="create-user" onPress={() => setCreating(true)}>
+                  <ActionButton name="add-member" op="POST /orgs/:id/members" variant="secondary" onPress={() => setDialog({ kind: 'add' })}>
+                    {ru.users.addMember}
+                  </ActionButton>
+                  <ActionButton name="create-user" op="POST /orgs/:id/users" onPress={() => setDialog({ kind: 'create' })}>
                     {t.createUser}
                   </ActionButton>
                 </>
               }
             />
-            <p className="mb-4 text-sm text-muted" data-testid="org-counts" title={t.workHint}>
+            <p className="mb-1 text-sm text-muted" data-testid="org-counts" title={t.workHint}>
               {fmt(t.counts, o.counts)}
+            </p>
+            <p className="mb-4 text-sm" data-testid="org-support" data-active={o.support !== null}>
+              {o.support
+                ? fmt(t.support, { until: formatDateTime(o.support.expiresAt), mode: o.support.write ? t.supportWrite : t.supportRead })
+                : errorText('support_required')}
             </p>
           </>
         )}
@@ -143,7 +126,29 @@ export function OrgPage() {
           <DataGrid rowData={rows} columnDefs={columns} getRowId={(r) => r.id} rowTestId={(r) => `org-user-${r.login}`} gridStateKey="users" autoHeight />
         )}
       </QueryView>
-      {creating ? <CreateUserDialog orgId={id} onClose={() => setCreating(false)} /> : null}
+      {dialog?.kind === 'create' ? (
+        <CreateMemberDialog op="POST /orgs/:id/users" labels={own} labelsUnavailable={labelsUnavailable} create={(body) => api.orgs.createUser(id, body)} onClose={close} />
+      ) : null}
+      {dialog?.kind === 'add' ? (
+        <CreateMemberDialog
+          op="POST /orgs/:id/members"
+          existing
+          labels={own}
+          labelsUnavailable={labelsUnavailable}
+          create={(body) => api.orgs.addMember(id, { login: body.login, role: body.role, labelIds: body.labelIds })}
+          onClose={close}
+        />
+      ) : null}
+      {dialog?.kind === 'edit' ? (
+        <EditMemberDialog
+          op="PATCH /orgs/:id/users/:userId"
+          member={dialog.member}
+          labels={own}
+          labelsUnavailable={labelsUnavailable}
+          update={(body) => api.orgs.updateMember(id, dialog.member.id, body)}
+          onClose={close}
+        />
+      ) : null}
     </div>
   );
 }

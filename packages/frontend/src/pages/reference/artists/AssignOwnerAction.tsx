@@ -8,7 +8,7 @@ export function AssignOwnerAction(props: { artistId: string; pseudonym: string }
   const [open, setOpen] = useState(false);
   return (
     <>
-      <ActionButton name="assign-owner" variant="secondary" onPress={() => setOpen(true)}>
+      <ActionButton name="assign-owner" op="POST /artists/:id/owner" variant="secondary" onPress={() => setOpen(true)}>
         {ru.reference.artists.assignOwner}
       </ActionButton>
       {open ? <AssignOwnerDialog artistId={props.artistId} pseudonym={props.pseudonym} onClose={() => setOpen(false)} /> : null}

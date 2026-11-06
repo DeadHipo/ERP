@@ -51,7 +51,7 @@ export function ParticipationsPage() {
         filter: false,
         cellRenderer: (p: { data?: ParticipationListItem }) =>
           p.data ? (
-            <ActionButton name="close-participation" variant="secondary" onPress={() => p.data && setDialog({ kind: 'close', part: p.data })}>
+            <ActionButton name="close-participation" op="POST /participations/:id/close" variant="secondary" onPress={() => p.data && setDialog({ kind: 'close', part: p.data })}>
               {t.close}
             </ActionButton>
           ) : null,
@@ -65,7 +65,7 @@ export function ParticipationsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-participation" onPress={() => setDialog({ kind: 'create' })}>
+          <ActionButton name="create-participation" op="POST /participations" onPress={() => setDialog({ kind: 'create' })}>
             {t.create}
           </ActionButton>
         }

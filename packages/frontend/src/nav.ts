@@ -16,9 +16,12 @@ import {
   RectangleStackIcon,
   ScaleIcon,
   TagIcon,
+  UserCircleIcon,
   UserGroupIcon,
   UsersIcon,
 } from '@heroicons/react/24/outline';
+import type { OperationKey } from './api/coverage';
+import { isAllowed } from './lib/abilities';
 import { ru } from './i18n/ru';
 
 export interface NavItem {
@@ -29,6 +32,11 @@ export interface NavItem {
   path: string;
   /** Optional count shown as a badge (from the overview). */
   badge?: number;
+  /**
+   * The main read of the page (D-171): the item is hidden when the session may not call it (`me.abilities`); none =
+   * the page reads nothing of the API (the open questions).
+   */
+  op?: OperationKey;
 }
 
 export interface NavSection {
@@ -45,41 +53,41 @@ export const NAV: readonly NavSection[] = [
     id: 'work',
     label: ru.nav.sections.work,
     items: [
-      { id: 'overview', label: items.overview, icon: ChartPieIcon, path: '/' },
-      { id: 'queue', label: items.queue, icon: ClockIcon, path: '/queue' },
-      { id: 'signals', label: items.signals, icon: BellAlertIcon, path: '/signals' },
+      { id: 'overview', label: items.overview, icon: ChartPieIcon, path: '/', op: 'GET /overview' },
+      { id: 'queue', label: items.queue, icon: ClockIcon, path: '/queue', op: 'GET /overview' },
+      { id: 'signals', label: items.signals, icon: BellAlertIcon, path: '/signals', op: 'GET /signals' },
       { id: 'questions', label: items.questions, icon: QuestionMarkCircleIcon, path: '/questions' },
-      { id: 'payouts', label: items.payouts, icon: BanknotesIcon, path: '/owners?view=payouts' },
+      { id: 'payouts', label: items.payouts, icon: BanknotesIcon, path: '/owners?view=payouts', op: 'GET /owners/payables' },
     ],
   },
   {
     id: 'catalog',
     label: ru.nav.sections.catalog,
     items: [
-      { id: 'tracks', label: items.tracks, icon: MusicalNoteIcon, path: '/tracks' },
-      { id: 'releases', label: items.releases, icon: RectangleStackIcon, path: '/releases' },
-      { id: 'owners', label: items.owners, icon: UsersIcon, path: '/owners' },
-      { id: 'artists', label: items.artists, icon: UserGroupIcon, path: '/artists' },
+      { id: 'tracks', label: items.tracks, icon: MusicalNoteIcon, path: '/tracks', op: 'GET /tracks/catalog' },
+      { id: 'releases', label: items.releases, icon: RectangleStackIcon, path: '/releases', op: 'GET /releases' },
+      { id: 'owners', label: items.owners, icon: UsersIcon, path: '/owners', op: 'GET /owners' },
+      { id: 'artists', label: items.artists, icon: UserGroupIcon, path: '/artists', op: 'GET /artists' },
     ],
   },
   {
     id: 'rules',
     label: ru.nav.sections.rules,
     items: [
-      { id: 'splits', label: items.splits, icon: ScaleIcon, path: '/splits' },
-      { id: 'participations', label: items.participations, icon: ReceiptPercentIcon, path: '/participations' },
-      { id: 'labels', label: items.labels, icon: TagIcon, path: '/labels' },
-      { id: 'publishing', label: items.publishing, icon: BuildingLibraryIcon, path: '/publishing' },
-      { id: 'documents', label: items.documents, icon: DocumentTextIcon, path: '/documents' },
+      { id: 'splits', label: items.splits, icon: ScaleIcon, path: '/splits', op: 'GET /splits' },
+      { id: 'participations', label: items.participations, icon: ReceiptPercentIcon, path: '/participations', op: 'GET /participations' },
+      { id: 'labels', label: items.labels, icon: TagIcon, path: '/labels', op: 'GET /labels' },
+      { id: 'publishing', label: items.publishing, icon: BuildingLibraryIcon, path: '/publishing', op: 'GET /publishing/writers' },
+      { id: 'documents', label: items.documents, icon: DocumentTextIcon, path: '/documents', op: 'GET /documents' },
     ],
   },
   {
     id: 'money',
     label: ru.nav.sections.money,
     items: [
-      { id: 'sources', label: items.sources, icon: ArchiveBoxIcon, path: '/sources' },
-      { id: 'operations', label: items.operations, icon: FolderOpenIcon, path: '/operations' },
-      { id: 'ads', label: items.ads, icon: MegaphoneIcon, path: '/ads' },
+      { id: 'sources', label: items.sources, icon: ArchiveBoxIcon, path: '/sources', op: 'GET /sources/files' },
+      { id: 'operations', label: items.operations, icon: FolderOpenIcon, path: '/operations', op: 'GET /settlements/operations' },
+      { id: 'ads', label: items.ads, icon: MegaphoneIcon, path: '/ads', op: 'GET /ads' },
     ],
   },
 ];
@@ -91,16 +99,39 @@ export const NAV: readonly NavSection[] = [
 export const SYSTEM_NAV: NavSection = {
   id: 'system',
   label: ru.nav.sections.system,
-  items: [{ id: 'system-orgs', label: items.systemOrgs, icon: BuildingOffice2Icon, path: '/system/orgs' }],
+  items: [
+    { id: 'system-orgs', label: items.systemOrgs, icon: BuildingOffice2Icon, path: '/system/orgs', op: 'GET /orgs' },
+    { id: 'system-users', label: items.systemUsers, icon: UserCircleIcon, path: '/system/users', op: 'GET /system/users' },
+  ],
 };
 
-/** The sections of the sidebar for the session: the operator's, plus the system section for a system administrator. */
-export function navFor(session: { isSystemAdmin: boolean; inOrg: boolean }): readonly NavSection[] {
-  if (!session.isSystemAdmin) return NAV;
-  return session.inOrg ? [...NAV, SYSTEM_NAV] : [SYSTEM_NAV];
+/** The organization's own settings (D-171, P26): its users and support grants, for its administrator only. */
+export const ORG_NAV: NavSection = {
+  id: 'org',
+  label: ru.nav.sections.org,
+  items: [{ id: 'users', label: items.users, icon: UserCircleIcon, path: '/users', op: 'GET /users' }],
+};
+
+/**
+ * The sections of the sidebar for the session: the operator's and the organization's, plus the system section for a
+ * system administrator; with `me` (D-171) an item whose read is not in `me.abilities` is hidden, an empty section too.
+ */
+export function navFor(
+  session: { isSystemAdmin: boolean; inOrg: boolean },
+  me?: { authMode: 'on' | 'off'; abilities: readonly string[] },
+): readonly NavSection[] {
+  const sections = !session.isSystemAdmin ? [...NAV, ORG_NAV] : session.inOrg ? [...NAV, ORG_NAV, SYSTEM_NAV] : [SYSTEM_NAV];
+  return sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.op || isAllowed(me, i.op)) }))
+    .filter((s) => s.items.length > 0);
 }
 
-const BREADCRUMB_SECTIONS: readonly NavSection[] = [...NAV, SYSTEM_NAV];
+/** The first page of the sidebar the session may open (the home of a label manager, who has no overview; D-171). */
+export function homeFor(sections: readonly NavSection[]): string {
+  return sections[0]?.items[0]?.path ?? '/';
+}
+
+const BREADCRUMB_SECTIONS: readonly NavSection[] = [...NAV, ORG_NAV, SYSTEM_NAV];
 const BREADCRUMB_ITEMS: readonly NavItem[] = BREADCRUMB_SECTIONS.flatMap((s) => s.items);
 
 /** Sub-pages that are not sidebar items but have a fixed breadcrumb label. */

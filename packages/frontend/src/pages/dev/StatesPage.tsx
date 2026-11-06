@@ -109,7 +109,7 @@ function Ss5() {
   });
   return (
     <div className="flex flex-col gap-3">
-      <ActionButton name="refresh" isPending={echo.isPending} onPress={() => echo.mutate(undefined)}>
+      <ActionButton name="refresh" op="POST /owners" isPending={echo.isPending} onPress={() => echo.mutate(undefined)}>
         Записать и пересчитать
       </ActionButton>
       <QueryView query={query} money>
@@ -179,7 +179,7 @@ function ActionCase() {
   });
   return (
     <div className="flex flex-col gap-3">
-      <ActionButton name="demo" isPending={echo.isPending} onPress={() => setOpen(true)}>
+      <ActionButton name="demo" op="POST /owners" isPending={echo.isPending} onPress={() => setOpen(true)}>
         Записать
       </ActionButton>
       <ConfirmDialog

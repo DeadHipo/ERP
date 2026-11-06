@@ -155,7 +155,7 @@ export function TracksPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-track" onPress={() => setCreating(true)}>
+          <ActionButton name="create-track" op="POST /tracks" onPress={() => setCreating(true)}>
             {t.create}
           </ActionButton>
         }
@@ -310,7 +310,7 @@ function CreateTrackDialog({ onClose }: { onClose: () => void }) {
       subtitle={t.createSubtitle}
       footer={
         <ActionButton
-          name="create-track-submit"
+          name="create-track-submit" op="POST /tracks"
           isPending={run.isPending}
           isDisabled={title.trim() === ''}
           reason={title.trim() === '' ? ru.actions.hints.fillFields : undefined}

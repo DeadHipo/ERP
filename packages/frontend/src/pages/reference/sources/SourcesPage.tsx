@@ -73,7 +73,7 @@ function UploadForm(props: {
         />
       </label>
       <ActionButton
-        name={`upload-${props.name}`}
+        name={`upload-${props.name}`} op={props.name === 'believe' ? 'POST /sources/believe' : 'POST /publishing/b17'}
         isPending={run.isPending}
         isDisabled={file === null || closed}
         reason={closed ? undefined : ru.actions.hints.fillFields}

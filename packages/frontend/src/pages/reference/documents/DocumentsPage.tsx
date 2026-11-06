@@ -35,7 +35,7 @@ export function ApproveControl(props: { doc: Row; onApprove: () => void }) {
     );
   if (d.status === 'approved') return null;
   return (
-    <ActionButton name="approve" variant="secondary" isDisabled={d.status === 'not_attached'} reason={t.approveFirstAttach} onPress={props.onApprove}>
+    <ActionButton name="approve" op="POST /documents/:id/approve" variant="secondary" isDisabled={d.status === 'not_attached'} reason={t.approveFirstAttach} onPress={props.onApprove}>
       {t.approve}
     </ActionButton>
   );
@@ -116,7 +116,7 @@ export function DocumentsPage() {
           p.data ? (
             <span className="flex items-center gap-2">
               {p.data.status === 'not_attached' ? (
-                <ActionButton name="attach" variant="secondary" onPress={() => p.data && setDialog({ kind: 'attach', doc: p.data })}>
+                <ActionButton name="attach" op="POST /documents/:id/attach" variant="secondary" onPress={() => p.data && setDialog({ kind: 'attach', doc: p.data })}>
                   {t.attach}
                 </ActionButton>
               ) : null}
@@ -133,7 +133,7 @@ export function DocumentsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-document" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setDialog({ kind: 'create' })}>
+          <ActionButton name="create-document" op="POST /documents" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setDialog({ kind: 'create' })}>
             {t.create}
           </ActionButton>
         }

@@ -114,7 +114,7 @@ export function DocumentStep(props: {
         <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="document-created">
           {fmt(a.steps.documentCreated, { title: created.title })}
           <StatusChip kind="documentStatus" value={created.status} />
-          <ActionButton name="document-approve" isPending={approve.isPending} onPress={() => setConfirmOpen(true)}>
+          <ActionButton name="document-approve" op="POST /documents/:id/approve" isPending={approve.isPending} onPress={() => setConfirmOpen(true)}>
             {a.steps.approve}
           </ActionButton>
           <ConfirmDialog
@@ -160,7 +160,7 @@ export function DocumentStep(props: {
           <TextField name="document-file" label={a.fields.fileRef} value={fileRef} onChange={setFileRef} isRequired />
           <div>
             <ActionButton
-              name="document-create"
+              name="document-create" op="POST /documents"
               isPending={create.isPending}
               isDisabled={title.trim() === '' || fileRef.trim() === '' || !labelReady}
               reason={labelReady ? undefined : labelReason}

@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { possibleDuplicateDetailsSchema } from '@erp/shared/api-responses';
 import { ApiError } from '../api/client';
+import type { OperationKey } from '../api/coverage';
 import { ActionButton } from './ActionButton';
 import { FormDialog } from './FormDialog';
 import { ru } from '../i18n/ru';
@@ -28,6 +29,8 @@ export function DuplicateDialog(props: {
   matchedBy: string;
   same: string;
   fresh: string;
+  /** The create the «новый» button repeats (`POST /owners`, `POST /artists`, D-171). */
+  op: OperationKey;
   similar: Similar;
   pending: boolean;
   onSame: (id: string, name: string) => void;
@@ -41,7 +44,7 @@ export function DuplicateDialog(props: {
       title={props.title}
       subtitle={props.text}
       footer={
-        <ActionButton name="duplicate-new" isPending={props.pending} onPress={props.onFresh}>
+        <ActionButton name="duplicate-new" op={props.op} isPending={props.pending} onPress={props.onFresh}>
           {props.fresh}
         </ActionButton>
       }

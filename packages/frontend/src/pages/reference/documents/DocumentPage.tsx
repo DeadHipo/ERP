@@ -62,7 +62,7 @@ export function DocumentPage() {
                   <span data-testid="document-label" data-label-id={d.labelId ?? ''}>
                     {labelName(d.labelId)}
                   </span>
-                  <ActionButton name="set-document-label" variant="secondary" compact onPress={() => setDialog('label')}>
+                  <ActionButton name="set-document-label" op="PATCH /documents/:id" variant="secondary" compact onPress={() => setDialog('label')}>
                     {t.setLabel}
                   </ActionButton>
                 </span>
@@ -77,7 +77,7 @@ export function DocumentPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {d.status === 'not_attached' ? (
-                  <ActionButton name="attach" variant="secondary" onPress={() => setDialog('attach')}>
+                  <ActionButton name="attach" op="POST /documents/:id/attach" variant="secondary" onPress={() => setDialog('attach')}>
                     {t.attach}
                   </ActionButton>
                 ) : null}
@@ -85,10 +85,10 @@ export function DocumentPage() {
                 {/* An assumption confirms nothing (its money waits in C assumption): it is only replaced by a document. */}
                 {d.kind === 'assumption' ? null : (
                   <>
-                    <ActionButton name="confirm-split" variant="secondary" onPress={() => setDialog('confirm-split')}>
+                    <ActionButton name="confirm-split" op="POST /splits/:id/confirm" variant="secondary" onPress={() => setDialog('confirm-split')}>
                       {t.confirmSplit}
                     </ActionButton>
-                    <ActionButton name="create-contract" variant="secondary" onPress={() => setDialog('contract')}>
+                    <ActionButton name="create-contract" op="POST /contracts" variant="secondary" onPress={() => setDialog('contract')}>
                       {t.createContract}
                     </ActionButton>
                   </>

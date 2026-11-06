@@ -16,7 +16,12 @@ export const system = {
       owners: 'Владельцы',
       users: 'Пользователи',
       createdAt: 'Создана',
+      support: 'Поддержка',
     },
+    /** The live support grant of the asking system administrator (D-171). */
+    supportUntil: 'до {until}',
+    supportWrite: 'с записью',
+    noSupport: '—',
   },
   org: {
     subtitle: 'Кто работает в этой организации, и что в ней заведено?',
@@ -34,7 +39,11 @@ export const system = {
     noLabels: 'В организации нет своих лейблов: менеджера лейбла создать нельзя',
     userCreated: 'Создан пользователь {login}',
     work: 'Работать в организации',
-    workHint: 'Открыть её данные от имени системного администратора (только в этой вкладке)',
+    workHint: 'Открыть её данные как поддержка, по доступу от администратора организации (только в этой вкладке)',
+    support: 'Доступ поддержки до {until}, {mode}',
+    supportRead: 'только чтение',
+    supportWrite: 'с записью',
+    edit: 'Изменить',
     counts: 'Лейблов: {labels}, файлов Believe: {files}, выписок B17: {statements}, владельцев: {owners}, пользователей: {users}',
     cols: {
       login: 'Логин',
@@ -44,6 +53,27 @@ export const system = {
       createdAt: 'Создан',
       createdBy: 'Кем',
       disabled: 'Отключён',
+      actions: 'Действия',
+    },
+  },
+  /** P27 «Пользователи» (D-171): every user, for the system administrator. */
+  users: {
+    title: 'Пользователи',
+    subtitle: 'Кто может войти, в каких организациях и с какой ролью? Отключение и новый пароль заканчивают сессии',
+    empty: 'Пользователей нет.',
+    systemAdmin: 'системный администратор',
+    member: 'пользователь',
+    suspended: 'приостановлен',
+    disable: 'Отключить',
+    enable: 'Включить',
+    disabledDone: 'Пользователь {login} отключён',
+    enabledDone: 'Пользователь {login} включён',
+    cols: {
+      login: 'Логин',
+      kind: 'Вид',
+      memberships: 'Организации',
+      disabled: 'Отключён',
+      actions: 'Действия',
     },
   },
 } as const;

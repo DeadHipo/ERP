@@ -91,7 +91,7 @@ export function DuplicatesPage() {
                           </Td>
                           <Td>
                             {target ? (
-                              <ActionButton name="create-split" variant="secondary" onPress={() => setSplit({ isrc: c.isrc, artistId: target.id, pseudonym: target.pseudonym })}>
+                              <ActionButton name="create-split" op="POST /splits" variant="secondary" onPress={() => setSplit({ isrc: c.isrc, artistId: target.id, pseudonym: target.pseudonym })}>
                                 {t.createSplit}
                               </ActionButton>
                             ) : null}

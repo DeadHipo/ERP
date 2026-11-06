@@ -34,7 +34,7 @@ export function AddAccountDialog(props: {
       subtitle={register ? t.registerHint : t.accountsHint}
       footer={
         <ActionButton
-          name="account-submit"
+          name="account-submit" op="POST /labels/:id/accounts"
           isPending={run.isPending}
           isDisabled={account.trim() === ''}
           reason={ru.actions.hints.fillFields}

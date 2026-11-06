@@ -36,6 +36,10 @@ export const ROUTE_PATHS = {
   /** P24, P25: the system administrator's pages (D-170). */
   systemOrgs: 'system/orgs',
   systemOrg: 'system/orgs/:id',
+  /** P27: every user, for the system administrator (D-171). */
+  systemUsers: 'system/users',
+  /** P26: the users and the support grants of the organization, for its administrator (D-171). */
+  users: 'users',
 } as const;
 
 /** Every route as an absolute pattern; the overview is the index route `/`. */

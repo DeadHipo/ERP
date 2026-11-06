@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useMe } from '../api/queries/auth';
 import { ru } from '../i18n/ru';
 import { readStorage, writeStorage } from './storage';
 
@@ -32,11 +33,16 @@ function subscribe(onChange: () => void): () => void {
  * else the stored switch value. Setting it writes both. `labelId` '' means «Все»: the reads carry no `label=`, the
  * balances show every book, the payout button is unavailable.
  */
-export function useLabel(): { labelId: string; setLabel: (id: string) => void } {
+export function useLabel(): { labelId: string; requested: string; setLabel: (id: string) => void } {
   const [params, setParams] = useSearchParams();
   const stored = useSyncExternalStore(subscribe, getStoredLabel, () => '');
   const fromUrl = params.get(LABEL_PARAM);
-  const labelId = fromUrl ?? stored;
+  const me = useMe().data;
+  const asked = fromUrl ?? stored;
+  // a label manager (D-171) never reads under «Все» or another label: their first label until the shell's
+  // `ForeignLabelReset` stores it, so no request goes out with a label the API refuses
+  const labelId =
+    me && me.authMode === 'on' && !me.allLabels && !me.labels.some((l) => l.id === asked) ? (me.labels[0]?.id ?? asked) : asked;
   // the URL wins: a link with `?label=` moves the switch. Only when the URL value changes: `setLabel('')` writes the
   // storage before the URL loses `label=`, and syncing on every render would write the old URL value back (D-169).
   const synced = useRef<string | null>(null);
@@ -59,7 +65,8 @@ export function useLabel(): { labelId: string; setLabel: (id: string) => void } 
     },
     [setParams],
   );
-  return { labelId, setLabel };
+  /** `requested`: the label of the URL or the storage as it is (the shell drops one the session may not choose). */
+  return { labelId, requested: asked, setLabel };
 }
 
 /** The label view as a query object to spread into a read (`label=<id>`), nothing under «Все». */

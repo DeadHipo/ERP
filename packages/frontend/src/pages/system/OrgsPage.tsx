@@ -32,7 +32,7 @@ function CreateOrgDialog(props: { onClose: () => void }) {
       subtitle={t.createSubtitle}
       footer={
         <ActionButton
-          name="create-org-submit"
+          name="create-org-submit" op="POST /orgs"
           isPending={run.isPending}
           isDisabled={name.trim() === ''}
           reason={ru.actions.hints.fillFields}
@@ -74,6 +74,15 @@ export function OrgsPage() {
           cellRenderer: (p: { data?: OrgSummary }) => (p.data ? <span data-col={c}>{p.data.counts[c]}</span> : null),
         }),
       ),
+      {
+        colId: 'support',
+        headerName: t.cols.support,
+        minWidth: 180,
+        valueGetter: (p) =>
+          p.data?.support
+            ? `${fmt(t.supportUntil, { until: formatDateTime(p.data.support.expiresAt) })}${p.data.support.write ? `, ${t.supportWrite}` : ''}`
+            : t.noSupport,
+      },
       { colId: 'createdAt', headerName: t.cols.createdAt, valueGetter: (p) => (p.data ? formatDateTime(p.data.createdAt) : '') },
     ],
     [],
@@ -84,7 +93,7 @@ export function OrgsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-org" onPress={() => setCreating(true)}>
+          <ActionButton name="create-org" op="POST /orgs" onPress={() => setCreating(true)}>
             {t.create}
           </ActionButton>
         }

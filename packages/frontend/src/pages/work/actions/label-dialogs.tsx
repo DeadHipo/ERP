@@ -26,7 +26,7 @@ export function SetOperationLabelDialog(props: { operationId: string; onClose: (
       subtitle={t.setLabelSubtitle}
       footer={
         <ActionButton
-          name="set-label-submit"
+          name="set-label-submit" op="PATCH /settlements/operations/:id"
           isDisabled={labelId === ''}
           reason={labelId === '' ? ru.actions.hints.fillFields : undefined}
           isPending={run.isPending}

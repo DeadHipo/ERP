@@ -33,7 +33,7 @@ function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
       onOpenChange={(o) => (o ? null : props.onClose())}
       title={t.addAlias}
       footer={
-        <ActionButton name="alias-submit" isPending={run.isPending} isDisabled={alias.trim() === ''} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+        <ActionButton name="alias-submit" op="POST /labels/:id/aliases" isPending={run.isPending} isDisabled={alias.trim() === ''} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
           {t.addAlias}
         </ActionButton>
       }
@@ -72,7 +72,7 @@ export function LabelPage() {
               <section>
                 <div className="mb-2 flex items-center gap-3">
                   <h2 className="text-sm font-medium">{t.aliases}</h2>
-                  <ActionButton name="add-alias" variant="secondary" onPress={() => setDialog({ kind: 'alias' })}>
+                  <ActionButton name="add-alias" op="POST /labels/:id/aliases" variant="secondary" onPress={() => setDialog({ kind: 'alias' })}>
                     {t.addAlias}
                   </ActionButton>
                 </div>
@@ -92,7 +92,7 @@ export function LabelPage() {
                 <section>
                   <div className="mb-2 flex items-center gap-3">
                     <h2 className="text-sm font-medium">{t.accounts}</h2>
-                    <ActionButton name="add-account" variant="secondary" onPress={() => setDialog({ kind: 'account' })}>
+                    <ActionButton name="add-account" op="POST /labels/:id/accounts" variant="secondary" onPress={() => setDialog({ kind: 'account' })}>
                       {t.addAccount}
                     </ActionButton>
                   </div>
@@ -103,7 +103,7 @@ export function LabelPage() {
                       {l.accounts.map((acc) => (
                         <li key={acc} data-testid={`account-${acc}`} className="flex items-center gap-2 rounded-lg border border-border px-2 py-1 text-sm">
                           {acc}
-                          <ActionButton name={`remove-account-${acc}`} variant="tertiary" compact onPress={() => setDialog({ kind: 'remove', account: acc })}>
+                          <ActionButton name={`remove-account-${acc}`} op="POST /labels/:id/accounts/:account/remove" variant="tertiary" compact onPress={() => setDialog({ kind: 'remove', account: acc })}>
                             {t.removeAccount}
                           </ActionButton>
                         </li>
@@ -116,7 +116,7 @@ export function LabelPage() {
                 <div className="mb-2 flex items-center gap-3">
                   <h2 className="text-sm font-medium">{t.rules}</h2>
                   {l.kind === 'sublabel' ? (
-                    <ActionButton name="set-rule" variant="secondary" onPress={() => setDialog({ kind: 'rule' })}>
+                    <ActionButton name="set-rule" op="POST /labels/:id/rules" variant="secondary" onPress={() => setDialog({ kind: 'rule' })}>
                       {t.setRule}
                     </ActionButton>
                   ) : null}
@@ -132,7 +132,7 @@ export function LabelPage() {
                         <Td col="period">{period(x.validFrom, x.validTo)}</Td>
                         <Td col="document"><DocumentCell id={x.documentId} status={x.documentStatus} /></Td>
                         <Td>
-                          <ActionButton name="close-rule" variant="secondary" onPress={() => setDialog({ kind: 'close', rule: x })}>
+                          <ActionButton name="close-rule" op="POST /labels/rules/:id/close" variant="secondary" onPress={() => setDialog({ kind: 'close', rule: x })}>
                             {t.closeRule}
                           </ActionButton>
                         </Td>

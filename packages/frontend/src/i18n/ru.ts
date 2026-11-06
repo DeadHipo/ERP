@@ -1,6 +1,7 @@
 import { audit } from './ru/audit';
 import { auth } from './ru/auth';
 import { system } from './ru/system';
+import { users } from './ru/users';
 import { ads } from './ru/ads';
 import { common } from './ru/common';
 import { nav } from './ru/nav';
@@ -42,6 +43,7 @@ export const ru = {
   ads,
   auth,
   system,
+  users,
 } as const;
 
 /** Russian plural form: `plural(21, ['файл', 'файла', 'файлов'])` gives `файл`. */

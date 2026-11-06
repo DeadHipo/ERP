@@ -74,9 +74,10 @@ test('the system administrator lists the organizations, creates C and its user, 
   await page.getByTestId('action-create-user').click();
   await page.getByTestId('field-user-login').fill('e2e-c');
   await page.getByTestId('field-user-password').fill('e2e-c-synthetic-pass');
-  // C has no own label: a label manager cannot be created there (D-171), an administrator of the organization can
+  // a label manager needs own labels of C, a read inside C: without a support grant the system administrator cannot
+  // read them (D-171); an administrator of the organization needs none
   await choose(page, 'user-role', 'менеджер лейбла');
-  await expect(page.getByTestId('user-no-labels')).toBeVisible();
+  await expect(page.getByTestId('user-labels-unavailable')).toHaveText('Нужен доступ поддержки от администратора организации');
   await expect(page.getByTestId('action-create-user-submit')).toBeDisabled();
   await choose(page, 'user-role', 'администратор организации');
   await page.getByTestId('action-create-user-submit').click();
@@ -86,24 +87,16 @@ test('the system administrator lists the organizations, creates C and its user, 
   await expect(userC.locator('[col-id="role"]')).toHaveText('администратор организации');
   await expect(userC.locator('[col-id="active"]')).toHaveText('да');
 
-  // the writes of the system administrator are in the audit of C under their login
-  const trail = await auditOf(page.request, orgC, orgC);
-  expect(trail.map((a) => `${a.operator} ${a.method} ${a.route}`).sort()).toEqual([
-    'e2e-sysadmin POST /orgs',
-    'e2e-sysadmin POST /orgs/:id/users',
-  ]);
+  // «Работать в организации» is closed until the administrator of C grants support (D-171)
+  await expect(page.getByTestId('org-support')).toHaveAttribute('data-active', 'false');
+  await expect(page.getByTestId('action-work-in-org')).toBeDisabled();
+  await expect(page.getByTestId('org-page')).toContainText('Нужен доступ поддержки от администратора организации');
+  // the API says the same: no organization read without a grant
+  const refused = await page.request.get('/api/v1/labels', { headers: { 'X-Org': orgC } });
+  expect(refused.status()).toBe(403);
+  expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('support_required');
 
-  // «Работать в организации»: the shell is C's, and C has no labels
-  await page.getByTestId('action-work-in-org').click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId('user-org')).toHaveAttribute('data-org-id', orgC);
-  await expect(page.getByTestId('user-org')).toContainText('Org C e2e');
-  await page.goto('/labels');
-  await expect(page.getByTestId('labels-page').getByTestId('page-state-empty')).toBeVisible();
-  await page.getByTestId('action-leave-org').click();
-  await expect(page).toHaveURL(/\/system\/orgs$/);
-
-  // the new user of C sees an empty overview
+  // the new user of C sees an empty overview and grants support to the system administrator for an hour, with writes
   const c = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const cPage = await c.newPage();
   await cPage.goto('/login');
@@ -112,7 +105,39 @@ test('the system administrator lists the organizations, creates C and its user, 
   await cPage.getByTestId('action-login').click();
   await expect(cPage.getByTestId('user-org')).toContainText('Org C e2e');
   await expect(cPage.getByTestId('overview-page').getByTestId('page-state-empty')).toBeVisible();
+  const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+  const grant = await cPage.request.post('/api/v1/support', {
+    data: { login: seedUsers().sysadmin.login, expiresAt, write: true },
+    headers: { 'X-Operator': 'e2e-c' },
+  });
+  expect(grant.status()).toBe(201);
+  const grantId = ((await grant.json()) as { id: string }).id;
+  expect((await auditOf(cPage.request, grantId)).map((a) => `${a.operator} ${a.method} ${a.route}`)).toEqual(['e2e-c POST /support']);
   await c.close();
+
+  // now the system administrator works in C as support: the shell is C's, C has no labels
+  await page.reload();
+  await expect(page.getByTestId('org-support')).toHaveAttribute('data-active', 'true');
+  await expect(page.getByTestId('org-support')).toContainText('с записью');
+  await page.getByTestId('action-work-in-org').click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId('user-org')).toHaveAttribute('data-org-id', orgC);
+  await expect(page.getByTestId('user-org')).toContainText('Org C e2e');
+  await expect(page.getByTestId('user-org')).toContainText('поддержка');
+  await expect(page.getByTestId('support-banner')).toHaveAttribute('data-write', 'true');
+  await page.goto('/labels');
+  await expect(page.getByTestId('labels-page').getByTestId('page-state-empty')).toBeVisible();
+
+  // the writes of the system administrator and the enter are in the audit of C under their login
+  const trail = await auditOf(page.request, orgC, orgC);
+  expect(trail.map((a) => `${a.operator} ${a.method} ${a.route}`).sort()).toEqual([
+    'e2e-sysadmin POST /orgs',
+    'e2e-sysadmin POST /orgs/:id/support/enter',
+    'e2e-sysadmin POST /orgs/:id/users',
+  ]);
+
+  await page.getByTestId('action-leave-org').click();
+  await expect(page).toHaveURL(/\/system\/orgs$/);
 });
 
 test('a user of B sees only B: its label, not the owners of A, not the system pages; its writes carry its login', async ({ page }) => {

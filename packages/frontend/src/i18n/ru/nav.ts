@@ -4,6 +4,7 @@ export const nav = {
     catalog: 'Каталог',
     rules: 'Правила',
     money: 'Деньги',
+    org: 'Организация',
     system: 'Система',
   },
   items: {
@@ -25,6 +26,8 @@ export const nav = {
     operations: 'Операции',
     ads: 'Реклама',
     systemOrgs: 'Организации',
+    systemUsers: 'Пользователи',
+    users: 'Пользователи',
   },
   subpages: {
     sourceLines: 'Строки отчётов',

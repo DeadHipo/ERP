@@ -4,9 +4,10 @@ import { filesUnder, read } from './helpers';
 // R6: `src/api/` declares no hand-written response type; types come from `@erp/shared` (zod schemas).
 describe('src/api declares no body types', () => {
   const declaration = /^\s*(export )?(interface|type) (\w+)/gm;
-  const allowed = (name: string) => name === 'ApiError' || name.startsWith('Query');
+  // `OperationKey` (coverage.ts, D-171) is the union of the operation keys, not a body type
+  const allowed = (name: string) => name === 'ApiError' || name === 'OperationKey' || name.startsWith('Query');
 
-  it('has only ApiError and Query* option types', () => {
+  it('has only ApiError, OperationKey and Query* option types', () => {
     const offenders: string[] = [];
     for (const file of filesUnder('src/api', /\.tsx?$/)) {
       for (const match of read(file).matchAll(declaration)) {

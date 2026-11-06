@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Bars3Icon } from '@heroicons/react/24/outline';
-import { isItemActive, navFor } from '../nav';
+import { isItemActive, type NavSection } from '../nav';
 import { readStorage, writeStorage } from '../lib/storage';
 import { ru } from '../i18n/ru';
 
 const KEY = 'erp.sidebar';
 
 /**
- * The sidebar from nav.ts; collapsible, the state is kept in sessionStorage. A system administrator also sees the
- * system section (D-170), alone while they work in no organization.
+ * The sidebar from nav.ts (`navFor`: the sections of the session, the items it may read, D-171); collapsible, the state
+ * is kept in sessionStorage. A system administrator also sees the system section (D-170), alone while they work in no
+ * organization.
  */
-export function Sidebar(props: { isSystemAdmin?: boolean; inOrg?: boolean }) {
-  const sections = navFor({ isSystemAdmin: props.isSystemAdmin === true, inOrg: props.inOrg !== false });
+export function Sidebar({ sections }: { sections: readonly NavSection[] }) {
   const { pathname, search } = useLocation();
   const [collapsed, setCollapsed] = useState(() => readStorage('session', KEY) === 'collapsed');
   const toggle = () => {

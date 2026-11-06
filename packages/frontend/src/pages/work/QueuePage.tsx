@@ -33,6 +33,7 @@ import {
   SublabelRuleDialog,
 } from './actions/dialogs';
 import { REASON_ACTIONS } from './actions/action-table';
+import { ACTION_OPS, type RowAction } from './actions/action-ops';
 
 const t = ru.queue;
 const a = ru.actions;
@@ -337,8 +338,8 @@ function groupColumns(reason: CReason, open: (a: Active) => void): ColDef<QueueG
 
 /** The buttons of a group, by reason (16 §2.6); ⚠ items are read-only with their decision id. */
 function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; open: (a: Active) => void }) {
-  const btn = (action: string, label: string) => (
-    <ActionButton key={action} name={action} variant="secondary" compact onPress={() => open({ action, group: g })}>
+  const btn = (action: RowAction, label: string) => (
+    <ActionButton key={action} name={action} op={ACTION_OPS[action]} variant="secondary" compact onPress={() => open({ action, group: g })}>
       {label}
     </ActionButton>
   );

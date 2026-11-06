@@ -52,6 +52,7 @@ export function CreateOwnerDialog(props: { onClose: () => void }) {
   if (similar) {
     return (
       <DuplicateDialog
+        op="POST /owners"
         title={t.duplicateTitle}
         text={t.duplicateText}
         matchedBy={t.matchedBy}
@@ -77,7 +78,7 @@ export function CreateOwnerDialog(props: { onClose: () => void }) {
       subtitle={t.subtitle}
       footer={
         <ActionButton
-          name="create-owner-submit"
+          name="create-owner-submit" op="POST /owners"
           isPending={run.isPending}
           isDisabled={name.trim() === ''}
           reason={name.trim() === '' ? ru.actions.hints.fillFields : undefined}

@@ -106,7 +106,7 @@ export function ArtistsPage() {
             <Link to="/artists/duplicates" className="text-sm text-accent hover:underline" data-testid="link-duplicates">
               {t.duplicatesLink}
             </Link>
-            <ActionButton name="create-artist" onPress={() => setCreating(true)}>
+            <ActionButton name="create-artist" op="POST /artists" onPress={() => setCreating(true)}>
               {t.create}
             </ActionButton>
           </>

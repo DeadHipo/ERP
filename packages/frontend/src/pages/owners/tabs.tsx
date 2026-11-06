@@ -59,7 +59,7 @@ export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | u
       <Section
         title={p.terms}
         toolbar={
-          <ActionButton name="publishing-terms" variant="secondary" onPress={() => setOpen(true)}>
+          <ActionButton name="publishing-terms" op="POST /publishing/terms" variant="secondary" onPress={() => setOpen(true)}>
             {p.set}
           </ActionButton>
         }
@@ -113,7 +113,7 @@ export function OperationsTab(props: { detail: OwnerDetail; balance: Balance | u
   return (
     <div className="flex flex-col gap-3" data-testid="operations-tab">
       <div className="flex flex-wrap items-center gap-3">
-        <ActionButton name="create-operation" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setOpen(true)}>
+        <ActionButton name="create-operation" op="POST /settlements/operations" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setOpen(true)}>
           {m.actions.create}
         </ActionButton>
         {props.balance && props.balance.blockingPayouts.length > 0 ? (

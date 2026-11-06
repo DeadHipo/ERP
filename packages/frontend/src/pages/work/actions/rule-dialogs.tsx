@@ -75,7 +75,7 @@ export function CloseRuleDialog(props: {
         subtitle={a.hints.monthRule}
         footer={
           <ActionButton
-            name="close-rule-submit"
+            name="close-rule-submit" op="POST /labels/rules/:id/close"
             isDisabled={!chosen || to === ''}
             reason={!chosen ? (labels.data ? a.hints.pickRule : ru.common.loading) : a.hints.fillFields}
             isPending={run.isPending}

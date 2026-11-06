@@ -9,6 +9,7 @@ import { DataGrid } from '../../../components/grid/DataGrid';
 import { compareDecimal } from '../../../lib/money';
 import { fmt, ru } from '../../../i18n/ru';
 import type { SignalName } from '../actions/action-table';
+import { ACTION_OPS, type RowAction } from '../actions/action-ops';
 
 // The parts every list of P21 is built from: the grid with its count line and the column helpers (one copy, used by
 // `SignalsPage.tsx` and `label-signals.tsx`).
@@ -86,8 +87,8 @@ export const actionCol = <T,>(render: (r: T) => ReactNode): ColDef<T> => ({
   filter: false,
   cellRenderer: (p: { data?: T }) => (p.data ? <div className="flex flex-wrap items-center gap-1 py-1">{render(p.data)}</div> : null),
 });
-export const btn = (name: string, label: string, onPress: () => void) => (
-  <ActionButton key={name} name={name} variant="secondary" compact onPress={onPress}>
+export const btn = (name: RowAction, label: string, onPress: () => void) => (
+  <ActionButton key={name} name={name} op={ACTION_OPS[name]} variant="secondary" compact onPress={onPress}>
     {label}
   </ActionButton>
 );

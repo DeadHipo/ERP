@@ -145,7 +145,7 @@ export function OwnersPage() {
         toolbar={
           <>
             <PeriodBar period={period} onApply={setPeriod} />
-            <ActionButton name="create-owner" onPress={() => setCreating(true)}>
+            <ActionButton name="create-owner" op="POST /owners" onPress={() => setCreating(true)}>
               {t.create}
             </ActionButton>
           </>

@@ -51,7 +51,7 @@ export function CreateDocumentDialog(props: { onClose: () => void }) {
       subtitle={t.createSubtitle}
       footer={
         <ActionButton
-          name="create-document-submit"
+          name="create-document-submit" op="POST /documents"
           isPending={run.isPending}
           isDisabled={title.trim() === ''}
           reason={ru.actions.hints.fillFields}
@@ -93,7 +93,7 @@ export function SetDocumentLabelDialog(props: { doc: DocumentView; onClose: () =
       subtitle={t.labelHint}
       footer={
         <ActionButton
-          name="set-document-label-submit"
+          name="set-document-label-submit" op="PATCH /documents/:id"
           isPending={run.isPending}
           isDisabled={labelId === (props.doc.labelId ?? '')}
           reason={ru.actions.hints.fillFields}
@@ -125,7 +125,7 @@ export function AttachDialog(props: { documentId: string; title: string; onClose
       title={t.attachTitle}
       footer={
         <ActionButton
-          name="attach-submit"
+          name="attach-submit" op="POST /documents/:id/attach"
           isPending={run.isPending}
           isDisabled={fileRef.trim() === ''}
           reason={ru.actions.hints.fillFields}
@@ -164,7 +164,7 @@ export function ConfirmSplitWithDocumentDialog(props: { documentId: string; titl
         title={t.confirmSplit}
         subtitle={t.confirmSplitSubtitle}
         footer={
-          <ActionButton name="confirm-split-submit" isPending={run.isPending} isDisabled={!split} reason={ru.actions.hints.fillFields} onPress={() => setConfirm(true)}>
+          <ActionButton name="confirm-split-submit" op="POST /splits/:id/confirm" isPending={run.isPending} isDisabled={!split} reason={ru.actions.hints.fillFields} onPress={() => setConfirm(true)}>
             {ru.actions.confirmSplit}
           </ActionButton>
         }

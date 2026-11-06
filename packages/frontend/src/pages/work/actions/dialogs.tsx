@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import type { fundedFrom as fundedFromSchema, participationBase } from '@erp/shared/api-schemas';
 import type { ParticipationListItem } from '@erp/shared/api-responses';
 import * as api from '../../../api/client';
+import type { OperationKey } from '../../../api/coverage';
 import { useAction } from '../../../api/queries/core';
 import { documentQueries } from '../../../api/queries/documents';
 import { labelQueries } from '../../../api/queries/labels';
@@ -46,10 +47,11 @@ const period = (from: string, to: string | null) => `${from} → ${to ?? 'бес
 const participationText = (p: { base: Base; fundedFrom: Funded }) =>
   `${ru.catalog.rules.bases[p.base]}, ${ru.signalsPage.funded[p.fundedFrom]}`;
 
-function Submit(props: { name?: string; label: string; disabled: boolean; pending: boolean; onPress: () => void; reason?: string }) {
+function Submit(props: { name?: string; op: OperationKey; label: string; disabled: boolean; pending: boolean; onPress: () => void; reason?: string }) {
   return (
     <ActionButton
       name={props.name ?? 'submit'}
+      op={props.op}
       isPending={props.pending}
       isDisabled={props.disabled}
       reason={props.disabled ? (props.reason ?? a.hints.fillFields) : undefined}
@@ -79,7 +81,7 @@ export function ConfirmSplitDialog(props: { splitId: string; isrc: string; onClo
         onOpenChange={(o) => (o ? null : props.onClose())}
         title={a.confirmSplit}
         subtitle={ru.reasonActions.split_unconfirmed}
-        footer={<Submit label={a.confirmSplit} reason={a.hints.pickFirst} disabled={!doc || !split} pending={run.isPending} onPress={() => setConfirm(true)} />}
+        footer={<Submit op="POST /splits/:id/confirm" label={a.confirmSplit} reason={a.hints.pickFirst} disabled={!doc || !split} pending={run.isPending} onPress={() => setConfirm(true)} />}
       >
         <div className="text-sm">
           ISRC <b>{props.isrc}</b> · {rows} {split ? `· ${period(split.validFrom, split.validTo)}` : ''}
@@ -192,6 +194,7 @@ export function ReplaceDocumentDialog(props: {
         subtitle={a.hints.monthRule}
         footer={
           <Submit
+            op={props.kind === 'split' ? 'POST /splits/change' : props.kind === 'participation' ? 'POST /participations/:id/close' : 'POST /labels/:id/rules'}
             label={props.title}
             disabled={!doc || !found || month === ''}
             reason={!found ? a.hints.noRule : a.hints.pickFirst}
@@ -278,7 +281,7 @@ export function LabelAliasDialog(props: { alias: string; onClose: () => void }) 
       title={a.labelAlias}
       subtitle={ru.reasonActions.label_unmapped}
       footer={
-        <Submit name="alias-submit" label={a.labelAlias} disabled={!labelId} pending={run.isPending} onPress={() => labelId && run.mutate(labelId, { onSuccess: props.onClose })} />
+        <Submit name="alias-submit" op="POST /labels/:id/aliases" label={a.labelAlias} disabled={!labelId} pending={run.isPending} onPress={() => labelId && run.mutate(labelId, { onSuccess: props.onClose })} />
       }
     >
       <div className="text-sm">
@@ -348,7 +351,7 @@ export function SublabelRuleDialog(props: { labelString: string; onClose: () => 
       subtitle={a.hints.monthRule}
       footer={
         <Submit
-          name="sublabel-submit"
+          name="sublabel-submit" op="POST /labels"
           label={a.sublabelRule}
           disabled={!ownId || !recipient || name.trim() === '' || percent.trim() === '' || month === ''}
           pending={run.isPending}
@@ -389,7 +392,7 @@ export function SetRuleDialog(props: { labelString: string; month: string; onClo
       subtitle={a.hints.monthRule}
       footer={
         <Submit
-          name="rule-submit"
+          name="rule-submit" op="POST /labels/:id/rules"
           label={a.setRule}
           disabled={!label || !recipient || percent.trim() === '' || month === ''}
           reason={!label ? a.hints.noRule : undefined}
@@ -424,7 +427,7 @@ export function RegisterTrackDialog(props: { isrc: string; upc: string; title?: 
       subtitle={ru.reasonActions.unknown_pair}
       footer={
         <Submit
-          name="track-submit"
+          name="track-submit" op="POST /tracks"
           label={a.registerTrack}
           disabled={title.trim() === '' || isrc.trim() === ''}
           pending={run.isPending}
@@ -460,7 +463,7 @@ export function MapWriterDialog(props: { writer: string; onClose: () => void }) 
       subtitle={ru.reasonActions.writer_unmapped}
       footer={
         <Submit
-          name="writer-submit"
+          name="writer-submit" op="POST /publishing/writers/:norm/map"
           label={a.mapWriter}
           disabled={!w || !owner}
           reason={!w && writers.data ? a.hints.noWriter : undefined}
@@ -503,7 +506,7 @@ export function PublishingTermsDialog(props: { ownerId: string; ownerLabel: stri
       subtitle={ru.reasonActions.publishing_terms_unconfirmed}
       footer={
         <Submit
-          name="terms-submit"
+          name="terms-submit" op="POST /publishing/terms"
           label={a.publishingTerms}
           disabled={percent.trim() === '' || validFrom === ''}
           pending={run.isPending}
@@ -552,7 +555,7 @@ export function CreateSplitDialog(props: { isrc: string; onClose: () => void }) 
       onOpenChange={(o) => (o ? null : props.onClose())}
       title={a.createSplit}
       subtitle={a.hints.monthRule}
-      footer={<Submit name="split-submit" label={a.createSplit} disabled={!ready} pending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })} />}
+      footer={<Submit name="split-submit" op="POST /splits" label={a.createSplit} disabled={!ready} pending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })} />}
     >
       <div className="text-sm">
         ISRC <b>{props.isrc}</b>
@@ -657,7 +660,7 @@ function RecreateParticipationForm(props: {
         title={a.recreateParticipation}
         subtitle={a.hints.monthRule}
         footer={
-          <Submit name="participation-submit" label={a.recreateParticipation} disabled={percent.trim() === '' || month === ''} pending={run.isPending} onPress={() => setConfirm(true)} />
+          <Submit name="participation-submit" op="POST /participations/:id/close" label={a.recreateParticipation} disabled={percent.trim() === '' || month === ''} pending={run.isPending} onPress={() => setConfirm(true)} />
         }
       >
         <div className="text-sm">{what}</div>
@@ -702,7 +705,7 @@ export function NoteDialog(props: { trackId?: string; isrc?: string | null; note
       isOpen
       onOpenChange={(o) => (o ? null : props.onClose())}
       title={props.trackId ? a.editNote : a.addNote}
-      footer={<Submit name="note-submit" label={ru.common.save} disabled={!trackId} pending={run.isPending} onPress={() => trackId && run.mutate(trackId, { onSuccess: props.onClose })} />}
+      footer={<Submit name="note-submit" op="PATCH /tracks/:id" label={ru.common.save} disabled={!trackId} pending={run.isPending} onPress={() => trackId && run.mutate(trackId, { onSuccess: props.onClose })} />}
     >
       {props.trackId ? (
         <div className="text-sm">

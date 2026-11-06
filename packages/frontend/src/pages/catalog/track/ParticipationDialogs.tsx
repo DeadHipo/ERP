@@ -63,7 +63,7 @@ export function CreateParticipationDialog(props: { isrc: string; splits: readonl
       subtitle={ru.actions.hints.monthRule}
       footer={
         <ActionButton
-          name="participation-submit"
+          name="participation-submit" op="POST /participations"
           isPending={run.isPending}
           isDisabled={!ready}
           reason={ru.actions.hints.fillFields}
@@ -131,7 +131,7 @@ export function CloseParticipationDialog(props: { part: Participation; onClose: 
         subtitle={ru.actions.hints.monthRule}
         footer={
           <ActionButton
-            name="close-participation-submit"
+            name="close-participation-submit" op="POST /participations/:id/close"
             isPending={run.isPending}
             isDisabled={to === ''}
             reason={ru.actions.hints.fillFields}

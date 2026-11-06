@@ -39,7 +39,7 @@ function MapWriterDialog(props: { writer: Writer; onClose: () => void }) {
       onOpenChange={(o) => (o ? null : props.onClose())}
       title={t.mapTitle}
       footer={
-        <ActionButton name="writer-submit" isPending={run.isPending} isDisabled={!ready} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+        <ActionButton name="writer-submit" op="POST /publishing/writers/:norm/map" isPending={run.isPending} isDisabled={!ready} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
           {t.map}
         </ActionButton>
       }
@@ -66,7 +66,7 @@ function TermsSection() {
           <EntityPicker name="terms-owner-pick" label={t.termsOwner} kind="owners" value={owner?.id ?? null} onChange={(id, label) => setOwner(id ? { id, label } : null)} />
         </div>
         {owner ? (
-          <ActionButton name="set-terms" onPress={() => setOpen(true)}>
+          <ActionButton name="set-terms" op="POST /publishing/terms" onPress={() => setOpen(true)}>
             {t.setTerms}
           </ActionButton>
         ) : null}
@@ -120,7 +120,7 @@ export function PublishingPage() {
         filter: false,
         cellRenderer: (p: { data?: Writer }) =>
           p.data ? (
-            <ActionButton name="map-writer" variant="secondary" onPress={() => p.data && setMapping(p.data)}>
+            <ActionButton name="map-writer" op="POST /publishing/writers/:norm/map" variant="secondary" onPress={() => p.data && setMapping(p.data)}>
               {t.map}
             </ActionButton>
           ) : null,
@@ -134,7 +134,7 @@ export function PublishingPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="resolve-writers" isPending={resolve.isPending} onPress={() => resolve.mutate(undefined)}>
+          <ActionButton name="resolve-writers" op="POST /publishing/writers/resolve" isPending={resolve.isPending} onPress={() => resolve.mutate(undefined)}>
             {t.resolve}
           </ActionButton>
         }

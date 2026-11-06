@@ -89,7 +89,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
         subtitle={t.create.subtitle}
         footer={
           <ActionButton
-            name="ad-create-submit"
+            name="ad-create-submit" op="POST /ads"
             isDisabled={!filled}
             reason={filled ? undefined : ru.actions.hints.fillFields}
             isPending={run.isPending}
@@ -200,7 +200,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
         subtitle={b.subtitle}
         footer={
           <ActionButton
-            name="ad-batch-submit"
+            name="ad-batch-submit" op="POST /ads"
             isDisabled={!ready}
             reason={ready ? undefined : ru.actions.hints.fillFields}
             isPending={run.isPending}
@@ -282,7 +282,7 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
         title={t.edit.title}
         footer={
           <ActionButton
-            name="ad-edit-submit"
+            name="ad-edit-submit" op="PATCH /ads/:id"
             isDisabled={!filled}
             reason={filled ? undefined : ru.actions.hints.fillFields}
             isPending={run.isPending}
@@ -354,7 +354,7 @@ export function DeactivateAdDialog(props: { ad: AdView; onClose: () => void }) {
         title={t.deactivate.title}
         footer={
           <ActionButton
-            name="ad-deactivate-submit"
+            name="ad-deactivate-submit" op="POST /ads/:id/deactivate"
             variant="danger"
             isDisabled={reason.trim() === ''}
             isPending={run.isPending}

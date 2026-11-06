@@ -43,27 +43,27 @@ export function OperationButtons(props: { op: Operation; open: (a: OperationActi
   return (
     <div className="flex flex-wrap items-center gap-1 py-1">
       {op.active && out && !op.paymentProofId ? (
-        <ActionButton name="proof" variant="secondary" compact onPress={() => props.open({ action: 'proof', op })}>
+        <ActionButton name="proof" op="POST /settlements/operations/:id/proof" variant="secondary" compact onPress={() => props.open({ action: 'proof', op })}>
           {t.proof}
         </ActionButton>
       ) : null}
       {op.active && out ? (
-        <ActionButton name="deferred" variant="secondary" compact isPending={deferred.isPending} onPress={() => deferred.mutate(!op.deferred)}>
+        <ActionButton name="deferred" op="POST /settlements/operations/:id/deferred" variant="secondary" compact isPending={deferred.isPending} onPress={() => deferred.mutate(!op.deferred)}>
           {op.deferred ? t.deferredOff : t.deferredOn}
         </ActionButton>
       ) : null}
       {op.active && payout ? (
-        <ActionButton name="return" variant="secondary" compact onPress={() => props.open({ action: 'return', op })}>
+        <ActionButton name="return" op="POST /settlements/operations/:id/return" variant="secondary" compact onPress={() => props.open({ action: 'return', op })}>
           {t.returnPayout}
         </ActionButton>
       ) : null}
       {op.active ? (
-        <ActionButton name="deactivate" variant="danger" compact onPress={() => props.open({ action: 'deactivate', op })}>
+        <ActionButton name="deactivate" op="POST /settlements/operations/:id/deactivate" variant="danger" compact onPress={() => props.open({ action: 'deactivate', op })}>
           {t.deactivate}
         </ActionButton>
       ) : null}
       {payout && !op.migration ? (
-        <ActionButton name="snapshot" write={false} variant="tertiary" onPress={() => props.open({ action: 'snapshot', op })}>
+        <ActionButton name="snapshot" write={false} op="GET /settlements/operations/:id/snapshot" variant="tertiary" onPress={() => props.open({ action: 'snapshot', op })}>
           {t.snapshot}
         </ActionButton>
       ) : null}
@@ -100,7 +100,7 @@ function ProofDialog(props: { op: Operation; onClose: () => void }) {
       subtitle={t.proofSubtitle}
       footer={
         <ActionButton
-          name="proof-submit"
+          name="proof-submit" op="POST /settlements/operations/:id/proof"
           isDisabled={fileRef.trim() === ''}
           isPending={run.isPending}
           onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}
@@ -131,7 +131,7 @@ function DeactivateDialog(props: { op: Operation; onClose: () => void }) {
         onOpenChange={(o) => (o ? null : props.onClose())}
         title={t.deactivateTitle}
         footer={
-          <ActionButton name="deactivate-submit" variant="danger" isDisabled={reason.trim() === ''} isPending={run.isPending} onPress={() => setConfirm(true)}>
+          <ActionButton name="deactivate-submit" op="POST /settlements/operations/:id/deactivate" variant="danger" isDisabled={reason.trim() === ''} isPending={run.isPending} onPress={() => setConfirm(true)}>
             {t.deactivate}
           </ActionButton>
         }
@@ -179,7 +179,7 @@ function ReturnDialog(props: { op: Operation; onClose: () => void }) {
         onOpenChange={(o) => (o ? null : props.onClose())}
         title={t.returnTitle}
         footer={
-          <ActionButton name="return-submit" isDisabled={!filled} isPending={run.isPending} onPress={() => setConfirm(true)}>
+          <ActionButton name="return-submit" op="POST /settlements/operations/:id/return" isDisabled={!filled} isPending={run.isPending} onPress={() => setConfirm(true)}>
             {t.returnPayout}
           </ActionButton>
         }

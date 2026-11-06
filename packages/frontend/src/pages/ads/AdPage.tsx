@@ -59,10 +59,10 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
         toolbar={
           ad.active ? (
             <div className="flex flex-wrap items-center gap-2">
-              <ActionButton name="ad-edit" variant="secondary" onPress={() => setDialog('edit')}>
+              <ActionButton name="ad-edit" op="PATCH /ads/:id" variant="secondary" onPress={() => setDialog('edit')}>
                 {t.edit.open}
               </ActionButton>
-              <ActionButton name="ad-deactivate" variant="danger" onPress={() => setDialog('deactivate')}>
+              <ActionButton name="ad-deactivate" op="POST /ads/:id/deactivate" variant="danger" onPress={() => setDialog('deactivate')}>
                 {t.deactivate.open}
               </ActionButton>
             </div>

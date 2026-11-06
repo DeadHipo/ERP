@@ -1,16 +1,22 @@
 import { expect, test } from '@playwright/test';
-import { ALL_ITEMS, NAV } from '../src/nav';
+import type { Me } from '@erp/shared/api-responses';
+import { ALL_ITEMS, NAV, ORG_NAV, navFor } from '../src/nav';
 import { meMock, OPERATOR, json, seedKeys, setOperator, trackErrors } from './helpers';
 
 // S-smoke: the shell renders, search opens, the user menu names the session (the operator = the login, D-170), a write
 // control is gated (login off), every route renders.
 
-test('the shell renders with every sidebar item of nav.ts', async ({ page }) => {
+test('the shell renders with every sidebar item of nav.ts the session may read (D-171)', async ({ page }) => {
   const errors = trackErrors(page);
   await page.goto('/');
   await expect(page.getByTestId('sidebar')).toBeVisible();
   await expect(page.getByTestId('breadcrumbs')).toContainText('Обзор');
-  for (const section of NAV) {
+  const me = (await (await page.request.get('/api/v1/auth/me')).json()) as Me;
+  expect(me.role).toBe('org_admin');
+  const sections = navFor({ isSystemAdmin: false, inOrg: true }, me);
+  // the organization's administrator reads every page: the operator's sections and «Организация»
+  expect(sections.map((s) => s.id)).toEqual([...NAV.map((s) => s.id), ORG_NAV.id]);
+  for (const section of sections) {
     await expect(page.getByTestId('sidebar')).toContainText(section.label);
     for (const item of section.items) await expect(page.getByTestId(`nav-${item.id}`)).toBeVisible();
   }
@@ -28,6 +34,8 @@ test('the sidebar collapses and the state survives a reload (sessionStorage)', a
 
 test('Ctrl+K opens the global search modal', async ({ page }) => {
   await page.goto('/');
+  // the shortcut listens once the shell is up (after GET /auth/me)
+  await expect(page.getByTestId('global-search')).toBeVisible();
   await page.keyboard.press('Control+k');
   await expect(page.getByTestId('global-search-dialog')).toBeVisible();
   await page.getByTestId('global-search-input').fill('abc');
@@ -107,7 +115,7 @@ const BUILT: Record<string, string> = {
 
 test('every route of nav.ts and every detail route renders a page without a console error', async ({ page }) => {
   const errors = trackErrors(page);
-  for (const path of [...ALL_ITEMS.map((i) => i.path), ...DETAIL_ROUTES]) {
+  for (const path of [...ALL_ITEMS.map((i) => i.path), ...ORG_NAV.items.map((i) => i.path), ...DETAIL_ROUTES]) {
     await page.goto(path);
     const built = BUILT[path.split('?')[0] ?? path];
     if (built) await expect(page.getByTestId(built), path).toBeVisible();

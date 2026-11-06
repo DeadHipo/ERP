@@ -153,7 +153,7 @@ function NoteEditor({ data }: { data: TrackMoney }) {
       <span className="w-80">
         <TextField name="track-note" label={`${t.note} (${t.noteHint})`} value={text} onChange={setText} />
       </span>
-      <ActionButton name="note-save" isPending={run.isPending} onPress={() => run.mutate(text, { onSuccess: () => setEditing(false) })}>
+      <ActionButton name="note-save" op="PATCH /tracks/:id" isPending={run.isPending} onPress={() => run.mutate(text, { onSuccess: () => setEditing(false) })}>
         {t.saveNote}
       </ActionButton>
       <ActionButton name="note-cancel" variant="secondary" write={false} onPress={() => setEditing(false)}>

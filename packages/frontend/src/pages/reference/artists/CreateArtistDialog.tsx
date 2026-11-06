@@ -36,6 +36,7 @@ export function CreateArtistDialog(props: { onClose: () => void }) {
   if (similar) {
     return (
       <DuplicateDialog
+        op="POST /artists"
         title={t.duplicateTitle}
         text={t.duplicateText}
         matchedBy={t.matchedBy}
@@ -60,7 +61,7 @@ export function CreateArtistDialog(props: { onClose: () => void }) {
       subtitle={t.createSubtitle}
       footer={
         <ActionButton
-          name="create-artist-submit"
+          name="create-artist-submit" op="POST /artists"
           isPending={run.isPending}
           isDisabled={pseudonym.trim() === ''}
           reason={ru.actions.hints.fillFields}

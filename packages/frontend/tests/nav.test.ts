@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_ITEMS, NAV, activeItem, crumbsFor, isItemActive } from '../src/nav';
+import { ALL_ITEMS, NAV, activeItem, crumbsFor, homeFor, isItemActive, navFor } from '../src/nav';
 import { plural, fmt } from '../src/i18n/ru';
 
 describe('nav.ts', () => {
@@ -25,6 +25,25 @@ describe('nav.ts', () => {
     expect(crumbsFor('/', '').map((c) => c.label)).toEqual(['Работа', 'Обзор']);
     expect(crumbsFor('/tracks/QZTST1', '').map((c) => c.label)).toEqual(['Каталог', 'Треки', 'QZTST1']);
     expect(crumbsFor('/sources/lines', '').map((c) => c.label)).toEqual(['Деньги', 'Отчёты', 'Строки отчётов']);
+  });
+});
+
+describe('navFor (D-171)', () => {
+  const ids = (sections: ReturnType<typeof navFor>) => sections.flatMap((s) => s.items.map((i) => i.id));
+
+  it('shows everything with the login off and hides what me.abilities lacks with it on', () => {
+    expect(ids(navFor({ isSystemAdmin: false, inOrg: true }, { authMode: 'off', abilities: [] }))).toContain('overview');
+    const manager = navFor({ isSystemAdmin: false, inOrg: true }, { authMode: 'on', abilities: ['GET /signals', 'GET /owners'] });
+    expect(ids(manager)).toEqual(['signals', 'questions', 'owners']);
+    expect(homeFor(manager)).toBe('/signals');
+    const admin = navFor({ isSystemAdmin: false, inOrg: true }, { authMode: 'on', abilities: ['GET /overview', 'GET /users'] });
+    expect(ids(admin)).toEqual(['overview', 'queue', 'questions', 'users']);
+  });
+
+  it('gives a system administrator outside an organization the system section only', () => {
+    const sys = navFor({ isSystemAdmin: true, inOrg: false }, { authMode: 'on', abilities: ['GET /orgs', 'GET /system/users'] });
+    expect(ids(sys)).toEqual(['system-orgs', 'system-users']);
+    expect(crumbsFor('/users', '').map((c) => c.label)).toEqual(['Организация', 'Пользователи']);
   });
 });
 

@@ -97,7 +97,7 @@ export function CreateContractDialog(props: {
         subtitle={props.waiting ? ru.reasonActions.owner_unconfirmed : ru.money.documents.contractSubtitle}
         footer={
           <ActionButton
-            name={props.submitName ?? 'contract-submit'}
+            name={props.submitName ?? 'contract-submit'} op="POST /contracts"
             isDisabled={!ready}
             reason={doc ? a.hints.fillFields : a.hints.pickFirst}
             isPending={run.isPending}
@@ -215,7 +215,7 @@ export function MergeOwnerDialog(props: { ownerId: string; ownerLabel?: string; 
         title={t.title}
         footer={
           <ActionButton
-            name="merge-submit"
+            name="merge-submit" op="POST /owners/merge"
             isDisabled={!filled}
             reason={filled ? undefined : a.hints.fillFields}
             isPending={run.isPending}
@@ -292,6 +292,7 @@ export function AssignOwnerDialog(props: { artistId: string; pseudonym: string; 
     const t = ru.money.create;
     return (
       <DuplicateDialog
+        op="POST /owners"
         title={t.duplicateTitle}
         text={t.duplicateText}
         matchedBy={t.matchedBy}
@@ -314,7 +315,7 @@ export function AssignOwnerDialog(props: { artistId: string; pseudonym: string; 
       subtitle={ru.reasonActions.artist_without_owner}
       footer={
         <ActionButton
-          name="assign-submit"
+          name="assign-submit" op="POST /artists/:id/owner"
           isDisabled={!ready}
           reason={ready ? undefined : a.hints.fillFields}
           isPending={run.isPending}

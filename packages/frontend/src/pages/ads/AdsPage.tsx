@@ -72,11 +72,11 @@ export function AdsPage() {
         subtitle={t.subtitle}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            <ActionButton name="create-ad" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating('one')}>
+            <ActionButton name="create-ad" op="POST /ads" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating('one')}>
               {t.create.open}
             </ActionButton>
             <ActionButton
-              name="create-ads-batch"
+              name="create-ads-batch" op="POST /ads"
               variant="secondary"
               isDisabled={write.closed}
               reason={write.closed ? write.reason : undefined}
@@ -385,10 +385,10 @@ function adColumns(open: (d: Dialog) => void, nameOf: (id: string | null) => str
       cellRenderer: (p: P) =>
         p.data?.active ? (
           <div className="flex flex-wrap items-center gap-1 py-1">
-            <ActionButton name="ad-edit" variant="secondary" compact onPress={() => p.data && open({ kind: 'edit', ad: p.data })}>
+            <ActionButton name="ad-edit" op="PATCH /ads/:id" variant="secondary" compact onPress={() => p.data && open({ kind: 'edit', ad: p.data })}>
               {t.edit.open}
             </ActionButton>
-            <ActionButton name="ad-deactivate" variant="danger" compact onPress={() => p.data && open({ kind: 'deactivate', ad: p.data })}>
+            <ActionButton name="ad-deactivate" op="POST /ads/:id/deactivate" variant="danger" compact onPress={() => p.data && open({ kind: 'deactivate', ad: p.data })}>
               {t.deactivate.open}
             </ActionButton>
           </div>

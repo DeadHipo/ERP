@@ -31,21 +31,21 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   return (
     <div className="flex flex-col gap-6" data-testid="rules-tab">
       <div className="flex flex-wrap gap-2">
-        <ActionButton name="create-split" onPress={() => setOpen({ kind: 'create-split' })}>
+        <ActionButton name="create-split" op="POST /splits" onPress={() => setOpen({ kind: 'create-split' })}>
           {r.createSplit}
         </ActionButton>
         <ActionButton
-          name="change-split"
+          name="change-split" op="POST /splits/change"
           isDisabled={splits.length === 0}
           reason={r.noCurrent}
           onPress={() => setOpen({ kind: 'change-split' })}
         >
           {r.changeSplit}
         </ActionButton>
-        <ActionButton name="buyout" isDisabled={splits.length === 0} reason={r.noCurrent} onPress={() => setOpen({ kind: 'buyout' })}>
+        <ActionButton name="buyout" op="POST /splits/buyout" isDisabled={splits.length === 0} reason={r.noCurrent} onPress={() => setOpen({ kind: 'buyout' })}>
           {r.buyout}
         </ActionButton>
-        <ActionButton name="create-participation" onPress={() => setOpen({ kind: 'create-participation' })}>
+        <ActionButton name="create-participation" op="POST /participations" onPress={() => setOpen({ kind: 'create-participation' })}>
           {r.createParticipation}
         </ActionButton>
       </div>
@@ -84,7 +84,7 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
                 </Td>
                 <Td>
                   <ActionButton
-                    name="confirm-split"
+                    name="confirm-split" op="POST /splits/:id/confirm"
                     variant="secondary"
                     isDisabled={s.documentId !== null}
                     reason={r.hasDocument}
@@ -123,7 +123,7 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
                   </span>
                 </Td>
                 <Td>
-                  <ActionButton name="close-participation" variant="secondary" onPress={() => setOpen({ kind: 'close-participation', part: p })}>
+                  <ActionButton name="close-participation" op="POST /participations/:id/close" variant="secondary" onPress={() => setOpen({ kind: 'close-participation', part: p })}>
                     {r.closeParticipation}
                   </ActionButton>
                 </Td>

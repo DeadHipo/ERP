@@ -34,7 +34,7 @@ function CreateLabelDialog(props: { labels: readonly LabelListItem[]; onClose: (
       title={t.create}
       subtitle={t.createSubtitle}
       footer={
-        <ActionButton name="create-label-submit" isPending={run.isPending} isDisabled={!ready} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+        <ActionButton name="create-label-submit" op="POST /labels" isPending={run.isPending} isDisabled={!ready} reason={ru.actions.hints.fillFields} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
           {ru.common.create}
         </ActionButton>
       }
@@ -66,7 +66,7 @@ export function LabelsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-label" onPress={() => setCreating(true)}>
+          <ActionButton name="create-label" op="POST /labels" onPress={() => setCreating(true)}>
             {t.create}
           </ActionButton>
         }

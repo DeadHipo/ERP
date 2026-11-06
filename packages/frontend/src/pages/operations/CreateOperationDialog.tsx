@@ -100,7 +100,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
         subtitle={t.createSubtitle}
         footer={
           <ActionButton
-            name="operation-submit"
+            name="operation-submit" op="POST /settlements/operations"
             isDisabled={!filled}
             reason={filled ? undefined : doc ? ru.actions.hints.fillFields : ru.actions.hints.pickFirst}
             isPending={run.isPending}

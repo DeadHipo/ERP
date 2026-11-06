@@ -100,13 +100,13 @@ export function SplitsPage() {
         cellRenderer: (p: { data?: SplitListItem }) =>
           p.data ? (
             <span className="flex items-center gap-2">
-              <ActionButton name="change-split" variant="secondary" onPress={() => p.data && setDialog({ kind: 'isrc', action: { kind: 'change', isrc: p.data.isrc } })}>
+              <ActionButton name="change-split" op="POST /splits/change" variant="secondary" onPress={() => p.data && setDialog({ kind: 'isrc', action: { kind: 'change', isrc: p.data.isrc } })}>
                 {t.change}
               </ActionButton>
-              <ActionButton name="buyout" variant="secondary" onPress={() => p.data && setDialog({ kind: 'isrc', action: { kind: 'buyout', isrc: p.data.isrc } })}>
+              <ActionButton name="buyout" op="POST /splits/buyout" variant="secondary" onPress={() => p.data && setDialog({ kind: 'isrc', action: { kind: 'buyout', isrc: p.data.isrc } })}>
                 {t.buyout}
               </ActionButton>
-              <ActionButton name="confirm-split" variant="secondary" isDisabled={p.data.documentId !== null} reason={t.hasDocument} onPress={() => p.data && setDialog({ kind: 'confirm', split: p.data })}>
+              <ActionButton name="confirm-split" op="POST /splits/:id/confirm" variant="secondary" isDisabled={p.data.documentId !== null} reason={t.hasDocument} onPress={() => p.data && setDialog({ kind: 'confirm', split: p.data })}>
                 {t.confirm}
               </ActionButton>
             </span>
@@ -121,7 +121,7 @@ export function SplitsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-split" onPress={() => setDialog({ kind: 'create' })}>
+          <ActionButton name="create-split" op="POST /splits" onPress={() => setDialog({ kind: 'create' })}>
             {t.create}
           </ActionButton>
         }

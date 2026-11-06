@@ -86,7 +86,7 @@ export function OwnerPage() {
                       {ru.money.balance.payable}: <Money value={balance.data?.total.payableShown} />
                     </div>
                     {merged ? null : (
-                      <ActionButton name="merge" variant="secondary" onPress={() => setMerging(true)}>
+                      <ActionButton name="merge" op="POST /owners/merge" variant="secondary" onPress={() => setMerging(true)}>
                         {t.merge}
                       </ActionButton>
                     )}

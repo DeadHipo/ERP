@@ -28,7 +28,7 @@ export function DocumentsTab(props: { detail: OwnerDetail }) {
       <Section
         title={t.documents}
         toolbar={
-          <ActionButton name="create-document" variant="secondary" onPress={() => setActive({ action: 'create' })}>
+          <ActionButton name="create-document" op="POST /documents" variant="secondary" onPress={() => setActive({ action: 'create' })}>
             {t.create}
           </ActionButton>
         }
@@ -50,12 +50,12 @@ export function DocumentsTab(props: { detail: OwnerDetail }) {
                 </Td>
                 <Td>
                   {doc.status === 'not_attached' ? (
-                    <ActionButton name="attach" variant="secondary" onPress={() => setActive({ action: 'attach', doc })}>
+                    <ActionButton name="attach" op="POST /documents/:id/attach" variant="secondary" onPress={() => setActive({ action: 'attach', doc })}>
                       {t.attach}
                     </ActionButton>
                   ) : null}
                   {doc.status === 'not_approved' && doc.kind !== 'assumption' ? (
-                    <ActionButton name="approve" variant="secondary" onPress={() => setActive({ action: 'approve', doc })}>
+                    <ActionButton name="approve" op="POST /documents/:id/approve" variant="secondary" onPress={() => setActive({ action: 'approve', doc })}>
                       {t.approve}
                     </ActionButton>
                   ) : null}
@@ -69,7 +69,7 @@ export function DocumentsTab(props: { detail: OwnerDetail }) {
       <Section
         title={t.contracts}
         toolbar={
-          <ActionButton name="create-contract" variant="secondary" onPress={() => setActive({ action: 'contract' })}>
+          <ActionButton name="create-contract" op="POST /contracts" variant="secondary" onPress={() => setActive({ action: 'contract' })}>
             {t.contract}
           </ActionButton>
         }
@@ -134,7 +134,7 @@ function AttachDialog(props: { doc: DocumentView; onClose: () => void }) {
       title={t.attachTitle}
       subtitle={props.doc.title}
       footer={
-        <ActionButton name="attach-submit" isDisabled={fileRef.trim() === ''} isPending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
+        <ActionButton name="attach-submit" op="POST /documents/:id/attach" isDisabled={fileRef.trim() === ''} isPending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}>
           {t.attach}
         </ActionButton>
       }

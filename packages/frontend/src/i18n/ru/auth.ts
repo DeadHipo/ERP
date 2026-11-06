@@ -6,4 +6,8 @@ export const auth = {
   password: 'Пароль',
   submit: 'Войти',
   checking: 'Проверяем сессию…',
+  chooseOrg: 'Вы работаете в нескольких организациях: выберите, в какой войти',
+  org: 'Организация',
+  back: 'Назад',
+  roles: { org_admin: 'администратор', label_manager: 'менеджер лейбла' },
 } as const;

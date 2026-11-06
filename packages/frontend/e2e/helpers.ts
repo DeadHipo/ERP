@@ -44,7 +44,7 @@ export const STORAGE_STATE = join(import.meta.dirname, '..', '..', '..', 'data',
 
 /** The login part of the keys file, written by `seed.ts` (its `SeedAuthKeys`, D-170). */
 type LoginKeys = {
-  users: Record<'operator' | 'sysadmin' | 'b' | 'multi', { login: string; password: string }>;
+  users: Record<'operator' | 'sysadmin' | 'b' | 'multi' | 'manager', { login: string; password: string }>;
   orgB: { id: string; name: string; labelId: string; labelName: string; ownerId: string; ownerName: string };
 };
 
@@ -60,7 +60,7 @@ export function seedKeys(): SeedKeys & LoginKeys {
 export const seedUsers = () => seedKeys().users;
 
 /** Signs in through the login page (P23) in a page of its own context. */
-export async function loginAs(page: Page, user: 'operator' | 'sysadmin' | 'b', next = '/'): Promise<void> {
+export async function loginAs(page: Page, user: 'operator' | 'sysadmin' | 'b' | 'manager', next = '/'): Promise<void> {
   const { login, password } = seedUsers()[user];
   await page.goto(next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`);
   await page.getByTestId('field-login').fill(login);

@@ -1,26 +1,36 @@
 /**
  * Where every operation of `packages/backend/src/api/operations.ts` is used on a screen, or why it is not.
- * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P25`
+ * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P27`
  * (see `docs/agents/17_frontend_model.md` section 3) or `shell` (the global search and the pickers on every page), and its `route`
  * is a pattern of `src/routes/paths.ts`. A `refusal` says in words why no screen calls the operation.
  */
-export const OPERATION_COVERAGE: Record<
-  string,
-  { page: string; route: string; note?: string } | { refusal: string }
-> = {
+export const OPERATION_COVERAGE = {
   'GET /health': { refusal: 'not a screen: a liveness probe for deployment' },
   'GET /search': { page: 'shell', route: '/', note: 'Cmd/Ctrl+K and every EntityPicker' },
 
   // the login and the organizations (D-170)
-  'POST /auth/login': { page: 'P23', route: '/login', note: 'field-login, field-password, action-login; invalid_credentials as a sentence (login-error); then ?next= or /' },
+  'POST /auth/login': { page: 'P23', route: '/login', note: 'field-login, field-password, action-login; invalid_credentials, too_many_attempts, no_membership as a sentence (login-error); 409 org_choice_required opens the second step (field-login-org, action-login-org) and repeats with orgId (D-171); then ?next= or /' },
   'POST /auth/logout': { page: 'shell', route: '/', note: 'action-logout of UserMenu (AUTH_MODE=on)' },
   'GET /auth/me': { page: 'shell', route: '/', note: 'useMe(): once per load, before any page; UserMenu (login, organization), the operator of writes = the login, X-Org only for a system administrator' },
-  'POST /auth/password': { page: 'shell', route: '/', note: 'the own password (D-171); the dialog of UserMenu comes with the frontend commit of stage 3 (action-change-password)' },
+  'POST /auth/password': { page: 'shell', route: '/', note: '«Сменить пароль» of UserMenu (action-change-password: field-current-password, field-new-password, action-change-password-submit; D-171)' },
   'GET /orgs': { page: 'P24', route: '/system/orgs', note: 'the organizations with their counts (no money), system administrator only' },
   'POST /orgs': { page: 'P24', route: '/system/orgs', note: 'action-create-org: field-org-name, action-create-org-submit' },
   'GET /orgs/:id': { page: 'P25', route: '/system/orgs/:id', note: 'the header and counts; also the organization name of UserMenu while a system administrator works in it (erp.org)' },
   'GET /orgs/:id/users': { page: 'P25', route: '/system/orgs/:id', note: 'rows org-user-<login>' },
   'POST /orgs/:id/users': { page: 'P25', route: '/system/orgs/:id', note: 'action-create-user: field-user-login, field-user-password, action-create-user-submit' },
+  'POST /orgs/:id/members': { page: 'P25', route: '/system/orgs/:id', note: 'action-add-member: field-member-login, field-user-role, field-user-labels, action-add-member-submit (D-171)' },
+  'PATCH /orgs/:id/users/:userId': { page: 'P25', route: '/system/orgs/:id', note: 'action-edit-member in the row org-user-<login>: role, labels, active (D-171)' },
+  'POST /orgs/:id/support/enter': { page: 'P25', route: '/system/orgs/:id', note: '«Работать в организации» (action-work-in-org): the enter under a live grant, then erp.org; closed with the sentence of support_required without one (org-support, D-171)' },
+  'GET /system/users': { page: 'P27', route: '/system/users', note: 'system-users-grid, rows system-user-<login> with the memberships (D-171)' },
+  'PATCH /system/users/:id': { page: 'P27', route: '/system/users', note: 'action-disable-user / action-enable-user in the row (D-171)' },
+  'POST /system/users/:id/password': { page: 'P27', route: '/system/users', note: 'action-reset-password in the row: field-user-password, action-reset-password-submit (D-171)' },
+  'GET /users': { page: 'P26', route: '/users', note: 'users-grid, rows user-<login> (org_admin only, D-171)' },
+  'POST /users': { page: 'P26', route: '/users', note: 'action-create-user: field-user-login, field-user-password, field-user-role, field-user-labels, action-create-user-submit (D-171)' },
+  'PATCH /users/:id': { page: 'P26', route: '/users', note: 'action-edit-user in the row: field-user-role, field-user-labels, field-user-active, action-edit-user-submit (D-171)' },
+  'POST /users/:id/password': { page: 'P26', route: '/users', note: 'action-reset-password in the row: field-user-password, action-reset-password-submit (D-171)' },
+  'GET /support': { page: 'P26', route: '/users', note: 'the tab «Поддержка» (?tab=support): support-grid, rows support-<id> (D-171)' },
+  'POST /support': { page: 'P26', route: '/users', note: 'action-grant-support: field-support-login, field-support-expires, field-support-write, action-grant-support-submit (D-171)' },
+  'POST /support/:id/revoke': { page: 'P26', route: '/users', note: 'action-revoke-support in the row (D-171)' },
 
   'GET /owners': {
     page: 'P11',
@@ -124,7 +134,13 @@ export const OPERATION_COVERAGE: Record<
   'GET /settlements/operations/:id/snapshot': { page: 'P20', route: '/operations', note: 'action-snapshot; also the balance tab of P10' },
 
   'GET /audit': { page: 'P6', route: '/tracks/:isrc', note: 'history tab; also the history tabs of P10, P12 and the P22 card; the «Лейбл» column (data-col="label", D-169); label= has no screen until stage 3, a card shows its whole history (D-168)' },
-};
+} satisfies Record<string, { page: string; route: string; note?: string } | { refusal: string }>;
+
+/**
+ * The key `METHOD /path` of an API operation (the same as in `me.abilities`, D-171): `ActionButton op` and `NavItem op`
+ * name the operation they trigger or read; the guard test keeps these keys equal to `operations.ts`.
+ */
+export type OperationKey = keyof typeof OPERATION_COVERAGE;
 
 /** Pages with no operation of their own, with the reason (the guard test accepts exactly these as uncovered). */
 export const PAGES_WITHOUT_OPERATIONS: Record<string, string> = {

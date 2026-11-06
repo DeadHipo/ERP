@@ -148,7 +148,7 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
         subtitle={ru.actions.hints.monthRule}
         footer={
           <ActionButton
-            name="split-submit"
+            name="split-submit" op={change ? 'POST /splits/change' : 'POST /splits'}
             isPending={run.isPending}
             isDisabled={!ready}
             reason={!filled ? ru.actions.hints.fillFields : ru.actions.hints.pickFirst}
@@ -211,7 +211,7 @@ export function BuyoutDialog(props: { isrc: string; splits: readonly Split[]; on
         subtitle={ru.actions.hints.monthRule}
         footer={
           <ActionButton
-            name="buyout-submit"
+            name="buyout-submit" op="POST /splits/buyout"
             isPending={run.isPending}
             isDisabled={!filled || !doc}
             reason={!filled ? ru.actions.hints.fillFields : ru.actions.hints.pickFirst}

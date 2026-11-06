@@ -29,7 +29,7 @@ export function AdsOfEntity(props: { isrc?: string; artistId?: string; pseudonym
       title={e.title}
       testId="entity-ads"
       toolbar={
-        <ActionButton name="create-ad" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating(true)}>
+        <ActionButton name="create-ad" op="POST /ads" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating(true)}>
           {t.create.open}
         </ActionButton>
       }

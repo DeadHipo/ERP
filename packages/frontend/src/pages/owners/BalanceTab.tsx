@@ -272,7 +272,7 @@ function PayButton(props: { ownerId: string; balance: Balance }) {
   return (
     <>
       <ActionButton
-        name="pay"
+        name="pay" op="POST /owners/:id/payouts"
         isDisabled={!b.payout.allowed || closed || b.label === null}
         reason={closed || b.label === null ? reason : b.payout.reason ? ru.status.payoutGate[b.payout.reason] : undefined}
         isPending={run.isPending}

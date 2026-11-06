@@ -2,7 +2,7 @@ import { z } from 'zod';
 import * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
 import { getOperator } from '../lib/operator';
-import { loginPath, orgHeader } from '../lib/session';
+import { getWorkOrg, loginPath, orgHeader } from '../lib/session';
 
 // The one typed client (R6). Every request body type comes from `@erp/shared/api-schemas`, every response is parsed
 // with its zod schema from `@erp/shared/api-responses`; there is no hand-written response type in `src/api/`
@@ -44,9 +44,16 @@ export function setAuditFailedHandler(fn: () => void): void {
   onAuditFailed = fn;
 }
 
+let leaving = false;
+/** «Выйти»: the browser goes to the login page; a 401 of a request still in flight does not redirect it again. */
+export function leaveToLogin(): void {
+  leaving = true;
+  window.location.assign('/login');
+}
+
 /** A 401 `unauthenticated` (no session, or it ended): the login page, then back here (D-170). */
 function toLogin(): void {
-  if (typeof window === 'undefined' || window.location.pathname === '/login') return;
+  if (typeof window === 'undefined' || leaving || window.location.pathname === '/login') return;
   window.location.assign(loginPath(`${window.location.pathname}${window.location.search}`));
 }
 
@@ -107,7 +114,11 @@ const list = <T extends z.ZodType>(item: T) => z.array(item);
 export const auth = {
   login: (body: z.input<typeof S.loginBody>) => call('POST', '/auth/login', { body, schema: R.meSchema, anonymous: true }),
   logout: () => call('POST', '/auth/logout', { schema: R.okSchema, anonymous: true }),
-  me: () => call('GET', '/auth/me', { schema: R.meSchema }),
+  /**
+   * The organization a system administrator chose (this tab, `erp.org`) goes along before `me` says who asks: under a
+   * live support grant the answer is the role `support` there (D-171); a member is never asked for it.
+   */
+  me: () => call('GET', '/auth/me', { schema: R.meSchema, org: getWorkOrg() || undefined }),
   /** The user's own password (D-171); the other sessions of the user end. */
   changePassword: (body: z.input<typeof S.changeOwnPasswordBody>) =>
     call('POST', '/auth/password', { body, schema: R.okSchema }),
@@ -121,6 +132,39 @@ export const orgs = {
   users: (orgId: string) => call('GET', `/orgs/${id(orgId)}/users`, { schema: list(R.memberSchema) }),
   createUser: (orgId: string, body: z.input<typeof S.createMemberUserBody>) =>
     call('POST', `/orgs/${id(orgId)}/users`, { body, schema: R.memberSchema }),
+  /** An existing user (by login) becomes a member (D-171). */
+  addMember: (orgId: string, body: z.input<typeof S.addMemberBody>) =>
+    call('POST', `/orgs/${id(orgId)}/members`, { body, schema: R.memberSchema }),
+  updateMember: (orgId: string, userId: string, body: z.input<typeof S.updateMemberBody>) =>
+    call('PATCH', `/orgs/${id(orgId)}/users/${id(userId)}`, { body, schema: R.memberSchema }),
+  /** «Работать в организации» under a live support grant (D-171): the session as `support` there. */
+  enterSupport: (orgId: string) => call('POST', `/orgs/${id(orgId)}/support/enter`, { schema: R.meSchema }),
+};
+
+/** Every user, for the system administrator (P27, D-171). */
+export const systemUsers = {
+  list: () => call('GET', '/system/users', { schema: list(R.systemUserSchema) }),
+  update: (userId: string, body: z.input<typeof S.updateSystemUserBody>) =>
+    call('PATCH', `/system/users/${id(userId)}`, { body, schema: R.systemUserSchema }),
+  setPassword: (userId: string, body: z.input<typeof S.setPasswordBody>) =>
+    call('POST', `/system/users/${id(userId)}/password`, { body, schema: R.okSchema }),
+};
+
+/** The members of the organization of the session, for its administrator (P26, D-171). */
+export const users = {
+  list: () => call('GET', '/users', { schema: list(R.memberSchema) }),
+  create: (body: z.input<typeof S.createMemberUserBody>) => call('POST', '/users', { body, schema: R.memberSchema }),
+  update: (userId: string, body: z.input<typeof S.updateMemberBody>) =>
+    call('PATCH', `/users/${id(userId)}`, { body, schema: R.memberSchema }),
+  setPassword: (userId: string, body: z.input<typeof S.setPasswordBody>) =>
+    call('POST', `/users/${id(userId)}/password`, { body, schema: R.okSchema }),
+};
+
+/** The support grants of the organization of the session, for its administrator (P26 «Поддержка», D-171). */
+export const support = {
+  list: () => call('GET', '/support', { schema: list(R.supportGrantSchema) }),
+  grant: (body: z.input<typeof S.grantSupportBody>) => call('POST', '/support', { body, schema: R.supportGrantSchema }),
+  revoke: (grantId: string) => call('POST', `/support/${id(grantId)}/revoke`, { schema: R.supportGrantSchema }),
 };
 
 export const owners = {
