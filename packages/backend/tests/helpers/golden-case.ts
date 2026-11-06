@@ -263,12 +263,13 @@ export class Case {
       for (const k of ['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const)
         expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
       // D-173: the new fields add up too; payable is the formula of D-173 in every book; Σ areas = the book
-      for (const k of ['buyouts', 'forgiven', 'writtenOff', 'adjustments'] as const)
+      for (const k of ['buyouts', 'forgiven', 'writtenOff', 'adjustments', 'start'] as const)
         expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
       for (const [label, x] of [...Object.entries(b.byLabel), ['total', b.total] as const]) {
-        const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff);
+        // D-174: the start is added last; without one the formula is the one of D-173
+        const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff).add(x.start);
         expect(x.payable.toFixed(), `payable of ${name} ${label}`).toBe(formula.toFixed());
-        for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const)
+        for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'start', 'payable'] as const)
           expect(x.byArea.master[k].add(x.byArea.publishing[k]).toFixed(), `Σ areas ${k} of ${name} ${label}`).toBe(x[k].toFixed());
       }
       for (const p of b.positions) {

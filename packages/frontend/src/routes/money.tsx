@@ -2,6 +2,7 @@ import { Route } from 'react-router-dom';
 import { ROUTE_PATHS } from './paths';
 import { OperationsPage } from '../pages/operations/OperationsPage';
 import { OperationImportPage } from '../pages/operations/import/OperationImportPage';
+import { StartPage } from '../pages/operations/start/StartPage';
 import { AdPage } from '../pages/ads/AdPage';
 import { AdsPage } from '../pages/ads/AdsPage';
 import { SourceLinesPage } from '../pages/reference/sources/SourceLinesPage';
@@ -13,6 +14,7 @@ export const moneyRoutes = [
   <Route key="source-lines" path={ROUTE_PATHS.sourceLines} element={<SourceLinesPage />} />,
   <Route key="operations" path={ROUTE_PATHS.operations} element={<OperationsPage />} />,
   <Route key="operation-import" path={ROUTE_PATHS.operationImport} element={<OperationImportPage />} />,
+  <Route key="start" path={ROUTE_PATHS.start} element={<StartPage />} />,
   <Route key="ads" path={ROUTE_PATHS.ads} element={<AdsPage />} />,
   <Route key="ad" path={ROUTE_PATHS.ad} element={<AdPage />} />,
 ];

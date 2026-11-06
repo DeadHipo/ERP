@@ -1,9 +1,9 @@
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
 import { assertIsrc, newId } from '../../shared/identifiers';
-import { assertDate, nowIso } from '../../shared/dates';
+import { assertDate, assertMonth, monthStart, normalizeTimestamp, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
-import type { OperationFilter, OperationRow } from './repository';
-export type { OperationFilter };
+import type { OpeningBalanceFilter, OpeningBalanceRow, OperationFilter, OperationRow } from './repository';
+export type { OpeningBalanceFilter, OperationFilter };
 import type { Db } from '../../shared/pg-db';
 import type { OrgScope } from '../../shared/org-scope';
 import type { Scope, ScopeKind } from './recoup-types';
@@ -55,6 +55,47 @@ export interface OperationView {
 }
 
 export type Meaning = 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
+
+export type OpeningBalanceKind = 'start' | 'adjustment';
+
+/** An opening balance row (D-174): the start of a pseudonym in a book, or an approved adjustment of it. */
+export interface OpeningBalanceView {
+  id: string;
+  labelId: string;
+  artistId: string;
+  kind: OpeningBalanceKind;
+  /** The last report month inside the start, 'YYYY-MM'. */
+  cutoffMonth: string;
+  /** The boundary of the movements (ISO): operations of the book dated up to its day are inside the start. */
+  syncedAt: string;
+  masterCents: number;
+  publishingCents: number;
+  /** The cabinet gave no amount: not a zero (the payout is closed). */
+  missing: boolean;
+  basis: string;
+  documentId: string | null;
+  /** An advance before the cut kept alive after it. */
+  operationRef: string | null;
+  comment: string;
+  createdAt: string;
+  active: boolean;
+  deactivatedReason: string | null;
+}
+
+export interface OpeningBalanceInput {
+  labelId: string;
+  artistId: string;
+  kind: OpeningBalanceKind;
+  cutoffMonth: string;
+  syncedAt: string;
+  masterCents: number;
+  publishingCents: number;
+  missing?: boolean;
+  basis: string;
+  documentId?: string | null;
+  operationRef?: string | null;
+  comment?: string;
+}
 
 export interface OperationInput {
   /** Without it the kind is derived from the fields (`kindOf`), as before D-173. */
@@ -125,6 +166,27 @@ function view(o: OperationRow): OperationView {
     labelSource: o.labelSource,
     channel: o.channel,
     area: o.area,
+  };
+}
+
+function openingView(r: OpeningBalanceRow): OpeningBalanceView {
+  return {
+    id: r.id,
+    labelId: r.labelId,
+    artistId: r.artistId,
+    kind: r.kind,
+    cutoffMonth: r.cutoffMonth.slice(0, 7),
+    syncedAt: r.syncedAt,
+    masterCents: r.masterCents,
+    publishingCents: r.publishingCents,
+    missing: r.missing,
+    basis: r.basis,
+    documentId: r.documentId,
+    operationRef: r.operationRef,
+    comment: r.comment,
+    createdAt: r.createdAt,
+    active: r.deactivatedAt === null,
+    deactivatedReason: r.deactivatedReason,
   };
 }
 
@@ -458,6 +520,80 @@ export function createSettlementsService(db: Db, org: OrgScope) {
 
     async reassignOwner(fromOwnerId: string, intoOwnerId: string): Promise<void> {
       await repo.reassignOwner(fromOwnerId, intoOwnerId);
+    },
+
+    // ---- the opening balances (D-174): the module keeps the rows and their shape; the facade checks the pseudonym,
+    // the document and the operation, and the balance reads them ----
+
+    /**
+     * Records an opening balance row: `start` (one active per pseudonym, book and cut: `409 start_exists`) or
+     * `adjustment` (any number, a non-zero amount). `missing` only on a start, with both amounts 0. The cents are
+     * integers; `cutoffMonth` is YYYY-MM; `syncedAt` an ISO timestamp.
+     */
+    async createOpeningBalance(input: OpeningBalanceInput): Promise<OpeningBalanceView> {
+      return repo.transaction(async () => {
+        if (input.kind !== 'start' && input.kind !== 'adjustment') throw new ValidationError(`Unknown opening balance kind ${String(input.kind)}`, undefined, 'kind_unknown');
+        if (!Number.isInteger(input.masterCents) || !Number.isInteger(input.publishingCents))
+          throw new ValidationError('The amounts of an opening balance are whole cents', undefined, 'amount_invalid');
+        const missing = input.missing ?? false;
+        if (missing && (input.kind !== 'start' || input.masterCents !== 0 || input.publishingCents !== 0))
+          throw new ValidationError('A missing start has no amount (both 0) and is a start', undefined, 'missing_with_amount');
+        if (input.kind === 'adjustment' && input.masterCents === 0 && input.publishingCents === 0)
+          throw new ValidationError('An adjustment of the start has a non-zero amount', undefined, 'amount_invalid');
+        const basis = input.basis.trim();
+        if (basis.length < 1 || basis.length > 2000) throw new ValidationError('An opening balance names its basis (1-2000 characters)', undefined, 'basis_required');
+        const cutoff = assertMonth(input.cutoffMonth);
+        const syncedAt = normalizeTimestamp(input.syncedAt);
+        if (syncedAt.slice(0, 7) < cutoff) throw new ValidationError('The synchronisation is not before the cut month', undefined, 'synced_before_cutoff');
+        if (input.kind === 'start') {
+          const same = (await repo.listOpeningBalances({ labelId: input.labelId, artistId: input.artistId, kind: 'start', active: true })).find(
+            (r) => r.cutoffMonth.slice(0, 7) === cutoff,
+          );
+          if (same) throw new ConflictError('The pseudonym has an active start in this book at this cut', 'start_exists', { id: same.id });
+        }
+        const id = newId();
+        await repo.insertOpeningBalance({
+          id,
+          labelId: input.labelId,
+          artistId: input.artistId,
+          kind: input.kind,
+          cutoffMonth: monthStart(cutoff),
+          syncedAt,
+          masterCents: input.masterCents,
+          publishingCents: input.publishingCents,
+          missing,
+          basis,
+          documentId: input.documentId ?? null,
+          operationRef: input.operationRef ?? null,
+          comment: input.comment ?? '',
+          createdAt: nowIso(),
+          deactivatedAt: null,
+          deactivatedReason: null,
+        });
+        return openingView((await repo.getOpeningBalance(id)) as OpeningBalanceRow);
+      });
+    },
+
+    async getOpeningBalance(id: string): Promise<OpeningBalanceView> {
+      const r = await repo.getOpeningBalance(id);
+      if (!r) throw new NotFoundError('Opening balance', id);
+      return openingView(r);
+    },
+
+    async listOpeningBalances(filter: OpeningBalanceFilter = {}): Promise<OpeningBalanceView[]> {
+      return (await repo.listOpeningBalances(filter)).map(openingView);
+    },
+
+    /** Soft rollback of an opening balance row (never a delete): the balance no longer reads it. */
+    async deactivateOpeningBalance(id: string, reason: string): Promise<OpeningBalanceView> {
+      return repo.transaction(async () => {
+        const r = await repo.getOpeningBalance(id);
+        if (!r) throw new NotFoundError('Opening balance', id);
+        if (r.deactivatedAt) throw new ConflictError('The opening balance is inactive already', 'already_inactive');
+        if (!reason.trim()) throw new ValidationError('A reason is required', undefined, 'reason_required');
+        await repo.setOpeningBalanceDeactivated(id, nowIso(), reason.trim());
+        return openingView((await repo.getOpeningBalance(id)) as OpeningBalanceRow);
+      });
     },
   };
   return service;

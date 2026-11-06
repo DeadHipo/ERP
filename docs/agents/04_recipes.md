@@ -440,3 +440,29 @@ replace a real statement without it.
 4. Check: the b17 reconciliation rows of the quarters (discrepancy 0), the writers of the new file mapped (signals
    `writer_unmapped`), `scripts/check-label-books.ts`, and the owners whose publishing moved (`compare-reference`
    without `--strict`, recipe 11 step 8, prints them).
+
+## 16. Load the start of 15.10.2026 (the opening balances, D-174)
+
+The cabinet position of every pseudonym replaces the recalculated history of the book of 0to8 up to 2026-08. The
+owner's files (`cabinet_snapshot_2026-10-15.json`, `transition.json`, in the pack of 2026-11-06) are converted by the
+script; an operator can also import a csv of `START_IMPORT_COLUMNS` on P30 «Старт 15.10». An `org_admin` session
+(`pay`) or `AUTH_MODE=off` on the dev stand.
+
+1. Preview: `npx tsx packages/backend/scripts/start/load-cabinet.ts <snapshot.json> <transition.json>`: writes
+   `data/mvp-load/start/start_<cutoff>.csv` (a row per nick: `master = amount − publishing`, `publishing` from the
+   `terms`; the `missing` nicks as rows without an amount; the approved `start_adjustments` as `adjustment` rows, a
+   `pub_advance` one with `operation_ref` = the advance found by pseudonym, date and amount) and prints the classes:
+   `pseudonym_not_found`, `artist_without_owner`, `pseudonym_ambiguous`, the warning `no_contract_for_label`.
+2. Give the nicks an owner: `--create-owners` creates a person owner named after every pseudonym without one and the
+   unknown nicks themselves (`origin: 'start'`); the ambiguous nicks (two live pseudonyms of one name) stay errors:
+   resolve them on P11 «Дубликаты» (merge or rename), then import their rows from `start_issues.csv` on P30.
+3. Apply: `--skip-errors --apply` writes the rows without an error in one transaction (`start_<cutoff>_clean.csv`); a
+   second run answers every row `unchanged`. A wrong row is deactivated on P30 with a reason, never deleted; a
+   correction is a new `adjustment` row (P30 import, `kind = adjustment`, its `basis`).
+4. Check: `npx tsx packages/backend/scripts/start/check-start.ts [--cutoff 2026-08]`: one `ownerPayables` under 0to8
+   at `asOf = cutoff`; every owner with rows must have `payable = Σ rows` and a `missing` row the gate
+   `start_missing`; it exits 1 and lists the owners that differ. Then P10 of an owner shows `balance-start`, the cut and
+   the rows; the payroll `GET /owners/payroll?label=<0to8>&asOf=2026-08` has payable = start on every row.
+5. After the start: the reports of 2026-09 and later, the operations dated after `synced_at` (the cash registers), the
+   advertising of 2026-09 and later count as before; the history of the book up to the cut is reference only
+   (`OwnerBalance.start.insideStart`). The reach (`ownerReach`) is unchanged: the start is not a unit.

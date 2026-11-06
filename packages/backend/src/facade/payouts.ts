@@ -213,6 +213,12 @@ export function payoutsApi(ctx: FacadeContext) {
                 'no_contract_for_label',
                 { labelId },
               );
+            case 'start_missing':
+              throw new RuleViolationError(
+                'The start of a pseudonym of the owner has no amount (the cabinet gave none): the position is not known',
+                'start_missing',
+                { labelId },
+              );
             case 'payout_blocked':
               throw new RuleViolationError(
                 'A previous payout has no payment proof yet: new payouts are blocked',

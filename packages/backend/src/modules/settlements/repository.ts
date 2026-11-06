@@ -2,9 +2,17 @@ import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { LabelSource, OperationKind } from '@erp/shared/operation-kinds';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { operations, payoutSnapshots } from './schema';
+import { openingBalances, operations, payoutSnapshots } from './schema';
 
 export type OperationRow = OrgFree<typeof operations.$inferSelect>;
+export type OpeningBalanceRow = OrgFree<typeof openingBalances.$inferSelect>;
+
+export interface OpeningBalanceFilter {
+  labelId?: string;
+  artistId?: string;
+  kind?: 'start' | 'adjustment';
+  active?: boolean;
+}
 
 export interface OperationFilter {
   ownerId?: string;
@@ -27,8 +35,36 @@ export interface OperationFilter {
 /** All SQL of the settlements module lives here (schema `settlements`); every statement is of the organization `org` (D-170). */
 export function createSettlementsRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
-  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots) };
+  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots), openingBalances: orgFree(openingBalances) };
   return {
+    // ---- the opening balances (D-174) ----
+    insertOpeningBalance: async (row: OrgFree<typeof openingBalances.$inferInsert>) => {
+      await orm().insert(openingBalances).values(orgRow(org, row));
+    },
+    getOpeningBalance: async (id: string): Promise<OpeningBalanceRow | undefined> =>
+      (await orm().select(C.openingBalances).from(openingBalances).where(orgWhere(org, openingBalances, eq(openingBalances.id, id))))[0],
+    /** Oldest first (the order of the import), then by id. */
+    listOpeningBalances: (f: OpeningBalanceFilter = {}) =>
+      orm()
+        .select(C.openingBalances)
+        .from(openingBalances)
+        .where(
+          orgWhere(
+            org,
+            openingBalances,
+            f.labelId ? eq(openingBalances.labelId, f.labelId) : undefined,
+            f.artistId ? eq(openingBalances.artistId, f.artistId) : undefined,
+            f.kind ? eq(openingBalances.kind, f.kind) : undefined,
+            f.active === undefined ? undefined : f.active ? isNull(openingBalances.deactivatedAt) : sql`${openingBalances.deactivatedAt} is not null`,
+          ),
+        )
+        .orderBy(openingBalances.createdAt, openingBalances.id),
+    setOpeningBalanceDeactivated: async (id: string, at: string, reason: string) => {
+      await orm()
+        .update(openingBalances)
+        .set({ deactivatedAt: at, deactivatedReason: reason })
+        .where(orgWhere(org, openingBalances, eq(openingBalances.id, id)));
+    },
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
 
     insertOperation: async (row: OrgFree<typeof operations.$inferInsert>) => {

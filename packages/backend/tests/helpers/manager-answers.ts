@@ -105,6 +105,9 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'POST /settlements/operations/:id/forgive': 'x',
   // the operation import (D-173 stage 5 commit 4): pay, the org_admin's only
   'POST /settlements/operations/import': 'x',
+  'GET /settlements/start': 'L',
+  'POST /settlements/start/import': 'x',
+  'POST /settlements/start/:id/deactivate': 'x',
   // the payroll export (D-173 stage 5 commit 3): read_money under its own label
   'GET /owners/payroll': 'L',
 };

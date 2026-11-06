@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { SPLIT_IMPORT_ACTIONS, SPLIT_IMPORT_ISSUE_CODES, type SplitImportIssueCode } from './split-import';
 import { LABEL_SOURCES, OPERATION_KINDS } from './operation-kinds';
 import { OPERATION_IMPORT_ACTIONS, OPERATION_IMPORT_ISSUE_CODES, type OperationImportIssueCode } from './operation-import';
+import { START_IMPORT_ACTIONS, START_IMPORT_ISSUE_CODES } from './start-import';
 
 // Response bodies of the JSON API (the contract of /api/v1). Shared by the server (OpenAPI, contract tests) and the
 // React client (types). Money and percents are exact decimal strings; dates are YYYY-MM-DD, months YYYY-MM.
@@ -734,10 +735,10 @@ export type Overview = z.infer<typeof overviewSchema>;
 export const payoutGateSchema = z.object({
   allowed: z.boolean(),
   reason: z
-    .enum(['owner_not_confirmed', 'no_contract_for_label', 'payout_blocked', 'nothing_to_pay', 'below_threshold'])
+    .enum(['owner_not_confirmed', 'no_contract_for_label', 'start_missing', 'payout_blocked', 'nothing_to_pay', 'below_threshold'])
     .nullable()
     .describe(
-      'owner_not_confirmed: no approved contract at all; no_contract_for_label: none whose document has the label of the view or no label (D-169)',
+      'owner_not_confirmed: no approved contract at all; no_contract_for_label: none whose document has the label of the view or no label (D-169); start_missing: a start row of a pseudonym without an amount (the cabinet gave none, D-174)',
     ),
   amountCents: z
     .number()
@@ -751,6 +752,7 @@ export type PayoutGate = z.infer<typeof payoutGateSchema>;
  * operations by their `area` (the history master, a write-off publishing); Σ of the two areas = the book.
  */
 export const areaBookSchema = z.object({
+  start: money.optional().describe('The opening balance of the area (D-174): the start rows and the adjustments, master or publishing cents'),
   earned: money,
   recouped: money,
   adsCharged: money,
@@ -768,6 +770,8 @@ const kindBookFields = {
   forgiven: money.optional().describe('The effective forgiveness of the advances (D-173): reduces what is unrecouped, not payable'),
   writtenOff: money.optional().describe('Counted publishing write-offs (D-173): taken off payable'),
   adjustments: money.optional().describe('−Σ counted adjustments (D-173): added to payable with their sign'),
+  start: money.optional().describe('The opening balance (D-174): Σ of the active start rows and adjustments of the owner\'s pseudonyms in the book; in payable'),
+  startMissing: z.boolean().optional().describe('A start row without an amount (D-174): the payout of the book is closed (start_missing)'),
   byArea: z
     .object({ master: areaBookSchema, publishing: areaBookSchema })
     .optional()
@@ -792,6 +796,79 @@ export const labelBookSchema = z.object({
 export type LabelBook = z.infer<typeof labelBookSchema>;
 
 const labelRef = z.object({ id: z.string(), name: z.string() });
+
+// ---- the opening balances (D-174): the start of a pseudonym in a book at the cut of 15.10.2026 ----
+
+export const OPENING_BALANCE_KINDS = ['start', 'adjustment'] as const;
+
+/** One row of `settlements.opening_balances`: the start of a pseudonym in a book, or an approved adjustment of it. */
+export const openingBalanceSchema = z.object({
+  id: z.string(),
+  labelId: z.string().describe('The book the start acts in (an own label)'),
+  artistId: z.string().describe('The pseudonym (the cabinet\'s position is per nick)'),
+  kind: z.enum(OPENING_BALANCE_KINDS),
+  cutoffMonth: month.describe('The last report month inside the start'),
+  syncedAt: timestamp.describe('The boundary of the movements: operations of the book dated up to its day are inside the start'),
+  masterCents: z.number().int(),
+  publishingCents: z.number().int(),
+  missing: z.boolean().describe('The cabinet gave no amount: not a zero, the payout is closed'),
+  basis: z.string(),
+  documentId: z.string().nullable(),
+  operationRef: z.string().nullable().describe('An advance before the cut kept alive after it (reopened)'),
+  comment: z.string(),
+  createdAt: timestamp,
+  active: z.boolean(),
+  deactivatedReason: z.string().nullable(),
+});
+export type OpeningBalance = z.infer<typeof openingBalanceSchema>;
+
+/** A row of the start list: the row with its pseudonym and owner. */
+export const openingBalanceRowSchema = openingBalanceSchema.extend({
+  pseudonym: z.string(),
+  ownerId: z.string().nullable(),
+  ownerName: z.string().nullable(),
+});
+
+/** `GET /settlements/start`: the opening balances of a book with their sums. */
+export const startListSchema = z.object({
+  label: labelRef.nullable().describe('The book asked for; null = every book'),
+  rows: z.array(openingBalanceRowSchema),
+  totals: z.object({
+    rows: z.number().int(),
+    starts: z.number().int().describe('Active start rows'),
+    adjustments: z.number().int().describe('Active adjustment rows'),
+    missing: z.number().int().describe('Active start rows without an amount'),
+    inactive: z.number().int(),
+    master: money.describe('Σ master of the active rows'),
+    publishing: money.describe('Σ publishing of the active rows'),
+    total: money,
+    cutoffMonths: z.array(month),
+  }),
+});
+export type StartList = z.infer<typeof startListSchema>;
+
+/** The start block of a balance (D-174): the cuts per book, the rows of the owner\'s pseudonyms, what the cut removed. */
+export const startViewSchema = z.object({
+  cuts: z.array(
+    z.object({
+      labelId: z.string().nullable(),
+      cutoffMonth: month,
+      syncedDay: date.describe('The day of syncedAt (UTC): operations of the book dated up to it are inside the start'),
+      syncedAt: timestamp,
+    }),
+  ),
+  rows: z.array(openingBalanceSchema.extend({ pseudonym: z.string() })),
+  insideStart: z
+    .object({
+      earned: money,
+      waiting: money,
+      paid: money,
+      advances: money,
+      adsCharged: money,
+      operations: z.number().int(),
+    })
+    .describe('What the start replaced: the inputs the cut removed (reference only, never in payable)'),
+});
 
 export const balanceSchema = z.object({
   owner: ownerSchema,
@@ -823,7 +900,7 @@ export const balanceSchema = z.object({
     returns: money,
     credits: money,
     ...kindBookFields,
-    payable: money.describe('earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-173)'),
+    payable: money.describe('start + earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-173, D-174)'),
     payableShown: money,
     payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
   }),
@@ -840,6 +917,7 @@ export const balanceSchema = z.object({
       waiting: money,
       recouped: money,
       unrecouped: money,
+      start: money.optional().describe('The opening balance of the pseudonym (D-174)'),
       tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
       byLabel: z.record(
         z.string(),
@@ -851,10 +929,12 @@ export const balanceSchema = z.object({
           unrecouped: money,
           recoupedFromMaster: money,
           forgiven: money.optional().describe('The effective forgiveness of the positions this pseudonym holds (D-173)'),
+          start: money.optional().describe('The opening balance of the pseudonym in the book (D-174)'),
         }),
       ),
     }),
   ),
+  start: startViewSchema.nullable().optional().describe('The opening balances of the owner\'s pseudonyms and the cut they make (D-174); null without any, absent in older snapshots'),
   publishing: z.array(
     z.object({
       period: z.string(),
@@ -925,6 +1005,7 @@ export const artistBalanceSchema = z.object({
     recoupedFromMaster: money.describe('Part of this pseudonym\'s master income consumed by recoupment'),
     adsCharged: money.describe('Advertising charged to this pseudonym, taken off the owner\'s payable at once (D-157)'),
     paid: money.describe('Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym)'),
+    start: money.optional().describe('The opening balance of the pseudonym (D-174)'),
   }),
   byLabel: z
     .record(
@@ -938,6 +1019,7 @@ export const artistBalanceSchema = z.object({
         recoupedFromMaster: money,
         adsCharged: money,
         paid: money,
+        start: money.optional(),
       }),
     )
     .describe("The book of every label of the pseudonym (by name, '?' = without a label): Σ books = total (D-168)"),
@@ -1137,6 +1219,8 @@ export const payableItemSchema = z.object({
   forgiven: kindBookFields.forgiven,
   writtenOff: kindBookFields.writtenOff,
   adjustments: kindBookFields.adjustments,
+  start: kindBookFields.start,
+  startMissing: kindBookFields.startMissing,
   payable: money,
   payableShown: money,
   payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
@@ -1730,9 +1814,58 @@ export const operationImportSchema = z.object({
 });
 export type OperationImport = z.infer<typeof operationImportSchema>;
 
+// ---- the import of the opening balances (D-174) ----
+
+export const startImportRowSchema = z.object({
+  line: z.number().int().describe('Line of the file (the header is line 1)'),
+  pseudonym: z.string().describe('The pseudonym cell as written'),
+  artistId: z.string().nullable(),
+  ownerId: z.string().nullable(),
+  kind: z.string().describe('start or adjustment as read (start when empty)'),
+  master: money.nullable(),
+  publishing: money.nullable(),
+  missing: z.boolean(),
+  documentId: z.string().nullable(),
+  operationRef: z.string().nullable(),
+  action: z.enum(START_IMPORT_ACTIONS),
+  issues: z.array(
+    z.object({
+      code: z.enum(START_IMPORT_ISSUE_CODES),
+      severity: z.enum(['error', 'warning', 'info']),
+      details: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
+});
+
+export const startImportSchema = z.object({
+  labelId: z.string(),
+  cutoffMonth: month,
+  syncedAt: timestamp,
+  fileName: z.string(),
+  sha256: z.string(),
+  dryRun: z.boolean(),
+  applied: z.boolean(),
+  totals: z.object({
+    rows: z.number().int(),
+    create: z.number().int(),
+    unchanged: z.number().int(),
+    errors: z.number().int(),
+    warnings: z.number().int(),
+    starts: z.number().int().describe('Start rows to create'),
+    adjustments: z.number().int().describe('Adjustment rows to create'),
+    missing: z.number().int().describe('Start rows without an amount to create'),
+    master: money.describe('Σ master of the rows to create'),
+    publishing: money.describe('Σ publishing of the rows to create'),
+  }),
+  rows: z.array(startImportRowSchema),
+  result: z.object({ ids: z.array(z.string()) }).nullable().describe('The created rows of an apply; null in a preview'),
+});
+export type StartImport = z.infer<typeof startImportSchema>;
+
 // ---- the payroll export (D-173 §1.4) ----
 
 const payrollMoney = {
+  start: money.describe('The opening balance (D-174): on the pseudonym rows, the area\'s part of their start rows'),
   earned: money,
   recouped: money.describe('pseudonym row: recoupedFromMaster (taken from its master income by any position); owner row: publishingRecouped; total: the area'),
   unrecouped: money.describe('What the positions held by the pseudonym still wait for'),

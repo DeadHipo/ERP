@@ -69,6 +69,8 @@ export const audit = {
     'POST /settlements/operations/:id/forgive': 'прощение аванса',
     'POST /publishing/statements/:id/replace': 'выписка B17 заменена',
     'POST /settlements/operations/import': 'импорт операций из файла',
+    'POST /settlements/start/import': 'импорт стартовых позиций из файла',
+    'POST /settlements/start/:id/deactivate': 'отключена строка старта',
   } as Record<string, string>,
   fields: {
     amount: 'сумма',

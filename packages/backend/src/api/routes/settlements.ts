@@ -4,6 +4,7 @@ import type { Facade } from '../../facade';
 import { param, parse } from '../http';
 import { viewerOf } from '../viewer';
 import { OPERATION_IMPORT_MAX_BYTES } from '@erp/shared/operation-import';
+import { START_IMPORT_MAX_BYTES } from '@erp/shared/start-import';
 import { AppError } from '../../shared/errors';
 import { drain, receiveUpload } from '../upload';
 
@@ -80,6 +81,36 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
       await up.cleanup();
     }
   });
+
+  // the opening balances (D-174): the list of a book, the import with a preview, the soft rollback of a row
+  r.get('/settlements/start', async (req, res) => {
+    const q = parse(S.startListQuery, req.query);
+    res.json(await facade.listStart({ labelId: q.label, active: q.active === undefined ? undefined : q.active === 'true' }, viewerOf(res)));
+  });
+  r.post('/settlements/start/import', async (req, res) => {
+    let q: ReturnType<typeof S.startImportQuery.parse>;
+    try {
+      q = parse(S.startImportQuery, req.query);
+      await facade.assertUploadLabel(q.label);
+    } catch (e) {
+      await drain(req);
+      throw e;
+    }
+    const up = await receiveUpload(req, opts.tmpDir, {
+      maxBytes: START_IMPORT_MAX_BYTES,
+      error: () => new AppError('The import file is larger than 10 MB', 413, 'import_too_large', { maxBytes: START_IMPORT_MAX_BYTES }),
+    });
+    try {
+      const dryRun = q.dryRun === '1';
+      const out = await facade.importStart({ path: up.path, fileName: up.fileName, labelId: q.label, cutoff: q.cutoff, syncedAt: q.syncedAt, dryRun, basis: q.basis });
+      res.status(dryRun ? 200 : 201).json(out);
+    } finally {
+      await up.cleanup();
+    }
+  });
+  r.post('/settlements/start/:id/deactivate', async (req, res) =>
+    res.json(await facade.deactivateStart(param(req, 'id'), parse(S.deactivateStartBody, req.body).reason)),
+  );
 
   return r;
 }

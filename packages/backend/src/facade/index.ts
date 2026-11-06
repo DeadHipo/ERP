@@ -26,6 +26,7 @@ import { releaseRegistryApi } from './release-registry';
 import { onboardingApi } from './onboarding';
 import { payrollApi } from './payroll';
 import { operationImportApi } from './operation-import';
+import { startApi } from './start';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -89,6 +90,7 @@ export function openFacade(config: FacadeConfig) {
     ...onboardingApi(ctx),
     ...payrollApi(ctx),
     ...operationImportApi(ctx, payoutsPart),
+    ...startApi(ctx),
   };
 }
 

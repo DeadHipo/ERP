@@ -33,6 +33,7 @@ const WITHOUT_OP = [
   'show-lines',
   'split-add-row',
   'split-import-template',
+  'start-import-template',
   'split-remove-row-${i}',
   'split-row-drop-document-${i}',
 ];

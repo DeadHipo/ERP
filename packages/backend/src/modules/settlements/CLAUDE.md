@@ -27,3 +27,14 @@ forgiveness `payout`), `channel` (text), `area` (`master` | `publishing`, defaul
 `setLabel(id, labelId, 'operator')` is the `PATCH` with a reason (the reason lives in the audit only). The module still
 computes nothing: the forgiveness capacity is in `facade/layers/recoup.ts` (`Position.forgiven`,
 `RecoupResult.forgiven` in `recoup-types.ts`), the book fields and the import are the facade's.
+
+**Opening balances (D-174, `settlements.opening_balances`, migration `0020_opening_balances.sql`).** A row per pseudonym
+and book: `kind` `start` (the cabinet snapshot of the cut: `master_cents`, `publishing_cents`, or `missing` = no
+amount, not a zero) or `adjustment` (an approved correction with its `basis`, optionally `document_id` and
+`operation_ref` = an advance before the cut kept alive after it); `cutoff_month` (the first day of the last report
+month inside the start) and `synced_at` (the boundary of the movements); never edited, a soft rollback
+(`deactivated_at` / `deactivated_reason`). `createOpeningBalance` keeps the shape (`kind_unknown`, `amount_invalid`,
+`missing_with_amount`, `basis_required`, `synced_before_cutoff`, one active start per pseudonym, book and cut:
+`409 start_exists`), `listOpeningBalances({ labelId, artistId, kind, active })` (oldest first), `getOpeningBalance`,
+`deactivateOpeningBalance` (`409 already_inactive`, `reason_required`). The pseudonym, the document and the operation are
+checked by the facade (`facade/start.ts`); what the rows do to the balance is `facade/balance.ts`.

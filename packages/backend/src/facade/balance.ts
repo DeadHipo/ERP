@@ -1,7 +1,7 @@
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { inMonthRange, monthOf } from '../shared/dates';
 import { BLOCKING_KINDS } from '@erp/shared/operation-kinds';
-import type { IncomeItem, OperationView, Position } from '../modules/settlements';
+import type { IncomeItem, OpeningBalanceView, OperationView, Position } from '../modules/settlements';
 import { recoup } from './layers/recoup';
 import {
   pubInPeriod,
@@ -26,6 +26,8 @@ export interface ArtistLabelBook {
   recoupedFromMaster: Decimal;
   /** The effective forgiveness of the positions this pseudonym holds (D-173), by the label of the position. */
   forgiven: Decimal;
+  /** The opening balance of the pseudonym in the book (D-174): its start and the adjustments of it. */
+  start: Decimal;
 }
 
 export interface ArtistBalance {
@@ -39,6 +41,8 @@ export interface ArtistBalance {
   recoupedFromMaster: Decimal;
   /** The effective forgiveness of the positions this pseudonym holds (D-173). */
   forgiven: Decimal;
+  /** The opening balance of the pseudonym (D-174). */
+  start: Decimal;
   tracks: { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }[];
   /** The row per book (by name, '?' = without a label); Σ over the books = the row (D-168, D-169). */
   byLabel: Record<string, ArtistLabelBook>;
@@ -81,6 +85,8 @@ export interface AdChargeView {
  * Σ of the two areas = the book, field by field.
  */
 export interface AreaBook {
+  /** The opening balance of the area (D-174): the start rows and the adjustments, master or publishing cents. */
+  start: Decimal;
   earned: Decimal;
   recouped: Decimal;
   adsCharged: Decimal;
@@ -117,11 +123,42 @@ export interface LabelBook {
   writtenOff: Decimal;
   /** −Σ counted adjustments (D-173): added to payable with their sign. */
   adjustments: Decimal;
+  /** The opening balance of the book (D-174): Σ of the active start rows and adjustments of the owner's pseudonyms. */
+  start: Decimal;
+  /** A start row without an amount (the cabinet gave none, D-174): the payout of the book is closed. */
+  startMissing: boolean;
   payable: Decimal;
   payableShown: Decimal;
   payableNegative: boolean;
   /** The two areas of the book (D-173 К10): Σ = the book, field by field. */
   byArea: Record<Area, AreaBook>;
+}
+
+/** The cut a book of the owner is under (D-174): inputs of report months ≤ `cutoffMonth` and operations dated ≤ `syncedDay` are inside the start. */
+export interface StartCut {
+  labelId: string | null;
+  cutoffMonth: string;
+  /** The day of `synced_at` (UTC): an operation of the book dated up to it is inside the start. */
+  syncedDay: string;
+  syncedAt: string;
+}
+
+/** What the start replaced (D-174): the sums of the inputs the cut removed, for the screen; never in `payable`. */
+export interface InsideStart {
+  earned: Decimal;
+  waiting: Decimal;
+  paid: Decimal;
+  advances: Decimal;
+  adsCharged: Decimal;
+  /** Operations of every kind the cut removed. */
+  operations: number;
+}
+
+/** The start block of a balance (D-174): null when no pseudonym of the owner has an opening balance. */
+export interface StartView {
+  cuts: StartCut[];
+  rows: (OpeningBalanceView & { pseudonym: string })[];
+  insideStart: InsideStart;
 }
 
 /** A balance restricted to one label (D-168): the same computation projected to that label's book. */
@@ -175,6 +212,9 @@ export interface OwnerBalance {
     forgiven: Decimal;
     writtenOff: Decimal;
     adjustments: Decimal;
+    /** The opening balance (D-174): Σ of the books; in payable. */
+    start: Decimal;
+    startMissing: boolean;
     payable: Decimal;
     /** Negative payable is kept as is; the owner sees 0. */
     payableShown: Decimal;
@@ -188,6 +228,8 @@ export interface OwnerBalance {
    * label), D-168. Under a view, the one book of that label.
    */
   byLabel: Record<string, LabelBook>;
+  /** The opening balances of the owner's pseudonyms and the cut they make (D-174); null without any. */
+  start: StartView | null;
   artists: ArtistBalance[];
   publishing: {
     period: string;
@@ -249,6 +291,7 @@ class ByKey<T> {
 
 type AreaAcc = Omit<AreaBook, 'payable'>;
 const newArea = (): AreaAcc => ({
+  start: ZERO,
   earned: ZERO,
   recouped: ZERO,
   adsCharged: ZERO,
@@ -262,6 +305,8 @@ const newArea = (): AreaAcc => ({
 const AREA_FIELDS = Object.keys(newArea()) as (keyof AreaAcc)[];
 
 interface BookAcc {
+  start: Decimal;
+  startMissing: boolean;
   earned: Decimal;
   waiting: Decimal;
   recouped: Decimal;
@@ -277,6 +322,8 @@ interface BookAcc {
   area: Record<Area, AreaAcc>;
 }
 const newBook = (): BookAcc => ({
+  start: ZERO,
+  startMissing: false,
   earned: ZERO,
   waiting: ZERO,
   recouped: ZERO,
@@ -296,12 +343,12 @@ const addArea = (b: BookAcc, area: Area, field: keyof AreaAcc, v: Decimal) => {
   b.area[area][field] = b.area[area][field].add(v);
 };
 /**
- * payable = earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-050, D-157, D-173);
- * buyouts and forgiveness stay outside. The terms of D-173 are added after the earlier ones, so a book without them
- * keeps its exact value.
+ * payable = start + earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-050, D-157,
+ * D-173, D-174); buyouts and forgiveness stay outside. The terms of D-173 and the start are added after the earlier
+ * ones, so a book without them keeps its exact value.
  */
 const payableOf = (b: Omit<AreaAcc, 'buyouts'>) =>
-  b.earned.sub(b.recouped).sub(b.paid).sub(b.adsCharged).add(b.returns).add(b.credits).add(b.adjustments).sub(b.writtenOff);
+  b.earned.sub(b.recouped).sub(b.paid).sub(b.adsCharged).add(b.returns).add(b.credits).add(b.adjustments).sub(b.writtenOff).add(b.start);
 const areaBook = (a: AreaAcc): AreaBook => ({ ...a, payable: payableOf(a) });
 
 interface PeriodAcc {
@@ -339,6 +386,7 @@ interface ArtistAcc {
   unrecouped: Decimal;
   recoupedFromMaster: Decimal;
   forgiven: Decimal;
+  start: Decimal;
   tracks: Map<string, TrackAcc>;
 }
 const newArtistAcc = (): ArtistAcc => ({
@@ -348,8 +396,37 @@ const newArtistAcc = (): ArtistAcc => ({
   unrecouped: ZERO,
   recoupedFromMaster: ZERO,
   forgiven: ZERO,
+  start: ZERO,
   tracks: new Map(),
 });
+
+/**
+ * The cuts of the opening balances (D-174), per book over the owner's pseudonyms: a row of any pseudonym of the owner
+ * in a book cuts that book for the whole owner (a pseudonym of the owner without a row had no position in the cabinet:
+ * its start is 0 and its history up to the cut is inside the start too). The latest cut month and synchronisation day
+ * win when several rows of one book differ. The pseudonym is the surviving id (`calc.artistIndex`).
+ */
+function startCuts(calc: Calculation, rows: OpeningBalanceView[]) {
+  const canon = (id: string) => calc.artistIndex.get(id)?.id ?? id;
+  const byOwner = new Map<string, StartCut>();
+  const upsert = (m: Map<string, StartCut>, key: string, cut: StartCut) => {
+    const prev = m.get(key);
+    if (!prev) m.set(key, cut);
+    else {
+      if (cut.cutoffMonth > prev.cutoffMonth) prev.cutoffMonth = cut.cutoffMonth;
+      if (cut.syncedDay > prev.syncedDay) {
+        prev.syncedDay = cut.syncedDay;
+        prev.syncedAt = cut.syncedAt;
+      }
+    }
+  };
+  for (const r of rows) {
+    const cut: StartCut = { labelId: r.labelId, cutoffMonth: r.cutoffMonth, syncedDay: r.syncedAt.slice(0, 10), syncedAt: r.syncedAt };
+    upsert(byOwner, keyOf(r.labelId), { ...cut });
+  }
+  const kept = new Set(rows.map((r) => r.operationRef).filter((x): x is string => !!x));
+  return { byOwner, kept, canon };
+}
 
 const addBreakdown = (b: Partial<Record<CReason, Decimal>>, r: CReason, v: Decimal) => {
   b[r] = (b[r] ?? ZERO).add(v);
@@ -383,12 +460,32 @@ export function ownerBalance(
    * A prebuilt per-owner index (`ownerIndex`): only the units / publishing lines where the owner has an allocation, in
    * calculation order. The same loops run over it, so the result equals the one from the whole calculation.
    */
-  index: { units?: UnitResult[]; publishing?: PublishingResult[] } = {},
+  index: {
+    units?: UnitResult[];
+    publishing?: PublishingResult[];
+    /** The active opening balance rows of the owner's pseudonyms (D-174): the cut and the start of every book. */
+    starts?: OpeningBalanceView[];
+  } = {},
   view?: BalanceView,
   /** Diagnostics only (`scripts/check-label-books.ts` (ж)): every amount a position took from an income item. */
   onConsumed?: (position: Position, item: IncomeItem, amount: Decimal) => void,
 ): OwnerBalance {
   const basis = f.basis ?? 'report';
+  // The cut of the opening balances (D-174): an owner with a start row in a book loses the units, the publishing, the
+  // advertising of that book up to the cut month and its operations of the book up to the synchronisation day (an
+  // operation a row reopens stays). Nothing is recomputed differently: the inputs are fewer, and the start is added.
+  const starts = index.starts ?? [];
+  const cuts = startCuts(calc, starts);
+  const inside: InsideStart = { earned: ZERO, waiting: ZERO, paid: ZERO, advances: ZERO, adsCharged: ZERO, operations: 0 };
+  const ownerCut = (key: string, month: string) => {
+    const c = cuts.byOwner.get(key);
+    return c !== undefined && month <= c.cutoffMonth;
+  };
+  const opCut = (o: OperationView) => {
+    if (cuts.kept.has(o.id)) return false;
+    const c = cuts.byOwner.get(keyOf(o.labelId));
+    return c !== undefined && o.date <= c.syncedDay;
+  };
   const confirmedAny = calc.confirmedOwners.has(ownerId);
   const confirmed = view ? calc.confirmedOwnersUnder(view.labelId).has(ownerId) : confirmedAny;
   const inView = (key: string) => !view || key === view.labelId;
@@ -417,9 +514,15 @@ export function ownerBalance(
   const itemInPeriod = new Set<string>();
 
   for (const u of index.units ?? calc.units) {
-    const mine = u.allocations.filter((a) => a.ownerId === ownerId);
-    if (mine.length === 0) continue;
     const key = keyOf(u.bookLabelId);
+    const mine = u.allocations.filter((a) => {
+      if (a.ownerId !== ownerId) return false;
+      if (!ownerCut(key, u.reportingMonth)) return true;
+      if (a.category === 'B') inside.earned = inside.earned.add(a.amount);
+      else inside.waiting = inside.waiting.add(a.amount);
+      return false;
+    });
+    if (mine.length === 0) continue;
     const book = books.of(key);
     const period = periods.of(key);
     const inP = unitInPeriod(u, f);
@@ -482,6 +585,11 @@ export function ownerBalance(
   (index.publishing ?? calc.publishing).forEach((p) => {
     if (p.ownerId !== ownerId) return;
     const key = keyOf(p.labelId);
+    if (ownerCut(key, p.reportMonth)) {
+      if (p.category === 'B') inside.earned = inside.earned.add(p.authorAmount);
+      else inside.waiting = inside.waiting.add(p.authorAmount);
+      return;
+    }
     const book = books.of(key);
     const period = periods.of(key);
     const inP = pubInPeriod(p, f);
@@ -540,6 +648,14 @@ export function ownerBalance(
   // the counted forgivenesses per advance (D-173), in the order (date, id)
   const forgivenOf = new Map<string, { date: string; id: string; amount: Decimal }[]>();
   for (const o of ops) {
+    if (opCut(o)) {
+      if (o.active && classifyOperation(o, calc.documentStatus).counted) {
+        inside.operations++;
+        if (o.kind === 'payout') inside.paid = inside.paid.add(centsToDecimal(o.amountCents));
+        if (o.kind === 'advance') inside.advances = inside.advances.add(centsToDecimal(o.amountCents));
+      }
+      continue;
+    }
     const c = classifyOperation(o, calc.documentStatus);
     const key = keyOf(o.labelId);
     if (!c.counted) {
@@ -616,9 +732,32 @@ export function ownerBalance(
     labelId: ad.labelId,
   }));
   adViews.sort((a, b) => (a.month !== b.month ? (a.month < b.month ? 1 : -1) : a.adId.localeCompare(b.adId)));
-  for (const a of adViews) {
+  const adsAfterCut = adViews.filter((a) => {
+    if (!ownerCut(keyOf(a.labelId), a.month)) return true;
+    inside.adsCharged = inside.adsCharged.add(a.amount);
+    return false;
+  });
+  for (const a of adsAfterCut) {
     books.of(keyOf(a.labelId)).adsCharged = books.of(keyOf(a.labelId)).adsCharged.add(a.amount);
     addArea(books.of(keyOf(a.labelId)), 'master', 'adsCharged', a.amount);
+  }
+
+  // The opening balances themselves (D-174): the start and the adjustments of every pseudonym, in the book of the row,
+  // master and publishing cents in their areas; a missing start closes the payout of its book.
+  const startRows: StartView['rows'] = [];
+  for (const r of starts) {
+    const key = keyOf(r.labelId);
+    const book = books.of(key);
+    const master = centsToDecimal(r.masterCents);
+    const pub = centsToDecimal(r.publishingCents);
+    book.start = book.start.add(master).add(pub);
+    addArea(book, 'master', 'start', master);
+    addArea(book, 'publishing', 'start', pub);
+    if (r.missing) book.startMissing = true;
+    const artistId = cuts.canon(r.artistId);
+    const artist = artistOf(artistId, key);
+    if (artist) artist.start = artist.start.add(master).add(pub);
+    startRows.push({ ...r, artistId, pseudonym: calc.artistIndex.get(artistId)?.pseudonym ?? artistsOfOwner.get(artistId)?.pseudonym ?? '?' });
   }
 
   // The recoup runs over every income of the owner; what a position took is attributed to the label of that income.
@@ -684,6 +823,8 @@ export function ownerBalance(
       forgiven: acc.forgiven,
       writtenOff: acc.writtenOff,
       adjustments: acc.adjustments,
+      start: acc.start,
+      startMissing: acc.startMissing,
       payable,
       payableShown: Decimal.max(payable, 0),
       payableNegative: payable.isNegative() && !payable.isZero(),
@@ -694,9 +835,9 @@ export function ownerBalance(
   const selectedBooks: BookAcc[] = [];
   const selectedPeriods: PeriodAcc[] = [];
   const isZero = (b: LabelBook) =>
-    [b.earned, b.waiting, b.recouped, b.adsCharged, b.paid, b.returns, b.credits, b.buyouts, b.forgiven, b.writtenOff, b.adjustments].every((x) =>
+    [b.earned, b.waiting, b.recouped, b.adsCharged, b.paid, b.returns, b.credits, b.buyouts, b.forgiven, b.writtenOff, b.adjustments, b.start].every((x) =>
       x.isZero(),
-    );
+    ) && !b.startMissing;
   for (const { key, name } of named) {
     const acc = books.of(key);
     const book = bookOf(acc, key === NONE ? null : key);
@@ -729,13 +870,14 @@ export function ownerBalance(
       unrecouped: ZERO,
       recoupedFromMaster: ZERO,
       forgiven: ZERO,
+      start: ZERO,
       tracks: [],
       byLabel: {},
     };
     const tracks = new Map<string, TrackAcc>();
     for (const { key, name } of keys) {
       const acc = (by as ByKey<ArtistAcc>).of(key);
-      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster, acc.forgiven].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
+      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster, acc.forgiven, acc.start].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
       row.byLabel[name] = {
         labelId: key === NONE ? null : key,
         earned: acc.earned,
@@ -744,6 +886,7 @@ export function ownerBalance(
         unrecouped: acc.unrecouped,
         recoupedFromMaster: acc.recoupedFromMaster,
         forgiven: acc.forgiven,
+        start: acc.start,
       };
       row.earned = row.earned.add(acc.earned);
       row.waiting = row.waiting.add(acc.waiting);
@@ -751,6 +894,7 @@ export function ownerBalance(
       row.unrecouped = row.unrecouped.add(acc.unrecouped);
       row.recoupedFromMaster = row.recoupedFromMaster.add(acc.recoupedFromMaster);
       row.forgiven = row.forgiven.add(acc.forgiven);
+      row.start = row.start.add(acc.start);
       for (const t of acc.tracks.values()) {
         const m = tracks.get(t.isrc) ?? { isrc: t.isrc, net: ZERO, amount: ZERO, waiting: ZERO };
         m.net = m.net.add(t.net);
@@ -798,22 +942,33 @@ export function ownerBalance(
       forgiven: tot((b) => b.forgiven),
       writtenOff: tot((b) => b.writtenOff),
       adjustments: tot((b) => b.adjustments),
+      start: tot((b) => b.start),
+      startMissing: selectedBooks.some((b) => b.startMissing),
       payable,
       payableShown: Decimal.max(payable, 0),
       payableNegative: payable.isNegative() && !payable.isZero(),
       byArea: { master: totalArea('master'), publishing: totalArea('publishing') },
     },
     byLabel,
+    start:
+      starts.length === 0
+        ? null
+        : {
+            cuts: [...cuts.byOwner.entries()].filter(([k]) => inView(k)).map(([, c]) => c),
+            rows: startRows.filter((r) => inView(keyOf(r.labelId))),
+            insideStart: inside,
+          },
     artists,
     publishingRecouped: tot((b) => b.publishingRecouped),
     publishing: publishing.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),
     positions: positionViews.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),
-    ads: adViews.filter((a) => inView(keyOf(a.labelId))),
+    ads: adsAfterCut.filter((a) => inView(keyOf(a.labelId))),
     pendingOperations: pending.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),
     blockingPayouts: ops // the same rule as the facade's payout gate: no proof, deferred, or proof not approved
       .filter(
         (o) =>
-          // the blocking kinds (D-173 FIX-5): payouts and advances, never a buyout
+          // the blocking kinds (D-173 FIX-5): payouts and advances, never a buyout; nothing inside the start (D-174)
+          !opCut(o) &&
           (BLOCKING_KINDS as readonly string[]).includes(o.kind) &&
           o.active &&
           !o.migration &&
@@ -821,6 +976,25 @@ export function ownerBalance(
       )
       .map((o) => o.id),
   };
+}
+
+/** The active opening balance rows of the owner's pseudonyms (D-174), by the surviving pseudonym's owner. */
+export function startsOfOwner(calc: Calculation, ownerId: string, rows: OpeningBalanceView[]): OpeningBalanceView[] {
+  return rows.filter((r) => r.active && calc.artistIndex.get(r.artistId)?.ownerId === ownerId);
+}
+
+/** The active opening balance rows per owner (D-174), for the lists that balance every owner (payables, payroll). */
+export function startsByOwner(calc: Calculation, rows: OpeningBalanceView[]): Map<string, OpeningBalanceView[]> {
+  const out = new Map<string, OpeningBalanceView[]>();
+  for (const r of rows) {
+    if (!r.active) continue;
+    const ownerId = calc.artistIndex.get(r.artistId)?.ownerId;
+    if (!ownerId) continue;
+    const list = out.get(ownerId);
+    if (list) list.push(r);
+    else out.set(ownerId, [r]);
+  }
+  return out;
 }
 
 /**
@@ -875,6 +1049,8 @@ export interface ArtistMoneyBook {
   recoupedFromMaster: Decimal;
   adsCharged: Decimal;
   paid: Decimal;
+  /** The opening balance of the pseudonym in the book (D-174). */
+  start: Decimal;
 }
 
 /** What one pseudonym sees of its money (D-165): the artist row of `ownerBalance()` with the owner-level parts of it. */
@@ -904,6 +1080,8 @@ export interface ArtistMoney {
     adsCharged: Decimal;
     /** Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym). */
     paid: Decimal;
+    /** The opening balance of the pseudonym (D-174). */
+    start: Decimal;
   };
   /** The book of every label of the pseudonym (by name, '?' = without a label); Σ books = total (D-168). */
   byLabel: Record<string, ArtistMoneyBook>;
@@ -930,7 +1108,7 @@ export function artistBalance(
    * Prebuilt indexes (`artistUnitIndex`, `ownerIndex`): the units where the pseudonym has an allocation and the owner's
    * entry, in calculation order. The same loops run over them, so the result equals the one from the whole calculation.
    */
-  index: { units?: UnitResult[]; owner?: { units?: UnitResult[]; publishing?: PublishingResult[] } } = {},
+  index: { units?: UnitResult[]; owner?: { units?: UnitResult[]; publishing?: PublishingResult[]; starts?: OpeningBalanceView[] } } = {},
   view?: BalanceView,
 ): ArtistMoney {
   const basis = f.basis ?? 'report';
@@ -981,9 +1159,12 @@ export function artistBalance(
       .filter((t) => !t.net.isZero() || !t.amount.isZero() || !t.waiting.isZero())
       .sort((x, y) => y.amount.add(y.waiting).cmp(x.amount.add(x.waiting)));
 
+  // the operations inside the start of the owner (D-174) are not paid by us any more
+  const cuts = startCuts(calc, index.owner?.starts ?? []);
   const paidBy = new ByKey(() => ({ paid: ZERO }));
   for (const o of ops) {
     if (o.kind !== 'payout' || !o.artistId || (calc.artistIndex.get(o.artistId)?.id ?? o.artistId) !== id) continue;
+    if (!cuts.kept.has(o.id) && (cuts.byOwner.get(keyOf(o.labelId))?.syncedDay ?? '') >= o.date) continue;
     if (!inView(keyOf(o.labelId))) continue;
     if (classifyOperation(o, calc.documentStatus).counted) paidBy.of(keyOf(o.labelId)).paid = paidBy.of(keyOf(o.labelId)).paid.add(centsToDecimal(o.amountCents));
   }
@@ -999,7 +1180,7 @@ export function artistBalance(
   const rowBooks = row?.byLabel ?? {};
   const rowKeyOf = new Map(Object.entries(rowBooks).map(([name, b]) => [keyOf(b.labelId), name]));
   const keys = namedKeys(calc, [...earnedBy.map.keys(), ...paidBy.map.keys(), ...adsBy.map.keys(), ...rowKeyOf.keys()]);
-  const total: ArtistMoney['total'] = { earned: ZERO, waiting: ZERO, recouped: ZERO, unrecouped: ZERO, recoupedFromMaster: ZERO, adsCharged: ZERO, paid: ZERO };
+  const total: ArtistMoney['total'] = { earned: ZERO, waiting: ZERO, recouped: ZERO, unrecouped: ZERO, recoupedFromMaster: ZERO, adsCharged: ZERO, paid: ZERO, start: ZERO };
   for (const { key, name } of keys) {
     const rb = rowBooks[rowKeyOf.get(key) ?? ''];
     const b: ArtistMoneyBook = {
@@ -1011,6 +1192,7 @@ export function artistBalance(
       recoupedFromMaster: rb?.recoupedFromMaster ?? ZERO,
       adsCharged: adsBy.of(key).adsCharged,
       paid: paidBy.of(key).paid,
+      start: rb?.start ?? ZERO,
     };
     byLabel[name] = b;
     total.earned = total.earned.add(b.earned);
@@ -1020,6 +1202,7 @@ export function artistBalance(
     total.recoupedFromMaster = total.recoupedFromMaster.add(b.recoupedFromMaster);
     total.adsCharged = total.adsCharged.add(b.adsCharged);
     total.paid = total.paid.add(b.paid);
+    total.start = total.start.add(b.start);
   }
   return {
     artistId: id,

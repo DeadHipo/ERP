@@ -43,6 +43,35 @@ export const operations = s.table('operations', {
   area: text('area', { enum: ['master', 'publishing'] }).notNull().default('master'),
 });
 
+/**
+ * The opening balances (D-174): the approved position of a pseudonym in the book of a label at the cut, instead of the
+ * recalculated history. `start` = the cabinet snapshot (master and publishing in cents), `adjustment` = an approved
+ * correction with its basis. DDL: migrations/postgres/0020_opening_balances.sql; change both.
+ */
+export const openingBalances = s.table('opening_balances', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  labelId: text('label_id').notNull(),
+  artistId: text('artist_id').notNull(),
+  kind: text('kind', { enum: ['start', 'adjustment'] }).notNull(),
+  /** The last report month inside the start, as its first day (read as 'YYYY-MM-DD'). */
+  cutoffMonth: date('cutoff_month', { mode: 'string' }).notNull(),
+  /** The boundary of the movements: operations of the book dated up to this day are inside the start. */
+  syncedAt: isoTimestamp('synced_at').notNull(),
+  masterCents: bigint('master_cents', { mode: 'number' }).notNull(),
+  publishingCents: bigint('publishing_cents', { mode: 'number' }).notNull(),
+  /** The cabinet gave no amount: not a zero, the payout is closed (`start_missing`). */
+  missing: boolean('missing').notNull(),
+  basis: text('basis').notNull(),
+  documentId: text('document_id'),
+  /** An advance before the cut kept alive after it (reopened). */
+  operationRef: text('operation_ref'),
+  comment: text('comment').notNull(),
+  createdAt: isoTimestamp('created_at').notNull(),
+  deactivatedAt: isoTimestamp('deactivated_at'),
+  deactivatedReason: text('deactivated_reason'),
+});
+
 export const payoutSnapshots = s.table('payout_snapshots', {
   orgId: text('org_id').notNull(),
   operationId: text('operation_id').primaryKey(),

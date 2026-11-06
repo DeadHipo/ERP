@@ -1427,6 +1427,53 @@ const operations: ApiOperation[] = [
     ],
   },
   // the payroll export (D-173 §1.4): read_money under a label (a manager under its own label)
+  // ---- the opening balances (D-174) ----
+  {
+    method: 'get',
+    path: '/settlements/start',
+    access: 'org',
+    ability: { action: 'read_money', subject: 'settlements', scope: 'label' },
+    tag: 'settlements',
+    summary:
+      'The opening balances (D-174, the cut of 15.10.2026) of a book (label=; a manager must name one of its labels) or of every book: a row per pseudonym and kind (start = the cabinet snapshot, adjustment = an approved correction) with its pseudonym and owner, the active rows summed; active=false lists the deactivated rows too',
+    query: S.startListQuery,
+    response: R.startListSchema,
+    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel', '400 label_required: a manager without a label', '403 label_forbidden: a label of another manager'],
+  },
+  {
+    method: 'post',
+    path: '/settlements/start/import',
+    access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'label' },
+    tag: 'settlements',
+    summary:
+      'Import the opening balances of a book from a csv (D-174, columns of START_IMPORT_COLUMNS): a start per pseudonym (master and publishing in dollars, or missing = the cabinet gave no amount) and adjustments with a basis; cutoff (YYYY-MM) and syncedAt (ISO) are the cut. dryRun=1 (default) is the preview (200, every row classified, nothing written, no audit row); dryRun=0 applies all or nothing (201, the ids). A start already in the book with the same amounts is unchanged, with other amounts an error (start_exists). The label is checked before the body is received',
+    query: S.startImportQuery,
+    upload: true,
+    preview: true,
+    status: 201,
+    response: R.startImportSchema,
+    errors: [
+      '400 label_required: no label=',
+      '404 not_found: label',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 validation_error: not a .csv, a bad cutoff or syncedAt; synced_before_cutoff',
+      '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
+      '413 import_too_large: more than 5000 rows or 10 MB',
+      '422 import_invalid: the apply with error rows (details { rows: [{ line, code }] (first 200), errors }) or a refusal while writing (details { line, cause }); nothing is written',
+    ],
+  },
+  {
+    method: 'post',
+    path: '/settlements/start/:id/deactivate',
+    access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
+    tag: 'settlements',
+    summary: 'Soft rollback of an opening balance row (D-174): the row stays with its reason, the balance no longer reads it',
+    body: S.deactivateStartBody,
+    response: R.openingBalanceSchema,
+    errors: ['404 not_found: the row', '409 already_inactive'],
+  },
   {
     method: 'get',
     path: '/owners/payroll',

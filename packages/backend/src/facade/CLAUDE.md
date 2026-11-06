@@ -174,3 +174,18 @@
   nothing, `422 import_invalid { line, cause }`), every row `migration: true` with `label_source = 'operator'`;
   `external_id` required for payout / buyout, a matching content key = `unchanged`. The B17 replacement is
   `sources.ts` `replaceStatement` over the publishing module.
+- **The opening balances (D-174, `start.ts`, `balance.ts`).** The cabinet position of 15.10.2026 is a row of
+  `settlements.opening_balances` per pseudonym and book (`start` with master / publishing cents or `missing`;
+  `adjustment` with a basis, optionally reopening an advance by `operation_ref`). `ownerBalance(…, { starts })` takes the
+  active rows of the owner's pseudonyms (`startsOfOwner` / `startsByOwner`, read in the same snapshot as the operations
+  by `balanceWithFiles`, `payroll`, `ownerPayables`, `artistBalanceWithReach`): `startCuts` gives one cut per book over
+  the owner (the latest `cutoff_month` and `synced_at` day); in a cut book the units, the publishing and the advertising
+  of months ≤ the cut and the operations dated ≤ the day are skipped (counted into `OwnerBalance.start.insideStart` for
+  the screen; a kept `operation_ref` stays a position), the rows are added to `start` of the book, its areas and the
+  pseudonym rows, and `payable = start + …` (last term: a book without rows is byte for byte the old one). A `missing`
+  row sets `startMissing` → the gate `start_missing` (after the contract checks). `calculate()`, the layers, `scope.ts`,
+  `owner-scope.ts` never see the start (it is not a unit: the reach pins hold); `labelVisibility` adds the pseudonyms of
+  the rows of the book. `importStart` = the csv `START_IMPORT_COLUMNS` with the cut in the query (`cutoff`, `syncedAt`,
+  a default `basis`), the preview in a snapshot, the apply in ONE transaction through `settlements.createOpeningBalance`
+  (all or nothing); `listStart`, `deactivateStart`. The scripts `scripts/start/load-cabinet.ts` (the owner's json → csv →
+  import) and `check-start.ts` (payable at the cut = Σ rows) load and prove the real snapshot.

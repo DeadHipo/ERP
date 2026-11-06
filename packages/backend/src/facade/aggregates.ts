@@ -25,7 +25,7 @@ export function parseIsrcList(raw: string): string[] {
   if (list.length > 500) throw new ValidationError('isrcs: at most 500 ISRCs per request');
   return [...new Set(list.map(assertIsrc))].sort();
 }
-import { ownerBalance, ownerIndex } from './balance';
+import { ownerBalance, ownerIndex, startsByOwner } from './balance';
 import { cItems } from './queue';
 import type { FacadeContext, PayoutArea } from './context';
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
@@ -137,21 +137,23 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const only = f.ids === undefined ? undefined : parseIdList(f.ids);
       const lc = await labelContext(f.label);
       const view = lc ? { labelId: lc.book.id } : undefined;
-      const { list, ops } = await db.snapshot(async () => ({
+      const { list, ops, startRows } = await db.snapshot(async () => ({
         list: (await owners.listOwners()).filter((o) => (only === undefined || only.has(o.id)) && (!lc || lc.visible.ownerIds.has(o.id))),
         ops: await settlements.listOperations({}),
+        startRows: await settlements.listOpeningBalances({ active: true }),
       }));
       const calc = cutCalculation(
         only ? await calcScoped({ isrcs: (await ownersReach(modules, list.map((o) => o.id))).isrcs }) : await calcWithOps(),
         asOf,
       );
       const index = ownerIndex(calc);
+      const startsOf = startsByOwner(calc, startRows);
       const opsOf = groupBy(
         cutOperations(ops, asOf).filter((o) => o.ownerId),
         (o) => o.ownerId as string,
       );
       const items = list.map((o) => {
-        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], period, index.get(o.id) ?? { units: [], publishing: [] }, view);
+        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], period, { ...(index.get(o.id) ?? { units: [], publishing: [] }), starts: startsOf.get(o.id) ?? [] }, view);
         const payouts = (opsOf.get(o.id) ?? []).filter((x) => x.active && x.kind === 'payout' && (!view || x.labelId === view.labelId));
         return {
           ownerId: o.id,
@@ -170,6 +172,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           forgiven: b.total.forgiven,
           writtenOff: b.total.writtenOff,
           adjustments: b.total.adjustments,
+          start: b.total.start,
+          startMissing: b.total.startMissing,
           payable: b.total.payable,
           payableShown: b.total.payableShown,
           payableNegative: b.total.payableNegative,

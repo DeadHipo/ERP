@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServerApp } from '../src/api/server-app';
@@ -55,7 +55,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(28); // + owners.track_labels, owners.releases (0018, D-172)
+    expect(tables.length).toBe(29); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -248,6 +248,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
     /** D-173: a B17 statement */
     statement: string;
+    /** D-174: an opening balance row */
+    start: string;
   };
   type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown; file?: { path: string; fileName: string } };
 
@@ -329,10 +331,15 @@ describe('two organizations behind the login: the API (D-170)', () => {
     await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
     const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
     const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
+    // D-174: a start row of B's pseudonym in B's book
+    const startFile = join(TMP, `scope-start-${sfx}.csv`);
+    writeFileSync(startFile, 'pseudonym;master\nB Pseudo Secret;1\n');
+    const stb = await as('b', request(app).post('/api/v1/settlements/start/import')).query({ label: lb.id, cutoff: '2026-07', syncedAt: '2026-08-01T00:00:00Z', dryRun: '0', basis: 'scope' }).attach('file', startFile, 'start.csv');
+    expect(stb.status, JSON.stringify(stb.body)).toBe(201);
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
-      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id,
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, start: stb.body.result.ids[0] as string,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
       grant: (await ok('b', 'post', '/support', { login: users.sys })).id,
@@ -345,7 +352,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), start: u(),
     };
   };
 
@@ -439,6 +446,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /publishing/statements/:id/replace': (x) => ({ params: { id: x.statement }, query: { label: A.label }, file: replaceFile }),
     // the payroll (D-173): B's label is an unknown label (404)
     'GET /owners/payroll': (x) => ({ query: { label: x.label } }),
+    // the opening balances (D-174): B's label is unknown, B's row is unknown
+    'GET /settlements/start': (x) => ({ query: { label: x.label } }),
+    'POST /settlements/start/:id/deactivate': (x) => ({ params: { id: x.start }, body: { reason: 'r' } }),
     // the forgiveness (D-173): B's operation forgiven under a with a's document answers as an unknown advance
     'POST /settlements/operations/:id/forgive': (x) => ({ params: { id: x.operation }, body: { amount: '1.00', date: '2026-08-15', documentId: A.document, comment: 'c' } }),
   };
@@ -457,6 +467,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     // A's facade (another organization's are owner_not_found / pseudonym_not_found rows); its `?label=` is checked by
     // the label guard before the body
     'POST /settlements/operations/import',
+    // D-174: the start import creates in A from a file (its pseudonyms are resolved inside A's facade)
+    'POST /settlements/start/import',
   ];
 
   /**

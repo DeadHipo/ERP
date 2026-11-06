@@ -12,7 +12,8 @@
     "./split-import": "./src/split-import.ts",
     "./release-import": "./src/release-import.ts",
     "./operation-kinds": "./src/operation-kinds.ts",
-    "./operation-import": "./src/operation-import.ts"
+    "./operation-import": "./src/operation-import.ts",
+    "./start-import": "./src/start-import.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

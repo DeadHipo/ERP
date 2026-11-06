@@ -82,3 +82,12 @@
   replacement byte for byte, an old snapshot still parses). `scope.test.ts` pins the balance at `asOf` = the full
   balance of a world without later files and operations. Tests where the button pays publishing pass `area: 'all'`.
   `rules-coverage.test.ts` now says «the kind is stored and fits its fields (D-173)». (after the stage: 61 files / 648 tests)
+- **The start (D-174):** `start.test.ts` is the hand-computed world of the opening balances (the balance before the
+  start: payable 113; after: start 72.5, the cut of units / publishing / ads / operations, a reopened advance, payable
+  88.5; `asOf` at, before and after the cut; the payables, the payroll and the list carry the start; the payout and
+  its snapshot; a deactivation while the owner keeps rows; a `missing` start = `start_missing`; every preview class on
+  one file; a repeat = `unchanged`; `start_exists`; the viewer). `Case.verify()` adds `start` to the payable formula and
+  the areas (the golden cases do not change: a world without rows is byte for byte the old one). `org-scope.test.ts`
+  counts 29 tables and walks B's start row; `api-contract.test.ts` calls the three start operations and lists the
+  three previews; the manager table has 3 new lines. A new test that needs a start writes a csv of
+  `START_IMPORT_COLUMNS` and calls `f.importStart({ path, fileName, labelId, cutoff, syncedAt, dryRun, basis })`.
