@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Decimal } from '../../src/shared/money';
 import { normalizeName, normalizeUpc } from '../../src/shared/identifiers';
-import { Ctx, LOAD_DIR, errText, hasFile, pct, readJson } from './lib';
+import { Ctx, LOAD_DIR, ROOT, errText, hasFile, pct, readJson } from './lib';
 import { stepTracks } from './steps-annex';
 import { firstReportMonths } from './steps-stage6';
 import type { DocumentKind } from '../../src/modules/owners';
@@ -424,7 +424,7 @@ const OTHER_ARTIST_RE = /participation|exclusive|administration|short.?form|publ
 
 export async function stepContracts(ctx: Ctx) {
   const { log } = ctx;
-  const indexPath = join(LOAD_DIR, '..', '..', 'context_data', 'contract_index', 'documents.json');
+  const indexPath = join(ROOT, 'context_data', 'contract_index', 'documents.json');
   const docs = JSON.parse(readFileSync(indexPath, 'utf8')) as IndexDoc[];
 
   // ---- (a) contract registry
@@ -747,7 +747,7 @@ interface HolderDoc {
 export async function stepB17Holders(ctx: Ctx) {
   const { log } = ctx;
   log.h('B17 holders confirmed by their own contracts (names are matched in memory, never printed)');
-  const indexPath = join(LOAD_DIR, '..', '..', 'context_data', 'contract_index', 'documents.json');
+  const indexPath = join(ROOT, 'context_data', 'contract_index', 'documents.json');
   const docs = (JSON.parse(readFileSync(indexPath, 'utf8')) as HolderDoc[]).filter((d) => d.party.legal_name);
   const kindOf = (d: HolderDoc): 'co_pub' | 'admin' | 'recording' | null =>
     d.kind === 'co_pub' ? 'co_pub' : d.kind === 'recording' ? 'recording' : d.kind === 'other' && /administration/i.test(d.files[0]?.name ?? '') ? 'admin' : null;

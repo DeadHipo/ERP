@@ -353,6 +353,8 @@ operation is created with `labelId` 0to8 (`operator`), so `default` is **1 314**
 `differing: 0`; `/auth/me` on / operator / 0to8 / `org_admin`; the counts of recipe 11 all equal (operations 2 663,
 documents 1 400, `track_labels` 23 121).
 
+Without touching the live stores: `packages/backend/scripts/acceptance/clean-stack.sh --private <name>` runs every step on an empty private pair (`erp_<name>`, `believe_<name>`) and prints the commands that drop it. Use it while dev servers run on `erp`: `down -v` would wipe the store under them, and a new organization id breaks their `ERP_DEFAULT_ORG`. Passed end to end on 2026-11-06 (run 20261106T083510Z).
+
 ## 13. A new label from zero through the UI (D-172)
 
 The order of the onboarding checklist (`GET /api/v1/onboarding?label=<id>`, P1 under the label): each step links to the

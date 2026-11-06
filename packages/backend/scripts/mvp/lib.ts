@@ -212,7 +212,7 @@ export class Ctx {
     this.f = openFacade({
       db: this.stack.db,
       orgId: this.stack.orgId,
-      dataDir: join(ROOT, 'data', 'mvp-load'),
+      dataDir: LOAD_DIR,
       payoutThresholdCents: 0,
       sources: this.stack.sources,
     });

@@ -14,7 +14,7 @@ const ORG = takeOrgArgument();
 
 export { Decimal, ZERO };
 export const ROOT = resolve(import.meta.dirname, '..', '..', '..', '..');
-export const MVP = join(ROOT, 'data', 'mvp-load');
+export const MVP = process.env.MVP_LOAD_DIR ?? join(ROOT, 'data', 'mvp-load');
 export const VERIFY = join(MVP, 'verify');
 export const MAIN_ACCOUNT = '1052428';
 

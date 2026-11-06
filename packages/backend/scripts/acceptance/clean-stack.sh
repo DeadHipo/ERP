@@ -6,9 +6,17 @@
 #
 #   packages/backend/scripts/acceptance/clean-stack.sh [--data data/real] [--base data/pub] [--port 3002]
 #       [--reference data/backup/2026-11-05-before-org/reference] [--keep] [--skip-believe] [--no-mark-source] [--yes]
+#       [--private <name> [--replace-private] [--keep-private]]
 #
-# DESTRUCTIVE without --keep: `docker compose … down -v` drops the PostgreSQL and ClickHouse volumes (the live `erp` /
-# `believe` stores and every test database). Asks first unless --yes.
+# DESTRUCTIVE without --keep or --private: `docker compose … down -v` drops the PostgreSQL and ClickHouse volumes (the
+# live `erp` / `believe` stores and every test database). Asks first unless --yes.
+# --private <name> ([a-z0-9_]+): the whole acceptance on an empty private pair of stores on the running servers
+# (PostgreSQL erp_<name>, ClickHouse believe_<name> and believe_<name>_stage), the live stack untouched. Never runs
+# `docker compose`, asks nothing, and is incompatible with --keep and --skip-believe. Refuses stores that exist unless
+# --replace-private (drops only those names, only with no session connected). The stores stay after the run and the
+# commands that drop them are printed; --keep-private leaves out the commands. --data defaults to
+# data/acceptance/<name>-data; the secrets are data/acceptance/<name>-secrets.env and the loader's directory is the copy
+# data/acceptance/<name>-mvp-load (MVP_LOAD_DIR).
 # Writes data/acceptance/<run>/ (log, step outputs, server log) and data/acceptance/secrets.env (mode 600); never prints
 # a secret. Prints ids and counts only (no people's names). Exit code non-zero at the first failing step, named.
 # Must stay bash 3.2 compatible (macOS /bin/bash).
@@ -19,7 +27,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$ROOT"
 
 # ------------------------------------------------------------------ parameters
-DATA="data/real"
+DATA=""
 BASE="data/pub"
 PORT="3002"
 REFERENCE="data/backup/2026-11-05-before-org/reference"
@@ -27,6 +35,10 @@ KEEP=0
 SKIP_BELIEVE=0
 MARK_SOURCE=auto
 YES=0
+PRIVATE=0
+PRIVATE_NAME=""
+REPLACE_PRIVATE=0
+KEEP_PRIVATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --data) DATA="$2"; shift 2 ;;
@@ -37,15 +49,38 @@ while [ $# -gt 0 ]; do
     --skip-believe) SKIP_BELIEVE=1; shift ;;
     --no-mark-source) MARK_SOURCE=off; shift ;;
     --yes) YES=1; shift ;;
-    -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --private) PRIVATE=1; PRIVATE_NAME="$2"; shift 2 ;;
+    --replace-private) REPLACE_PRIVATE=1; shift ;;
+    --keep-private) KEEP_PRIVATE=1; shift ;;
+    -h|--help) sed -n '2,/^# Must stay bash/p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+usage_error() { echo "$1" >&2; exit 2; }
+if [ "$PRIVATE" = 1 ]; then
+  case "$PRIVATE_NAME" in
+    ''|*[!a-z0-9_]*) usage_error "--private: «$PRIVATE_NAME» is not [a-z0-9_]+" ;;
+    # believe_stage is the live stage database, and x_stage would share believe_x_stage with the private pair x
+    stage|*_stage) usage_error "--private: a name that is or ends in _stage collides with a stage database" ;;
+  esac
+  [ "${#PRIVATE_NAME}" -le 40 ] || usage_error "--private: the name is longer than 40 characters"
+  [ "$KEEP" = 0 ] || usage_error "--private is incompatible with --keep"
+  [ "$SKIP_BELIEVE" = 0 ] || usage_error "--private is incompatible with --skip-believe: the stores start empty"
+  [ -n "$DATA" ] || DATA="data/acceptance/$PRIVATE_NAME-data"
+else
+  [ "$REPLACE_PRIVATE" = 0 ] && [ "$KEEP_PRIVATE" = 0 ] || usage_error "--replace-private and --keep-private need --private <name>"
+  [ -n "$DATA" ] || DATA="data/real"
+fi
 abs() { case "$1" in /*) echo "$1" ;; *) echo "$ROOT/$1" ;; esac; }
 DATA="$(abs "$DATA")"; BASE="$(abs "$BASE")"; REFERENCE="$(abs "$REFERENCE")"
+if [ "$PRIVATE" = 1 ] && [ -d "$DATA" ] && [ "$(cd "$DATA" && pwd)" = "$ROOT/data/real" ]; then
+  usage_error "--private: --data must not be data/real (the file copies of the runs would mix)"
+fi
 
 # ------------------------------------------------------------------ constants (recipe 11, D-169…D-172)
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.dev.yml)
+PG_CONTAINER="royalty-erp-postgres-1"
+CH_CONTAINER="royalty-erp-clickhouse-1"
 ORG_NAME="0to8"
 ADMIN_LOGIN="admin"
 OPERATOR_LOGIN="operator"
@@ -71,12 +106,20 @@ REPLAY_MARKER="acceptance replay 2026-11-03"
 
 LOADER=(npx tsx packages/backend/scripts/mvp/load.ts)
 TSX=(npx tsx)
+# node itself, not npx → tsx → node: $! is then the process that listens, and the only one stop_server has to stop
+SERVER=(node --import tsx packages/backend/src/main.ts)
 
 # ------------------------------------------------------------------ run directory, log, traps
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ACC="$ROOT/data/acceptance"
 RUN="$ACC/$STAMP"
 SECRETS="$ACC/secrets.env"
+MVP_COPY=""
+if [ "$PRIVATE" = 1 ]; then
+  # not the shared file: it holds the logins of the stack of the last non-private run
+  SECRETS="$ACC/$PRIVATE_NAME-secrets.env"
+  MVP_COPY="$ACC/$PRIVATE_NAME-mvp-load"
+fi
 mkdir -p "$RUN"
 chmod 700 "$ACC" "$RUN"
 LOG="$RUN/clean-stack.log"
@@ -84,23 +127,41 @@ exec > >(tee -a "$LOG") 2>&1
 
 STEP="init"
 SERVER_PID=""
+PRIVATE_CREATED=0
 step() { STEP="$1"; echo; echo "==== [$(date -u +%H:%M:%S)] step $STEP"; }
 info() { echo "  $*"; }
 die() { echo; echo "FAILED at step $STEP: $*"; exit 1; }
 on_err() { echo; echo "FAILED at step $STEP (line $1, exit $2); outputs in $RUN"; }
+# by its own PID only: other main.ts servers run on this machine, so no pattern and no port
 stop_server() {
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
     kill "$SERVER_PID" 2>/dev/null || true
     for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$SERVER_PID" 2>/dev/null || break; sleep 1; done
+    if kill -0 "$SERVER_PID" 2>/dev/null; then kill -9 "$SERVER_PID" 2>/dev/null || true; fi
   fi
-  # npx → tsx → node: make sure nothing of ours still listens on the port
-  local pids
-  pids="$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)"
-  if [ -n "$pids" ] && [ -n "$SERVER_PID" ]; then kill $pids 2>/dev/null || true; fi
   SERVER_PID=""
 }
+# the commands that drop the private stores (the ClickHouse password stays in the container's environment)
+print_private_drop() {
+  info "to drop the private stores and files:"
+  info "  docker exec $PG_CONTAINER psql -U $PG_USER -d postgres -c 'DROP DATABASE $DB_NAME'"
+  local d
+  for d in "$CH_NAME" "${CH_NAME}_stage"; do
+    info "  docker exec $CH_CONTAINER sh -c 'clickhouse-client --user \"\$CLICKHOUSE_USER\" --password \"\$CLICKHOUSE_PASSWORD\" --query \"DROP DATABASE IF EXISTS $d SYNC\"'"
+  done
+  info "  rm -rf '$DATA' '$MVP_COPY' '$SECRETS'"
+}
+on_exit() {
+  local code=$?
+  stop_server
+  if [ "$code" != 0 ] && [ "$PRIVATE_CREATED" = 1 ]; then
+    echo
+    info "the private stores stay; a new run needs --replace-private"
+    print_private_drop
+  fi
+}
 trap 'on_err $LINENO $?' ERR
-trap 'stop_server' EXIT
+trap 'on_exit' EXIT
 
 # a step command with its own output file; non-zero exit fails the step (pipefail)
 run() { local name="$1"; shift; info "\$ ${name}"; "$@" 2>&1 | tee "$RUN/$STEP.$name.log"; }
@@ -108,26 +169,61 @@ expect_line() { # file, fixed text that must appear
   grep -qF -- "$2" "$1" || die "expected «$2» in $(basename "$1")"
 }
 
-# ------------------------------------------------------------------ .env and the compose trap
+# ------------------------------------------------------------------ .env, the active store names, the compose trap
 envfile() { sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
 [ -f "$ROOT/.env" ] || die ".env is missing in the repo root"
 DB_NAME="$(envfile DB_DATABASE)"
 CH_NAME="$(envfile CLICKHOUSE_DATABASE)"
+PG_USER="$(envfile DB_USERNAME)"
 # NEVER pass another DB_DATABASE / CLICKHOUSE_DATABASE to compose: it recreates the shared postgres container
 # (POSTGRES_DB and the healthcheck come from ${DB_DATABASE}) and kills every session on it (stage 2 acceptance).
-if [ -n "${DB_DATABASE:-}" ] && [ "$DB_DATABASE" != "$DB_NAME" ]; then
-  die "DB_DATABASE=$DB_DATABASE in the environment differs from .env ($DB_NAME): unset it"
-fi
-if [ -n "${CLICKHOUSE_DATABASE:-}" ] && [ "$CLICKHOUSE_DATABASE" != "$CH_NAME" ]; then
-  die "CLICKHOUSE_DATABASE=$CLICKHOUSE_DATABASE in the environment differs from .env ($CH_NAME): unset it"
+# --private never runs compose, so its names can go into the environment of every child process.
+if [ "$PRIVATE" = 0 ]; then
+  if [ -n "${DB_DATABASE:-}" ] && [ "$DB_DATABASE" != "$DB_NAME" ]; then
+    die "DB_DATABASE=$DB_DATABASE in the environment differs from .env ($DB_NAME): unset it"
+  fi
+  if [ -n "${CLICKHOUSE_DATABASE:-}" ] && [ "$CLICKHOUSE_DATABASE" != "$CH_NAME" ]; then
+    die "CLICKHOUSE_DATABASE=$CLICKHOUSE_DATABASE in the environment differs from .env ($CH_NAME): unset it"
+  fi
 fi
 unset DB_DATABASE CLICKHOUSE_DATABASE ERP_ORG MVP_LOAD_DIR
 [ "$DB_NAME" = "erp" ] && [ "$CH_NAME" = "believe" ] || info "WARNING: .env names $DB_NAME / $CH_NAME, not the defaults erp / believe"
+if [ "$PRIVATE" = 1 ]; then
+  LIVE_DB="$DB_NAME"; LIVE_CH="$CH_NAME"
+  DB_NAME="erp_$PRIVATE_NAME"; CH_NAME="believe_$PRIVATE_NAME"
+  if [ "$DB_NAME" = "$LIVE_DB" ] || [ "$CH_NAME" = "$LIVE_CH" ] || [ "$CH_NAME" = "${LIVE_CH}_stage" ]; then
+    die "--private $PRIVATE_NAME names the stores of .env ($LIVE_DB / $LIVE_CH)"
+  fi
+  # the environment wins over .env: process.loadEnvFile and node --env-file do not override, stores.py and pg.sh read it first
+  export DB_DATABASE="$DB_NAME" CLICKHOUSE_DATABASE="$CH_NAME" MVP_LOAD_DIR="$MVP_COPY"
+fi
+
+# one ClickHouse statement from stdin over HTTP (credentials from .env through a header file)
+ch_query() {
+  local hdr="$RUN/.ch.headers"
+  ( umask 077; printf 'X-ClickHouse-User: %s\nX-ClickHouse-Key: %s\n' "$(envfile CLICKHOUSE_USERNAME)" "$(envfile CLICKHOUSE_PASSWORD)" > "$hdr" )
+  curl -fsS -H @"$hdr" --data-binary @- "http://$(envfile CLICKHOUSE_HOST):$(envfile CLICKHOUSE_HTTP_PORT)/" || { rm -f "$hdr"; return 1; }
+  rm -f "$hdr"
+}
+# psql inside the running container, stopping at the first error; pg_admin in the maintenance database, pg_private in
+# erp_<name> (stdin is passed on: `-f -` reads a migration from it)
+pg_admin() { docker exec "$PG_CONTAINER" psql -X -U "$PG_USER" -d postgres -v ON_ERROR_STOP=1 -qAt "$@"; }
+pg_private() {
+  docker exec -i -e PGOPTIONS='-c client_min_messages=warning' "$PG_CONTAINER" \
+    psql -X -U "$PG_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -qAt "$@"
+}
+private_stores_found() { # the private names that exist on the servers, on one line
+  {
+    pg_admin -c "SELECT datname FROM pg_database WHERE datname = '$DB_NAME'"
+    printf "SELECT name FROM system.databases WHERE name IN ('%s', '%s_stage') FORMAT TabSeparated" "$CH_NAME" "$CH_NAME" | ch_query
+  } | tr '\n' ' '
+}
 
 echo "clean-stack acceptance $STAMP"
 info "repo $ROOT ($(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') $(git rev-parse --short HEAD 2>/dev/null || echo '?'))"
 info "data $DATA, base $BASE, reference $REFERENCE, port $PORT, keep $KEEP, skip-believe $SKIP_BELIEVE"
 info "stores: PostgreSQL $DB_NAME, ClickHouse $CH_NAME; run directory $RUN"
+[ "$PRIVATE" = 0 ] || info "private $PRIVATE_NAME: the live stack is not touched; secrets $SECRETS, loader directory $MVP_COPY"
 
 # ------------------------------------------------------------------ inputs present (fail before touching anything)
 step "inputs"
@@ -162,6 +258,19 @@ if [ "$MARK_SOURCE" = auto ] && grep -q -- '--mark-source' packages/backend/scri
   MARK_SOURCE_SUPPORTED=1
 fi
 info "assign-operation-labels --mark-source: $([ $MARK_SOURCE_SUPPORTED = 1 ] && echo 'present, will run' || echo 'skipped')"
+if [ "$PRIVATE" = 1 ]; then
+  # here, not in step 0: a refused run must not reach the secrets, which would overwrite those of the existing stores
+  [ -d "$ROOT/data/mvp-load" ] || die "no data/mvp-load (the loader's JSON inputs)"
+  pg_admin -c 'SELECT 1' > /dev/null || die "$PG_CONTAINER does not answer; --private never starts the stack"
+  printf 'SELECT 1' | ch_query > /dev/null || die "ClickHouse does not answer; --private never starts the stack"
+  FOUND="$(private_stores_found)"
+  if [ -n "$FOUND" ]; then
+    [ "$REPLACE_PRIVATE" = 1 ] || die "the private stores exist: $FOUND(--replace-private drops them)"
+    SESSIONS="$(pg_admin -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$DB_NAME'")"
+    [ "$SESSIONS" = 0 ] || die "$SESSIONS session(s) connected to $DB_NAME: stop them first (nothing is dropped by force)"
+    info "private stores to replace: $FOUND"
+  fi
+fi
 
 # ------------------------------------------------------------------ secrets (generated, never printed)
 if [ "$KEEP" = 1 ] && [ -f "$SECRETS" ]; then
@@ -221,38 +330,71 @@ want() { # the expected HTTP codes, space separated
 # jq-like extraction with python3 (stdlib): jget '<python expression over d>'
 jget() { printf '%s' "$API_BODY" | python3 -I -c 'import json,sys; d=json.loads(sys.stdin.read()); r=eval(sys.argv[1]); print("" if r is None else r)' "$1"; }
 
-# ClickHouse totals over HTTP (credentials from .env through a header file)
-ch_totals() {
-  local hdr="$RUN/.ch.headers"
-  ( umask 077; printf 'X-ClickHouse-User: %s\nX-ClickHouse-Key: %s\n' "$(envfile CLICKHOUSE_USERNAME)" "$(envfile CLICKHOUSE_PASSWORD)" > "$hdr" )
-  printf 'SELECT count(), toString(sum(net_revenue)) FROM %s.rows FORMAT TabSeparated' "$CH_NAME" |
-    curl -sS -H @"$hdr" --data-binary @- "http://$(envfile CLICKHOUSE_HOST):$(envfile CLICKHOUSE_HTTP_PORT)/"
-  rm -f "$hdr"
-}
+# ClickHouse totals of the active store
+ch_totals() { printf 'SELECT count(), toString(sum(net_revenue)) FROM %s.rows FORMAT TabSeparated' "$CH_NAME" | ch_query; }
 pg() { packages/backend/scripts/mvp/pg.sh "$1"; } # read-only SELECT inside the postgres container
 
 # ================================================================== 0. the stack
-step "0-stack"
-if [ "$KEEP" = 0 ]; then
-  if [ "$YES" = 0 ]; then
-    [ -t 0 ] || die "down -v drops the volumes of the stack: rerun with --yes (or --keep)"
-    printf '  docker compose down -v drops the PostgreSQL and ClickHouse volumes (all data, all test databases). Type yes: '
-    read -r answer
-    [ "$answer" = "yes" ] || die "not confirmed"
+# --private: NEVER docker compose, and so never `npm run migrate:pg` (it is `docker compose run`): with DB_DATABASE
+# exported compose would recreate the shared postgres container (recipe 12). The running servers get new databases.
+create_private_stores() {
+  if [ "$REPLACE_PRIVATE" = 1 ]; then
+    # PostgreSQL first: without FORCE it refuses while a session is connected, and then ClickHouse stays as it was
+    pg_admin -c "DROP DATABASE IF EXISTS $DB_NAME"
+    printf 'DROP DATABASE IF EXISTS %s SYNC' "$CH_NAME" | ch_query
+    printf 'DROP DATABASE IF EXISTS %s_stage SYNC' "$CH_NAME" | ch_query
   fi
-  run down "${COMPOSE[@]}" down -v
+  pg_admin -c "CREATE DATABASE $DB_NAME"
+  PRIVATE_CREATED=1
+  # as scripts/migrate-postgres.sh: every file and its schema_migrations row in one transaction
+  pg_private -c "CREATE TABLE schema_migrations (
+    version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())" < /dev/null
+  local file base version name sum applied=0
+  for file in packages/backend/migrations/postgres/*.sql; do
+    base="$(basename "$file")"
+    [[ "$base" =~ ^([0-9]{4})_([a-z0-9_]+)\.sql$ ]] || die "$base does not match NNNN_name.sql"
+    version=$((10#${BASH_REMATCH[1]}))
+    name="${BASH_REMATCH[2]}"
+    sum="$(tr -d '\r' < "$file" | shasum -a 256 | cut -d' ' -f1)"
+    pg_private -1 -f - -c "INSERT INTO schema_migrations (version, name, checksum) VALUES ($version, '$name', '$sum')" < "$file" > /dev/null
+    applied=$((applied + 1))
+  done
+  [ "$(pg_private -c 'SELECT count(*) FROM schema_migrations' < /dev/null)" = "$applied" ] || die "schema_migrations does not hold the $applied files"
+  info "PostgreSQL $DB_NAME: $applied migrations"
+  # node --env-file: the credentials come from .env, the exported CLICKHOUSE_DATABASE wins (the script itself reads no .env)
+  run migrate-ch npm run migrate:ch
+  [ "$(printf 'EXISTS TABLE %s.rows' "$CH_NAME" | ch_query)" = 1 ] || die "no table $CH_NAME.rows after the migrations"
+  [ "$(printf "SELECT count() FROM system.databases WHERE name = '%s_stage'" "$CH_NAME" | ch_query)" = 1 ] || die "no database ${CH_NAME}_stage after the migrations"
+  # the loader's inputs: extract-main-ads.py writes into this copy, and the loader logs stay apart
+  mkdir -p "$MVP_COPY" "$DATA"
+  rsync -a --delete --exclude '/log/' "$ROOT/data/mvp-load/" "$MVP_COPY/"
+  info "loader directory: $MVP_COPY (copy of data/mvp-load without log/); data $DATA"
+}
+step "0-stack"
+if [ "$PRIVATE" = 1 ]; then
+  create_private_stores
 else
-  info "--keep: the volumes stay (an empty migrated stack is expected)"
+  if [ "$KEEP" = 0 ]; then
+    if [ "$YES" = 0 ]; then
+      [ -t 0 ] || die "down -v drops the volumes of the stack: rerun with --yes (or --keep)"
+      printf '  docker compose down -v drops the PostgreSQL and ClickHouse volumes (all data, all test databases). Type yes: '
+      read -r answer
+      [ "$answer" = "yes" ] || die "not confirmed"
+    fi
+    run down "${COMPOSE[@]}" down -v
+  else
+    info "--keep: the volumes stay (an empty migrated stack is expected)"
+  fi
+  run up "${COMPOSE[@]}" up -d
+  # the one-shot migrations run with up -d; migrate-clickhouse.ts is not safe in two processes: wait for both first
+  for c in royalty-erp-postgres-migrate-1 royalty-erp-clickhouse-migrate-1; do
+    code="$(docker wait "$c" 2>/dev/null || echo missing)"
+    [ "$code" = 0 ] || [ "$code" = missing ] || die "compose one-shot $c exited $code (docker logs $c)"
+    info "$c: exit $code"
+  done
+  run migrate-pg npm run migrate:pg
+  run migrate-ch npm run migrate:ch
 fi
-run up "${COMPOSE[@]}" up -d
-# the one-shot migrations run with up -d; migrate-clickhouse.ts is not safe in two processes: wait for both first
-for c in royalty-erp-postgres-migrate-1 royalty-erp-clickhouse-migrate-1; do
-  code="$(docker wait "$c" 2>/dev/null || echo missing)"
-  [ "$code" = 0 ] || [ "$code" = missing ] || die "compose one-shot $c exited $code (docker logs $c)"
-  info "$c: exit $code"
-done
-run migrate-pg npm run migrate:pg
-run migrate-ch npm run migrate:ch
 
 # ================================================================== 1. the system administrator
 step "1-system-admin"
@@ -272,7 +414,7 @@ create_user "$ADMIN_LOGIN" "$ADMIN_PASSWORD" --system
 
 # ================================================================== 2. the API (AUTH_MODE=on)
 step "2-server"
-PORT="$PORT" "${TSX[@]}" packages/backend/src/main.ts "$DATA" > "$RUN/server.log" 2>&1 &
+PORT="$PORT" "${SERVER[@]}" "$DATA" > "$RUN/server.log" 2>&1 &
 SERVER_PID=$!
 for i in $(seq 1 120); do
   if curl -sf "$BASE_URL/health" >/dev/null 2>&1; then break; fi
@@ -280,6 +422,8 @@ for i in $(seq 1 120); do
   [ "$i" = 120 ] && die "no /health after 120 s"
   sleep 1
 done
+LISTENER="$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+[ "$LISTENER" = "$SERVER_PID" ] || die "port $PORT is served by «$LISTENER», not by this run's server $SERVER_PID"
 info "$(head -n 1 "$RUN/server.log")"
 
 # ================================================================== 3. the organization
@@ -497,5 +641,10 @@ info "compare-reference: $(grep -F 'TOTAL differing' "$RUN/13-compare.compare-re
 info "check-owner-scope: $(grep -F 'differing owners' "$RUN/13-compare.check-owner-scope.log" | tail -n 1)"
 info "check-label-books: $(grep -E '^differing: ' "$RUN/13-compare.check-label-books.log")"
 info "organization $ORG_NAME $ORG; login $OPERATOR_LOGIN (org_admin); secrets in $SECRETS; log $LOG"
+if [ "$PRIVATE" = 1 ]; then
+  echo
+  info "the private stores stay: PostgreSQL $DB_NAME, ClickHouse $CH_NAME and ${CH_NAME}_stage"
+  [ "$KEEP_PRIVATE" = 1 ] || print_private_drop
+fi
 echo
 echo "ACCEPTANCE PASSED ($STAMP)"
