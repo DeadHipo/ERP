@@ -391,7 +391,7 @@ const operations: ApiOperation[] = [
     tag: 'owners',
     summary: 'Owners (merged ones are hidden); under a label (`label=`) those visible under it (D-168)',
     query: S.ownersQuery,
-    response: list(R.ownerSchema),
+    response: R.listOrPage(R.ownerSchema),
     errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
   },
   {
@@ -472,7 +472,7 @@ const operations: ApiOperation[] = [
     summary:
       'Artists (merged ones are folded into the survivor), each with its owner, the ids merged into it, its tracks, open split rows and participations, contracts and open rows without a document (P11, D-167); no money; under a label those visible under it (D-168)',
     query: S.artistsQuery,
-    response: list(R.artistListItemSchema),
+    response: R.listOrPage(R.artistListItemSchema),
   },
   {
     method: 'get',
@@ -541,7 +541,7 @@ const operations: ApiOperation[] = [
   },
 
   // ---- tracks ----
-  { method: 'get', path: '/tracks', access: 'org', ability: { action: 'read', subject: 'tracks', scope: 'org' }, tag: 'tracks', summary: 'Tracks', response: list(R.trackSchema) },
+  { method: 'get', path: '/tracks', access: 'org', ability: { action: 'read', subject: 'tracks', scope: 'org' }, tag: 'tracks', summary: 'Tracks', query: S.pageQuery, response: R.listOrPage(R.trackSchema) },
   {
     method: 'post',
     path: '/tracks',
@@ -652,7 +652,7 @@ const operations: ApiOperation[] = [
     summary:
       'Documents, filtered by owner, status, kind and a title substring (17 N12); under a label (`label=`) those of the label and those without a label (D-169)',
     query: S.documentsQuery,
-    response: list(R.documentSchema),
+    response: R.listOrPage(R.documentSchema),
     errors: ['400 label_not_own', '404 not_found: label'],
   },
   {
@@ -1075,7 +1075,7 @@ const operations: ApiOperation[] = [
     summary:
       'Operations with the owner name, pseudonym and label name, filtered (17 N14); under a label (`label=`) those of it (D-168); by the stored kind (`kind`, or its alias `meaning`) and the label source (`labelSource=default`: the history put under 0to8 by default, D-173)',
     query: S.operationsQuery,
-    response: list(R.operationSchema),
+    response: R.listOrPage(R.operationSchema),
   },
   {
     method: 'post',

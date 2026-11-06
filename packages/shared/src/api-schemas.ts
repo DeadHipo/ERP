@@ -25,6 +25,14 @@ export const labelQuery = z.object({
   label: z.string().optional().describe('Id of an own label: the answer restricted to that label (D-168); 404 unknown, 400 label_not_own'),
 });
 export const labelPeriodQuery = periodQuery.extend(labelQuery.shape);
+/**
+ * The paging of the long lists (D-177). Without both the answer of a session is the whole list as before; with one of
+ * them, and always for the read token, it is a page with `total`, `limit`, `offset`.
+ */
+export const pageQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(500).optional().describe('Rows of the page, 1-500 (default 50 when paged)'),
+  offset: z.coerce.number().int().min(0).optional().describe('Rows to skip from the start of the list (default 0)'),
+});
 export type LabelQuery = z.infer<typeof labelQuery>;
 
 export const createOwnerBody = z.object({
@@ -232,7 +240,7 @@ export const documentsQuery = z.object({
   status: z.enum(['not_attached', 'not_approved', 'approved']).optional(),
   kind: documentKind.optional(),
   q: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(5000).optional(),
+  ...pageQuery.shape,
   ...labelQuery.shape,
 });
 
@@ -256,12 +264,13 @@ export const operationsQuery = z.object({
   active: flag.optional(),
   from: date.optional(),
   to: date.optional(),
+  ...pageQuery.shape,
   ...labelQuery.shape,
 });
 
 /** `GET /owners`, `GET /artists`: the list, restricted to the owners / pseudonyms visible under a label (D-168). */
-export const ownersQuery = labelQuery;
-export const artistsQuery = labelQuery;
+export const ownersQuery = labelQuery.extend(pageQuery.shape);
+export const artistsQuery = labelQuery.extend(pageQuery.shape);
 
 /** `GET /search` (N10): `kinds` is a comma list of owners, artists, tracks, documents, labels. */
 export const searchQuery = z.object({
@@ -370,6 +379,7 @@ export type AuditQuery = z.infer<typeof auditQuery>;
 
 /** `GET /owners/payables`: the period only shapes `waitingBreakdown`; the totals are all-time like the balance. */
 export const payablesQuery = labelPeriodQuery.extend({
+  ...pageQuery.shape,
   ids: z
     .string()
     .optional()
@@ -378,6 +388,7 @@ export const payablesQuery = labelPeriodQuery.extend({
 
 /** `GET /artists/balances` (P11, D-167): the money of a list of pseudonyms from one calculation of their union reach. */
 export const artistBalancesQuery = labelPeriodQuery.extend({
+  ...pageQuery.shape,
   ids: z
     .string()
     .optional()
@@ -386,6 +397,7 @@ export const artistBalancesQuery = labelPeriodQuery.extend({
 
 /** `GET /tracks/summary`: only the units of one Believe account and/or one report month. */
 export const trackSummaryQuery = z.object({
+  ...pageQuery.shape,
   account: z.string().optional(),
   month: month.optional(),
   isrcs: z
@@ -395,13 +407,14 @@ export const trackSummaryQuery = z.object({
   ...labelQuery.shape,
 });
 export const trackCatalogQuery = labelQuery.extend({
+  ...pageQuery.shape,
   catalog: z
     .enum(['all', 'current'])
     .optional()
     .describe('D-172: `current` = only the ISRCs whose open label-history interval is the label (or any, without a label); default the files of the label too'),
 });
 
-export const releasesQuery = z.object({ q: z.string().optional(), ...labelQuery.shape });
+export const releasesQuery = z.object({ q: z.string().optional(), ...pageQuery.shape, ...labelQuery.shape });
 export const releaseQuery = labelQuery;
 
 // ---- advertising expenses (D-155, D-156) ----
@@ -614,6 +627,7 @@ export const contractThresholdBody = z.object({ payoutThresholdCents: z.number()
 
 /** `GET /settlements/start`: the rows of one book (`label=`), or every book without it; `active=false` lists the inactive too. */
 export const startListQuery = z.object({
+  ...pageQuery.shape,
   label: z.string().optional().describe('Id of an own label: the book; without it every book'),
   active: z.enum(['true', 'false']).optional().describe('true (default): only the active rows; false: every row, the deactivated included'),
 });
@@ -653,6 +667,7 @@ export const payablesAsOfQuery = payablesQuery.extend({ ...asOfShape, area: read
 export const PAYROLL_SHEETS = ['payroll', 'waiting', 'buyouts', 'control'] as const;
 /** `GET /owners/payroll` (D-173 §1.4): the payroll of one label; json or csv (one sheet). */
 export const payrollQuery = z.object({
+  ...pageQuery.shape,
   label: z.string().optional().describe('Id of an own label (required: 400 label_required; the payroll is the book of a label)'),
   ...asOfShape,
   area: z.enum(['master', 'publishing', 'all']).default('master').describe('The area of the payroll: master by default (the button), publishing, all'),

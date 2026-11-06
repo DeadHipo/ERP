@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { localPrincipal, principalOfUser, supportPrincipal, type Principal } from '../auth/abilities';
+import { localPrincipal, principalOfUser, readerPrincipal, supportPrincipal, type Principal } from '../auth/abilities';
 import type { SupportState } from '../auth/service';
-import { hasSystemKey, sessionUserOf, type AuthConfig } from '../auth/middleware';
+import { hasReadToken, hasSystemKey, sessionUserOf, type AuthConfig } from '../auth/middleware';
 import { ForbiddenError, ValidationError } from '../shared/errors';
 import type { OrgEntry } from './facades';
 
@@ -19,7 +19,8 @@ export type SupportOf = (orgId: string, userId: string) => Promise<SupportState>
  * expired ones = 403 `support_expired`; the system key never works in an organization (403 `support_required`); in
  * `AUTH_MODE=off` it is ERP_DEFAULT_ORG and `X-Org` is ignored. Then the facade of the organization (404
  * `org_not_found`, before the grant) goes to `res.locals.entry`, whose router serves the request; the principal to
- * `res.locals.principal`, a live grant to `res.locals.support`.
+ * `res.locals.principal`, a live grant to `res.locals.support`. The read token (D-177) works in ERP_DEFAULT_ORG in both
+ * modes, as `reader`; `X-Org` of another organization is 403 `forbidden`.
  */
 export function resolveOrg(
   facades: { get(orgId: string): Promise<OrgEntry> },
@@ -30,7 +31,13 @@ export function resolveOrg(
     let orgId: string | undefined;
     let principal: Principal | undefined;
     let entry: OrgEntry | undefined;
-    if (config.mode === 'off') {
+    if (hasReadToken(res)) {
+      orgId = config.defaultOrg;
+      if (!orgId) throw new ValidationError('ERP_DEFAULT_ORG is not set', undefined, 'org_required');
+      const xOrg = xOrgOf(req);
+      if (xOrg !== undefined && xOrg !== orgId) throw new ForbiddenError('The read token works in one organization');
+      principal = readerPrincipal(orgId);
+    } else if (config.mode === 'off') {
       orgId = config.defaultOrg;
       if (!orgId) throw new ValidationError('ERP_DEFAULT_ORG is not set', undefined, 'org_required');
       principal = localPrincipal(orgId);

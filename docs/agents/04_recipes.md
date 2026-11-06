@@ -511,3 +511,10 @@ an answer «pay» → ready. The checks «no payee» / «needs an answer» are o
    (`GET /owners/payroll?label=&asOf=` → `gate.reason` per owner), `scripts/stage2/payroll-summary.ts` (the owners per
    reason). A payee «by the payment history» (the owner's empty `payee`) needs the cash registers of stage 4; until then
    such owners are `no_payee`.
+
+## 19. Read the ERP from Claude over MCP (D-177)
+
+1. Put `MCP_READ_TOKEN=<openssl rand -hex 32>` in `.env`, run the API (it needs `ERP_DEFAULT_ORG`).
+2. `.mcp.json` in the repo root starts `packages/backend/scripts/mcp-erp.ts`: open a new Claude Code session in the repo and allow the server `erp`. `ERP_API_URL` switches the API (default `http://localhost:3000`).
+3. The tools are the GET operations without `auth`, `orgs`, `users`, named from `operationId` (`get-owners-by-id-balance`). Long lists answer 50 rows with `total`: pass `limit` (≤ 500) and `offset`.
+4. A new long list: add `...S.pageQuery.shape` to its query, `pagedList` / `pagedField` in the route, `...pageFields` or `R.listOrPage` in the response. The token never writes: a new write needs no check here, `RULES.reader` refuses it.

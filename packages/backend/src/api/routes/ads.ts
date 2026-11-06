@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { defaultLimit } from '../paging';
 import { viewerOf } from '../viewer';
 
 /** Advertising expenses (D-155, D-156). */
@@ -10,6 +11,7 @@ export function adsRouter(facade: Facade) {
 
   r.get('/ads', async (req, res) => {
     const q = parse(S.adsQuery, req.query);
+    const limit = q.limit ?? defaultLimit(res);
     res.json(
       await facade.listAds({
         ...(q.isrc ? { isrc: q.isrc } : {}),
@@ -19,7 +21,7 @@ export function adsRouter(facade: Facade) {
         ...(q.to ? { to: q.to } : {}),
         ...(q.status ? { status: q.status } : {}),
         ...(q.includeInactive === 'true' ? { includeInactive: true } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        ...(limit !== undefined ? { limit } : {}),
         ...(q.offset !== undefined ? { offset: q.offset } : {}),
         ...(q.label ? { labelId: q.label } : {}),
       }),

@@ -7,6 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/api/app';
 import { createServerApp } from '../src/api/server-app';
 import { API_OPERATIONS, isOrgOperation, needsOperator, operationKey, RELABEL_OPERATIONS, type ApiOperation } from '../src/api/operations';
+import { readsWithToken } from '../src/api/openapi';
 import { buildOpenApiDocument } from '../src/api/openapi';
 import { createAuthService } from '../src/auth/service';
 import { createOrgFacades } from '../src/orgs/facades';
@@ -383,7 +384,7 @@ const OPERATOR = 'contract-test';
     const filtered = await call('get', '/documents', {
       query: { status: 'not_attached', kind: 'buyout', q: 'buy', limit: '5' },
     });
-    expect(filtered).toEqual([]);
+    expect(filtered).toEqual({ total: 0, limit: 5, offset: 0, items: [] }); // `limit` gives a page (D-177)
 
     // splits
     await call('post', '/splits', {
@@ -856,11 +857,12 @@ const OPERATOR = 'contract-test';
     ).find((p) => p.in === 'header');
     expect(header).toMatchObject({ name: 'X-Operator', required: true });
     expect(doc.body.paths['/health'].get.parameters ?? []).toEqual([]);
-    expect((doc.body.paths['/owners'].get.parameters as { name: string }[]).map((p) => p.name)).toEqual(['label', 'X-Org']); // D-168, D-170
+    expect((doc.body.paths['/owners'].get.parameters as { name: string }[]).map((p) => p.name)).toEqual(['label', 'limit', 'offset', 'X-Org']); // D-168, D-170, D-177
     // D-170: the two ways in, X-Org on the operations of an organization, X-Operator exactly on the non-public writes
     expect(doc.body.components.securitySchemes).toEqual({
       session: { type: 'apiKey', in: 'cookie', name: 'erp_session' },
       systemKey: { type: 'apiKey', in: 'header', name: 'X-System-Key' },
+      readToken: { type: 'http', scheme: 'bearer' }, // D-177
     });
     for (const op of API_OPERATIONS) {
       const p = doc.body.paths[op.path.replace(/:([A-Za-z]+)/g, '{$1}')][op.method] as {
@@ -875,7 +877,10 @@ const OPERATOR = 'contract-test';
       );
       expect(headers.some((h) => h.name === 'X-Org' && !h.required), `${key} X-Org`).toBe(op.access === 'org');
       expect(p.security.flatMap((x) => Object.keys(x)).sort(), `${key} security`).toEqual(
-        { public: [], user: ['session'], system: ['session', 'systemKey'], org: ['session', 'systemKey'] }[op.access],
+        [
+          ...{ public: [], user: ['session'], system: ['session', 'systemKey'], org: ['session', 'systemKey'] }[op.access],
+          ...(readsWithToken(op) ? ['readToken'] : []),
+        ].sort(),
       );
       expect(Object.keys(p.responses).includes('401'), `${key} 401`).toBe(op.access !== 'public');
       // D-171: the right of the operation

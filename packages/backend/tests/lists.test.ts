@@ -53,7 +53,9 @@ describe('GET /documents filters (N12)', () => {
     expect(await ids('?kind=appendix')).toEqual([waiting.id, approved.id]);
     expect(await ids('?q=APPENDIX')).toEqual([waiting.id, approved.id]);
     expect(await ids(`?ownerId=${a.id}&kind=appendix`)).toEqual([waiting.id]);
-    expect(await ids('?limit=2')).toHaveLength(2);
+    const page = (await request(api).get('/api/v1/documents?limit=2')).body as { total: number; items: unknown[] };
+    expect(page.items).toHaveLength(2); // `limit` gives a page (D-177)
+    expect(page.total).toBe(4);
     expect((await request(api).get('/api/v1/documents?status=bogus')).status).toBe(400);
   });
 });

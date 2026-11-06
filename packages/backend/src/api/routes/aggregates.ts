@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { pagedField } from '../paging';
 import { drain, receiveUpload } from '../upload';
 import { viewerOf } from '../viewer';
 import { AppError } from '../../shared/errors';
@@ -11,9 +12,10 @@ import { RELEASE_IMPORT_MAX_BYTES } from '@erp/shared/release-import';
 export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   const r = Router();
 
-  r.get('/owners/payables', async (req, res) =>
-    res.json(await facade.ownerPayables(parse(S.payablesAsOfQuery, req.query))),
-  );
+  r.get('/owners/payables', async (req, res) => {
+    const { limit, offset, ...q } = parse(S.payablesAsOfQuery, req.query);
+    res.json(pagedField(res, await facade.ownerPayables(q), 'items', { limit, offset }));
+  });
   // the payroll of a label (D-173 §1.4): json (every sheet) or one sheet as csv; before /owners/:id
   r.get('/owners/payroll', async (req, res) => {
     const q = parse(S.payrollQuery, req.query);
@@ -25,12 +27,16 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
       res.send(text);
       return;
     }
-    res.json(await facade.payroll(q.label, { asOf: q.asOf, area: q.area }, viewerOf(res)));
+    res.json(pagedField(res, await facade.payroll(q.label, { asOf: q.asOf, area: q.area }, viewerOf(res)), 'rows', q));
   });
-  r.get('/tracks/summary', async (req, res) =>
-    res.json(await facade.trackSummary(parse(S.trackSummaryQuery, req.query))),
-  );
-  r.get('/tracks/catalog', async (req, res) => res.json(await facade.trackCatalog(parse(S.trackCatalogQuery, req.query))));
+  r.get('/tracks/summary', async (req, res) => {
+    const { limit, offset, ...q } = parse(S.trackSummaryQuery, req.query);
+    res.json(pagedField(res, await facade.trackSummary(q), 'items', { limit, offset }));
+  });
+  r.get('/tracks/catalog', async (req, res) => {
+    const { limit, offset, ...q } = parse(S.trackCatalogQuery, req.query);
+    res.json(pagedField(res, await facade.trackCatalog(q), 'items', { limit, offset }));
+  });
   // the label history of an ISRC (D-172): navigation, not money
   r.get('/tracks/:isrc/labels', async (req, res) => res.json(await facade.trackLabels(param(req, 'isrc'))));
   r.post('/tracks/:isrc/label', async (req, res) =>
@@ -42,7 +48,7 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   );
   r.get('/releases', async (req, res) => {
     const q = parse(S.releasesQuery, req.query);
-    res.json(await facade.releases(q.q, q.label));
+    res.json(pagedField(res, await facade.releases(q.q, q.label), 'items', q));
   });
   // the release registry (D-172, no money): before /releases/:upc (a static segment before the parameter)
   r.get('/releases/registry', async (req, res) => res.json(await facade.releaseRegistry(parse(S.releaseRegistryQuery, req.query))));

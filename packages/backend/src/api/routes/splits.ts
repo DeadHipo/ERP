@@ -4,6 +4,7 @@ import type { Facade } from '../../facade';
 import { SPLIT_IMPORT_MAX_BYTES } from '@erp/shared/split-import';
 import { AppError } from '../../shared/errors';
 import { param, parse } from '../http';
+import { defaultLimit } from '../paging';
 import { drain, receiveUpload } from '../upload';
 import { viewerOf } from '../viewer';
 
@@ -17,7 +18,7 @@ export function splitsRouter(facade: Facade, opts: { tmpDir: string }) {
       await facade.listSplits({
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
-        limit: q.limit ?? 200,
+        limit: q.limit ?? defaultLimit(res) ?? 200,
         ...(q.offset !== undefined ? { offset: q.offset } : {}),
         ...(q.status ? { status: q.status } : {}),
       }, viewerOf(res)),

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "erp": {
+      "command": "node",
+      "args": ["packages/backend/scripts/mcp-erp.ts"]
+    }
+  }
+}

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { pagedField, pagedList } from '../paging';
 import { viewerOf } from '../viewer';
 import { OPERATION_IMPORT_MAX_BYTES } from '@erp/shared/operation-import';
 import { START_IMPORT_MAX_BYTES } from '@erp/shared/start-import';
@@ -15,7 +16,7 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
   r.get('/settlements/operations', async (req, res) => {
     const q = parse(S.operationsQuery, req.query);
     res.json(
-      await facade.listOperations({
+      pagedList(res, await facade.listOperations({
         ...(q.ownerId ? { ownerId: q.ownerId } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
         // `meaning` is the alias of `kind` (D-173): `recoupable_payout` = `advance`
@@ -27,7 +28,7 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
         ...(q.from ? { from: q.from } : {}),
         ...(q.to ? { to: q.to } : {}),
         ...(q.label ? { labelId: q.label } : {}),
-      }),
+      }), q),
     );
   });
   r.patch('/settlements/operations/:id', async (req, res) => {
@@ -85,7 +86,7 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
   // the opening balances (D-174): the list of a book, the import with a preview, the soft rollback of a row
   r.get('/settlements/start', async (req, res) => {
     const q = parse(S.startListQuery, req.query);
-    res.json(await facade.listStart({ labelId: q.label, active: q.active === undefined ? undefined : q.active === 'true' }, viewerOf(res)));
+    res.json(pagedField(res, await facade.listStart({ labelId: q.label, active: q.active === undefined ? undefined : q.active === 'true' }, viewerOf(res)), 'rows', q));
   });
   r.post('/settlements/start/import', async (req, res) => {
     let q: ReturnType<typeof S.startImportQuery.parse>;

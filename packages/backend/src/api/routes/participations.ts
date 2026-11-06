@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { defaultLimit } from '../paging';
 import { viewerOf } from '../viewer';
 
 /** Participations: off-the-top, artist pool, artist share and label share carves (D-126). */
@@ -10,11 +11,12 @@ export function participationsRouter(facade: Facade) {
 
   r.get('/participations', async (req, res) => {
     const q = parse(S.listQuery, req.query);
+    const limit = q.limit ?? defaultLimit(res);
     res.json(
       await facade.listParticipations({
         ...(q.isrc ? { isrc: q.isrc } : {}),
         ...(q.artistId ? { artistId: q.artistId } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        ...(limit !== undefined ? { limit } : {}),
         ...(q.offset !== undefined ? { offset: q.offset } : {}),
       }, viewerOf(res)),
     );

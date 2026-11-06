@@ -48,12 +48,12 @@ export interface Ability {
   scope?: Scope;
 }
 
-export type PrincipalKind = 'org_admin' | 'label_manager' | 'support' | 'system' | 'local';
+export type PrincipalKind = 'org_admin' | 'label_manager' | 'support' | 'system' | 'local' | 'reader';
 
 /**
  * Who asks: a member (`org_admin`, `label_manager` with own labels), the system administrator or the system key
- * (`system`), the system administrator in an organization under a grant (`support`), or `AUTH_MODE=off` (`local`,
- * acts as `org_admin`).
+ * (`system`), the system administrator in an organization under a grant (`support`), `AUTH_MODE=off` (`local`, acts
+ * as `org_admin`), or the read token (`reader`, D-177: every book of ERP_DEFAULT_ORG, read and read money, nothing else).
  */
 export interface Principal {
   kind: PrincipalKind;
@@ -107,6 +107,16 @@ export const RULES: Readonly<Record<PrincipalKind, Readonly<Record<Action, Rule>
     admin: 'forbidden',
     system: 'forbidden',
     self: 'allow',
+  },
+  reader: {
+    read: 'allow',
+    read_money: 'allow',
+    write: 'forbidden',
+    approve: 'forbidden',
+    pay: 'forbidden',
+    admin: 'forbidden',
+    system: 'forbidden',
+    self: 'forbidden',
   },
   support: {
     read: 'allow',
@@ -174,6 +184,17 @@ export function allowedOperations(p: Principal, ops: readonly { key: string; abi
 /** The principal of `AUTH_MODE=off` (tests, scripts, the local stand): acts as `org_admin` in ERP_DEFAULT_ORG. */
 export const localPrincipal = (orgId: string | null): Principal => ({
   kind: 'local',
+  userId: null,
+  login: null,
+  orgId,
+  sessionId: null,
+  labelIds: 'all',
+  supportWrite: false,
+});
+
+/** The principal of the read token (D-177): no user, every label of the organization, only `read` and `read_money`. */
+export const readerPrincipal = (orgId: string | null): Principal => ({
+  kind: 'reader',
   userId: null,
   login: null,
   orgId,

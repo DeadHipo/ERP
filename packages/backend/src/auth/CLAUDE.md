@@ -42,7 +42,8 @@ opened under an organization (a login is looked up across all of them), never im
   `begin` records the attempt as a failure before the password is checked, `succeeded` takes it back; over the limit
   `429 too_many_attempts` with `Retry-After`; 0 = off. One counter per app instance (made in `createServerApp`).
   A known login can be locked out for a minute by anyone (by design).
-- `middleware.ts`: `authConfigFromEnv` (`AUTH_MODE`, `AUTH_SECRET`, `SYSTEM_ADMIN_KEY`, `ERP_DEFAULT_ORG`,
+- The read token (D-177): `MCP_READ_TOKEN`, `Authorization: Bearer`, checked first in both modes, principal `reader` (`read`, `read_money` of `ERP_DEFAULT_ORG`); `tests/read-token.test.ts`.
+- `middleware.ts`: `authConfigFromEnv` (`AUTH_MODE`, `AUTH_SECRET`, `SYSTEM_ADMIN_KEY`, `MCP_READ_TOKEN`, `ERP_DEFAULT_ORG`,
   `AUTH_COOKIE_SECURE`, `AUTH_LOGIN_LIMIT`, `AUTH_IP_LIMIT`, `TRUST_PROXY` (`1` = one hop), `APP_ORIGIN`),
   `sessionCookieName` (`erp_session`, or `__Host-erp_session` with `Secure` when `AUTH_COOKIE_SECURE=1`; one name per
   process), `authenticateOrSystemKey` (public paths pass; the session or `X-System-Key`; else 401), `requireUser`

@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { ForbiddenError, UnauthenticatedError } from '../shared/errors';
 import type { AuthService, SessionUser } from './service';
-import { localPrincipal, principalOfUser, systemKeyPrincipal, type Principal } from './abilities';
+import { localPrincipal, principalOfUser, readerPrincipal, systemKeyPrincipal, type Principal } from './abilities';
 import { assertSecret, TOKEN_TTL_SECONDS, verifyToken, type TokenClaims } from './token';
 
 // Who is asking (D-170, D-171). `AUTH_MODE=on` (the default): the session cookie (a JWT `{ sub, sid }`; the session,
@@ -21,7 +21,9 @@ export interface AuthConfig {
   secret?: string;
   /** SYSTEM_ADMIN_KEY: unset = no system access by key. */
   systemKey?: string;
-  /** ERP_DEFAULT_ORG: the organization of every request in `off`. */
+  /** MCP_READ_TOKEN: the read token of `Authorization: Bearer` (D-177), at least 32 characters; unset = the path is off. */
+  readToken?: string;
+  /** ERP_DEFAULT_ORG: the organization of every request in `off` and of the read token. */
   defaultOrg?: string;
   /** AUTH_COOKIE_SECURE=1: the cookie is `__Host-erp_session` with `Secure` (one name per process). */
   cookieSecure?: boolean;
@@ -59,6 +61,8 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthCon
   if (mode !== 'on' && mode !== 'off') throw new Error(`AUTH_MODE must be "on" or "off", not "${mode}"`);
   const secret = env.AUTH_SECRET || undefined;
   if (mode === 'on') assertSecret(secret);
+  const readToken = env.MCP_READ_TOKEN?.trim() || undefined;
+  if (readToken !== undefined && readToken.length < 32) throw new Error('MCP_READ_TOKEN must have at least 32 characters');
   const appOrigins = (env.APP_ORIGIN ?? '')
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
@@ -67,6 +71,7 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthCon
     mode,
     secret,
     systemKey: env.SYSTEM_ADMIN_KEY || undefined,
+    ...(readToken ? { readToken } : {}),
     defaultOrg: env.ERP_DEFAULT_ORG?.trim() || undefined,
     cookieSecure: env.AUTH_COOKIE_SECURE === '1',
     loginLimit: limitOf(env.AUTH_LOGIN_LIMIT, 5, 'AUTH_LOGIN_LIMIT'),
@@ -110,17 +115,26 @@ function sameSecret(a: string, b: string): boolean {
 
 /** The user of the request (set by `authenticateOrSystemKey` from the session), if any. */
 export const sessionUserOf = (res: Response): SessionUser | undefined => res.locals.user as SessionUser | undefined;
+/** True when the request came with the right read token (D-177). */
+export const hasReadToken = (res: Response): boolean => res.locals.readToken === true;
 /** True when the request came with the right `X-System-Key`. */
 export const hasSystemKey = (res: Response): boolean => res.locals.systemKey === true;
 
 /**
  * Mount on `/api`: public paths pass; otherwise the cookie gives `res.locals.user` (a live session of an active user
  * with an active membership, D-171), or a right `X-System-Key` gives `res.locals.systemKey`; neither = 401
- * `unauthenticated` (in `off` the request passes), a wrong key = 403 `forbidden`.
+ * `unauthenticated` (in `off` the request passes), a wrong key = 403 `forbidden`. `Authorization: Bearer` goes first and
+ * in both modes (D-177): the right read token gives `res.locals.readToken`, anything else is 401, never the rights of `off`.
  */
 export function authenticateOrSystemKey(auth: AuthService, config: AuthConfig): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (isPublic(req.baseUrl + req.path)) return next();
+    const bearer = /^Bearer (.+)$/.exec(req.header('authorization') ?? '')?.[1];
+    if (req.header('authorization') !== undefined) {
+      if (bearer === undefined || !config.readToken || !sameSecret(bearer, config.readToken)) throw new UnauthenticatedError();
+      res.locals.readToken = true;
+      return next();
+    }
     if (config.mode === 'on') {
       const claims = sessionClaimsOf(req, config);
       const user = claims ? await auth.sessionUser(claims.sub, claims.sid) : undefined;
@@ -143,6 +157,7 @@ export function authenticateOrSystemKey(auth: AuthService, config: AuthConfig): 
 /** `user` operations (`/auth/me`, `/auth/password`): a session in `on`; anyone in `off`. */
 export function requireUser(config: AuthConfig): RequestHandler {
   return (_req, res, next) => {
+    if (hasReadToken(res)) throw new ForbiddenError('The read token has no user');
     if (config.mode === 'on' && !sessionUserOf(res)) throw new UnauthenticatedError();
     next();
   };
@@ -153,6 +168,7 @@ export function requireUser(config: AuthConfig): RequestHandler {
  * the system key, or `local` in `off`; undefined = nobody (401). Inside an organization `resolveOrg` builds it.
  */
 export function requestPrincipal(res: Response, config: Pick<AuthConfig, 'mode' | 'defaultOrg'>): Principal | undefined {
+  if (hasReadToken(res)) return readerPrincipal(config.defaultOrg ?? null);
   const user = sessionUserOf(res);
   if (user) return principalOfUser(user);
   if (hasSystemKey(res)) return systemKeyPrincipal();

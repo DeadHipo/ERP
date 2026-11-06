@@ -9,6 +9,19 @@ import { START_IMPORT_ACTIONS, START_IMPORT_ISSUE_CODES } from './start-import';
 // This file must only depend on zod (and the plain lists of this package) so the browser bundle can import it.
 
 const money = z.string().describe('Exact decimal string');
+
+/** What a paged answer adds (D-177): absent on the whole list of a session. */
+const pageFields = {
+  total: z.number().int().optional().describe('Rows of the whole list, before limit and offset (D-177)'),
+  limit: z.number().int().optional().describe('The size of this page (D-177)'),
+  offset: z.number().int().optional().describe('The rows skipped before this page (D-177)'),
+};
+/** A list that is a bare array unless paged: the whole list of a session, or the page (D-177). */
+export const listOrPage = <T extends z.ZodType>(item: T) =>
+  z.union([
+    z.array(item),
+    z.object({ total: z.number().int(), limit: z.number().int(), offset: z.number().int(), items: z.array(item) }),
+  ]);
 const date = z.string().describe('YYYY-MM-DD');
 const month = z.string().describe('YYYY-MM');
 const timestamp = z.string().describe('ISO 8601 timestamp');
@@ -845,6 +858,7 @@ export const startListSchema = z.object({
     total: money,
     cutoffMonths: z.array(month),
   }),
+  ...pageFields,
 });
 export type StartList = z.infer<typeof startListSchema>;
 
@@ -1125,7 +1139,7 @@ export const artistBalanceItemSchema = z.object({
   paid: money,
   remaining: money.describe('earned − recouped − adsCharged − paid: what this pseudonym left for its owner\'s payable (the payout is the owner\'s)'),
 });
-export const artistBalancesSchema = z.object({ calculatedAt: timestamp, items: z.array(artistBalanceItemSchema) });
+export const artistBalancesSchema = z.object({ calculatedAt: timestamp, items: z.array(artistBalanceItemSchema), ...pageFields });
 export type ArtistBalanceItem = z.infer<typeof artistBalanceItemSchema>;
 
 // ---- track explanation (the state after every master layer, D-127) ----
@@ -1311,7 +1325,7 @@ export const payableItemSchema = z.object({
   pendingOperations: z.number().int(),
   lastPayoutDate: date.nullable().describe('Date of the newest active payout (any kind of proof)'),
 });
-export const payablesSchema = z.object({ calculatedAt: timestamp, items: z.array(payableItemSchema) });
+export const payablesSchema = z.object({ calculatedAt: timestamp, items: z.array(payableItemSchema), ...pageFields });
 export type PayableItem = z.infer<typeof payableItemSchema>;
 
 /** Money of a set of units: net received, B (owners), C (waiting) with reasons, ours. */
@@ -1337,6 +1351,7 @@ export const trackSummaryItemSchema = z.object({
 export const trackSummarySchema = z.object({
   calculatedAt: timestamp,
   items: z.array(trackSummaryItemSchema),
+  ...pageFields,
 });
 
 /** The tracks without money (D-162): the ISRC set of `trackSummary()`, no calculation. */
@@ -1353,7 +1368,7 @@ export const trackCatalogItemSchema = z.object({
   catalogLabelName: z.string().nullable(),
   catalogFrom: date.nullable().describe('Start of the open interval'),
 });
-export const trackCatalogSchema = z.object({ items: z.array(trackCatalogItemSchema) });
+export const trackCatalogSchema = z.object({ items: z.array(trackCatalogItemSchema), ...pageFields });
 export type TrackCatalogItem = z.infer<typeof trackCatalogItemSchema>;
 export type TrackSummaryItem = z.infer<typeof trackSummaryItemSchema>;
 
@@ -1447,6 +1462,7 @@ export const releasesSchema = z.object({
         .describe('The registry row (D-172): of the label under a label, the last imported one under «Все»; null = not registered'),
     }),
   ),
+  ...pageFields,
 });
 export const releaseSchema = z.object({
   upc: z.string(),
@@ -2028,5 +2044,6 @@ export const payrollSchema = z.object({
     relabelledOperations: z.number().int(),
     defaultLabelOperations: z.number().int(),
   }),
+  ...pageFields,
 });
 export type Payroll = z.infer<typeof payrollSchema>;

@@ -3,6 +3,7 @@ import * as S from '@erp/shared/api-schemas';
 import { ConflictError } from '../../shared/errors';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { pagedField, pagedList } from '../paging';
 import { viewerOf } from '../viewer';
 import { timed, timedSync } from '../../shared/timing';
 
@@ -15,7 +16,10 @@ export function ownersRouter(facade: Facade) {
     const q = parse(S.searchQuery, req.query);
     res.json(await facade.search(q.q, q.kinds, viewerOf(res)));
   });
-  r.get('/owners', async (req, res) => res.json(await facade.ownerList(parse(S.ownersQuery, req.query))));
+  r.get('/owners', async (req, res) => {
+    const { limit, offset, ...q } = parse(S.ownersQuery, req.query);
+    res.json(pagedList(res, await facade.ownerList(q), { limit, offset }));
+  });
   r.post('/owners', async (req, res) => {
     const b = parse(S.createOwnerBody, req.body);
     const similar = await owners.findSimilarOwners(b.name);
@@ -54,7 +58,12 @@ export function ownersRouter(facade: Facade) {
     res.status(201).json(await facade.createPayout(param(req, 'id'), b));
   });
 
-  r.get('/artists', async (req, res) => timed('GET /artists', async () => res.json(await facade.artistList(parse(S.artistsQuery, req.query)))));
+  r.get('/artists', async (req, res) =>
+    timed('GET /artists', async () => {
+      const { limit, offset, ...q } = parse(S.artistsQuery, req.query);
+      res.json(pagedList(res, await facade.artistList(q), { limit, offset }));
+    }),
+  );
   r.post('/artists', async (req, res) => {
     const b = parse(S.createArtistBody, req.body);
     const similar = await owners.findSimilarArtists(b.pseudonym);
@@ -72,7 +81,8 @@ export function ownersRouter(facade: Facade) {
   r.get('/artists/duplicates', async (_req, res) => res.json(await facade.artistDuplicates(viewerOf(res))));
   r.get('/artists/balances', async (req, res) =>
     timed('GET /artists/balances', async () => {
-      const b = await facade.artistBalances(parse(S.artistBalancesQuery, req.query));
+      const { limit, offset, ...q } = parse(S.artistBalancesQuery, req.query);
+      const b = pagedField(res, await facade.artistBalances(q), 'items', { limit, offset });
       timedSync('res.json (serialize + send)', () => res.json(b));
     }),
   );
@@ -89,7 +99,7 @@ export function ownersRouter(facade: Facade) {
     res.json(await owners.getArtist(param(req, 'id')));
   });
 
-  r.get('/tracks', async (_req, res) => res.json(await owners.listTracks()));
+  r.get('/tracks', async (req, res) => res.json(pagedList(res, await owners.listTracks(), parse(S.pageQuery, req.query))));
   r.post('/tracks', async (req, res) =>
     res.status(201).json(await owners.createTrack(parse(S.createTrackBody, req.body))),
   );
@@ -98,9 +108,10 @@ export function ownersRouter(facade: Facade) {
   );
   r.get('/tracks/:isrc/explain', async (req, res) => res.json(await facade.explainTrack(param(req, 'isrc'))));
 
-  r.get('/documents', async (req, res) =>
-    res.json(await facade.listDocuments(parse(S.documentsQuery, req.query))),
-  );
+  r.get('/documents', async (req, res) => {
+    const { limit, offset, ...q } = parse(S.documentsQuery, req.query);
+    res.json(pagedList(res, await facade.listDocuments(q), { limit, offset }));
+  });
   r.post('/documents', async (req, res) =>
     res.status(201).json(await facade.createDocument(parse(S.createDocumentBody, req.body))),
   );

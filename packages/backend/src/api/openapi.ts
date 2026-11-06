@@ -13,6 +13,14 @@ function openApiPath(path: string): { path: string; params: string[] } {
   return { path: out, params };
 }
 
+/** `GET /owners/:id/balance` -> `get_owners_by_id_balance`: a stable name for generated clients and MCP tools (D-177). */
+export const operationIdOf = (op: Pick<ApiOperation, 'method' | 'path'>): string =>
+  [op.method, ...op.path.split('/').filter(Boolean).map((s) => (s.startsWith(':') ? `by_${s.slice(1)}` : s.replace(/-/g, '_')))].join('_');
+
+/** The operations the read token may call (D-177): the reads of an organization. */
+export const readsWithToken = (op: ApiOperation): boolean =>
+  op.access === 'org' && (op.ability.action === 'read' || op.ability.action === 'read_money');
+
 /** The OpenAPI 3.1 document of /api/v1, built from the operations list; the cookie name is the process's (D-171). */
 export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
   const registry = new OpenAPIRegistry();
@@ -25,6 +33,8 @@ export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
     name: opts.sessionCookie ?? 'erp_session',
   });
   registry.registerComponent('securitySchemes', 'systemKey', { type: 'apiKey', in: 'header', name: 'X-System-Key' });
+  // D-177: the read token (MCP_READ_TOKEN): read and read_money of ERP_DEFAULT_ORG
+  registry.registerComponent('securitySchemes', 'readToken', { type: 'http', scheme: 'bearer' });
   const security: Record<ApiOperation['access'], string[]> = {
     public: [],
     user: ['session'],
@@ -38,9 +48,10 @@ export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
     registry.registerPath({
       method: op.method,
       path,
+      operationId: operationIdOf(op),
       tags: [op.tag],
       summary: op.summary,
-      security: security[op.access].map((name) => ({ [name]: [] })),
+      security: [...security[op.access], ...(readsWithToken(op) ? ['readToken'] : [])].map((name) => ({ [name]: [] })),
       // the right the operation needs (D-171): action, subject and, in an organization, scope
       ...(op.ability ? { 'x-ability': { ...op.ability } } : {}),
       ...(op.errors ? { description: `Errors:\n\n${op.errors.map((e) => `- ${e}`).join('\n')}` } : {}),
