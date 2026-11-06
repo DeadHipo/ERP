@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { SPLIT_IMPORT_ACTIONS, SPLIT_IMPORT_ISSUE_CODES, type SplitImportIssueCode } from './split-import';
 
 // Response bodies of the JSON API (the contract of /api/v1). Shared by the server (OpenAPI, contract tests) and the
 // React client (types). Money and percents are exact decimal strings; dates are YYYY-MM-DD, months YYYY-MM.
-// This file must only depend on zod so the browser bundle can import it.
+// This file must only depend on zod (and the plain lists of this package) so the browser bundle can import it.
 
 const money = z.string().describe('Exact decimal string');
 const date = z.string().describe('YYYY-MM-DD');
@@ -242,6 +243,68 @@ export const splitListItemSchema = splitSchema.extend({
 export type SplitListItem = z.infer<typeof splitListItemSchema>;
 
 export const splitListSchema = z.object({ total: z.number().int(), items: z.array(splitListItemSchema) });
+
+// ---- the split import (D-172, P28) ----
+
+const importIssue = z.object({
+  code: z.enum(SPLIT_IMPORT_ISSUE_CODES as [SplitImportIssueCode, ...SplitImportIssueCode[]]),
+  severity: z.enum(['error', 'warning', 'info']),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+/** One data row of the import file as read (the floored dates shown, M52) with its classes. */
+export const splitImportRowSchema = z.object({
+  line: z.number().int().describe('Line of the file (the header is line 1)'),
+  isrc: z.string(),
+  pseudonym: z.string(),
+  artistId: z.string().nullable().describe('The existing pseudonym (by artist_id or the one exact name); null = new or unresolved'),
+  percent: z.string(),
+  from: z.string(),
+  fromFloored: date.nullable(),
+  to: z.string().nullable(),
+  toFloored: date.nullable(),
+  owner: z.string().nullable(),
+  documentId: z.string().nullable(),
+  group: z.string().describe('The key of its group: ISRC|floored from'),
+  issues: z.array(importIssue),
+});
+/** One group = one split: what the apply does with it. */
+export const splitImportGroupSchema = z.object({
+  key: z.string(),
+  isrc: z.string(),
+  from: date,
+  to: date.nullable(),
+  action: z.enum(SPLIT_IMPORT_ACTIONS),
+  ourShare: z.string(),
+  documentId: z.string().nullable().describe('The document of the split (all rows name the same one), else null'),
+  before: z
+    .array(z.object({ artistId: z.string(), pseudonym: z.string(), percent: z.string(), documentId: z.string().nullable() }))
+    .nullable()
+    .describe('The rows in force at `from` that a change replaces'),
+});
+export const splitImportSchema = z.object({
+  labelId: z.string(),
+  fileName: z.string(),
+  sha256: z.string(),
+  dryRun: z.boolean(),
+  applied: z.boolean(),
+  totals: z.object({
+    rows: z.number().int(),
+    groups: z.number().int(),
+    create: z.number().int(),
+    change: z.number().int(),
+    unchanged: z.number().int(),
+    errors: z.number().int(),
+    warnings: z.number().int(),
+    artistsNew: z.number().int(),
+    ownersNew: z.number().int(),
+  }),
+  rows: z.array(splitImportRowSchema),
+  groups: z.array(splitImportGroupSchema),
+  result: z
+    .object({ splitIds: z.array(z.string()), artistIds: z.array(z.string()), ownerIds: z.array(z.string()) })
+    .nullable()
+    .describe('The created records of an apply; null in a preview'),
+});
 
 /** `GET /artists/:id` (P12, D-165): the card of a pseudonym; a merged id answers for the surviving one. */
 export const artistDetailSchema = z.object({
@@ -533,6 +596,29 @@ export const signalsSchema = z.object({
       }),
     )
     .describe('Advertising records whose payer is not the book of the ISRC income at their month (D-169, information); under a label those it pays or whose income book it is'),
+  catalogOutsideAccount: z
+    .array(
+      z.object({
+        isrc: z.string(),
+        account: z.string(),
+        bookLabelId: z.string().describe('The label the file of the units was loaded under: their book'),
+        catalogLabelId: z.string().nullable().describe('The label of the history at the month of the units; null = no interval holds it'),
+        firstMonth: month,
+        lastMonth: month,
+        units: z.number().int(),
+        net: money,
+      }),
+    )
+    .describe('Units of an ISRC with a label history whose book is not the catalog label of their month (D-172, information: a tail on the old account); the money stays in the book'),
+  tracksWithoutLabel: z
+    .array(z.object({ isrc: z.string(), lastMonth: month, bookLabelId: z.string().nullable(), net: money }))
+    .describe('ISRCs of the units without a label-history interval at their last reporting month (D-172); the operator sets it on P6'),
+  releasesIncomplete: z
+    .array(z.object({ upc: z.string(), labelId: z.string(), title: z.string(), trackCount: z.number().int(), isrcsInUnits: z.number().int() }))
+    .describe('Releases of the registry of a label whose trackCount is larger than the distinct ISRCs of the UPC in the units of its book (D-172, information; all loaded files, the period is not applied)'),
+  releasesUnknown: z
+    .array(z.object({ upc: z.string(), bookLabelId: z.string(), releaseTitle: z.string(), net: money }))
+    .describe('UPCs of the units of a book whose label has a release registry without that UPC (D-172, information: import a fresh export)'),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -999,6 +1085,9 @@ export const trackCatalogItemSchema = z.object({
   hasSplit: z.boolean(),
   hasParticipations: z.boolean(),
   registered: z.boolean().describe('Registered in module 1 (a track row); false for an ISRC known from the reports only'),
+  catalogLabelId: z.string().nullable().describe('The label of the open label-history interval (D-172); not the book'),
+  catalogLabelName: z.string().nullable(),
+  catalogFrom: date.nullable().describe('Start of the open interval'),
 });
 export const trackCatalogSchema = z.object({ items: z.array(trackCatalogItemSchema) });
 export type TrackCatalogItem = z.infer<typeof trackCatalogItemSchema>;
@@ -1062,6 +1151,23 @@ export const trackBreakdownSchema = z.object({
   rows: z.array(breakdownRowSchema),
 });
 
+/** One row of the release registry of a label (D-172): the Believe release export, no money. */
+const releaseRegistryRowSchema = z.object({
+  labelId: z.string(),
+  labelName: z.string(),
+  upc: z.string(),
+  title: z.string(),
+  version: z.string().nullable(),
+  artistString: z.string().nullable().describe('The artist text of the export (not matched against the pseudonyms)'),
+  labelString: z.string().nullable().describe('The label text of the export'),
+  releaseDate: date.nullable(),
+  trackCount: z.number().int().nullable(),
+  catalogNumber: z.string().nullable(),
+  territories: z.number().int().nullable(),
+  stores: z.number().int().nullable(),
+  importedAt: timestamp,
+});
+
 export const releasesSchema = z.object({
   items: z.array(
     z.object({
@@ -1071,6 +1177,10 @@ export const releasesSchema = z.object({
       artists: z.array(artistRefSchema).describe('The pseudonyms of the registry over the tracks of the UPC, by pseudonym'),
       trackCount: z.number().int(),
       net: money.describe('Net of the loaded Believe files, all months'),
+      registered: z.boolean().describe('The UPC is in the release registry (D-172): of the label under a label, of any label under «Все»'),
+      registry: releaseRegistryRowSchema
+        .nullable()
+        .describe('The registry row (D-172): of the label under a label, the last imported one under «Все»; null = not registered'),
     }),
   ),
 });
@@ -1081,6 +1191,9 @@ export const releaseSchema = z.object({
   artists: z.array(artistRefSchema).describe('The pseudonyms of the registry over the tracks of the release, by pseudonym'),
   tracks: z.array(z.object({ isrc: z.string(), title: z.string(), artists: artistRefs, ...moneySums })),
   months: z.array(z.object({ reportingMonth: month, ...moneySums })),
+  registry: z
+    .array(releaseRegistryRowSchema)
+    .describe('The release registry rows of the UPC (D-172): under a label its row only, under «Все» the row of every label; [] = not registered'),
 });
 
 export const documentUsesSchema = z.object({
@@ -1365,3 +1478,104 @@ export const supportGrantSchema = z.object({
   active: z.boolean(),
 });
 export type SupportGrant = z.infer<typeof supportGrantSchema>;
+
+// ---- the label history of an ISRC (D-172) ----
+
+/** `GET /tracks/:isrc/labels`, `POST /tracks/:isrc/label`: the intervals by `validFrom` (no author: it is in the audit). */
+export const trackLabelSchema = z.object({
+  id: z.string(),
+  labelId: z.string(),
+  labelName: z.string(),
+  validFrom: date,
+  validTo: date.nullable().describe('Exclusive; null = open'),
+  source: z.enum(['files', 'operator', 'import']).describe('files = derived from the loaded files; operator = a correction'),
+  note: z.string().nullable(),
+  createdAt: timestamp,
+});
+export const trackLabelsSchema = z.array(trackLabelSchema);
+export type TrackLabel = z.infer<typeof trackLabelSchema>;
+
+// ---- the assumption (D-172) ----
+
+/** `POST /splits/assume`: the created `assumption` document, the splits it was set on and the splits left as they were. */
+export const assumeResultSchema = z.object({
+  documentId: z.string(),
+  assigned: z.array(z.string()).describe('The split ids that got the assumption document'),
+  skipped: z.array(
+    z.object({
+      splitId: z.string(),
+      code: z.enum(['has_document', 'empty_period']).describe('has_document: the split, or every row, already has a document (approved or not)'),
+    }),
+  ),
+});
+export type AssumeResult = z.infer<typeof assumeResultSchema>;
+
+// ---- the release registry (D-172) ----
+
+/** `POST /releases/import`: the counts of the import (all or nothing; `unchanged` rows are not rewritten). */
+export const releaseImportSchema = z.object({
+  labelId: z.string(),
+  fileName: z.string(),
+  sha256: z.string(),
+  rows: z.number().int().describe('Releases in the file'),
+  inserted: z.number().int(),
+  updated: z.number().int(),
+  unchanged: z.number().int(),
+});
+export type ReleaseImport = z.infer<typeof releaseImportSchema>;
+
+/** `GET /releases/registry`: the registry rows with the distinct ISRCs of the UPC in the loaded files of the row's label. */
+export const releaseRegistrySchema = z.object({
+  items: z.array(
+    releaseRegistryRowSchema.extend({
+      isrcsInUnits: z.number().int().describe('Distinct ISRCs of the UPC in the units of the loaded files of the label'),
+    }),
+  ),
+});
+export type ReleaseRegistry = z.infer<typeof releaseRegistrySchema>;
+
+// ---- the onboarding checklists (D-172) ----
+
+export const ONBOARDING_KEYS = ['label', 'accounts', 'files', 'unmapped', 'catalog', 'splits', 'owners', 'documents', 'publishing'] as const;
+export const ORG_ONBOARDING_KEYS = ['org', 'labels', 'users', 'accounts'] as const;
+export const onboardingStateSchema = z
+  .enum(['done', 'todo', 'info'])
+  .describe('Decided by the backend: done, todo (something is left or nothing is loaded yet), info (shown, never blocking: publishing)');
+
+const onboardingStepBase = {
+  state: onboardingStateSchema,
+  count: z.number().int().describe('The headline number: what is left to do, or for label/accounts/files/publishing what is there'),
+  counts: z.record(z.string(), z.number().int()).describe('Every counter of the step by name'),
+  link: z.string().describe('The client page that fixes or shows the step (a frontend route with its query)'),
+};
+
+/** `GET /onboarding?label=`: the checklist of one own label (no calculation). */
+export const onboardingSchema = z.object({
+  label: z.object({ id: z.string(), name: z.string() }),
+  steps: z.array(
+    z.object({
+      key: z.enum(ONBOARDING_KEYS),
+      ...onboardingStepBase,
+      months: z
+        .array(
+          z.object({
+            account: z.string(),
+            first: month.nullable(),
+            last: month.nullable(),
+            gaps: z.array(month).describe('Months between first and last without a loaded file'),
+          }),
+        )
+        .optional()
+        .describe('files: per account of the label'),
+      values: z.array(z.string()).optional().describe('unmapped: the label strings without an alias (at most 100)'),
+    }),
+  ),
+});
+export type Onboarding = z.infer<typeof onboardingSchema>;
+
+/** `GET /onboarding/organization`: the checklist of the organization (its administrator's). */
+export const orgOnboardingSchema = z.object({
+  org: z.object({ id: z.string() }),
+  steps: z.array(z.object({ key: z.enum(ORG_ONBOARDING_KEYS), ...onboardingStepBase })),
+});
+export type OrgOnboarding = z.infer<typeof orgOnboardingSchema>;

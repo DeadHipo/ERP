@@ -20,6 +20,10 @@ import { auditApi } from './audit';
 import { aggregatesApi } from './aggregates';
 import { searchApi } from './search';
 import { adsApi } from './ads-api';
+import { catalogApi } from './catalog';
+import { splitImportApi } from './split-import';
+import { releaseRegistryApi } from './release-registry';
+import { onboardingApi } from './onboarding';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -76,6 +80,10 @@ export function openFacade(config: FacadeConfig) {
     ...auditApi(ctx),
     ...searchApi(ctx),
     ...adsApi(ctx),
+    ...catalogApi(ctx),
+    ...splitImportApi(ctx, splitsPart),
+    ...releaseRegistryApi(ctx),
+    ...onboardingApi(ctx),
   };
 }
 

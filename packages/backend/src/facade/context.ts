@@ -1,4 +1,5 @@
-import { ValidationError } from '../shared/errors';
+import { NotFoundError, ValidationError } from '../shared/errors';
+import { SPLIT_DOCUMENT_KINDS } from '@erp/shared/document-kinds';
 import { type OwnersService } from '../modules/owners';
 import { type SplitsService } from '../modules/splits';
 import { type LabelsService } from '../modules/labels';
@@ -45,11 +46,49 @@ export interface ShareSpec {
   documentId?: string | null;
 }
 
+/** One entry of `owners.artistIndex()`: every artist id (merged ones too) → the surviving artist and its owner. */
+export type ArtistIndexEntry = Awaited<ReturnType<OwnersService['artistIndex']>> extends Map<string, infer E> ? E : never;
+
 /**
- * Document kinds that can confirm a split row or a participation: an appendix, the contract itself, a buyout
- * document, an assumption (a council decision, never approved) or another document.
+ * The pseudonym index of ONE write transaction (D-172, the split import): `owners.artistIndex()` read once at the start
+ * of the transaction and kept current by the writer itself (every artist it creates, every owner it assigns), so that
+ * `createSplit` / `changeSplit` / `resolveShares` called with it (`opts.index`) do not read the whole index per call.
+ * Only valid inside the transaction that built it; the API and every other caller pass nothing.
  */
-const SPLIT_DOCUMENT_KINDS = ['appendix', 'contract', 'buyout', 'other', 'assumption'];
+export interface ArtistIndexCache {
+  readonly map: Map<string, ArtistIndexEntry>;
+}
+
+/** Builds the cache (one `owners.artistIndex()` read); call inside the write transaction that uses it. */
+export async function artistIndexCache(owners: Pick<OwnersService, 'artistIndex'>): Promise<ArtistIndexCache> {
+  return { map: await owners.artistIndex() };
+}
+
+/** Records an artist created (or re-owned) inside the transaction of the cache. */
+export function cacheArtist(
+  cache: ArtistIndexCache,
+  a: { id: string; pseudonym: string; ownerId: string | null },
+): void {
+  const prev = cache.map.get(a.id);
+  cache.map.set(a.id, {
+    id: a.id,
+    pseudonym: a.pseudonym,
+    ownerId: a.ownerId,
+    status: a.ownerId ? (prev?.status === 'confirmed' ? 'confirmed' : 'unconfirmed') : 'no_owner',
+  });
+}
+
+/** The optional last argument of `createSplit` / `changeSplit` / `resolveShares` (D-172). */
+export interface SplitWriteOpts {
+  index?: ArtistIndexCache;
+}
+
+/**
+ * Document kinds that can confirm a split row or a participation (`SPLIT_DOCUMENT_KINDS` of `@erp/shared`): an
+ * appendix, the contract itself, a buyout document, an assumption (a council decision, never approved), a label
+ * decision (D-172) or another document.
+ */
+const splitDocumentKinds: readonly string[] = SPLIT_DOCUMENT_KINDS;
 
 /** What every facade section works with: the modules and the checks shared between sections. */
 export function createFacadeContext(
@@ -95,16 +134,18 @@ export function createFacadeContext(
   async function checkSplitDocument(documentId: string | null | undefined) {
     if (!documentId) return;
     const d = await owners.getDocument(documentId);
-    if (!SPLIT_DOCUMENT_KINDS.includes(d.kind))
+    if (!splitDocumentKinds.includes(d.kind))
       throw new ValidationError(
-        `A split or participation is confirmed by an appendix, contract, buyout, assumption or other document, not "${d.kind}"`,
+        `A split or participation is confirmed by an appendix, contract, buyout, assumption, label decision or other document, not "${d.kind}"`,
       );
   }
 
   /** Validates every share before new artists are created, so a rejected split leaves nothing behind in module 1. */
-  async function resolveShares(shares: ShareSpec[]) {
+  async function resolveShares(shares: ShareSpec[], opts: SplitWriteOpts = {}) {
     // A merged artist id stands for the surviving artist (D-095): one person can appear only once in a split.
-    const idx = await owners.artistIndex();
+    // With `opts.index` (one import transaction, D-172) the index is not read again, and an artist id is checked in it.
+    const cache = opts.index;
+    const idx = cache ? cache.map : await owners.artistIndex();
     const canon = (id: string) => idx.get(id)?.id ?? id;
     const ids = shares
       .map((s) => s.artistId)
@@ -119,28 +160,26 @@ export function createFacadeContext(
       throw new ValidationError('The same new artist appears twice in one split');
     for (const s of shares) {
       await checkSplitDocument(s.documentId);
-      if (s.artistId) await owners.getArtist(s.artistId);
-      else if (!s.newArtistPseudonym)
+      if (s.artistId) {
+        if (!cache) await owners.getArtist(s.artistId);
+        else if (!idx.has(s.artistId)) throw new NotFoundError('Artist', s.artistId);
+      } else if (!s.newArtistPseudonym)
         throw new ValidationError('Each share needs an artistId or a newArtistPseudonym');
     }
     return async () => {
       const out: { artistId: string; percent: string; documentId: string | null }[] = [];
       for (const s of shares) {
-        out.push(
-          s.artistId
-            ? { artistId: canon(s.artistId), percent: s.percent, documentId: s.documentId ?? null }
-            : {
-                artistId: (
-                  await owners.createArtist({
-                    pseudonym: s.newArtistPseudonym as string,
-                    ownerId: null,
-                    origin: 'split',
-                  })
-                ).id,
-                percent: s.percent,
-                documentId: s.documentId ?? null,
-              },
-        );
+        if (s.artistId) {
+          out.push({ artistId: canon(s.artistId), percent: s.percent, documentId: s.documentId ?? null });
+          continue;
+        }
+        const created = await owners.createArtist({
+          pseudonym: s.newArtistPseudonym as string,
+          ownerId: null,
+          origin: 'split',
+        });
+        if (cache) cacheArtist(cache, created);
+        out.push({ artistId: created.id, percent: s.percent, documentId: s.documentId ?? null });
       }
       return out;
     };

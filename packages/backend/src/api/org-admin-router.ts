@@ -5,6 +5,7 @@ import { operatorTrace } from './audit';
 import { authorize } from './authorize';
 import { supportRouter } from './routes/support';
 import { usersRouter } from './routes/users';
+import { onboardingOrgRouter } from './routes/onboarding-org';
 
 /**
  * The operations of an organization that live in the auth service, not in its facade (D-171): `/users*` and
@@ -18,5 +19,6 @@ export function createOrgAdminRouter(deps: { auth: AuthService; facadeOf: (res: 
   const r = Router();
   r.use(usersRouter({ ...deps, guard }));
   r.use(supportRouter({ ...deps, guard }));
+  r.use(onboardingOrgRouter({ ...deps, guard }));
   return r;
 }

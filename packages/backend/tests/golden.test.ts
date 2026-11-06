@@ -1428,6 +1428,56 @@ describe('G56 (D-169): a payout under a label requires an approved contract with
   });
 });
 
+describe('G61 (D-172): an approved label decision confirms the owner like a contract', () => {
+  /**
+   * rows A 30, B 20 on I(1); participation P 10 (net, top); unit 100. B's owner is confirmed by a contract whose
+   * document is of `kind`; B's row and P's participation cite an approved document of `kind` too.
+   */
+  async function scenario(kind: 'contract' | 'label_decision') {
+    const c = await Case.start();
+    const o = c.f.modules.owners;
+    await c.person('A', 'P');
+    const owner = await o.createOwner({ name: 'Owner B', kind: 'person' });
+    const b = await o.createArtist({ pseudonym: 'B', ownerId: owner.id });
+    c.ids.set('B', b.id);
+    c.names.set(b.id, 'B');
+    c.owners.set('B', owner.id);
+    const basis = await o.createDocument({ kind, title: `Dummy ${kind} B`, fileRef: 'dummy://b.pdf', ownerId: owner.id, requiresApproval: true });
+    await o.createContract({ ownerId: owner.id, documentId: basis.id, artistIds: [b.id] });
+    const rowDoc = (await approvedDoc(c.f, kind)).id;
+    await c.track(I(1));
+    await c.split(I(1), [['A', '30'], ['B', '20', rowDoc]]);
+    await c.part(I(1), 'P', '10', 'net', 'top', { doc: rowDoc });
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    return { c, basis: basis.id, owner: owner.id };
+  }
+
+  it('the same numbers as a contract: P 10, A 27, B 18 in B; ours 45; before approval B waits as owner_unconfirmed', async () => {
+    const decision = await scenario('label_decision');
+    const { c } = decision;
+    // not approved yet: the row and the participation are confirmed by the approved decision, the owner is not
+    expect(await c.amounts(I(1))).toEqual({
+      amounts: { P: '10', A: '27', B: '18' },
+      reasons: { P: null, A: null, B: 'owner_unconfirmed' },
+    });
+    expect(await c.row()).toMatchObject({ A: '100', B: '37', C: '18', ours: '45' });
+    await c.f.modules.owners.approveDocument(decision.basis, 'manager');
+    const after = { amounts: await c.amounts(I(1)), row: await c.row(), balance: await c.balance('B') };
+    expect(after.amounts).toEqual({ amounts: { P: '10', A: '27', B: '18' }, reasons: { P: null, A: null, B: null } });
+    expect(after.row).toMatchObject({ A: '100', B: '55', C: '0', ours: '45' });
+    expect([after.balance.confirmed, after.balance.total.earned.toFixed(), after.balance.total.waiting.toFixed()]).toEqual([true, '18', '0']);
+    await c.verify();
+
+    // the contract case: byte for byte the same allocations, reconciliation row and balance of B
+    const contract = await scenario('contract');
+    await contract.c.f.modules.owners.approveDocument(contract.basis, 'manager');
+    const balance = await contract.c.balance('B');
+    expect(await contract.c.amounts(I(1))).toEqual(after.amounts);
+    expect(await contract.c.row()).toEqual(after.row);
+    expect([balance.confirmed, balance.total.earned.toFixed(), balance.total.waiting.toFixed()]).toEqual([true, '18', '0']);
+  });
+});
+
 describe('signals of 10 §6 without a golden number (M29, D-130)', () => {
   it('tracksWithNote lists a noted track without changing an amount; participantsWithoutOwner carries the amount', async () => {
     let orphan = '';

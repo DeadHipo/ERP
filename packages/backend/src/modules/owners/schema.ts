@@ -1,9 +1,9 @@
-import { boolean, date, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
+import { boolean, date, integer, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Module 1: owners, artists (pseudonyms), tracks, documents and contracts.
 // The document registry lives here and is referenced by id from every other module.
-// The DDL is migrations/postgres/0003_owners.sql, 0007 and 0015 (schema `owners`); change both.
+// The DDL is migrations/postgres/0003_owners.sql, 0007, 0015 and 0018 (schema `owners`); change both.
 
 const s = pgSchema('owners');
 
@@ -106,3 +106,42 @@ export const merges = s.table('merges', {
   reason: text('reason').notNull(),
   at: isoTimestamp('at').notNull(),
 });
+
+/**
+ * The label history of an ISRC (D-172, 0018): intervals `[validFrom, validTo)` from the first of a month (M52), no
+ * overlap within the organization (`track_labels_no_overlap`). Navigation only: the calculation never reads it.
+ */
+export const trackLabels = s.table('track_labels', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  isrc: text('isrc').notNull(),
+  labelId: text('label_id').notNull(),
+  validFrom: date('valid_from', { mode: 'string' }).notNull(),
+  validTo: date('valid_to', { mode: 'string' }),
+  source: text('source', { enum: ['files', 'operator', 'import'] }).notNull(),
+  note: text('note'),
+  createdAt: isoTimestamp('created_at').notNull(),
+});
+
+/** The release registry of a label from the Believe export (D-172, 0018), keyed `(org, label, upc)`. No money. */
+export const releases = s.table(
+  'releases',
+  {
+    orgId: text('org_id').notNull(),
+    labelId: text('label_id').notNull(),
+    upc: text('upc').notNull(),
+    title: text('title').notNull(),
+    version: text('version'),
+    artistString: text('artist_string'),
+    labelString: text('label_string'),
+    releaseDate: date('release_date', { mode: 'string' }),
+    trackCount: integer('track_count'),
+    catalogNumber: text('catalog_number'),
+    territories: integer('territories'),
+    stores: integer('stores'),
+    source: text('source', { enum: ['believe_export'] }).notNull(),
+    fileSha256: text('file_sha256').notNull(),
+    importedAt: isoTimestamp('imported_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.labelId, t.upc] })],
+);

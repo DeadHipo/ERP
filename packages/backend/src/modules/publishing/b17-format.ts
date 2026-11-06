@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { Decimal, parsePico, SOURCE_SCALE } from '../../shared/money';
 import { ValidationError } from '../../shared/errors';
+import { cellText, memoryRows, readRows, type SheetRow } from '../../shared/xlsx-rows';
 
 export interface B17Line {
   lineNo: number;
@@ -37,18 +38,6 @@ export function parsePeriodCell(raw: string): string | undefined {
   return undefined;
 }
 
-function cellText(v: ExcelJS.CellValue): string {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'object') {
-    if ('result' in v) return cellText((v as ExcelJS.CellFormulaValue).result as ExcelJS.CellValue);
-    if ('richText' in v) return (v as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join('');
-    if ('error' in v) return `#ERROR:${(v as ExcelJS.CellErrorValue).error}`;
-    if (v instanceof Date) return v.toISOString().slice(0, 10);
-    if ('text' in v) return String((v as ExcelJS.CellHyperlinkValue).text);
-  }
-  return String(v).trim();
-}
-
 /** xlsx stores doubles: 15 significant digits are reliable, then cut to SOURCE_SCALE decimals. */
 const fromDouble = (v: number) =>
   parsePico(new Decimal(v).toSignificantDigits(15).toDecimalPlaces(SOURCE_SCALE).toFixed());
@@ -75,56 +64,6 @@ function amountPico(v: ExcelJS.CellValue, line: number, column: string): bigint 
 }
 
 const REQUIRED = ['asset title', 'rights-holder name', 'Total Payable'];
-
-interface SheetRow {
-  sheet: number;
-  number: number;
-  values: ExcelJS.CellValue[];
-}
-
-/** Streaming read, sheet by sheet. */
-async function* streamRows(path: string): AsyncGenerator<SheetRow> {
-  const reader = new ExcelJS.stream.xlsx.WorkbookReader(path, {
-    sharedStrings: 'cache',
-    worksheets: 'emit',
-    styles: 'ignore',
-    hyperlinks: 'ignore',
-  });
-  let sheetNo = 0;
-  for await (const sheet of reader) {
-    sheetNo++;
-    for await (const row of sheet)
-      yield { sheet: sheetNo, number: row.number, values: (row.values as ExcelJS.CellValue[]) ?? [] };
-  }
-}
-
-/** In-memory read: used only when the archive puts workbook.xml after the sheets (the streaming reader cannot). */
-async function* memoryRows(path: string): AsyncGenerator<SheetRow> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(path);
-  let sheetNo = 0;
-  for (const ws of wb.worksheets) {
-    sheetNo++;
-    const rows: SheetRow[] = [];
-    ws.eachRow((row, number) =>
-      rows.push({ sheet: sheetNo, number, values: (row.values as ExcelJS.CellValue[]) ?? [] }),
-    );
-    yield* rows;
-  }
-}
-
-async function* readRows(path: string): AsyncGenerator<SheetRow> {
-  let yielded = false;
-  try {
-    for await (const r of streamRows(path)) {
-      yielded = true;
-      yield r;
-    }
-  } catch (e) {
-    if (yielded || !(e instanceof TypeError)) throw e;
-    yield* memoryRows(path);
-  }
-}
 
 /**
  * Reads the detail sheet of a B17 statement (the sheet whose A1 is `Period` and whose header has `asset title`)

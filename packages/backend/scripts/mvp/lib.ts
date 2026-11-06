@@ -17,7 +17,7 @@ import type { connectOrg } from '../../src/connect-sources';
 import type { DocumentKind } from '../../src/modules/owners';
 
 export const ROOT = resolve(import.meta.dirname, '..', '..', '..', '..');
-export const LOAD_DIR = join(ROOT, 'data', 'mvp-load');
+export const LOAD_DIR = process.env.MVP_LOAD_DIR ?? join(ROOT, 'data', 'mvp-load'); // D-172: a test points it at a temp dir
 export const LOG_DIR = join(LOAD_DIR, 'log');
 
 export const readJson = <T>(rel: string): T => JSON.parse(readFileSync(join(LOAD_DIR, rel), 'utf8')) as T;

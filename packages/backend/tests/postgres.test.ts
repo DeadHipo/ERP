@@ -145,4 +145,46 @@ describe.runIf(postgresUp)('migration 0016_organizations', () => {
       await d.drop();
     }
   });
+
+  // 0018 (D-172): idempotent; the kind label_decision and the two catalog tables of owners.
+  const m18 = () => postgresMigrations().find((m) => m.version === 18)?.text as string;
+
+  it('0018 twice: label_decision accepted, the catalog tables with their checks; a document of an old kind stays', async () => {
+    const d = await database(17);
+    try {
+      const q = (text: string) => d.pg.pool.query(text);
+      await q(`INSERT INTO owners.documents (org_id, id, kind, title, requires_approval, migration, created_at)
+               VALUES ('o', 'd1', 'assumption', 't', true, false, now())`);
+      await q(m18());
+      await q(m18());
+      await q(`INSERT INTO owners.documents (org_id, id, kind, title, requires_approval, migration, created_at)
+               VALUES ('o', 'd2', 'label_decision', 't', true, false, now())`);
+      await expect(
+        q(`INSERT INTO owners.documents (org_id, id, kind, title, requires_approval, migration, created_at)
+           VALUES ('o', 'd3', 'decision', 't', true, false, now())`),
+      ).rejects.toThrow(/documents_kind_check/);
+      expect((await q('SELECT count(*)::int AS n FROM owners.documents')).rows[0].n).toBe(2);
+      await q(`INSERT INTO owners.track_labels (org_id, id, isrc, label_id, valid_from, valid_to, source)
+               VALUES ('o', 't1', 'QZTST2600001', 'l', '2025-01-01', '2025-08-01', 'files')`);
+      await expect(
+        q(`INSERT INTO owners.track_labels (org_id, id, isrc, label_id, valid_from, source)
+           VALUES ('o', 't2', 'QZTST2600001', 'l2', '2025-07-01', 'operator')`),
+      ).rejects.toThrow(/track_labels_no_overlap/);
+      await expect(
+        q(`INSERT INTO owners.track_labels (org_id, id, isrc, label_id, valid_from, source)
+           VALUES ('o', 't3', 'QZTST2600001', 'l2', '2025-08-02', 'operator')`),
+      ).rejects.toThrow(/check constraint/);
+      // another organization: the same ISRC and months
+      await q(`INSERT INTO owners.track_labels (org_id, id, isrc, label_id, valid_from, source)
+               VALUES ('o2', 't4', 'QZTST2600001', 'l', '2025-01-01', 'files')`);
+      await q(`INSERT INTO owners.releases (org_id, label_id, upc, title, source, file_sha256) VALUES ('o', 'l', '123', 'R', 'believe_export', 'x')`);
+      await q(`INSERT INTO owners.releases (org_id, label_id, upc, title, source, file_sha256) VALUES ('o', 'l2', '123', 'R', 'believe_export', 'x')`);
+      await expect(
+        q(`INSERT INTO owners.releases (org_id, label_id, upc, title, source, file_sha256) VALUES ('o', 'l', '123', 'R', 'believe_export', 'x')`),
+      ).rejects.toThrow(/releases_pkey/);
+    } finally {
+      await d.drop();
+    }
+  });
 });
+

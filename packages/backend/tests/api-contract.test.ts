@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { join } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/api/app';
 import { createServerApp } from '../src/api/server-app';
@@ -11,7 +11,7 @@ import { buildOpenApiDocument } from '../src/api/openapi';
 import { createAuthService } from '../src/auth/service';
 import { createOrgFacades } from '../src/orgs/facades';
 import { createOrgsService } from '../src/orgs/service';
-import { newFacade, TMP, writeB17, writeBelieve } from './helpers/fixtures';
+import { newFacade, tmpPath, TMP, writeB17, writeBelieve } from './helpers/fixtures';
 import { MANAGER_ANSWER } from './helpers/manager-answers';
 import { testStack } from './helpers/test-sources';
 
@@ -167,7 +167,9 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     if (o.file) req = req.attach('file', o.file.path, o.file.fileName);
     else if (o.body !== undefined) req = req.send(o.body as object);
     const res = await req;
-    expect(res.status, `${operationKey(op)} -> ${JSON.stringify(res.body)}`).toBe(op.status ?? 200);
+    // a preview (`dryRun` not 0, D-172) answers 200 and leaves no audit row
+    const isPreview = !!op.preview && o.query?.dryRun !== '0';
+    expect(res.status, `${operationKey(op)} -> ${JSON.stringify(res.body)}`).toBe(isPreview ? 200 : (op.status ?? 200));
     const parsed = op.response.safeParse(res.body);
     expect(
       parsed.success ? null : parsed.error.issues,
@@ -177,7 +179,10 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     // the writes of the organization leave a row in its audit; a system write in the audit of its target
     // organization (here: the users of this one); the own password of a member in the session's one (D-171); login
     // and logout none
-    if (needsOperator(op) && (op.access === 'org' || o.params?.id === orgId || (op.access === 'user' && mode === 'on')))
+    if (isPreview) {
+      const after = await R.get('/api/v1/audit').query({ limit: '500' }).expect(200);
+      expect((after.body.items as unknown[]).length, `a preview of ${operationKey(op)} leaves no audit row`).toBe(auditRows);
+    } else if (needsOperator(op) && (op.access === 'org' || o.params?.id === orgId || (op.access === 'user' && mode === 'on')))
       await expectOneAuditRow(method, template, o.params, o.labelId, operatorOf(op.access));
     return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
@@ -508,6 +513,18 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     expect((await refused('/api/v1/publishing/b17', {}, b17File)).error.code).toBe('label_required');
     const b17 = await call('post', '/publishing/b17', { query: { label: zero.id }, file: b17File });
     expect(b17.statement.labelId).toBe(zero.id);
+    // the split import (D-172): a refusal, the preview (no audit row), the apply
+    const importFile = tmpPath('contract-splits.csv');
+    writeFileSync(importFile, 'isrc,pseudonym,percent,from,document\nQZTST2600088,Contract Import Synth,25,2026-02-15,\n');
+    const importUpload = { path: importFile, fileName: 'contract-splits.csv' };
+    expect((await refused('/api/v1/splits/import', {}, importUpload)).error.code).toBe('label_required');
+    const importPreview = await call('post', '/splits/import', { query: { label: zero.id }, file: importUpload });
+    expect([importPreview.applied, importPreview.totals.create, importPreview.rows[0].fromFloored]).toEqual([false, 1, '2026-02-01']);
+    const imported = await call('post', '/splits/import', { query: { label: zero.id, dryRun: '0' }, file: importUpload, labelId: zero.id });
+    expect(imported.result.splitIds).toHaveLength(1);
+    // the assumption (D-172): the imported split has no document; one assumption document under the label
+    const assumed = await call('post', '/splits/assume', { body: { labelId: zero.id, isrcs: ['QZTST2600088'], reason: 'contract synthetic' }, labelId: zero.id });
+    expect([assumed.assigned, assumed.skipped]).toEqual([imported.result.splitIds, []]);
     const writers = await call('get', '/publishing/writers');
     await call('post', '/publishing/writers/resolve');
     await call('post', '/publishing/writers/:norm/map', {
@@ -533,6 +550,13 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     await call('get', '/reconciliation', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/signals');
     await call('get', '/signals', { query: { label: zero.id } });
+    // D-172: the onboarding checklists (reads only); under «Все» the label one is 400 label_required
+    const checklist = await call('get', '/onboarding', { query: { label: zero.id } });
+    expect(checklist.label).toEqual({ id: zero.id, name: '0to8' });
+    expect((checklist.steps as { key: string }[]).map((s) => s.key)).toEqual(['label', 'accounts', 'files', 'unmapped', 'catalog', 'splits', 'owners', 'documents', 'publishing']);
+    expect((await R.get('/api/v1/onboarding')).body.error?.code).toBe('label_required');
+    const orgChecklist = await call('get', '/onboarding/organization');
+    expect(orgChecklist.org).toEqual({ id: orgId });
     const overview = await call('get', '/overview', { query: { from: '2026-07', to: '2026-07' } });
     // D-160: the totals are the backend's sums of the rows (the client never sums); a one-row period equals its row
     const [oneRow] = overview.reconciliation as { A_received: string; account: string; source: string }[];
@@ -558,8 +582,27 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     await call('get', '/tracks/summary', { query: { month: '2026-07' } });
     await call('get', '/tracks/summary', { query: { label: zero.id } });
     await call('get', '/tracks/catalog', { query: { label: zero.id } });
+    // the label history of an ISRC (D-172): an operator interval, the whole history in the answer
+    const history = await call('post', '/tracks/:isrc/label', { params: { isrc: I3 }, body: { labelId: zero.id, from: '2026-07-15' } });
+    expect(history).toEqual([expect.objectContaining({ labelId: zero.id, validFrom: '2026-07-01', validTo: null, source: 'operator' })]);
+    expect(await call('get', '/tracks/:isrc/labels', { params: { isrc: I3 } })).toEqual(history);
+    await call('get', '/tracks/catalog', { query: { label: zero.id, catalog: 'current' } });
     await call('get', '/releases', { query: { label: zero.id } });
     await call('get', '/releases/:upc', { params: { upc: UPC }, query: { label: zero.id } });
+    // the release registry (D-172): the Believe release export of the label (synthetic), the registry read
+    const releaseFile = tmpPath('contract-releases.csv');
+    writeFileSync(
+      releaseFile,
+      '\uFEFF"Release Title";Version;Artist;Label;"Release date / Hour / Time zone";"# of track";UPC;"Cat. #";"# of territories";"# of stores"\n' +
+        `"Release R-1";;"Synth Artist";SynthLabel;"2026-01-15<br />00:00:00";2;"UPC : ${UPC}";;240;23\n`,
+    );
+    const releaseUpload = { path: releaseFile, fileName: 'contract-releases.csv' };
+    expect((await refused('/api/v1/releases/import', {}, releaseUpload)).error.code).toBe('label_required');
+    const releasesImported = await call('post', '/releases/import', { query: { label: zero.id }, file: releaseUpload, labelId: zero.id });
+    expect([releasesImported.rows, releasesImported.inserted]).toEqual([1, 1]);
+    const registry = await call('get', '/releases/registry', { query: { label: zero.id } });
+    expect(registry.items.map((r: { upc: string }) => r.upc)).toEqual([UPC]);
+    await call('get', '/releases/registry', { query: { q: 'r-1' } });
     await call('get', '/tracks/summary', { query: { isrcs: `${I1},${I2}` } });
     const catalogItems = await call('get', '/tracks/catalog');
     // D-166: the pseudonyms of the registry on the ISRC (the split row of a1), the artist string of the report apart
@@ -893,8 +936,14 @@ describe('API contract: the ability of every operation (D-171)', () => {
     }
   });
 
-  it('(d) a GET never writes, approves, pays or administers; only reading the users and the support grants is admin', () => {
-    const adminReads = ['GET /support', 'GET /users']; // D-171: the organization's users are the administrator's to see
+  it('a preview mode (D-172) only on POST /splits/import, with dryRun in its query', () => {
+    const previews = API_OPERATIONS.filter((o) => o.preview);
+    expect(previews.map(operationKey)).toEqual(['POST /splits/import']);
+    for (const o of previews) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
+  });
+
+  it('(d) a GET never writes, approves, pays or administers; only reading the users, the support grants and the organization checklist is admin', () => {
+    const adminReads = ['GET /support', 'GET /users', 'GET /onboarding/organization']; // D-171: the organization's users are the administrator's to see
     for (const o of API_OPERATIONS.filter((x) => x.method === 'get' && x.ability))
       expect(adminReads.includes(operationKey(o)) ? ['admin'] : ['read', 'read_money', 'self', 'system'], operationKey(o)).toContain(o.ability?.action);
   });

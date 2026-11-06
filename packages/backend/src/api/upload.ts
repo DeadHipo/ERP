@@ -7,7 +7,7 @@ import type { Request } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../facade';
 import { parse } from './http';
-import { ValidationError } from '../shared/errors';
+import { type AppError, ValidationError } from '../shared/errors';
 import { newId } from '../shared/identifiers';
 
 export interface UploadedFile {
@@ -23,7 +23,12 @@ const MAX_UPLOAD = 2 * 1024 ** 3;
  * Streams a multipart upload (field "file") to a temporary file; the request body is never buffered in memory.
  * An upload cut by the size limit is an error, and the temporary file is removed on every failure.
  */
-export async function receiveUpload(req: Request, tmpDir: string): Promise<UploadedFile> {
+export async function receiveUpload(
+  req: Request,
+  tmpDir: string,
+  /** A smaller size limit and its error (the split import, D-172: 10 MB, 413 `import_too_large`). */
+  limit?: { maxBytes: number; error: () => AppError },
+): Promise<UploadedFile> {
   await mkdir(tmpDir, { recursive: true });
   const path = join(tmpDir, `${newId()}.upload`);
   const cleanup = () => rm(path, { force: true });
@@ -37,7 +42,7 @@ export async function receiveUpload(req: Request, tmpDir: string): Promise<Uploa
         bb = busboy({
           headers: req.headers,
           defParamCharset: 'utf8',
-          limits: { files: 1, fileSize: MAX_UPLOAD },
+          limits: { files: 1, fileSize: limit?.maxBytes ?? MAX_UPLOAD },
         });
       } catch {
         reject(new ValidationError('Expected multipart/form-data with a "file" field'));
@@ -61,7 +66,7 @@ export async function receiveUpload(req: Request, tmpDir: string): Promise<Uploa
         if (!written) return reject(new ValidationError('No file in the upload (field "file")'));
         written
           .then((fileName) => {
-            if (truncated) return reject(new ValidationError('The file is larger than the upload limit'));
+            if (truncated) return reject(limit ? limit.error() : new ValidationError('The file is larger than the upload limit'));
             resolve({ path, fileName: fields['fileName'] || fileName, fields, cleanup });
           })
           .catch(reject);

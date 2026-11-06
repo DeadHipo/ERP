@@ -159,6 +159,12 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
     expect(files.map((f) => f.account)).toEqual([B]);
     expect(await s.isrcsOfFiles(files.map((f) => f.id))).toEqual([I1, I3].sort());
     expect(await s.isrcsOfFiles([])).toEqual([]);
+    // D-172: the distinct ISRCs of every UPC in the files (the completeness of a registry release)
+    const byUpc = await s.isrcsOfUpcs(files.map((f) => f.id));
+    expect(byUpc.map((x) => x.upc)).toEqual(['3617380000001', '3617380000003']);
+    expect(byUpc.flatMap((x) => x.isrcs).sort()).toEqual([I1, I3].sort());
+    expect(await s.isrcsOfUpcs(files.map((f) => f.id), ['3617380000003'])).toEqual([{ upc: '3617380000003', isrcs: [I3] }]);
+    expect([await s.isrcsOfUpcs([]), await s.isrcsOfUpcs(files.map((f) => f.id), [])]).toEqual([[], []]);
     const fileA = (await s.listFiles()).find((f) => f.account === A) as { id: string };
     expect(await s.assignFileLabel(files[0]?.id as string, 'label-x')).toBe(false); // a label is never changed
     expect(await s.assignFileLabel(fileA.id, 'label-a')).toBe(true);

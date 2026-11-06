@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { DOCUMENT_KINDS, SPLIT_DOCUMENT_KINDS } from '@erp/shared/document-kinds';
+import { documentKind } from '@erp/shared/api-schemas';
+import { openOwnersModule } from '../src/modules/owners';
+import { orgScope } from '../src/shared/org-scope';
 import { confirmedOwner, newFacade } from './helpers/fixtures';
+import { testStack } from './helpers/test-sources';
 
 describe('module 1: owners, artists, tracks, documents (README 5)', () => {
   it('a track record is identified by the pair (ISRC, UPC); a track may exist before ISRC is known', async () => {
@@ -127,5 +132,162 @@ describe('module 1: owners, artists, tracks, documents (README 5)', () => {
     expect(await o.resolveOwnerId(stub.id)).toBe(confirmed.owner.id);
     expect(await o.findOwnersByWriter('REAL, PERSON')).toEqual([confirmed.owner.id]);
     expect((await o.listOwners()).map((x) => x.id)).not.toContain(stub.id);
+  });
+});
+
+describe('D-172: the label decision kind', () => {
+  it('one list of kinds: the module, the request schema and the split kinds carry label_decision', () => {
+    expect(DOCUMENT_KINDS).toContain('label_decision');
+    expect(documentKind.options).toEqual([...DOCUMENT_KINDS]);
+    expect(SPLIT_DOCUMENT_KINDS).toContain('label_decision');
+  });
+
+  it('createContract accepts an approved label decision like a contract and refuses an appendix', async () => {
+    const f = await newFacade();
+    const o = f.modules.owners;
+    const owner = await o.createOwner({ name: 'Decision Synthetic', kind: 'person' });
+    const artist = await o.createArtist({ pseudonym: 'Decision Nick', ownerId: owner.id });
+    const appendix = await o.createDocument({ kind: 'appendix', title: 'Dummy', fileRef: 'dummy://a', requiresApproval: false });
+    await expect(o.createContract({ ownerId: owner.id, documentId: appendix.id, artistIds: [] })).rejects.toMatchObject({
+      code: 'validation_error',
+    });
+    const decision = await o.createDocument({
+      kind: 'label_decision',
+      title: 'Dummy decision',
+      fileRef: 'dummy://d',
+      requiresApproval: true,
+      ownerId: owner.id,
+    });
+    expect(decision.kind).toBe('label_decision');
+    await o.createContract({ ownerId: owner.id, documentId: decision.id, artistIds: [artist.id] });
+    expect((await o.getOwner(owner.id)).status).toBe('waiting_documents'); // not approved yet
+    await o.approveDocument(decision.id, 'manager');
+    expect((await o.getOwner(owner.id)).status).toBe('confirmed');
+    expect((await o.getArtist(artist.id)).status).toBe('confirmed');
+  });
+
+  it('a split row and a participation accept a label decision; a payment proof is still refused', async () => {
+    const f = await newFacade();
+    const o = f.modules.owners;
+    const { artists } = await confirmedOwner(f, 'Row Synthetic', ['Row Nick', 'Part Nick']);
+    const decision = await o.createDocument({ kind: 'label_decision', title: 'Dummy', fileRef: 'dummy://d', requiresApproval: false });
+    const proof = await o.createDocument({ kind: 'payment_proof', title: 'Dummy', fileRef: 'dummy://p', requiresApproval: false });
+    const [row, part] = artists.map((a) => a.id) as [string, string];
+    await expect(
+      f.createSplit({ isrc: 'QZTST2600071', validFrom: '2020-01-01', validTo: null, shares: [{ artistId: row, percent: '50' }], documentId: proof.id }),
+    ).rejects.toThrow(/label decision/);
+    await f.createSplit({
+      isrc: 'QZTST2600071',
+      validFrom: '2020-01-01',
+      validTo: null,
+      shares: [{ artistId: row, percent: '50', documentId: decision.id }],
+      documentId: decision.id,
+    });
+    await f.createParticipation({
+      isrc: 'QZTST2600071',
+      artistId: part,
+      percent: '10',
+      base: 'net',
+      fundedFrom: 'top',
+      validFrom: '2020-01-01',
+      documentId: decision.id,
+    });
+  });
+});
+
+describe('D-172: the catalog tables (owners.track_labels, owners.releases)', () => {
+  const ZERO = 'label-zero';
+  const ECHO = 'label-echo';
+
+  it('trackLabels: upsert, replace per ISRC and source, list; scoped to the organization', async () => {
+    const f = await newFacade();
+    const t = f.modules.owners.trackLabels;
+    const op = await t.upsert({ isrc: 'qz-tst-26-00081', labelId: ECHO, validFrom: '2026-01-01', source: 'operator', note: 'by hand' });
+    expect(op).toMatchObject({ isrc: 'QZTST2600081', labelId: ECHO, validFrom: '2026-01-01', validTo: null, source: 'operator' });
+    // the files intervals of the ISRC are replaced whole; the operator interval stays
+    await t.replaceOfIsrc('QZTST2600081', 'files', [{ labelId: ZERO, validFrom: '2024-01-01', validTo: '2025-08-01' }]);
+    await t.replaceOfIsrc('QZTST2600081', 'files', [
+      { labelId: ZERO, validFrom: '2024-02-01', validTo: '2025-08-01' },
+      { labelId: ECHO, validFrom: '2025-08-01', validTo: '2026-01-01' },
+    ]);
+    const history = (await t.list({ isrcs: ['QZTST2600081'] })).map((r) => [r.labelId, r.validFrom, r.validTo, r.source]);
+    expect(history).toEqual([
+      [ZERO, '2024-02-01', '2025-08-01', 'files'],
+      [ECHO, '2025-08-01', '2026-01-01', 'files'],
+      [ECHO, '2026-01-01', null, 'operator'],
+    ]);
+    // rewriting the operator interval by its id: one row
+    const closed = await t.upsert({ id: op.id, isrc: 'QZTST2600081', labelId: ZERO, validFrom: '2026-01-01', validTo: '2026-03-01', source: 'operator' });
+    expect([closed.id, closed.labelId, closed.validTo]).toEqual([op.id, ZERO, '2026-03-01']);
+    expect(await t.list({ labelId: ECHO })).toHaveLength(1);
+    expect(await t.list({ isrcs: [] })).toEqual([]);
+    // another organization sees none of them and may hold the same ISRC and months
+    const { db } = await testStack();
+    const other = openOwnersModule(db, orgScope('org-other-d172')).service.trackLabels;
+    expect(await other.list()).toEqual([]);
+    await other.upsert({ isrc: 'QZTST2600081', labelId: ECHO, validFrom: '2024-01-01', source: 'files' });
+    expect(await t.list({ isrcs: ['QZTST2600081'] })).toHaveLength(3);
+  });
+
+  it('trackLabels: the overlap EXCLUDE and the first-of-month CHECK refuse; a refused replace leaves the old rows', async () => {
+    const f = await newFacade();
+    const t = f.modules.owners.trackLabels;
+    await t.upsert({ isrc: 'QZTST2600082', labelId: ZERO, validFrom: '2025-01-01', validTo: '2025-08-01', source: 'files' });
+    await expect(
+      t.upsert({ isrc: 'QZTST2600082', labelId: ECHO, validFrom: '2025-07-01', source: 'operator' }),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'catalog_overlap' });
+    await expect(
+      t.upsert({ isrc: 'QZTST2600082', labelId: ECHO, validFrom: '2025-08-15', source: 'operator' }),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'validation_error' });
+    await expect(
+      t.upsert({ isrc: 'QZTST2600082', labelId: ECHO, validFrom: '2025-09-01', validTo: '2025-09-01', source: 'operator' }),
+    ).rejects.toMatchObject({ code: 'validation_error' });
+    // two overlapping rows in one replace: nothing changes
+    await expect(
+      t.replaceOfIsrc('QZTST2600082', 'files', [
+        { labelId: ZERO, validFrom: '2025-01-01', validTo: '2025-09-01' },
+        { labelId: ECHO, validFrom: '2025-08-01', validTo: null },
+      ]),
+    ).rejects.toMatchObject({ code: 'catalog_overlap' });
+    expect((await t.list({ isrcs: ['QZTST2600082'] })).map((r) => [r.validFrom, r.validTo])).toEqual([['2025-01-01', '2025-08-01']]);
+    // the same months next to each other are fine ([) intervals)
+    await t.upsert({ isrc: 'QZTST2600082', labelId: ECHO, validFrom: '2025-08-01', source: 'operator' });
+    expect(await t.list({ isrcs: ['QZTST2600082'] })).toHaveLength(2);
+  });
+
+  it('releases: upsert by (label, UPC) keeps the UPCs not listed; the same UPC under two labels; scoped to the organization', async () => {
+    const f = await newFacade();
+    const r = f.modules.owners.releases;
+    const row = (upc: string, title: string) => ({
+      upc,
+      title,
+      version: null,
+      artistString: 'Synthetic Artist',
+      labelString: 'Test Label',
+      releaseDate: '2025-05-01',
+      trackCount: 2,
+      catalogNumber: null,
+      territories: 200,
+      stores: 50,
+      fileSha256: 'a'.repeat(64),
+    });
+    await r.upsert(ZERO, [row('1234567890123', 'First'), row('1234567890124', 'Second')]);
+    await r.upsert(ZERO, [row('1234567890123', 'First (fixed)')]);
+    await r.upsert(ECHO, [row('1234567890123', 'Moved')]);
+    expect((await r.list({ labelId: ZERO })).map((x) => [x.upc, x.title, x.source])).toEqual([
+      ['1234567890123', 'First (fixed)', 'believe_export'],
+      ['1234567890124', 'Second', 'believe_export'],
+    ]);
+    expect((await r.list({ upcs: ['1234567890123'] })).map((x) => [x.labelId, x.title])).toEqual([
+      [ECHO, 'Moved'],
+      [ZERO, 'First (fixed)'],
+    ].sort((a, b) => ((a[0] as string) < (b[0] as string) ? -1 : 1)));
+    await expect(r.upsert(ZERO, [row('12345X', 'Bad')])).rejects.toMatchObject({ code: 'validation_error' });
+    await expect(r.upsert(ZERO, [row('1', 'A'), row('1', 'B')])).rejects.toMatchObject({ code: 'validation_error' });
+    const { db } = await testStack();
+    const other = openOwnersModule(db, orgScope('org-other-d172')).service.releases;
+    expect(await other.list()).toEqual([]);
+    await other.upsert(ZERO, [row('1234567890123', 'Other org')]);
+    expect((await r.list({ labelId: ZERO, upcs: ['1234567890123'] }))[0]?.title).toBe('First (fixed)');
   });
 });

@@ -303,6 +303,47 @@ export function createBelieveColumnar(
     },
 
     /**
+     * The (ISRC, file, reporting month) pairs of the given files (D-172: the observations the label history of an ISRC
+     * is derived from), one `GROUP BY`; optionally of some ISRCs only (an empty list = nothing). Units without an ISRC
+     * are not observations.
+     */
+    async isrcFilePairs(
+      fileIds: string[],
+      isrcs?: string[],
+    ): Promise<{ isrc: string; fileId: string; reportingMonth: string }[]> {
+      if (fileIds.length === 0 || (isrcs && isrcs.length === 0)) return [];
+      // aliases differ from the column names (an alias named like a column would change the WHERE)
+      const rows = await compact<[code: string, fid: string, rm: string]>(
+        `SELECT isrc AS code, toString(file_id) AS fid, toString(reporting_month) AS rm
+         FROM ${DB}.units
+         WHERE file_id IN {ids:Array(UUID)} AND isrc != ''${isrcs ? ' AND isrc IN {isrcs:Array(String)}' : ''}
+         GROUP BY isrc, file_id, reporting_month
+         ORDER BY code, rm, fid`,
+        isrcs ? { ids: fileIds, isrcs } : { ids: fileIds },
+      );
+      return rows.map(([code, fid, rm]) => ({ isrc: code, fileId: fid, reportingMonth: rm.slice(0, 7) }));
+    },
+
+    /**
+     * The distinct ISRCs of every UPC in the given files (D-172: a release of the registry is complete when its
+     * `track_count` ISRCs are in the units), one `GROUP BY upc`; optionally of some UPCs only (an empty list = nothing).
+     * Units without an ISRC or a UPC are not counted.
+     */
+    async isrcsOfUpcs(fileIds: string[], upcs?: string[]): Promise<{ upc: string; isrcs: string[] }[]> {
+      if (fileIds.length === 0 || (upcs && upcs.length === 0)) return [];
+      // aliases differ from the column names (an alias named like a column would change the WHERE)
+      const rows = await compact<[code: string, list: string[]]>(
+        `SELECT upc AS code, arraySort(groupUniqArray(isrc)) AS list
+         FROM ${DB}.units
+         WHERE file_id IN {ids:Array(UUID)} AND isrc != '' AND upc != ''${upcs ? ' AND upc IN {upcs:Array(String)}' : ''}
+         GROUP BY upc
+         ORDER BY code`,
+        upcs ? { ids: fileIds, upcs } : { ids: fileIds },
+      );
+      return rows.map(([code, list]) => ({ upc: code, isrcs: list }));
+    },
+
+    /**
      * "Why this amount" for one ISRC: platform, country, subscription and sales type per month, over the given files.
      * Written against the rows (not the `breakdown` view) so that only the given files are counted.
      */

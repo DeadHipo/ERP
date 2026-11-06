@@ -10,6 +10,8 @@ import { ALL_VIEWER, type Viewer } from './viewer';
 import type { FacadeContext } from './context';
 import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
+import { catalogSignals } from './catalog';
+import { releaseSignals } from './release-registry';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
 export interface KpiSums {
@@ -128,6 +130,8 @@ export async function signalsFrom(
    * Without it the list comes from `calc.ads` (a full calculation).
    */
   adOutside?: AdOutsideBook[],
+  /** Under a label (D-172): its id, so that only its release registry is compared with its units. */
+  labelId?: string,
 ) {
   const { owners, splits, sources, publishing, modules, settlements } = ctx;
   const attrs = await sources.pairAttributes();
@@ -262,8 +266,12 @@ export async function signalsFrom(
         .filter((s) => s.labelId === null)
         .map((s) => ({ statementId: s.id, periods: s.periods, fileName: s.fileName }))
         .sort((a, b) => (a.periods[0] ?? '').localeCompare(b.periods[0] ?? '') || a.statementId.localeCompare(b.statementId));
-  const { tracks, parts, unlabelled, ownerNames } = await modules.db.snapshot(async () => ({
+  const { tracks, parts, unlabelled, ownerNames, history, registry } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
+    // the release registry (D-172): navigation, compared with the UPCs of the units of each book for two signals
+    registry: await owners.releases.list(),
+    // the label history of the ISRCs (D-172): navigation, compared with the books of the units for two signals
+    history: await owners.trackLabels.list(),
     parts: await splits.listParticipations(),
     // active operations without a label (D-168): the history before the split, marked by the operator on P21
     unlabelled: await settlements.listOperations({ labelId: null, active: true }),
@@ -348,6 +356,14 @@ export async function signalsFrom(
           .map((r) => ({ adId: r.adId, isrc: r.isrc, month: r.month, amount: r.amount }))
           .sort((a, b) => b.month.localeCompare(a.month) || a.adId.localeCompare(b.adId)),
     adOutsideBook: adOutside ?? adsOutsideBook(calc.ads),
+    // the catalog label of an ISRC vs the book of its units (D-172, information; under a label its units only)
+    ...catalogSignals(calc.units, history, f),
+    // the release registry vs the UPCs of the units of the same book (D-172, information; under a label its units and rows)
+    ...releaseSignals(
+      calc.units,
+      labelId === undefined ? registry : registry.filter((r) => r.labelId === labelId),
+      (isrc, upc) => attrs.get(`${isrc}|${upc}`)?.releaseTitle ?? '',
+    ),
   };
   const counts: Record<string, number> = {
     unallocated: lists.unallocated.pairs.length,
@@ -409,7 +425,7 @@ export function reportsApi(ctx: FacadeContext) {
                 (r) => r.ourLabelId === L || r.incomeBookLabelId === L,
               ),
             );
-      return signalsFrom(ctx, calc, f, lc.visible, outside);
+      return signalsFrom(ctx, calc, f, lc.visible, outside, L);
     },
 
     /** Everything on the overview page from ONE calculation (17 N1). */

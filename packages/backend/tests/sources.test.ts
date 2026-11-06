@@ -3,7 +3,8 @@ import { createWriteStream, writeFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { parseCsv, parseBelieveFileName, BELIEVE_COLUMNS } from '../src/modules/sources';
+import { parseBelieveFileName, BELIEVE_COLUMNS } from '../src/modules/sources';
+import { parseCsv } from '../src/shared/csv';
 import { believeCsv, newFacade, tmpPath, writeBelieve } from './helpers/fixtures';
 import { testFileTotals } from './helpers/test-sources';
 

@@ -86,6 +86,39 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     }
     return { attrs, byIsrc };
   };
+  /** The release registry rows by UPC (D-172, navigation): of one label or of every label, with the label name. */
+  const registryByUpc = async (labelId: string | undefined, upcs?: string[]) => {
+    const names = new Map((await ctx.labels.listLabels()).map((l) => [l.id, l.name]));
+    const rows = await owners.releases.list({ ...(labelId === undefined ? {} : { labelId }), ...(upcs ? { upcs } : {}) });
+    const out = new Map<string, (Omit<(typeof rows)[number], 'source' | 'fileSha256'> & { labelName: string })[]>();
+    for (const r of rows) {
+      const list = out.get(r.upc) ?? out.set(r.upc, []).get(r.upc);
+      list?.push({
+        labelId: r.labelId,
+        labelName: names.get(r.labelId) ?? '?',
+        upc: r.upc,
+        title: r.title,
+        version: r.version,
+        artistString: r.artistString,
+        labelString: r.labelString,
+        releaseDate: r.releaseDate,
+        trackCount: r.trackCount,
+        catalogNumber: r.catalogNumber,
+        territories: r.territories,
+        stores: r.stores,
+        importedAt: r.importedAt,
+      });
+    }
+    return out;
+  };
+  /** One row per UPC: the label's, or under «Все» the last imported one (then the smaller label id). */
+  const registryRows = async (labelId: string | undefined) =>
+    new Map(
+      [...(await registryByUpc(labelId)).entries()].map(([upc, rows]) => [
+        upc,
+        [...rows].sort((a, b) => b.importedAt.localeCompare(a.importedAt) || a.labelId.localeCompare(b.labelId))[0],
+      ]),
+    );
 
   const api = {
     /**
@@ -205,20 +238,28 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     },
 
     /**
-     * The tracks without money (D-162, the first phase of P5): every ISRC that earns in the loaded files or is
-     * registered, with its UPCs, names and whether it has a split or participations. No calculation; the money of
-     * the visible rows comes from `trackSummary({ isrcs })`. The ISRC set is the one of `trackSummary()`.
+     * The tracks without money (D-162, the first phase of P5): every ISRC that earns in the loaded files, is
+     * registered, or has an open label-history interval (D-172), with its UPCs, names and whether it has a split or
+     * participations. No calculation; the money of the visible rows comes from `trackSummary({ isrcs })`. The ISRC set
+     * is the files' ISRCs (under a label: of its files) plus those of an open interval (under a label: of that label);
+     * under «Все» an ISRC known only from an operator interval appears too. `catalog=current`: the open-interval ones
+     * only. So it may hold ISRCs that `trackSummary()` does not (no units).
      */
-    async trackCatalog(f: { label?: string } = {}) {
-      // under a label (D-168): the ISRCs of the label's files (D-169); a registered track without units is «Все» only
+    async trackCatalog(f: { label?: string; catalog?: 'all' | 'current' } = {}) {
+      // under a label (D-168): the ISRCs of the label's files (D-169) and those whose open history interval is the
+      // label's (D-172, К12); `catalog=current`: only the latter. A registered track without units is «Все» only
       const lc = await labelContext(f.label);
-      const { tracks, splitList, partList, artistsOf } = await db.snapshot(async () => {
+      const { tracks, splitList, partList, artistsOf, history, labelNames } = await db.snapshot(async () => {
         const tracks = await owners.listTracks();
         const splitList = await splits.listSplits();
         const partList = await splits.listParticipations();
         const { links, index } = await readArtistLinks(owners, tracks, true);
-        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+        // the catalog label now (D-172): navigation, the money of P5 stays by the files
+        const history = await owners.trackLabels.list();
+        const labelNames = new Map((await ctx.labels.listLabels()).map((l) => [l.id, l.name]));
+        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }), history, labelNames };
       });
+      const open = new Map(history.filter((h) => h.validTo === null).map((h) => [h.isrc, h]));
       const { attrs, byIsrc } = await nameMaps();
       const upcsOf = new Map<string, Set<string>>();
       for (const k of attrs.keys()) {
@@ -232,7 +273,15 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       );
       const withSplit = new Set(splitList.map((s) => s.isrc));
       const withParts = new Set(partList.map((p) => p.isrc));
-      const isrcs = new Set([...upcsOf.keys(), ...tracksOf.keys()].filter((i) => !lc || lc.visible.isrcs.has(i)));
+      const current = (i: string) => {
+        const h = open.get(i);
+        return h !== undefined && (!lc || h.labelId === lc.book.id);
+      };
+      const isrcs = new Set(
+        [...upcsOf.keys(), ...tracksOf.keys(), ...open.keys()].filter((i) =>
+          f.catalog === 'current' ? current(i) : !lc || lc.visible.isrcs.has(i) || current(i),
+        ),
+      );
       const items = [...isrcs].sort().map((isrc) => {
         const ts = tracksOf.get(isrc) ?? [];
         const upcs = [...new Set([...(upcsOf.get(isrc) ?? []), ...ts.map((t) => t.upc).filter((x): x is string => !!x)])].sort();
@@ -246,6 +295,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           hasSplit: withSplit.has(isrc),
           hasParticipations: withParts.has(isrc),
           registered: ts.length > 0,
+          catalogLabelId: open.get(isrc)?.labelId ?? null,
+          catalogLabelName: open.has(isrc) ? (labelNames.get(open.get(isrc)?.labelId ?? '') ?? '?') : null,
+          catalogFrom: open.get(isrc)?.validFrom ?? null,
         };
       });
       return { items };
@@ -330,7 +382,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     async releases(q?: string, label?: string) {
       // under a label (D-168): the tracks of the label's ISRCs and the net of the label's units
       const lc = await labelContext(label);
-      const [{ tracks, artistsOf }, net, { attrs }] = await Promise.all([
+      const [{ tracks, artistsOf, registry }, net, { attrs }] = await Promise.all([
         db.snapshot(async () => {
           const tracks = (await owners.listTracks()).filter((t) => !lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc)));
           // the pseudonyms of a UPC (D-166): those of its tracks (rows, participations, registry links)
@@ -339,7 +391,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             splits.listParticipations(),
             readArtistLinks(owners, tracks, true),
           ]);
-          return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+          // the release registry (D-172, no money): of the label under a label, the last imported row of a UPC under «Все»
+          const registry = await registryRows(lc?.book.id);
+          return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }), registry };
         }),
         sources.netByUpc(lc ? { labelIds: [lc.book.id] } : {}),
         nameMaps(),
@@ -371,6 +425,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             artists: unionArtists(artistsOf, ts.map((t) => t.isrc).filter((x): x is string => !!x)),
             trackCount: ts.length,
             net: net.get(upc) ?? '0',
+            registered: registry.has(upc),
+            registry: registry.get(upc) ?? null,
           };
         })
         .filter(
@@ -391,7 +447,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps({ upcs: [upc] })]);
       const mine = tracks.filter((t) => t.upc === upc && (!lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc))));
       const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');
-      if (mine.length === 0 && units.length === 0) throw new NotFoundError('Release', upc);
+      // the release registry rows of the UPC (D-172, no money): under a label its row only
+      const registry = (await registryByUpc(lc?.book.id, [upc])).get(upc) ?? [];
+      if (mine.length === 0 && units.length === 0 && registry.length === 0) throw new NotFoundError('Release', upc);
       const pair = [...attrs.entries()].filter(([k]) => k.endsWith(`|${upc}`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];
       const titleOf = new Map(mine.map((t) => [t.isrc, t.title]));
       const unitsOf = groupBy(units, (u) => u.isrc);
@@ -419,6 +477,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         months: [...groupBy(units, (u) => u.reportingMonth).entries()]
           .sort(([a], [b]) => (a < b ? -1 : 1))
           .map(([reportingMonth, us]) => ({ reportingMonth, ...sumUnits(calc, us) })),
+        registry,
       };
     },
 

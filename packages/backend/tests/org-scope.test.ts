@@ -55,7 +55,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(26);
+    expect(tables.length).toBe(28); // + owners.track_labels, owners.releases (0018, D-172)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -423,9 +423,25 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /ads/:id': (x) => ({ params: { id: x.ad } }),
     'PATCH /ads/:id': (x) => ({ params: { id: x.ad }, body: { recoveryPercent: '0' } }),
     'POST /ads/:id/deactivate': (x) => ({ params: { id: x.ad }, body: { reason: 'r' } }),
+    // stage 4 (D-172)
+    'POST /splits/assume': (x) => ({ body: { labelId: A.label, splitIds: [x.split], reason: 'scope check' } }),
+    'GET /tracks/:isrc/labels': (x) => ({ params: { isrc: x.isrc } }),
+    'POST /tracks/:isrc/label': (x) => ({ params: { isrc: x.isrc }, body: { labelId: x.label, from: '2026-07-01' } }),
+    'GET /releases/registry': (x) => ({ query: { label: x.label } }),
+    'GET /onboarding': (x) => ({ query: { label: x.label } }),
   };
   /** Writes that name no entity of another organization: they create in A and are not part of the walk. */
-  const ID_LESS = ['POST /owners', 'POST /sources/believe', 'POST /publishing/b17', 'POST /publishing/writers/resolve'];
+  // D-172: the uploads of stage 4 create in A from a file (their `?label=` is checked by the label guard before the
+  // body, as for `POST /sources/believe`); the organization checklist names no entity at all
+  const ID_LESS = [
+    'POST /owners',
+    'POST /sources/believe',
+    'POST /publishing/b17',
+    'POST /publishing/writers/resolve',
+    'POST /splits/import',
+    'POST /releases/import',
+    'GET /onboarding/organization',
+  ];
 
   /**
    * Where the lookup itself answers an unknown key with `validation_error` today: an unknown file id («Not a loaded

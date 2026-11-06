@@ -48,6 +48,10 @@ export function reportsRouter(facade: Facade) {
       statementsWithoutLabel: cut(s.statementsWithoutLabel),
       adsWithoutLabel: cut(s.adsWithoutLabel),
       adOutsideBook: cut(s.adOutsideBook),
+      catalogOutsideAccount: cut(s.catalogOutsideAccount),
+      tracksWithoutLabel: cut(s.tracksWithoutLabel),
+      releasesIncomplete: cut(s.releasesIncomplete),
+      releasesUnknown: cut(s.releasesUnknown),
     });
   });
 

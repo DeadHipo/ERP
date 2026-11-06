@@ -78,9 +78,26 @@ describe('module boundaries (README 4)', () => {
     }
   });
 
+  it('the calculation never reads the label history of an ISRC or the release registry (D-172: navigation, not money)', () => {
+    const calc = [
+      ...filesOf(join(SRC, 'facade', 'layers')),
+      ...['calculation.ts', 'balance.ts', 'scope.ts', 'owner-scope.ts', 'label-scope.ts'].map((f) => join(SRC, 'facade', f)),
+    ];
+    for (const file of calc)
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/trackLabels|track_labels|releaseRegistry|release-registry|isrcsOfUpcs|owners\.releases|\breleases\./);
+  });
+
+  it('the onboarding checklist never calculates (D-172): no import of the calculation, no calculate(), no units read', () => {
+    const body = readFileSync(join(SRC, 'facade', 'onboarding.ts'), 'utf8');
+    expect(body).not.toMatch(/from '\.\/(calculation|scope|balance|reports|aggregates)'/);
+    expect(body).not.toMatch(/\bcalculate\(|sources\.(snapshot|units)\(|withScope|scoped\(/);
+  });
+
   it('only the facade composes modules; the API never opens a module database', () => {
     for (const file of filesOf(join(SRC, 'api'))) {
       expect(readFileSync(file, 'utf8')).not.toMatch(/open\w+Module|better-sqlite3/);
+      // a route reaches a module only through the facade: no import of src/modules (D-172 review)
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/from '[^']*\/modules\//);
     }
   });
 

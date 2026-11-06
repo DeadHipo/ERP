@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { DOCUMENT_KINDS } from './document-kinds';
 
 // Request schemas of the JSON API. Shared by the Express routes (validation) and the React client (typed calls).
-// This file must only depend on zod so the browser bundle can import it.
+// This file must only depend on zod (and the plain lists of this package) so the browser bundle can import it.
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'expected YYYY-MM');
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
@@ -62,17 +63,8 @@ export const updateTrackBody = z
   )
   .refine((b) => (b.isrc === undefined) === (b.upc === undefined), 'isrc and upc are sent together');
 
-export const documentKind = z.enum([
-  'contract',
-  'appendix',
-  'buyout',
-  'advance_basis',
-  'adjustment_basis',
-  'payment_proof',
-  'return_proof',
-  'other',
-  'assumption',
-]);
+/** The kinds of a document (`document-kinds.ts`, D-172: + `label_decision`). */
+export const documentKind = z.enum(DOCUMENT_KINDS);
 
 export const createDocumentBody = z.object({
   kind: documentKind,
@@ -276,6 +268,15 @@ export const uploadLabelQuery = z.object({
     .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown, 400 label_not_own'),
 });
 
+/**
+ * `POST /splits/import` (D-172): the own label of the import and the mode; `dryRun=1` (default) is the preview, `0` the
+ * apply. The label is optional here so that a missing one is the facade's 400 `label_required`.
+ */
+export const splitImportQuery = z.object({
+  ...uploadLabelQuery.shape,
+  dryRun: z.enum(['0', '1']).default('1').describe('1 = preview (nothing is written, no audit row), 0 = apply (all or nothing)'),
+});
+
 export const mapWriterBody = z.object({ ownerId: z.string().nullish(), createNew: z.boolean().optional() });
 
 // ---- labels (D-125, D-129) ----
@@ -355,7 +356,12 @@ export const trackSummaryQuery = z.object({
     .describe('Comma-separated ISRCs (at most 500): only these tracks, from a calculation of their units alone (D-162)'),
   ...labelQuery.shape,
 });
-export const trackCatalogQuery = labelQuery;
+export const trackCatalogQuery = labelQuery.extend({
+  catalog: z
+    .enum(['all', 'current'])
+    .optional()
+    .describe('D-172: `current` = only the ISRCs whose open label-history interval is the label (or any, without a label); default the files of the label too'),
+});
 
 export const releasesQuery = z.object({ q: z.string().optional(), ...labelQuery.shape });
 export const releaseQuery = labelQuery;
@@ -474,3 +480,40 @@ export const grantSupportBody = z.object({
   expiresAt: z.iso.datetime({ offset: true }).optional(),
   write: z.boolean().default(false),
 });
+
+// ---- the label history of an ISRC (D-172) ----
+
+/** `POST /tracks/:isrc/label` (D-172): an operator interval `[from, to)` floored to the month start (M52); the same `from` as an operator interval replaces it. */
+export const setTrackLabelBody = z.object({
+  labelId: z.string().min(1),
+  from: date,
+  to: date.nullish(),
+  note: z.string().max(500).nullish(),
+});
+
+// ---- the assumption (D-172) ----
+
+/**
+ * `POST /splits/assume` (D-172): one `assumption` document under the own label `labelId` for the splits of a group
+ * without a document; the group is exactly one of `isrcs` (every version of each ISRC) or `splitIds`. The reason is the
+ * document title («Допущение: …», at most 200 characters), never copied to the audit.
+ */
+export const assumeSplitsBody = z
+  .object({
+    /** Required: missing = `400 label_required` (the facade's answer, as for an operation). */
+    labelId: z.string().optional(),
+    isrcs: z.array(z.string().min(1)).max(5000).optional(),
+    splitIds: z.array(z.string().min(1)).max(5000).optional(),
+    reason: z.string().trim().min(3).max(2000),
+  })
+  .refine((b) => (b.isrcs === undefined) !== (b.splitIds === undefined), 'Exactly one of isrcs or splitIds');
+
+// ---- the release registry (D-172) ----
+
+/** `GET /releases/registry`: under a label its rows (`label=`), under «Все» every label's; `q` filters UPC, title, version, artist, catalog number. */
+export const releaseRegistryQuery = z.object({ q: z.string().optional(), ...labelQuery.shape });
+
+// ---- the onboarding checklist (D-172) ----
+
+/** `GET /onboarding`: the label is required (under «Все» = `400 label_required`). */
+export const onboardingQuery = labelQuery;

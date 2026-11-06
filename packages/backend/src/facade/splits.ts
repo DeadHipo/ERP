@@ -1,9 +1,10 @@
 import { RuleViolationError, ValidationError } from '../shared/errors';
 import { assertDate, monthOf, monthStart } from '../shared/dates';
+import { assertIsrc } from '../shared/identifiers';
 import type { ParticipationInput } from '../modules/splits';
 import type { FacadeContext } from './context';
-import type { ShareSpec } from './context';
-import { ALL_VIEWER, assertViewerLabel, type Viewer } from './viewer';
+import type { ShareSpec, SplitWriteOpts } from './context';
+import { ALL_VIEWER, assertViewerHolds, assertViewerLabel, type Viewer } from './viewer';
 
 /** Entry rule (M52): a rule date is the first day of its month, the whole month goes to the new holder. */
 const floorToMonth = (d: string) => monthStart(monthOf(assertDate(d)));
@@ -26,7 +27,7 @@ function floorEnd(validFrom: string, validTo: string | null | undefined): string
 }
 
 export function splitsApi(ctx: FacadeContext) {
-  const { db, owners, splits, labels, checkSplitDocument, resolveShares, scopeOf } = ctx;
+  const { db, owners, splits, labels, checkSplitDocument, resolveShares, scopeOf, assertOwnLabel } = ctx;
 
   /**
    * The rule of a viewer of some labels for a row write (D-171): every ISRC in the files of its labels or in no book
@@ -49,13 +50,15 @@ export function splitsApi(ctx: FacadeContext) {
       shares: ShareSpec[];
       documentId?: string | null;
       note?: string | null;
-    }, viewer: Viewer = ALL_VIEWER) {
+      /** Who wrote it (`manual` by default; the split import passes `import`, D-172). Not an API field. */
+      origin?: string;
+    }, viewer: Viewer = ALL_VIEWER, opts: SplitWriteOpts = {}) {
       await checkRowWrite(viewer, [input.isrc], [input.documentId, ...input.shares.map((x) => x.documentId)]);
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
         const validTo = floorEnd(validFrom, input.validTo);
         await checkSplitDocument(input.documentId);
-        const build = await resolveShares(input.shares);
+        const build = await resolveShares(input.shares, opts);
         await splits.checkCreate({
           isrc: input.isrc,
           validFrom,
@@ -71,14 +74,16 @@ export function splitsApi(ctx: FacadeContext) {
       shares: ShareSpec[];
       documentId: string;
       note?: string | null;
-    }, viewer: Viewer = ALL_VIEWER) {
+      /** Who wrote it (`manual` by default; the split import passes `import`, D-172). Not an API field. */
+      origin?: string;
+    }, viewer: Viewer = ALL_VIEWER, opts: SplitWriteOpts = {}) {
       await checkRowWrite(viewer, [input.isrc], [input.documentId, ...input.shares.map((x) => x.documentId)]);
       return db.transaction(async () => {
         if (!input.documentId)
           throw new RuleViolationError('A split change requires a confirming document', 'document_required');
         const from = floorToMonth(input.from);
         await checkSplitDocument(input.documentId);
-        const build = await resolveShares(input.shares);
+        const build = await resolveShares(input.shares, opts);
         splits.checkChange({
           isrc: input.isrc,
           from,
@@ -91,6 +96,55 @@ export function splitsApi(ctx: FacadeContext) {
       if (viewer.kind !== 'all') await checkRowWrite(viewer, [(await splits.getSplit(splitId)).isrc], [documentId]);
       await checkSplitDocument(documentId);
       return splits.confirmSplit(splitId, documentId);
+    },
+    /**
+     * «Accept as an assumption» (D-172): ONE document of kind `assumption` under the own label (no file, never approved:
+     * `assumption_not_approvable`) set as the split document of every split of the group (every version of the listed
+     * ISRCs, or the listed split ids) that has no split document, a non-empty period and at least one row without its
+     * own document (`confirmSplit`: those rows inherit it, `layers/split.ts`), so their money waits in C `assumption`
+     * instead of `split_unconfirmed`. The others are reported in `skipped` (`has_document`: the split, or every row,
+     * already has a document, approved or not; `empty_period`). Nothing to assume = `422 nothing_to_assume` and no
+     * document is created, so a repeated call writes nothing. Removing an assumption is `changeSplit` with a real document.
+     */
+    async assumeSplits(
+      input: { labelId?: string | undefined; isrcs?: string[] | undefined; splitIds?: string[] | undefined; reason: string },
+      viewer: Viewer = ALL_VIEWER,
+    ) {
+      const labelId = input.labelId;
+      if (!labelId)
+        throw new ValidationError('An assumption is made under a label (labelId)', undefined, 'label_required');
+      assertViewerHolds(viewer, labelId);
+      const isrcs = input.isrcs ? [...new Set(input.isrcs.map(assertIsrc))] : undefined;
+      const splitIds = [...new Set(input.splitIds ?? [])];
+      if (viewer.kind !== 'all') {
+        // the ISRC rule of a viewer of some labels (D-171), read before the transaction
+        const groupIsrcs = isrcs ?? (await Promise.all(splitIds.map(async (id) => (await splits.getSplit(id)).isrc)));
+        await checkRowWrite(viewer, groupIsrcs, []);
+      }
+      return db.transaction(async () => {
+        await assertOwnLabel(labelId);
+        const group = isrcs
+          ? await splits.listSplits({ isrcs })
+          : await Promise.all(splitIds.map((id) => splits.getSplit(id)));
+        const assigned: string[] = [];
+        const skipped: { splitId: string; code: 'has_document' | 'empty_period' }[] = [];
+        for (const s of group) {
+          if (s.documentId) skipped.push({ splitId: s.id, code: 'has_document' });
+          else if (s.validTo !== null && s.validTo <= s.validFrom) skipped.push({ splitId: s.id, code: 'empty_period' });
+          else if (s.shares.every((x) => x.documentId)) skipped.push({ splitId: s.id, code: 'has_document' });
+          else assigned.push(s.id);
+        }
+        if (assigned.length === 0)
+          throw new RuleViolationError('No split of the group is without a document', 'nothing_to_assume', { skipped });
+        const doc = await owners.createDocument({
+          kind: 'assumption',
+          title: `Допущение: ${input.reason.trim()}`.slice(0, 200),
+          labelId,
+          requiresApproval: true,
+        });
+        for (const id of assigned) await splits.confirmSplit(id, doc.id);
+        return { documentId: doc.id, assigned, skipped };
+      });
     },
     async buyout(input: { isrcs: string[]; sellerArtistId: string; effectiveFrom: string; documentId: string }, viewer: Viewer = ALL_VIEWER) {
       await checkRowWrite(viewer, input.isrcs, [input.documentId]);

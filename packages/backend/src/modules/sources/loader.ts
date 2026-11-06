@@ -12,7 +12,7 @@ import {
   type ColumnIndex,
 } from './believe-format';
 import type { BelieveColumnar } from './columnar';
-import { parseCsv } from './csv';
+import { parseCsv } from '../../shared/csv';
 import type { SourceFileRecord, SourceFilesRegistry } from './registry';
 
 const BATCH_ROWS = 50_000;

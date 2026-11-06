@@ -1,3 +1,4 @@
+import { CONTRACT_DOCUMENT_KINDS, DOCUMENT_KINDS, type DocumentKind } from '@erp/shared/document-kinds';
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
 import { assertIsrc, newId, normalizeIsrc, normalizeName, normalizeUpc } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
@@ -10,24 +11,40 @@ import type {
   ContractRow,
   DocumentRow,
   OwnerRow,
+  ReleaseRow,
+  TrackLabelRow,
   TrackRow,
 } from './repository';
 import { createOwnersRepository } from './repository';
 
-export const DOCUMENT_KINDS = [
-  'contract',
-  'appendix',
-  'buyout',
-  'advance_basis',
-  'adjustment_basis',
-  'payment_proof',
-  'return_proof',
-  'other',
-  'assumption',
-] as const;
-export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+// The kinds live in `packages/shared/src/document-kinds.ts` (one list for the backend and the frontend, D-172).
+export { CONTRACT_DOCUMENT_KINDS, DOCUMENT_KINDS, SPLIT_DOCUMENT_KINDS, type DocumentKind } from '@erp/shared/document-kinds';
 
 export type DocumentStatus = 'not_attached' | 'not_approved' | 'approved';
+
+/** One interval of the label history of an ISRC (D-172): `[validFrom, validTo)`, `validTo` null = open. */
+export type TrackLabelView = TrackLabelRow;
+export type TrackLabelSource = TrackLabelRow['source'];
+/** One row of the release registry of a label (D-172). */
+export type ReleaseView = ReleaseRow;
+export type ReleaseInput = Omit<ReleaseRow, 'labelId' | 'importedAt' | 'source'>;
+
+/** The PostgreSQL error under a driver or Drizzle wrapper: its SQLSTATE and constraint. */
+function pgError(e: unknown): { code?: string; constraint?: string } {
+  const err = e as { code?: string; constraint?: string; cause?: unknown };
+  if (err?.code) return err;
+  return err?.cause ? pgError(err.cause) : {};
+}
+
+/** Turns the refusals of the catalog constraints (0018) into the module's errors; anything else is rethrown. */
+function catalogRefusal(e: unknown): never {
+  const err = pgError(e);
+  if (err.code === '23P01' && err.constraint === 'track_labels_no_overlap')
+    throw new ConflictError('The interval overlaps another label interval of this ISRC', 'catalog_overlap');
+  if (err.code === '23514')
+    throw new ValidationError(`The row breaks the rule ${err.constraint ?? ''}: dates from the first of a month, valid_to after valid_from, a UPC of digits`);
+  throw e;
+}
 
 export interface DocumentView {
   id: string;
@@ -818,8 +835,9 @@ export function createOwnersService(db: Db, org: OrgScope) {
       return repo.transaction(async () => {
         await requireLiveOwner(input.ownerId);
         const doc = await this.getDocument(input.documentId);
-        if (doc.kind !== 'contract')
-          throw new ValidationError('A contract must reference a document of kind "contract"');
+        // A label decision confirms the owner exactly like a contract (D-172).
+        if (!(CONTRACT_DOCUMENT_KINDS as readonly string[]).includes(doc.kind))
+          throw new ValidationError('A contract must reference a document of kind "contract" or "label_decision"');
         // The owner is confirmed only by its own document.
         if (doc.ownerId && doc.ownerId !== input.ownerId)
           throw new RuleViolationError(
@@ -946,6 +964,72 @@ export function createOwnersService(db: Db, org: OrgScope) {
     },
 
     listMerges: () => repo.listMerges(),
+
+    // ---- catalog (D-172): the label history of an ISRC and the release registry. Navigation, not money: the
+    // calculation never reads them. The label id is opaque here (the facade checks it is an own label) and the
+    // month-start rule (M52) is the facade's: the module only refuses what the CHECKs of 0018 refuse.
+    trackLabels: {
+      list: (f: { isrcs?: string[]; labelId?: string } = {}): Promise<TrackLabelView[]> =>
+        repo.trackLabels.list({ ...f, isrcs: f.isrcs?.map(assertIsrc) }),
+      /** Inserts an interval (new id) or rewrites the interval `id`; an overlap is `409 catalog_overlap`. */
+      async upsert(input: {
+        id?: string;
+        isrc: string;
+        labelId: string;
+        validFrom: string;
+        validTo?: string | null;
+        source: TrackLabelSource;
+        note?: string | null;
+      }): Promise<TrackLabelView> {
+        const isrc = assertIsrc(input.isrc);
+        const row = {
+          id: input.id ?? newId(),
+          isrc,
+          labelId: input.labelId,
+          validFrom: assertDate(input.validFrom),
+          validTo: input.validTo ? assertDate(input.validTo) : null,
+          source: input.source,
+          note: input.note ?? null,
+          createdAt: nowIso(),
+        };
+        await repo.transaction(() => repo.trackLabels.upsert(row)).catch(catalogRefusal);
+        const saved = (await repo.trackLabels.list({ isrcs: [isrc] })).find((r) => r.id === row.id);
+        if (!saved) throw new NotFoundError('Label interval', row.id);
+        return saved;
+      },
+      /** Replaces every interval of `source` of one ISRC (the others stay); all or nothing. */
+      async replaceOfIsrc(
+        isrcRaw: string,
+        source: TrackLabelSource,
+        rows: { labelId: string; validFrom: string; validTo?: string | null; note?: string | null }[],
+      ): Promise<TrackLabelView[]> {
+        const isrc = assertIsrc(isrcRaw);
+        const createdAt = nowIso();
+        const values = rows.map((r) => ({
+          id: newId(),
+          isrc,
+          labelId: r.labelId,
+          validFrom: assertDate(r.validFrom),
+          validTo: r.validTo ? assertDate(r.validTo) : null,
+          source,
+          note: r.note ?? null,
+          createdAt,
+        }));
+        await repo.transaction(() => repo.trackLabels.replaceOfIsrc(isrc, source, values)).catch(catalogRefusal);
+        return repo.trackLabels.list({ isrcs: [isrc] });
+      },
+    },
+    releases: {
+      list: (f: { labelId?: string; upcs?: string[] } = {}): Promise<ReleaseView[]> => repo.releases.list(f),
+      /** Inserts or rewrites the rows of one label by UPC (the UPCs not listed stay); all or nothing. */
+      async upsert(labelId: string, rows: ReleaseInput[]): Promise<void> {
+        if (new Set(rows.map((r) => r.upc)).size !== rows.length)
+          throw new ValidationError('A UPC is listed twice');
+        const importedAt = nowIso();
+        const values = rows.map((r) => ({ ...r, labelId, source: 'believe_export' as const, importedAt }));
+        await repo.transaction(() => repo.releases.upsert(values)).catch(catalogRefusal);
+      },
+    },
   };
 }
 

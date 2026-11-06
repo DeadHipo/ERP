@@ -249,6 +249,21 @@ export function createSourcesService(deps: SourcesDeps) {
     /** Every ISRC of the given files (D-169: the tracks of a label = the ISRCs of its files). */
     isrcsOfFiles: (fileIds: string[]): Promise<string[]> => columnar.isrcsOfFiles(fileIds),
 
+    /** Every distinct label string of the given files, raw (D-172: the onboarding checklist's strings without an alias). */
+    labelStringsOfFiles: (fileIds: string[]): Promise<string[]> => columnar.labelStrings(fileIds),
+
+    /**
+     * The (ISRC, file, reporting month) pairs of the given files, optionally of some ISRCs (D-172: the observations of
+     * the label history of an ISRC). The caller passes `loaded` files of the registry.
+     */
+    isrcFilePairs: (fileIds: string[], isrcs?: string[]) => columnar.isrcFilePairs(fileIds, isrcs),
+
+    /**
+     * The distinct ISRCs of every UPC in the given files, optionally of some UPCs (D-172: the completeness of a release
+     * of the registry). The caller passes `loaded` files of the registry.
+     */
+    isrcsOfUpcs: (fileIds: string[], upcs?: string[]) => columnar.isrcsOfUpcs(fileIds, upcs),
+
     /**
      * Marks the label of a file that has none (D-169, the script `assign-label-books` only): the label of a file is never
      * changed. Returns whether the row changed.

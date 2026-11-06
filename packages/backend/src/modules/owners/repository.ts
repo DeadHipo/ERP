@@ -1,6 +1,6 @@
-import { eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
-import { orgFree, orgQuery, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
+import { orgFree, orgQuery, orgRow, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import {
   artistTracks,
   artists,
@@ -10,6 +10,8 @@ import {
   merges,
   ownerAliases,
   owners,
+  releases,
+  trackLabels,
   tracks,
 } from './schema';
 
@@ -22,6 +24,8 @@ export type ContractRow = OrgFree<typeof contracts.$inferSelect>;
 export type ContractArtistRow = OrgFree<typeof contractArtists.$inferSelect>;
 export type ArtistTrackRow = OrgFree<typeof artistTracks.$inferSelect>;
 export type MergeRow = OrgFree<typeof merges.$inferSelect>;
+export type TrackLabelRow = OrgFree<typeof trackLabels.$inferSelect>;
+export type ReleaseRow = OrgFree<typeof releases.$inferSelect>;
 
 /** `col = ANY($1)` with the whole list as one array parameter (no parameter-count limit for long lists). */
 const anyOf = (col: AnyColumn, ids: string[]): SQL => sql`${col} = any(${sql.param(ids)}::text[])`;
@@ -47,6 +51,8 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
     contracts: orgFree(contracts),
     contractArtists: orgFree(contractArtists),
     merges: orgFree(merges),
+    trackLabels: orgFree(trackLabels),
+    releases: orgFree(releases),
   };
   return {
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
@@ -336,6 +342,89 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
             .where(
               orgWhere(org, tracks, isNotNull(tracks.isrc), isNotNull(tracks.upc), isrcs ? inArray(tracks.isrc, isrcs) : undefined),
             ),
+    // ---- catalog (D-172, 0018): the label history of an ISRC and the release registry; navigation, no money ----
+    trackLabels: {
+      /** The intervals of the ISRCs (all when omitted), optionally of one label; by ISRC, then `validFrom`. */
+      list: (f: { isrcs?: string[]; labelId?: string } = {}): Promise<TrackLabelRow[]> =>
+        f.isrcs && f.isrcs.length === 0
+          ? Promise.resolve([])
+          : orm()
+              .select(C.trackLabels)
+              .from(trackLabels)
+              .where(
+                orgWhere(
+                  org,
+                  trackLabels,
+                  f.isrcs ? anyOf(trackLabels.isrc, f.isrcs) : undefined,
+                  f.labelId === undefined ? undefined : eq(trackLabels.labelId, f.labelId),
+                ),
+              )
+              .orderBy(byBytes(trackLabels.isrc), asc(trackLabels.validFrom)),
+      /** Inserts the interval, or rewrites the one with this id (of this organization). */
+      upsert: async (row: OrgFree<typeof trackLabels.$inferInsert>) => {
+        const patch = { isrc: row.isrc, labelId: row.labelId, validFrom: row.validFrom, validTo: row.validTo, source: row.source, note: row.note };
+        const updated = await orm()
+          .update(trackLabels)
+          .set(patch)
+          .where(orgWhere(org, trackLabels, eq(trackLabels.id, row.id)))
+          .returning({ id: trackLabels.id });
+        if (updated.length === 0) await orm().insert(trackLabels).values(orgRow(org, row));
+      },
+      /** Replaces every interval of one source of an ISRC by `rows` (the other sources are not touched). */
+      replaceOfIsrc: async (
+        isrc: string,
+        source: TrackLabelRow['source'],
+        rows: OrgFree<typeof trackLabels.$inferInsert>[],
+      ) => {
+        await orm()
+          .delete(trackLabels)
+          .where(orgWhere(org, trackLabels, and(eq(trackLabels.isrc, isrc), eq(trackLabels.source, source))));
+        if (rows.length > 0) await orm().insert(trackLabels).values(orgRows(org, rows));
+      },
+    },
+    releases: {
+      /** The registry rows of a label (all labels when omitted), optionally of some UPCs; by label, then UPC. */
+      list: (f: { labelId?: string; upcs?: string[] } = {}): Promise<ReleaseRow[]> =>
+        f.upcs && f.upcs.length === 0
+          ? Promise.resolve([])
+          : orm()
+              .select(C.releases)
+              .from(releases)
+              .where(
+                orgWhere(
+                  org,
+                  releases,
+                  f.labelId === undefined ? undefined : eq(releases.labelId, f.labelId),
+                  f.upcs ? anyOf(releases.upc, f.upcs) : undefined,
+                ),
+              )
+              .orderBy(releases.labelId, byBytes(releases.upc)),
+      /** Inserts the rows or rewrites them by the key `(org, label, upc)` (the key of this organization). */
+      upsert: async (rows: OrgFree<typeof releases.$inferInsert>[]) => {
+        if (rows.length === 0) return;
+        const excluded = (col: string) => sql.raw(`excluded.${col}`);
+        await orm()
+          .insert(releases)
+          .values(orgRows(org, rows))
+          .onConflictDoUpdate({
+            target: [releases.orgId, releases.labelId, releases.upc],
+            set: {
+              title: excluded('title'),
+              version: excluded('version'),
+              artistString: excluded('artist_string'),
+              labelString: excluded('label_string'),
+              releaseDate: excluded('release_date'),
+              trackCount: excluded('track_count'),
+              catalogNumber: excluded('catalog_number'),
+              territories: excluded('territories'),
+              stores: excluded('stores'),
+              source: excluded('source'),
+              fileSha256: excluded('file_sha256'),
+              importedAt: excluded('imported_at'),
+            },
+          });
+      },
+    },
   };
 }
 

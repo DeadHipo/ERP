@@ -18,6 +18,11 @@ interface OperationBase {
   body?: z.ZodType;
   /** Multipart upload with a single `file` part. */
   upload?: boolean;
+  /**
+   * A write with a preview mode (`dryRun` in its query, D-172): the preview answers 200 and leaves no audit row. Read
+   * only by the contract test; the audit hook knows the route from `RESPONSE_SUMMARY_ROUTES`.
+   */
+  preview?: boolean;
   /** Success status (default 200). */
   status?: 200 | 201;
   response: z.ZodType;
@@ -735,6 +740,29 @@ const operations: ApiOperation[] = [
   },
   {
     method: 'post',
+    path: '/splits/import',
+    access: 'org',
+    ability: { action: 'write', subject: 'splits', scope: 'label' },
+    tag: 'splits',
+    summary:
+      'Import splits from a csv or xlsx (D-172, columns of SPLIT_IMPORT_COLUMNS) under an own label: dryRun=1 (default) is the preview (200, every row classified, nothing written, no audit row); dryRun=0 applies all or nothing in one transaction (201, the created split, pseudonym and owner ids). A label manager may only create: a change or an owner assignment is a forbidden row. The label is checked before the body is received',
+    query: S.splitImportQuery,
+    upload: true,
+    preview: true,
+    status: 201,
+    response: R.splitImportSchema,
+    errors: [
+      '400 label_required: no label=',
+      '404 not_found: label',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
+      '400 validation_error: not a .csv or .xlsx',
+      '413 import_too_large: more than 5000 rows or 10 MB',
+      '422 import_invalid: the apply with error rows (details { rows: [{ line, code }] (first 200), errors }) or a refusal of the facade while writing (details { group, cause }); nothing is written',
+    ],
+  },
+  {
+    method: 'post',
     path: '/splits/buyout',
     access: 'org',
     ability: { action: 'approve', subject: 'splits', scope: 'org' },
@@ -1198,6 +1226,117 @@ const operations: ApiOperation[] = [
     summary: 'Deactivate an expense (it takes part in nothing)',
     body: S.deactivateAdBody,
     response: R.adExpenseSchema,
+  },
+  // ---- the label history of an ISRC (D-172, stage 4 commit 4): navigation, not money ----
+  {
+    method: 'get',
+    path: '/tracks/:isrc/labels',
+    access: 'org',
+    ability: { action: 'read', subject: 'tracks', scope: 'org' },
+    tag: 'tracks',
+    summary: 'The label history of one ISRC by validFrom (D-172): intervals derived from the loaded files (`files`) and the operator corrections (`operator`); the author of a correction is in the audit. Navigation only: the calculation never reads it',
+    response: R.trackLabelsSchema,
+    errors: ['400 validation_error: not an ISRC'],
+  },
+  {
+    method: 'post',
+    path: '/tracks/:isrc/label',
+    access: 'org',
+    ability: { action: 'write', subject: 'tracks', scope: 'label' },
+    tag: 'tracks',
+    summary: 'Sets an operator interval [from, to) of the label history of an ISRC (D-172), both floored to the month start (M52), `to` empty = open; the same `from` as an operator interval replaces it (label, end, note; the way to close it). The operator interval wins only its own months: the `files` intervals of the ISRC are rebuilt in the same transaction. Answers the whole history',
+    body: S.setTrackLabelBody,
+    status: 201,
+    response: R.trackLabelsSchema,
+    errors: [
+      '400 validation_error: not an ISRC or a bad date',
+      '404 not_found: label',
+      '400 label_not_own: the label is a sublabel',
+      '400 empty_period: the period is empty after flooring',
+      '409 catalog_overlap: overlaps another operator interval of the ISRC (details { interval })',
+      '409 catalog_same_label: the replacement changes nothing (details { interval })',
+      '403 label_forbidden: a label manager names another label or touches an interval of another label',
+    ],
+  },
+  // ---- the assumption (D-172, stage 4 commit 3) ----
+  {
+    method: 'post',
+    path: '/splits/assume',
+    access: 'org',
+    ability: { action: 'approve', subject: 'splits', scope: 'label' },
+    tag: 'splits',
+    summary:
+      'Accept as an assumption (D-172): ONE document of kind assumption under the own label labelId (title from the reason, no file, never approved) is set as the split document of every split of the group (every version of the isrcs, or the splitIds) that has no split document, a non-empty period and a row without its own document; those rows inherit it, so their money waits in C assumption. The other splits are reported in skipped. Removing it = POST /splits/change with a real document',
+    body: S.assumeSplitsBody,
+    status: 201,
+    response: R.assumeResultSchema,
+    errors: [
+      '400 label_required: no labelId',
+      '404 not_found: label or split',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 validation_error: not an ISRC, or not exactly one of isrcs / splitIds',
+      '422 nothing_to_assume: no split of the group is without a document (details { skipped }); nothing is written',
+      '403 label_forbidden: an ISRC of another book',
+    ],
+  },
+  // ---- the release registry (D-172, stage 4 commit 5) ----
+  {
+    method: 'post',
+    path: '/releases/import',
+    access: 'org',
+    ability: { action: 'write', subject: 'releases', scope: 'label' },
+    tag: 'releases',
+    summary:
+      'Import the Believe release export (csv: BOM, «;», quoted cells, `UPC : <digits>`, `date<br />time`) into the release registry of an own label (D-172): every row inserted or rewritten by (label, UPC) in one transaction, all or nothing; equal rows are unchanged; UPCs not in the file stay. Navigation, no money. The label is checked before the body is received',
+    query: S.uploadLabelQuery,
+    upload: true,
+    status: 201,
+    response: R.releaseImportSchema,
+    errors: [
+      '400 label_required: no label=',
+      '404 not_found: label',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 release_import_header: a column of the export is missing (details { missing })',
+      '413 import_too_large: more than 20000 rows or 10 MB',
+      '422 release_import_invalid: refused rows (details { rows: [{ line, code: upc_invalid | track_count_invalid | date_invalid | duplicate_upc }] (first 200), errors }); nothing is written',
+      '403 label_forbidden: a label manager names another label',
+    ],
+  },
+  {
+    method: 'get',
+    path: '/releases/registry',
+    access: 'org',
+    ability: { action: 'read', subject: 'releases', scope: 'label' },
+    tag: 'releases',
+    summary:
+      'The release registry (D-172), no money: under a label its rows, under «Все» the rows of every label (a moved UPC is a row per label); isrcsInUnits = the distinct ISRCs of the UPC in the loaded files of the row label; q filters UPC, title, version, artist, catalog number',
+    query: S.releaseRegistryQuery,
+    response: R.releaseRegistrySchema,
+    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+  },
+  // ---- the onboarding checklists (D-172, stage 4 commit 6): reads only, no calculation ----
+  {
+    method: 'get',
+    path: '/onboarding',
+    access: 'org',
+    ability: { action: 'read', subject: 'reports', scope: 'label' },
+    tag: 'reports',
+    summary:
+      'The onboarding checklist of one own label (D-172): label, accounts, files (months and gaps per account), label strings without an alias, catalog (label history, release registry), ISRCs without a split, pseudonyms without an owner, rows without an approved document and owners without a contract under the label, publishing statements. Each step: key, state (done / todo / info, decided by the backend), count, counts, link. No calculation: at most three ClickHouse reads over the files of the label',
+    query: S.onboardingQuery,
+    response: R.onboardingSchema,
+    errors: ['400 label_required: no label (under «Все»)', '404 not_found: label', '400 label_not_own: a sublabel', '403 label_forbidden: a label manager names another label'],
+  },
+  {
+    method: 'get',
+    path: '/onboarding/organization',
+    access: 'org',
+    ability: { action: 'admin', subject: 'users', scope: 'org' },
+    tag: 'users',
+    summary:
+      'The onboarding checklist of the organization (D-172), its administrator\'s: the organization, own labels (and sublabels), active members (and organization administrators), Believe accounts (own labels without one)',
+    response: R.orgOnboardingSchema,
+    errors: ['403 forbidden: not an organization administrator'],
   },
 ];
 

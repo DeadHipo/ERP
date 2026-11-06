@@ -11,6 +11,7 @@ import { labelsRouter } from './labels';
 import { participationsRouter } from './participations';
 import { auditRouter } from './audit';
 import { adsRouter } from './ads';
+import { onboardingRouter } from './onboarding';
 
 /**
  * Version 1 of the JSON API of one organization: one router per topic, all mounted at the root of the version. The
@@ -18,9 +19,9 @@ import { adsRouter } from './ads';
  */
 export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   const r = Router();
-  r.use(aggregatesRouter(facade)); // before ownersRouter: /owners/payables is not /owners/:id
+  r.use(aggregatesRouter(facade, opts)); // before ownersRouter: /owners/payables is not /owners/:id
   r.use(ownersRouter(facade));
-  r.use(splitsRouter(facade));
+  r.use(splitsRouter(facade, opts));
   r.use(sourcesRouter(facade, opts));
   r.use(publishingRouter(facade, opts));
   r.use(reportsRouter(facade));
@@ -29,5 +30,6 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.use(participationsRouter(facade));
   r.use(auditRouter(facade));
   r.use(adsRouter(facade));
+  r.use(onboardingRouter(facade));
   return r;
 }

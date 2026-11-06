@@ -39,6 +39,7 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /splits': 'R',
   'POST /splits': 'R',
   'POST /splits/change': 'x',
+  'POST /splits/import': 'L',
   'POST /splits/buyout': 'x',
   'POST /splits/:id/confirm': 'x',
   'GET /participations': 'R',
@@ -87,5 +88,16 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /support': 'x',
   'POST /support': 'x',
   'POST /support/:id/revoke': 'x',
+  // the label history of an ISRC (D-172 stage 4 commit 4)
+  'GET /tracks/:isrc/labels': 'O',
+  'POST /tracks/:isrc/label': 'L',
+  // the assumption (D-172 stage 4 commit 3): approve, the org_admin's only
+  'POST /splits/assume': 'x',
+  // the release registry (D-172 stage 4 commit 5): under its own label
+  'POST /releases/import': 'L',
+  'GET /releases/registry': 'L',
+  // the onboarding checklists (D-172 stage 4 commit 6): the label's under its label, the organization's the org_admin's only
+  'GET /onboarding': 'L',
+  'GET /onboarding/organization': 'x',
 };
 

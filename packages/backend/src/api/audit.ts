@@ -65,6 +65,75 @@ export const RESPONSE_LABEL_ROUTES = new Set([
   'POST /documents/:id/approve',
 ]);
 
+/**
+ * The writes whose summary and created ids are in the response, not the body (D-172: a multipart upload has no body).
+ * `preview` answers whether the request was a preview: a preview leaves no audit row.
+ */
+export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
+  string,
+  { preview: (query: Record<string, unknown>) => boolean; summary: (response: unknown) => Record<string, unknown>; ids: (response: unknown) => string[] }
+> = new Map([
+  [
+    'POST /splits/import',
+    {
+      preview: (query: Record<string, unknown>) => query.dryRun !== '0',
+      summary: (response: unknown) => {
+        const r = asRecord(response);
+        const t = asRecord(r.totals);
+        return {
+          fileName: r.fileName,
+          sha256: r.sha256,
+          rows: t.rows,
+          groups: t.groups,
+          create: t.create,
+          change: t.change,
+          unchanged: t.unchanged,
+          warnings: t.warnings,
+          artistsNew: t.artistsNew,
+          ownersNew: t.ownersNew,
+        };
+      },
+      ids: (response: unknown) => {
+        const res = asRecord(asRecord(response).result);
+        const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+        return [...list(res.splitIds), ...list(res.artistIds), ...list(res.ownerIds)];
+      },
+    },
+  ],
+  [
+    // the assumption (D-172): the counts and the document from the response, never the free-text reason
+    'POST /splits/assume',
+    {
+      preview: () => false,
+      summary: (response: unknown) => {
+        const r = asRecord(response);
+        return {
+          documentId: r.documentId,
+          assigned: Array.isArray(r.assigned) ? r.assigned.length : 0,
+          skipped: Array.isArray(r.skipped) ? r.skipped.length : 0,
+        };
+      },
+      ids: (response: unknown) => {
+        const r = asRecord(response);
+        const assigned = Array.isArray(r.assigned) ? r.assigned.filter((x): x is string => typeof x === 'string') : [];
+        return [...(typeof r.documentId === 'string' ? [r.documentId] : []), ...assigned];
+      },
+    },
+  ],
+  [
+    // the release registry import (D-172): the counts from the response; the rows are keyed by UPC, no id is created
+    'POST /releases/import',
+    {
+      preview: () => false,
+      summary: (response: unknown) => {
+        const r = asRecord(response);
+        return { fileName: r.fileName, sha256: r.sha256, rows: r.rows, inserted: r.inserted, updated: r.updated, unchanged: r.unchanged };
+      },
+      ids: () => [],
+    },
+  ],
+]);
+
 const nonEmpty = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
 /**
@@ -215,6 +284,16 @@ function traceWrites(
 export function operatorTrace(facade: Facade): RequestHandler {
   return traceWrites(async (req, route, params, body, res) => {
     const reqBody = asRecord(req.body);
+    const fromResponse = RESPONSE_SUMMARY_ROUTES.get(`${req.method} ${route}`);
+    if (fromResponse) {
+      if (fromResponse.preview(asRecord(req.query))) return null; // a preview writes nothing and leaves no row
+      return {
+        facade,
+        entityIds: [...new Set([...entityIdsOf(params, reqBody), ...fromResponse.ids(body)])],
+        summary: { params, body: fromResponse.summary(body), ...(bySupport(res) ? { support: true as const } : {}) },
+        labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
+      };
+    }
     return {
       facade,
       entityIds: [...new Set([...entityIdsOf(params, reqBody), ...createdIdsOf(body)])],
