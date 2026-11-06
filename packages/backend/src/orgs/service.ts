@@ -1,9 +1,35 @@
 import { randomUUID } from 'node:crypto';
-import { ConflictError, NotFoundError, ValidationError } from '../shared/errors';
+import { AppError, ConflictError, ValidationError } from '../shared/errors';
+import type { Facade } from '../facade';
 import type { Db } from '../shared/pg-db';
 import { createOrgsRepository, type OrganizationRow } from './repository';
 
 export type Organization = OrganizationRow;
+
+/** `404 org_not_found`: `X-Org`, ERP_DEFAULT_ORG, the organization of a session or `:id` is not an organization. */
+export class OrgNotFoundError extends AppError {
+  constructor(id: string) {
+    super(`Organization ${id} not found`, 404, 'org_not_found');
+  }
+}
+
+/** The counts of an organization's screen (no money): through its facade, the users from the auth service. */
+export async function orgCounts(facade: Facade, users: number) {
+  const m = facade.modules;
+  const [labels, files, statements, owners] = await Promise.all([
+    m.labels.listLabels(),
+    m.sources.listFiles(),
+    m.publishing.listStatements(),
+    m.owners.listOwners(),
+  ]);
+  return {
+    labels: labels.length,
+    files: files.filter((f) => f.status === 'loaded').length,
+    statements: statements.length,
+    owners: owners.length,
+    users,
+  };
+}
 
 /**
  * The organizations (stage 2, D-170). The id is always generated here (a UUID), never taken from a client. The name
@@ -27,7 +53,7 @@ export function createOrgsService(db: Db) {
     },
     async getOrganization(id: string): Promise<Organization> {
       const row = await repo.get(id);
-      if (!row) throw new NotFoundError('Organization', id);
+      if (!row) throw new OrgNotFoundError(id);
       return row;
     },
     /** The organization or undefined (startup and scripts check an id without an exception). */

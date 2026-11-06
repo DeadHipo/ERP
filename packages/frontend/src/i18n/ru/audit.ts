@@ -9,6 +9,10 @@ export const audit = {
   anyLabel: 'любой',
   empty: 'Записей нет.',
   routes: {
+    'POST /auth/login': 'вход',
+    'POST /auth/logout': 'выход',
+    'POST /orgs': 'создана организация',
+    'POST /orgs/:id/users': 'создан пользователь организации',
     'POST /owners': 'создан владелец',
     'POST /owners/merge': 'владельцы слиты',
     'POST /owners/:id/payouts': 'выплата (кнопка)',

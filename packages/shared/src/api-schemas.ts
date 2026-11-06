@@ -399,3 +399,22 @@ export const adsQuery = z.object({
   ...labelQuery.shape,
 });
 export const adsSummaryQuery = z.object({ from: month.optional(), to: month.optional(), ...labelQuery.shape });
+
+// ---- the login and the organizations (stage 2, D-170) ----
+
+/** `POST /auth/login`: the login is compared in lower case. */
+export const loginBody = z.object({
+  login: z.string().trim().toLowerCase().min(1).max(64),
+  password: z.string().min(1).max(200),
+});
+/** `POST /orgs`: the name is unique without regard to case (409 org_name_taken); the id comes from the server. */
+export const createOrgBody = z.object({ name: z.string().trim().min(1).max(200) });
+/** `POST /orgs/:id/users`: a user of that organization (409 login_taken). */
+export const createOrgUserBody = z.object({
+  login: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9._-]{3,64}$/),
+  password: z.string().min(1).max(200),
+});

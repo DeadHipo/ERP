@@ -1,7 +1,10 @@
 import { join, resolve } from 'node:path';
-import { openFacade } from './facade';
-import { createApp } from './api/app';
-import { connectStores, resolveOrg, sourcesFor } from './connect-sources';
+import { createServerApp } from './api/server-app';
+import { authConfigFromEnv, type AuthConfig } from './auth/middleware';
+import { createAuthService } from './auth/service';
+import { dummyHash } from './auth/password';
+import { connectStores, resolveOrg } from './connect-sources';
+import { createOrgFacades } from './orgs/facades';
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 // Data directory: first CLI argument, ERP_DATA_DIR, or <repo>/data.
@@ -12,26 +15,40 @@ const threshold = Number(process.env.PAYOUT_THRESHOLD_CENTS ?? 10000);
 // The modules in PostgreSQL; the Believe sources: file registry in PostgreSQL, report lines in ClickHouse
 // (settings from <repo>/.env). The data directory keeps only the original files and temporary uploads (D-121).
 const stores = connectStores();
-const closeSources = () => stores.close();
 
-// Every request works in one organization until the login (D-170): ERP_DEFAULT_ORG, which must exist.
-const found = await resolveOrg(stores, [process.env.ERP_DEFAULT_ORG]);
-if (!found.ok) {
-  console.error(`ERP_DEFAULT_ORG is required. ${found.message}`);
-  await closeSources();
+// The login (D-170): AUTH_MODE=on by default (AUTH_SECRET of at least 32 bytes required); off only explicitly, and then
+// every request works in ERP_DEFAULT_ORG, which must exist. SYSTEM_ADMIN_KEY is optional.
+let config: AuthConfig;
+try {
+  config = authConfigFromEnv();
+} catch (e) {
+  console.error((e as Error).message);
+  await stores.close();
   process.exit(1);
 }
-const orgId = found.org.id;
-const sources = sourcesFor(stores, orgId, dataDir);
+let modeNote = 'login on';
+if (config.mode === 'off') {
+  const found = await resolveOrg(stores, [config.defaultOrg]);
+  if (!found.ok) {
+    console.error(`AUTH_MODE=off needs ERP_DEFAULT_ORG. ${found.message}`);
+    await stores.close();
+    process.exit(1);
+  }
+  modeNote = `login off, organization: ${found.org.name}`;
+}
 
-const facade = openFacade({ db: stores.db, orgId, dataDir, payoutThresholdCents: threshold, sources });
-const app = createApp(facade, {
-  tmpDir: join(dataDir, 'tmp'),
+// the dummy hash of an unknown login is computed now, not on the first login (its time would tell the login is unknown)
+void dummyHash();
+
+const orgs = createOrgFacades({ stores, dataDir, payoutThresholdCents: threshold });
+const app = createServerApp({
+  orgs,
+  auth: { service: createAuthService(stores.db), config },
   clientDist: join(root, 'packages', 'frontend', 'dist'),
 });
 
 const server = app.listen(port, () =>
-  console.log(`ERP API on http://localhost:${port}/api/v1 (data: ${dataDir}, organization: ${found.org.name})`),
+  console.log(`ERP API on http://localhost:${port}/api/v1 (data: ${dataDir}, ${modeNote})`),
 );
 
 // server.close() alone waits for keep-alive sockets (Vite proxy, browser) and in-flight requests, so tsx watch had to
@@ -42,7 +59,7 @@ function shutdown() {
   stopping = true;
   setTimeout(() => process.exit(1), 2000).unref();
   server.close(() => {
-    void closeSources().finally(() => process.exit(0));
+    void orgs.close().finally(() => process.exit(0));
   });
   server.closeAllConnections();
 }

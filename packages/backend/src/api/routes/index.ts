@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import swaggerUi from 'swagger-ui-express';
 import type { Facade } from '../../facade';
-import { buildOpenApiDocument } from '../openapi';
 import { aggregatesRouter } from './aggregates';
 import { ownersRouter } from './owners';
 import { splitsRouter } from './splits';
@@ -14,13 +12,12 @@ import { participationsRouter } from './participations';
 import { auditRouter } from './audit';
 import { adsRouter } from './ads';
 
-/** Version 1 of the JSON API: one router per topic, all mounted at the root of the version. */
+/**
+ * Version 1 of the JSON API of one organization: one router per topic, all mounted at the root of the version. The
+ * system routes (`/health`, `/openapi.json`, `/docs`, `/auth/*`, `/orgs*`) are `createSystemRouter` (D-170).
+ */
 export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   const r = Router();
-  const openapi = buildOpenApiDocument();
-  r.get('/openapi.json', (_req, res) => res.json(openapi));
-  r.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
-  r.get('/health', (_req, res) => res.json({ ok: true }));
   r.use(aggregatesRouter(facade)); // before ownersRouter: /owners/payables is not /owners/:id
   r.use(ownersRouter(facade));
   r.use(splitsRouter(facade));

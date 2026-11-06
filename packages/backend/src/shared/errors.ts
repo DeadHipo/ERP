@@ -35,3 +35,17 @@ export class RuleViolationError extends AppError {
     super(message, 422, code, details);
   }
 }
+
+/** No session: no cookie, a bad or expired token, a disabled or removed user (D-170). */
+export class UnauthenticatedError extends AppError {
+  constructor(message = 'Not signed in', code = 'unauthenticated') {
+    super(message, 401, code);
+  }
+}
+
+/** A session that may not do this (D-170): a system operation, `X-Org` from a user, a wrong system key. */
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden') {
+    super(message, 403, 'forbidden');
+  }
+}

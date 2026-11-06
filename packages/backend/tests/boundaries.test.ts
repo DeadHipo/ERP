@@ -42,6 +42,15 @@ describe('module boundaries (README 4)', () => {
     expect(helper).not.toMatch(/from '\.\.\/(modules|facade|orgs|auth|api)/);
   });
 
+  it('only src/orgs/middleware.ts reads X-Org and res.locals.org: no route or facade names the organization (D-170)', () => {
+    const reader = join(SRC, 'orgs', 'middleware.ts');
+    const readers = filesOf(SRC).filter((f) => /header\(\s*'x-org'|headers\[\s*'x-org'|locals\.org\b/i.test(readFileSync(f, 'utf8')));
+    expect(readers).toEqual([reader]);
+    // no path names an organization: no /o/:id/ or /orgs/:id/ outside the system routes
+    for (const file of filesOf(join(SRC, 'api', 'routes')).filter((f) => !f.endsWith('orgs.ts')))
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/\br\.\w+\(\s*'\/(o|orgs)\//);
+  });
+
   it('the layers import only the shared helpers, each other and the fixed shapes of four modules (D-169: the book is no layer input)', () => {
     const allowed = new Set([
       '../../modules/labels',

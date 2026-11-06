@@ -2,10 +2,16 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/api/app';
-import { API_OPERATIONS, operationKey } from '../src/api/operations';
+import { createServerApp } from '../src/api/server-app';
+import { API_OPERATIONS, needsOperator, operationKey, type ApiOperation } from '../src/api/operations';
 import { buildOpenApiDocument } from '../src/api/openapi';
+import { createAuthService } from '../src/auth/service';
+import { createOrgFacades } from '../src/orgs/facades';
 import { newFacade, TMP, writeB17, writeBelieve } from './helpers/fixtures';
+import { testStack } from './helpers/test-sources';
 
 // The API contract (operations list, response schemas, OpenAPI document) must match the real routes and the real
 // responses. The scenario below calls every operation of the list once and parses its response with its schema.
@@ -34,12 +40,79 @@ function expressRoutes(app: Express): string[] {
   return out;
 }
 
-describe('API contract', () => {
+/** The `erp_session=…` pair of a login's `Set-Cookie`. */
+export function sessionCookieOf(res: { headers: Record<string, unknown> }): string {
+  const set = res.headers['set-cookie'] as string[] | undefined;
+  const pair = set?.find((c) => c.startsWith('erp_session='))?.split(';')[0];
+  if (!pair) throw new Error('no session cookie');
+  return pair;
+}
+
+type Access = ApiOperation['access'];
+
+/**
+ * The contract in one mode (D-170). `off`: `createApp(f)` (one organization + the system router), `/orgs*` with
+ * `X-System-Key`. `on`: `createServerApp` over every organization, a user of the organization signs in, `/orgs*` under
+ * the system administrator's session; the audit operator is the login of the session.
+ */
+function contractSuite(mode: 'off' | 'on') {
+describe(`API contract (AUTH_MODE=${mode})`, () => {
   let app: Express;
+  let orgId = '';
   const covered = new Set<string>();
+  const SYSTEM_KEY = randomBytes(24).toString('hex');
+  const SECRET = randomBytes(32).toString('hex');
+  const PASSWORD = randomBytes(12).toString('hex');
+  const suffix = randomUUID().slice(0, 8);
+  const ORG_LOGIN = `contract-a-${suffix}`;
+  const SYS_LOGIN = `contract-sys-${suffix}`;
+  const cookies: Partial<Record<'org' | 'system', string>> = {};
+  let orgs: ReturnType<typeof createOrgFacades>;
+  /** The operator the audit records: the header in `off`, the session's login in `on`. */
+  const operatorOf = (access: Access) => (mode === 'off' ? OPERATOR : access === 'system' ? SYS_LOGIN : ORG_LOGIN);
+  const ORG_OPERATOR = mode === 'off' ? 'contract-test' : ORG_LOGIN;
+
+  /** A supertest request with the credentials of `access`. */
+  function authed<T extends request.Test>(t: T, access: Access): T {
+    if (access === 'public') return t;
+    if (mode === 'off') return (access === 'system' ? t.set('X-System-Key', SYSTEM_KEY) : t) as T;
+    const cookie = cookies[access === 'system' ? 'system' : 'org'];
+    return (cookie ? t.set('Cookie', cookie) : t) as T;
+  }
+  /** Requests of the organization (the reads and refusals of the scenario). */
+  const R = {
+    get: (url: string) => authed(request(app).get(url), 'org'),
+    post: (url: string) => authed(request(app).post(url), 'org'),
+    patch: (url: string) => authed(request(app).patch(url), 'org'),
+  };
+
   beforeAll(async () => {
     const f = await newFacade();
-    app = createApp(f, { tmpDir: join(TMP, 'contract-uploads') });
+    orgId = f.orgId;
+    const stack = await testStack();
+    const dataDir = join(TMP, `contract-${mode}-${suffix}`);
+    mkdirSync(dataDir, { recursive: true });
+    orgs = createOrgFacades({
+      stores: { db: stack.db, pool: stack.pg.pool, columnar: stack.columnar },
+      dataDir,
+      payoutThresholdCents: 0,
+    });
+    if (mode === 'off') {
+      app = createApp(f, { tmpDir: join(TMP, 'contract-uploads'), auth: { systemKey: SYSTEM_KEY }, orgs });
+      return;
+    }
+    await stack.reset(); // the facades of the server read the sources directly (not through the reset-on-use proxy)
+    const auth = createAuthService(stack.db);
+    await auth.createUser({ login: ORG_LOGIN, password: PASSWORD, orgId, createdBy: 'tests' });
+    await auth.createUser({ login: SYS_LOGIN, password: PASSWORD, system: true, createdBy: 'tests' });
+    app = createServerApp({
+      orgs,
+      auth: { service: auth, config: { mode: 'on', secret: SECRET, systemKey: SYSTEM_KEY } },
+    });
+    for (const [kind, login] of [['org', ORG_LOGIN], ['system', SYS_LOGIN]] as const) {
+      const res = await request(app).post('/api/v1/auth/login').send({ login, password: PASSWORD }).expect(200);
+      cookies[kind] = sessionCookieOf(res);
+    }
   });
 
   const OPERATOR = 'contract-test';
@@ -51,8 +124,9 @@ describe('API contract', () => {
     params?: Record<string, string>,
     /** The label the row must carry (D-169); undefined = not checked. */
     labelId?: string | null,
+    operator: string = ORG_OPERATOR,
   ) {
-    const res = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    const res = await R.get('/api/v1/audit').query({ limit: '500' }).expect(200);
     const items = res.body.items as {
       operator: string;
       method: string;
@@ -62,7 +136,7 @@ describe('API contract', () => {
     }[];
     expect(items.length, `audit rows after ${method} ${template}`).toBe(auditRows + 1);
     auditRows = items.length;
-    expect(items[0]).toMatchObject({ operator: OPERATOR, method: method.toUpperCase(), route: template });
+    expect(items[0]).toMatchObject({ operator, method: method.toUpperCase(), route: template });
     for (const id of Object.values(params ?? {})) expect(items[0]?.entityIds).toContain(id);
     if (labelId !== undefined) expect(items[0]?.labelId, `audit label of ${method} ${template}`).toBe(labelId);
   }
@@ -85,8 +159,8 @@ describe('API contract', () => {
     const url =
       '/api/v1' +
       template.replace(/:([A-Za-z]+)/g, (_m, n: string) => encodeURIComponent(o.params?.[n] ?? ''));
-    let req = request(app)[method](url);
-    if (method !== 'get') req = req.set('X-Operator', OPERATOR);
+    let req = authed(request(app)[method](url), op.access);
+    if (needsOperator(op)) req = req.set('X-Operator', OPERATOR);
     if (o.query) req = req.query(o.query);
     if (o.file) req = req.attach('file', o.file.path, o.file.fileName);
     else if (o.body !== undefined) req = req.send(o.body as object);
@@ -98,12 +172,43 @@ describe('API contract', () => {
       `${operationKey(op)} response does not fit its schema`,
     ).toBeNull();
     covered.add(operationKey(op));
-    if (method !== 'get') await expectOneAuditRow(method, template, o.params, o.labelId);
+    // the writes of the organization leave a row in its audit; a system write in the audit of its target
+    // organization (here: the users of this one); login and logout none
+    if (needsOperator(op) && (op.access === 'org' || o.params?.id === orgId))
+      await expectOneAuditRow(method, template, o.params, o.labelId, operatorOf(op.access));
     return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
   it('every operation answers with a body that fits its schema', async () => {
     await call('get', '/health');
+
+    // the login and the organizations (D-170)
+    const me = await call('get', '/auth/me');
+    if (mode === 'off') expect(me).toMatchObject({ authMode: 'off', user: null, org: { id: orgId } });
+    else expect(me).toMatchObject({ authMode: 'on', user: { login: ORG_LOGIN, isSystemAdmin: false, orgId }, org: { id: orgId } });
+    const userLogin = `contract-u-${suffix}`;
+    const createdUser = await call('post', '/orgs/:id/users', {
+      params: { id: orgId },
+      body: { login: userLogin.toUpperCase(), password: PASSWORD },
+    });
+    expect(createdUser).toMatchObject({ login: userLogin, orgId, isSystemAdmin: false, disabled: false });
+    const signedIn = await call('post', '/auth/login', { body: { login: userLogin, password: PASSWORD } });
+    expect(signedIn.user).toMatchObject({ id: createdUser.id, login: userLogin });
+    await call('post', '/auth/logout');
+    const newOrg = await call('post', '/orgs', { body: { name: `Contract Org ${mode} ${suffix}` } });
+    // a system write is recorded in the audit of its target organization, without the name
+    const [orgRow] = await (await orgs.get(newOrg.id as string)).facade.recentActions(5);
+    expect(orgRow).toMatchObject({ method: 'POST', route: '/orgs', operator: operatorOf('system'), entityIds: [newOrg.id] });
+    expect(JSON.stringify(orgRow)).not.toContain('Contract Org');
+    const orgList = await call('get', '/orgs');
+    const mine = (orgList as unknown as { id: string; counts: { labels: number; users: number } }[]).find((o) => o.id === orgId);
+    expect(mine?.counts.labels).toBeGreaterThanOrEqual(2);
+    expect(mine?.counts.users).toBeGreaterThanOrEqual(1);
+    const fresh = await call('get', '/orgs/:id', { params: { id: newOrg.id } });
+    expect(fresh.counts).toEqual({ labels: 0, files: 0, statements: 0, owners: 0, users: 0 });
+    const users = await call('get', '/orgs/:id/users', { params: { id: orgId } });
+    expect((users as unknown as { login: string }[]).map((u) => u.login)).toContain(userLogin);
+    expect(JSON.stringify(users)).not.toMatch(/scrypt|passwordHash/);
 
     // module 1
     const owner = await call('post', '/owners', { body: { name: 'Ivan Synthetic', kind: 'person' } });
@@ -228,7 +333,7 @@ describe('API contract', () => {
     expect((await call('get', '/documents', { query: { label: zero.id } })).map((d: { id: string }) => d.id)).not.toContain(labelled.id);
     const cleared = await call('patch', '/documents/:id', { params: { id: labelled.id }, body: { labelId: null }, labelId: null });
     expect(cleared.labelId).toBeNull();
-    const subRefused = (await request(app).patch(`/api/v1/documents/${labelled.id}`).set('X-Operator', OPERATOR).send({ labelId: sub.id }))
+    const subRefused = (await R.patch(`/api/v1/documents/${labelled.id}`).set('X-Operator', OPERATOR).send({ labelId: sub.id }))
       .body as { error: { code: string } };
     expect(subRefused.error.code).toBe('label_not_own');
     // (1052428 → 0to8 and 1055956 → Echo8 are registered by newFacade, D-169)
@@ -267,7 +372,7 @@ describe('API contract', () => {
 
     // sources and publishing: a file is loaded under the own label of its account (D-169)
     const refused = async (url: string, query: Record<string, string>, file: { path: string; fileName: string }) =>
-      (await request(app).post(url).set('X-Operator', OPERATOR).query(query).attach('file', file.path, file.fileName))
+      (await R.post(url).set('X-Operator', OPERATOR).query(query).attach('file', file.path, file.fileName))
         .body as { error: { code: string; details?: unknown } };
     const july = writeBelieve('2026-07', [
       { isrc: I1, upc: UPC, net: '300' },
@@ -287,9 +392,9 @@ describe('API contract', () => {
       details: { account: '1055956', labelId: echoLabel.id, labelName: 'Echo8' },
     });
     const loaded = await call('post', '/sources/believe', { query: { label: zero.id }, file: july });
-    expect([loaded.labelId, loaded.uploadedBy]).toEqual([zero.id, OPERATOR]);
+    expect([loaded.labelId, loaded.uploadedBy]).toEqual([zero.id, ORG_OPERATOR]);
     // an account with files is not removed
-    const blocked = await request(app)
+    const blocked = await R
       .post(`/api/v1/labels/${zero.id}/accounts/1052428/remove`)
       .set('X-Operator', OPERATOR);
     expect([blocked.status, blocked.body.error.code, blocked.body.error.details]).toEqual([
@@ -419,7 +524,7 @@ describe('API contract', () => {
 
     // advertising expenses (D-156): a batch, the list with the allocation, the summary, a percent change, a rollback;
     // every record carries its payer (D-169)
-    const adRefused = (await request(app).post('/api/v1/ads').set('X-Operator', OPERATOR).send({ items: [{ isrc: I1, month: '2026-07', amount: '1' }] }))
+    const adRefused = (await R.post('/api/v1/ads').set('X-Operator', OPERATOR).send({ items: [{ isrc: I1, month: '2026-07', amount: '1' }] }))
       .body as { error: { code: string; message: string } };
     expect([adRefused.error.code, adRefused.error.message.startsWith('Item 1: ')]).toEqual(['label_required', true]);
     const ads = await call('post', '/ads', {
@@ -450,7 +555,7 @@ describe('API contract', () => {
 
     // the trail of one entity: the merge, newest first, with ids and no free text
     const trail = await call('get', '/audit', { query: { entityId: owner.id, limit: '3' } });
-    expect(trail.items[0]).toMatchObject({ method: 'POST', route: '/owners/merge', operator: OPERATOR });
+    expect(trail.items[0]).toMatchObject({ method: 'POST', route: '/owners/merge', operator: ORG_OPERATOR });
     expect(trail.items[0].entityIds).toEqual(expect.arrayContaining([other.id, owner.id]));
     expect(trail.items[0].summary.body).toEqual({}); // the free-text reason is not kept (D-150)
     expect(trail.items.length).toBeLessThanOrEqual(3);
@@ -461,17 +566,17 @@ describe('API contract', () => {
   });
 
   it('a write without the X-Operator header is refused and leaves no trace', async () => {
-    const before = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    const before = await R.get('/api/v1/audit').query({ limit: '500' }).expect(200);
     for (const header of [undefined, '', '   ', 'x'.repeat(201)]) {
-      let req = request(app).post('/api/v1/owners');
+      let req = R.post('/api/v1/owners');
       if (header !== undefined) req = req.set('X-Operator', header);
       const res = await req.send({ name: 'No Operator Synthetic', kind: 'person' });
       expect(res.status).toBe(400);
       expect(res.body.error).toMatchObject({ code: 'operator_required', statusCode: 400 });
     }
-    const after = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
+    const after = await R.get('/api/v1/audit').query({ limit: '500' }).expect(200);
     expect(after.body.items.length).toBe(before.body.items.length);
-    const owners = await request(app).get('/api/v1/owners').expect(200);
+    const owners = await R.get('/api/v1/owners').expect(200);
     expect(JSON.stringify(owners.body)).not.toContain('No Operator Synthetic');
   });
 
@@ -480,7 +585,7 @@ describe('API contract', () => {
     expect(missing).toEqual([]);
   });
 
-  it('the contract lists exactly the routes Express has', async () => {
+  it.runIf(mode === 'off')('the contract lists exactly the routes Express has', async () => {
     const real = expressRoutes(app)
       .filter((r) => r !== 'GET /openapi.json')
       .sort();
@@ -488,7 +593,7 @@ describe('API contract', () => {
     expect(real).toEqual(documented);
   });
 
-  it('serves the OpenAPI document with every operation and the Swagger UI', async () => {
+  it.runIf(mode === 'off')('serves the OpenAPI document with every operation and the Swagger UI', async () => {
     const doc = await request(app).get('/api/v1/openapi.json').expect(200);
     expect(doc.body.openapi).toBe('3.1.0');
     const built = buildOpenApiDocument();
@@ -502,8 +607,57 @@ describe('API contract', () => {
     ).find((p) => p.in === 'header');
     expect(header).toMatchObject({ name: 'X-Operator', required: true });
     expect(doc.body.paths['/health'].get.parameters ?? []).toEqual([]);
-    expect((doc.body.paths['/owners'].get.parameters as { name: string }[]).map((p) => p.name)).toEqual(['label']); // D-168
+    expect((doc.body.paths['/owners'].get.parameters as { name: string }[]).map((p) => p.name)).toEqual(['label', 'X-Org']); // D-168, D-170
+    // D-170: the two ways in, X-Org on the operations of an organization, X-Operator exactly on the non-public writes
+    expect(doc.body.components.securitySchemes).toEqual({
+      session: { type: 'apiKey', in: 'cookie', name: 'erp_session' },
+      systemKey: { type: 'apiKey', in: 'header', name: 'X-System-Key' },
+    });
+    for (const op of API_OPERATIONS) {
+      const p = doc.body.paths[op.path.replace(/:([A-Za-z]+)/g, '{$1}')][op.method] as {
+        parameters?: { name: string; in: string; required?: boolean }[];
+        security: Record<string, string[]>[];
+        responses: Record<string, unknown>;
+      };
+      const headers = (p.parameters ?? []).filter((x) => x.in === 'header');
+      const key = operationKey(op);
+      expect(headers.some((h) => h.name === 'X-Operator' && h.required), `${key} X-Operator`).toBe(
+        op.method !== 'get' && op.access !== 'public',
+      );
+      expect(headers.some((h) => h.name === 'X-Org' && !h.required), `${key} X-Org`).toBe(op.access === 'org');
+      expect(p.security.flatMap((x) => Object.keys(x)).sort(), `${key} security`).toEqual(
+        { public: [], user: ['session'], system: ['session', 'systemKey'], org: ['session', 'systemKey'] }[op.access],
+      );
+      expect(Object.keys(p.responses).includes('401'), `${key} 401`).toBe(op.access !== 'public');
+    }
+    expect(API_OPERATIONS.filter((o) => o.access === 'public').map(operationKey).sort()).toEqual([
+      'GET /health',
+      'POST /auth/login',
+      'POST /auth/logout',
+    ]);
     const ui = await request(app).get('/api/v1/docs/').expect(200);
     expect(ui.text).toContain('swagger');
   });
+
+  it.runIf(mode === 'on')('access: public without a cookie, org and user without one 401, system under a user 403', async () => {
+    const url = (o: ApiOperation) => '/api/v1' + o.path.replace(/:([A-Za-z]+)/g, 'x');
+    for (const o of API_OPERATIONS) {
+      const key = operationKey(o);
+      if (o.access === 'public') continue;
+      const anonymous = await request(app)[o.method](url(o)).set('X-Operator', OPERATOR).send({});
+      expect([anonymous.status, anonymous.body.error?.code], `${key} without a cookie`).toEqual([401, 'unauthenticated']);
+      if (o.access === 'system') {
+        const asUser = await authed(request(app)[o.method](url(o)), 'org').set('X-Operator', OPERATOR).send({});
+        expect([asUser.status, asUser.body.error?.code], `${key} under a user`).toEqual([403, 'forbidden']);
+      }
+    }
+    await request(app).get('/api/v1/health').expect(200);
+    await request(app).post('/api/v1/auth/logout').expect(200);
+    await request(app).post('/api/v1/auth/login').send({ login: ORG_LOGIN, password: PASSWORD }).expect(200);
+    await request(app).get('/api/v1/openapi.json').expect(200);
+  });
 });
+}
+
+contractSuite('off');
+contractSuite('on');

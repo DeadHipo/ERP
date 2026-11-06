@@ -4,6 +4,13 @@
  */
 export const errors: Record<string, string> = {
   operator_required: 'Укажите оператора в шапке: без имени запись невозможна',
+  unauthenticated: 'Сессия закончилась: войдите снова',
+  invalid_credentials: 'Неверный логин или пароль',
+  forbidden: 'Недостаточно прав',
+  org_required: 'Выберите организацию',
+  org_not_found: 'Организация не найдена',
+  org_name_taken: 'Организация с таким названием уже есть',
+  login_taken: 'Логин уже занят',
   payout_blocked: 'Выплата заблокирована: есть выплата без подтверждения',
   nothing_to_pay: 'Нечего выплачивать: сумма к выплате не больше нуля',
   below_threshold: 'Сумма к выплате ниже порога выплаты',
@@ -59,7 +66,7 @@ export const errors: Record<string, string> = {
   conflict: 'Конфликт с существующими данными',
   network_error: 'Нет связи с сервером',
   http_error: 'Ошибка сервера',
-  internal: 'Внутренняя ошибка сервера',
+  internal: 'Внутренняя ошибка, код {requestId}',
 };
 
 /** The Russian text of an API error code, or `undefined` for a code the dictionary does not know. */

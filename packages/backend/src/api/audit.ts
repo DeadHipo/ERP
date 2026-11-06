@@ -1,6 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { Facade } from '../facade';
 import { ValidationError } from '../shared/errors';
+import { sessionUserOf } from '../auth/middleware';
 
 // The operator's trace (D-140, R5): every write needs `X-Operator` (URI-encoded name), every successful write leaves one
 // row in the audit module before the response is sent, so a following GET /audit sees it.
@@ -133,11 +134,31 @@ function operatorOf(req: Request): string | undefined {
   return name.length >= 1 && name.length <= 200 ? name : undefined;
 }
 
-/** Mount before the v1 router: `app.use('/api/v1', operatorTrace(facade))`. */
-export function operatorTrace(facade: Facade): RequestHandler {
+/** The operator of a write: the login of the session (`AUTH_MODE=on`), else the `X-Operator` header (D-170). */
+function writeOperator(req: Request, res: Response): string | undefined {
+  const header = operatorOf(req);
+  if (!header) return undefined; // the header is required on every write either way (a signature, and CSRF)
+  return sessionUserOf(res)?.login ?? header;
+}
+
+interface TraceTarget {
+  /** The facade whose audit module records the row. */
+  facade: Pick<Facade, 'recordAction'>;
+  entityIds: string[];
+  summary: { params: Record<string, unknown>; body: Record<string, unknown> };
+  labelId: string | null;
+}
+
+/**
+ * Requires `X-Operator` on a write and records one audit row after a 2xx answer, before it is sent; `target` decides
+ * where and what (after the handler: the route, the params and the response are known).
+ */
+function traceWrites(
+  target: (req: Request, route: string, params: Record<string, string>, response: unknown) => Promise<TraceTarget>,
+): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!WRITES.has(req.method)) return next();
-    const operator = operatorOf(req);
+    const operator = writeOperator(req, res);
     if (!operator) {
       return next(
         new ValidationError('X-Operator header is required for writes', undefined, 'operator_required'),
@@ -149,21 +170,21 @@ export function operatorTrace(facade: Facade): RequestHandler {
     res.json = ((body?: unknown) => {
       if (res.statusCode < 200 || res.statusCode >= 300 || !req.route) return original(body);
       const params = Object.fromEntries(Object.entries(req.params).map(([k, v]) => [k, String(v)]));
-      const reqBody = asRecord(req.body);
       const route = String((req.route as { path: unknown }).path);
       void (async () => {
         try {
-          await facade.recordAction({
+          const t = await target(req, route, params, body);
+          await t.facade.recordAction({
             operator,
             method: req.method,
             route,
-            entityIds: [...new Set([...entityIdsOf(params, reqBody), ...createdIdsOf(body)])],
-            summary: summaryOf(params, reqBody),
-            labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
+            entityIds: t.entityIds,
+            summary: t.summary,
+            labelId: t.labelId,
           });
           original(body);
         } catch (e) {
-          console.error('audit record failed after a committed write', e);
+          console.error('audit record failed after a committed write', (e as Error)?.message);
           res.setHeader('X-Audit', 'failed');
           original(body);
         }
@@ -172,4 +193,31 @@ export function operatorTrace(facade: Facade): RequestHandler {
     }) as typeof res.json;
     next();
   };
+}
+
+/** Mount before the routes of an organization: every write of the organization leaves a row in its audit. */
+export function operatorTrace(facade: Facade): RequestHandler {
+  return traceWrites(async (req, route, params, body) => {
+    const reqBody = asRecord(req.body);
+    return {
+      facade,
+      entityIds: [...new Set([...entityIdsOf(params, reqBody), ...createdIdsOf(body)])],
+      summary: summaryOf(params, reqBody),
+      labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
+    };
+  });
+}
+
+/**
+ * The writes of the system administrator (`/orgs*`, D-170): the row goes into the audit of the target organization
+ * (`:id`, or the `id` of the created organization); the entity ids are the organization and the created user; the
+ * summary keeps neither the login nor the password nor the name.
+ */
+export function systemTrace(facadeOf: (orgId: string) => Promise<Pick<Facade, 'recordAction'>>): RequestHandler {
+  return traceWrites(async (_req, _route, params, body) => {
+    const created = asRecord(body);
+    const orgId = params.id ?? (typeof created.id === 'string' ? created.id : '');
+    const ids = [orgId, ...(params.id && typeof created.id === 'string' ? [created.id] : [])].filter((x) => !!x);
+    return { facade: await facadeOf(orgId), entityIds: [...new Set(ids)], summary: { params, body: {} }, labelId: null };
+  });
 }

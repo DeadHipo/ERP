@@ -1,7 +1,7 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { errorBody } from '@erp/shared/api-responses';
-import { API_OPERATIONS } from './operations';
+import { API_OPERATIONS, type ApiOperation } from './operations';
 
 /** `/owners/:id` -> `/owners/{id}`, and the names of the path parameters. */
 function openApiPath(path: string): { path: string; params: string[] } {
@@ -17,6 +17,15 @@ function openApiPath(path: string): { path: string; params: string[] } {
 export function buildOpenApiDocument() {
   const registry = new OpenAPIRegistry();
   const error = errorBody;
+  // D-170: the session cookie of /auth/login, or the system key of scripts and a clean stack
+  registry.registerComponent('securitySchemes', 'session', { type: 'apiKey', in: 'cookie', name: 'erp_session' });
+  registry.registerComponent('securitySchemes', 'systemKey', { type: 'apiKey', in: 'header', name: 'X-System-Key' });
+  const security: Record<ApiOperation['access'], string[]> = {
+    public: [],
+    user: ['session'],
+    system: ['session', 'systemKey'],
+    org: ['session', 'systemKey'],
+  };
 
   for (const op of API_OPERATIONS) {
     const { path, params } = openApiPath(op.path);
@@ -26,6 +35,7 @@ export function buildOpenApiDocument() {
       path,
       tags: [op.tag],
       summary: op.summary,
+      security: security[op.access].map((name) => ({ [name]: [] })),
       ...(op.errors ? { description: `Errors:\n\n${op.errors.map((e) => `- ${e}`).join('\n')}` } : {}),
       request: {
         ...(params.length
@@ -66,6 +76,18 @@ export function buildOpenApiDocument() {
           description: 'Invalid input (validation_error)',
           content: { 'application/json': { schema: error } },
         },
+        ...(op.access === 'public'
+          ? {}
+          : {
+              401: {
+                description: 'No session (unauthenticated)',
+                content: { 'application/json': { schema: error } },
+              },
+              403: {
+                description: 'Not allowed (forbidden)',
+                content: { 'application/json': { schema: error } },
+              },
+            }),
         404: { description: 'Not found', content: { 'application/json': { schema: error } } },
         409: {
           description: 'Conflict with the current state',
@@ -85,7 +107,7 @@ export function buildOpenApiDocument() {
       title: 'Royalty ERP API',
       version: '1',
       description:
-        'JSON API of the music-label royalty ERP. Money and percents are exact decimal strings. Errors: `{ error: { code, message, statusCode, details } }`.',
+        'JSON API of the music-label royalty ERP. Money and percents are exact decimal strings. Errors: `{ error: { code, message, statusCode, details, requestId } }` (500: always `internal` with the request id). Access (D-170): the session cookie of `POST /auth/login`, or `X-System-Key` for the system operations; the organization is that of the session (`X-Org` for the system administrator).',
     },
     servers: [{ url: '/api/v1' }],
   });

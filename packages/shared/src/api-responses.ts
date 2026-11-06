@@ -40,6 +40,8 @@ export const errorBody = z.object({
     message: z.string(),
     statusCode: z.number().int(),
     details: z.unknown().optional(),
+    /** The id of the request (also the header `X-Request-Id`); always present on a 500 (D-170). */
+    requestId: z.string().optional(),
   }),
 });
 
@@ -1286,3 +1288,38 @@ export const adSummarySchema = z.object({
     .describe('The sums of the rows of the period'),
 });
 export type AdSummary = z.infer<typeof adSummarySchema>;
+
+// ---- the login and the organizations (stage 2, D-170) ----
+
+/** `GET /auth/me`, `POST /auth/login`: the session; with `AUTH_MODE=off` no user and the default organization. */
+export const meSchema = z.object({
+  authMode: z.enum(['on', 'off']),
+  user: z
+    .object({ id: z.string(), login: z.string(), isSystemAdmin: z.boolean(), orgId: z.string().nullable() })
+    .nullable(),
+  org: z.object({ id: z.string(), name: z.string() }).nullable(),
+});
+export type Me = z.infer<typeof meSchema>;
+export const orgSchema = z.object({ id: z.string(), name: z.string(), createdAt: timestamp, createdBy: z.string() });
+export type Org = z.infer<typeof orgSchema>;
+export const orgSummarySchema = orgSchema.extend({
+  counts: z.object({
+    labels: z.number().int(),
+    files: z.number().int().describe('Loaded Believe files'),
+    statements: z.number().int(),
+    owners: z.number().int(),
+    users: z.number().int(),
+  }),
+});
+export type OrgSummary = z.infer<typeof orgSummarySchema>;
+export const orgUserSchema = z.object({
+  id: z.string(),
+  login: z.string(),
+  orgId: z.string().nullable(),
+  isSystemAdmin: z.boolean(),
+  createdAt: timestamp,
+  createdBy: z.string(),
+  disabled: z.boolean(),
+});
+export type OrgUser = z.infer<typeof orgUserSchema>;
+export const okSchema = z.object({ ok: z.literal(true) });

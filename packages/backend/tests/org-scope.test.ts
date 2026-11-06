@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import type { Express } from 'express';
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createServerApp } from '../src/api/server-app';
+import { API_OPERATIONS, operationKey } from '../src/api/operations';
+import { createAuthService } from '../src/auth/service';
+import { createOrgFacades } from '../src/orgs/facades';
 import { openFacade } from '../src/facade';
 import { calculate } from '../src/facade/calculation';
 import { createSourceFilesRegistry, createSourcesService } from '../src/modules/sources';
@@ -225,5 +231,267 @@ describe('two organizations in one database (D-170)', () => {
     expect(() =>
       openFacade({ db: stack.db, orgId: randomUUID(), dataDir: TMP, payoutThresholdCents: 0, sources: stack.service }),
     ).toThrow(/another organization/);
+  });
+});
+
+describe('two organizations behind the login: the API (D-170)', () => {
+  const SECRET = randomBytes(32).toString('hex');
+  const PASSWORD = randomBytes(12).toString('hex');
+  const sfx = randomUUID().slice(0, 8);
+  const ISRC_B = 'QZTST2699901';
+  const UPC_B = '2699900000001';
+  const B_NAMES = ['B Owner Secret', 'B Pseudo Secret', 'B Second Secret', 'B Label Secret', 'B Sub Secret', 'B WRITER SECRET', 'B Song Secret', 'B Track Secret'];
+
+  type Ids = {
+    owner: string; artist: string; artist2: string; track: string; document: string; split: string;
+    participation: string; label: string; sublabel: string; rule: string; file: string; norm: string;
+    operation: string; ad: string; isrc: string; upc: string; account: string;
+  };
+  type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown };
+
+  let app: Express;
+  const cookie: Record<'a' | 'b' | 'sys', string> = { a: '', b: '', sys: '' };
+  let orgA = '';
+  let orgB = '';
+  let B: Ids;
+  let A: { label: string; owner: string; artist: string; document: string; buyout: string };
+
+  const as = <T extends request.Test>(who: 'a' | 'b' | 'sys', t: T): T => t.set('Cookie', cookie[who]).set('X-Operator', 'org-scope') as T;
+  async function api(who: 'a' | 'b', method: 'get' | 'post' | 'patch', url: string, c: Call = {}) {
+    let t = as(who, request(app)[method]('/api/v1' + url));
+    if (c.query) t = t.query(c.query);
+    if (c.body !== undefined) t = t.send(c.body as object);
+    return t;
+  }
+  async function ok(who: 'a' | 'b', method: 'post' | 'patch' | 'get', url: string, body?: unknown): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const res = await api(who, method, url, { body });
+    expect(res.status, `${method} ${url} -> ${JSON.stringify(res.body)}`).toBeLessThan(300);
+    return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  beforeAll(async () => {
+    const stack = await testStack();
+    await stack.reset();
+    await stack.resetModules();
+    orgA = stack.orgId;
+    orgB = (await createOrgsService(stack.db).createOrganization({ name: `Org B API ${sfx}`, createdBy: 'tests' })).id;
+    const dataDir = join(TMP, `org-api-${sfx}`);
+    mkdirSync(dataDir, { recursive: true });
+    const orgs = createOrgFacades({ stores: { db: stack.db, pool: stack.pg.pool, columnar: stack.columnar }, dataDir, payoutThresholdCents: 0 });
+    const auth = createAuthService(stack.db);
+    const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
+    await auth.createUser({ login: users.a, password: PASSWORD, orgId: orgA, createdBy: 'tests' });
+    await auth.createUser({ login: users.b, password: PASSWORD, orgId: orgB, createdBy: 'tests' });
+    await auth.createUser({ login: users.sys, password: PASSWORD, system: true, createdBy: 'tests' });
+    app = createServerApp({ orgs, auth: { service: auth, config: { mode: 'on', secret: SECRET } } });
+    for (const who of ['a', 'b', 'sys'] as const) {
+      const res = await request(app).post('/api/v1/auth/login').send({ login: users[who], password: PASSWORD }).expect(200);
+      cookie[who] = ((res.headers['set-cookie'] as unknown as string[])[0] as string).split(';')[0] as string;
+    }
+
+    // A: an own label, a confirmed owner with a pseudonym, an approved appendix
+    const la = await ok('a', 'post', '/labels', { name: '0to8', kind: 'own' });
+    const oa = await ok('a', 'post', '/owners', { name: 'A Owner', kind: 'person' });
+    const aa = await ok('a', 'post', '/artists', { pseudonym: 'A Pseudo', ownerId: oa.id });
+    const da = await ok('a', 'post', '/documents', { kind: 'appendix', title: 'A appendix', fileRef: 'dummy://a.pdf', requiresApproval: false });
+    const ba = await ok('a', 'post', '/documents', { kind: 'buyout', title: 'A buyout', fileRef: 'dummy://b.pdf', requiresApproval: false });
+    A = { label: la.id, owner: oa.id, artist: aa.id, document: da.id, buyout: ba.id };
+
+    // B: the same kinds of everything, under other names and ids
+    const lb = await ok('b', 'post', '/labels', { name: 'B Label Secret', kind: 'own' });
+    await ok('b', 'post', `/labels/${lb.id}/aliases`, { alias: 'Test Label' });
+    await ok('b', 'post', `/labels/${lb.id}/accounts`, { account: '2799555' });
+    const sb = await ok('b', 'post', '/labels', { name: 'B Sub Secret', kind: 'sublabel', ownLabelId: lb.id });
+    const ob = await ok('b', 'post', '/owners', { name: 'B Owner Secret', kind: 'person' });
+    const ab = await ok('b', 'post', '/artists', { pseudonym: 'B Pseudo Secret', ownerId: ob.id });
+    const ab2 = await ok('b', 'post', '/artists', { pseudonym: 'B Second Secret', ownerId: ob.id });
+    const contract = await ok('b', 'post', '/documents', { kind: 'contract', title: 'B contract', fileRef: 'dummy://c.pdf', ownerId: ob.id, requiresApproval: true });
+    await ok('b', 'post', `/documents/${contract.id}/approve`, {});
+    await ok('b', 'post', '/contracts', { ownerId: ob.id, documentId: contract.id, artistIds: [ab.id] });
+    const db_ = await ok('b', 'post', '/documents', { kind: 'appendix', title: 'B appendix', fileRef: 'dummy://b.pdf', requiresApproval: false });
+    const tb = await ok('b', 'post', '/tracks', { title: 'B Track Secret', isrc: ISRC_B, upc: UPC_B });
+    const spb = await ok('b', 'post', '/splits', { isrc: ISRC_B, validFrom: '2026-01-01', shares: [{ artistId: ab.id, percent: '50' }], documentId: db_.id });
+    const pb = await ok('b', 'post', '/participations', { isrc: ISRC_B, artistId: ab2.id, percent: '5', base: 'net', fundedFrom: 'top', validFrom: '2026-01-01', documentId: db_.id });
+    const rb = await ok('b', 'post', `/labels/${sb.id}/rules`, { percent: '30', recipientArtistId: ab2.id, validFrom: '2026-01-01', documentId: db_.id });
+    const believe = writeBelieve('2026-07', [{ isrc: ISRC_B, upc: UPC_B, net: '100' }], { account: '2799555' });
+    const fb = await as('b', request(app).post('/api/v1/sources/believe')).query({ label: lb.id }).attach('file', believe.path, believe.fileName);
+    expect(fb.status, JSON.stringify(fb.body)).toBe(201);
+    const b17 = await writeB17('Q22026', [{ writer: 'B WRITER SECRET', title: 'B Song Secret', payable: 10 }]);
+    const sb17 = await as('b', request(app).post('/api/v1/publishing/b17')).query({ label: lb.id }).attach('file', b17.path, b17.fileName);
+    expect(sb17.status, JSON.stringify(sb17.body)).toBe(201);
+    const writers = (await ok('b', 'get', '/publishing/writers')) as unknown as { writerNorm: string }[];
+    await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
+    const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
+    const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
+    B = {
+      owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
+      label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555',
+    };
+  });
+
+  const unknown = (): Ids => {
+    const u = () => randomUUID();
+    return {
+      owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
+      sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
+      upc: '2698800000001', account: '2799666',
+    };
+  };
+
+  /** Every operation of an organization: how to call it with the ids of `x` (B's or unknown ones). */
+  const CASES: Record<string, (x: Ids) => Call> = {
+    'GET /search': () => ({ query: { q: 'Secret' } }),
+    'GET /owners': (x) => ({ query: { label: x.label } }),
+    'POST /owners/merge': (x) => ({ body: { fromId: x.owner, intoId: A.owner, reason: 'r' } }),
+    'GET /owners/payables': (x) => ({ query: { ids: x.owner } }),
+    'GET /owners/:id': (x) => ({ params: { id: x.owner } }),
+    'GET /owners/:id/balance': (x) => ({ params: { id: x.owner } }),
+    'POST /owners/:id/payouts': (x) => ({ params: { id: x.owner }, body: { labelId: A.label } }),
+    'GET /artists': (x) => ({ query: { label: x.label } }),
+    'GET /artists/balances': (x) => ({ query: { ids: x.artist } }),
+    'GET /artists/duplicates': () => ({}),
+    'POST /artists': (x) => ({ body: { pseudonym: 'Into A', ownerId: x.owner } }),
+    'GET /artists/:id': (x) => ({ params: { id: x.artist } }),
+    'GET /artists/:id/balance': (x) => ({ params: { id: x.artist } }),
+    'POST /artists/:id/owner': (x) => ({ params: { id: x.artist }, body: { ownerId: A.owner } }),
+    'GET /tracks': () => ({}),
+    'POST /tracks': (x) => ({ body: { title: 'Into A', artistIds: [x.artist] } }),
+    'PATCH /tracks/:id': (x) => ({ params: { id: x.track }, body: { note: 'n' } }),
+    'GET /tracks/summary': (x) => ({ query: { isrcs: x.isrc } }),
+    'GET /tracks/catalog': (x) => ({ query: { label: x.label } }),
+    'GET /tracks/:isrc/money': (x) => ({ params: { isrc: x.isrc } }),
+    'GET /tracks/:isrc/breakdown/:month': (x) => ({ params: { isrc: x.isrc, month: '2026-07' } }),
+    'GET /releases': (x) => ({ query: { q: x.upc } }),
+    'GET /releases/:upc': (x) => ({ params: { upc: x.upc } }),
+    'GET /documents/:id/uses': (x) => ({ params: { id: x.document } }),
+    'GET /tracks/:isrc/explain': (x) => ({ params: { isrc: x.isrc } }),
+    'GET /documents': (x) => ({ query: { ownerId: x.owner } }),
+    'POST /documents': (x) => ({ body: { kind: 'other', title: 'Into A', requiresApproval: false, ownerId: x.owner } }),
+    'PATCH /documents/:id': (x) => ({ params: { id: x.document }, body: { labelId: null } }),
+    'POST /documents/:id/attach': (x) => ({ params: { id: x.document }, body: { fileRef: 'dummy://x.pdf' } }),
+    'POST /documents/:id/approve': (x) => ({ params: { id: x.document }, body: {} }),
+    'POST /contracts': (x) => ({ body: { ownerId: x.owner, documentId: x.document, artistIds: [x.artist] } }),
+    'GET /splits': (x) => ({ query: { isrc: x.isrc } }),
+    'POST /splits': (x) => ({ body: { isrc: 'QZTST2697777', validFrom: '2026-01-01', shares: [{ artistId: x.artist, percent: '10' }], documentId: A.document } }),
+    'POST /splits/change': (x) => ({ body: { isrc: 'QZTST2697777', from: '2026-09-01', shares: [{ artistId: x.artist, percent: '10' }], documentId: A.document } }),
+    'POST /splits/buyout': (x) => ({ body: { isrcs: [x.isrc], sellerArtistId: x.artist, effectiveFrom: '2026-06-01', documentId: A.buyout } }),
+    'POST /splits/:id/confirm': (x) => ({ params: { id: x.split }, body: { documentId: A.document } }),
+    'GET /participations': (x) => ({ query: { isrc: x.isrc } }),
+    'POST /participations': (x) => ({ body: { isrc: 'QZTST2697777', artistId: x.artist, percent: '5', base: 'net', fundedFrom: 'top', validFrom: '2026-01-01', documentId: A.document } }),
+    'POST /participations/:id/close': (x) => ({ params: { id: x.participation }, body: { validTo: '2026-09-01' } }),
+    'GET /labels': () => ({}),
+    'POST /labels': (x) => ({ body: { name: 'Into A sub', kind: 'sublabel', ownLabelId: x.label } }),
+    'POST /labels/:id/accounts': (x) => ({ params: { id: x.label }, body: { account: '2799777' } }),
+    'POST /labels/:id/accounts/:account/remove': (x) => ({ params: { id: x.label, account: x.account } }),
+    'POST /labels/:id/aliases': (x) => ({ params: { id: x.sublabel }, body: { alias: 'Into A alias' } }),
+    'POST /labels/:id/rules': (x) => ({ params: { id: x.sublabel }, body: { percent: '10', recipientArtistId: A.artist, validFrom: '2026-01-01', documentId: A.document } }),
+    'POST /labels/rules/:id/close': (x) => ({ params: { id: x.rule }, body: { validTo: '2026-09-01' } }),
+    'GET /sources/files': (x) => ({ query: { label: x.label } }),
+    'GET /sources/lines': (x) => ({ query: { fileId: x.file } }),
+    'GET /sources/lines/facets': (x) => ({ query: { fileId: x.file } }),
+    'GET /publishing/writers': () => ({}),
+    'POST /publishing/writers/:norm/map': (x) => ({ params: { norm: x.norm }, body: { ownerId: A.owner } }),
+    'POST /publishing/terms': (x) => ({ body: { ownerId: x.owner, percent: '10', validFrom: '2026-01-01' } }),
+    'GET /reconciliation': () => ({}),
+    'GET /signals': (x) => ({ query: { ownerId: x.owner } }),
+    'GET /overview': () => ({}),
+    'GET /queue/:reason': (x) => ({ params: { reason: 'split_unconfirmed' }, query: { ownerId: x.owner } }),
+    'GET /settlements/operations': (x) => ({ query: { ownerId: x.owner } }),
+    'POST /settlements/operations': (x) => ({ body: { direction: 'in', amount: '1.00', artistId: x.artist, date: '2026-08-01', comment: 'c', labelId: A.label } }),
+    'PATCH /settlements/operations/:id': (x) => ({ params: { id: x.operation }, body: { labelId: A.label } }),
+    'POST /settlements/operations/:id/proof': (x) => ({ params: { id: x.operation }, body: { fileRef: 'dummy://p.pdf' } }),
+    'POST /settlements/operations/:id/deferred': (x) => ({ params: { id: x.operation }, body: { deferred: true } }),
+    'POST /settlements/operations/:id/deactivate': (x) => ({ params: { id: x.operation }, body: { reason: 'r' } }),
+    'POST /settlements/operations/:id/return': (x) => ({ params: { id: x.operation }, body: { fileRef: 'dummy://r.pdf', date: '2099-12-31', comment: 'c' } }),
+    'GET /settlements/operations/:id/snapshot': (x) => ({ params: { id: x.operation } }),
+    'GET /audit': (x) => ({ query: { entityId: x.owner } }),
+    'GET /ads': (x) => ({ query: { artistId: x.artist } }),
+    'POST /ads': (x) => ({ body: { items: [{ month: '2026-07', amount: '1', artistId: x.artist, scope: 'any', labelId: A.label }] } }),
+    'GET /ads/summary': (x) => ({ query: { label: x.label } }),
+    'GET /ads/:id': (x) => ({ params: { id: x.ad } }),
+    'PATCH /ads/:id': (x) => ({ params: { id: x.ad }, body: { recoveryPercent: '0' } }),
+    'POST /ads/:id/deactivate': (x) => ({ params: { id: x.ad }, body: { reason: 'r' } }),
+  };
+  /** Writes that name no entity of another organization: they create in A and are not part of the walk. */
+  const ID_LESS = ['POST /owners', 'POST /sources/believe', 'POST /publishing/b17', 'POST /publishing/writers/resolve'];
+
+  /**
+   * Where the lookup itself answers an unknown key with `validation_error` today: an unknown file id («Not a loaded
+   * Believe file», F10) and an unknown writer («Unknown writer»). Everywhere else the unknown id must reach the lookup.
+   */
+  const VALIDATION_ALLOWED = ['GET /sources/lines', 'GET /sources/lines/facets', 'POST /publishing/writers/:norm/map'];
+
+  const secrets = () => [...Object.entries(B).filter(([k]) => k !== 'account').map(([, v]) => v), ...B_NAMES];
+  /** The text of an answer without the values the request itself sent (an error message names the id it got). */
+  function leaks(res: request.Response, c: Call): string[] {
+    let text = JSON.stringify(res.body);
+    const sent = [...Object.values(c.params ?? {}), ...Object.values(c.query ?? {}), ...(JSON.stringify(c.body ?? {}).match(/"[^"]*"/g) ?? []).map((s) => s.slice(1, -1))];
+    for (const v of sent) if (v.length > 3) text = text.split(v).join('<sent>');
+    return secrets().filter((s) => text.includes(s));
+  }
+  const url = (path: string, params: Record<string, string> = {}) =>
+    path.replace(/:([A-Za-z]+)/g, (_m, n: string) => encodeURIComponent(params[n] ?? 'x'));
+  const bView = async () => {
+    const reads = [`/owners/${B.owner}`, `/artists/${B.artist}`, '/labels', `/splits?isrc=${ISRC_B}`, `/participations?isrc=${ISRC_B}`, '/settlements/operations', '/ads', '/documents', '/publishing/writers', '/sources/files', `/owners/${B.owner}/balance`];
+    const out = [];
+    for (const r of reads) out.push((await api('b', 'get', r)).body);
+    return JSON.stringify(out).replace(/"calculatedAt":"[^"]*"/g, '');
+  };
+
+  it('every operation of the organization: B\'s ids under a answer as unknown ids, with nothing of B; writes leave no trace', async () => {
+    const ops = API_OPERATIONS.filter((o) => o.access === 'org');
+    expect(ops.map(operationKey).filter((k) => !CASES[k] && !ID_LESS.includes(k))).toEqual([]);
+    const auditBefore = (await api('a', 'get', '/audit', { query: { limit: '500' } })).body.items.length as number;
+    const bBefore = await bView();
+    for (const o of ops) {
+      const key = operationKey(o);
+      const make = CASES[key];
+      if (!make) continue;
+      const withB = make(B);
+      const withUnknown = make(unknown());
+      const rb = await api('a', o.method, url(o.path, withB.params), withB);
+      const ru = await api('a', o.method, url(o.path, withUnknown.params), withUnknown);
+      expect([rb.status, rb.body?.error?.code], `${key}: B's ids vs unknown ids (${JSON.stringify(ru.body?.error ?? '')})`).toEqual([ru.status, ru.body?.error?.code]);
+      expect(leaks(rb, withB), `${key}: B's data in the answer`).toEqual([]);
+      // an unknown id must reach the lookup, not stop at validation (else the comparison proves nothing)
+      if (!VALIDATION_ALLOWED.includes(key))
+        expect(ru.body?.error?.code, `${key}: the unknown id stopped at validation: ${JSON.stringify(ru.body)}`).not.toBe('validation_error');
+      if (o.method !== 'get') expect(rb.status, `${key}: a write with B's ids succeeded`).toBeGreaterThanOrEqual(400);
+    }
+    expect((await api('a', 'get', '/audit', { query: { limit: '500' } })).body.items.length).toBe(auditBefore);
+    expect(await bView()).toBe(bBefore);
+  });
+
+  it('under a: the lists, the audit and the search have nothing of B; B\'s label is 404 in query, body and upload', async () => {
+    const owners = await api('a', 'get', '/owners');
+    expect(owners.status).toBe(200);
+    expect((owners.body as { id: string }[]).map((o) => o.id)).toEqual([A.owner]);
+    const audit = await api('a', 'get', '/audit', { query: { limit: '500' } });
+    expect(audit.body.items.length).toBeGreaterThan(0);
+    expect(leaks(audit, {})).toEqual([]);
+    for (const r of ['/search?q=Secret', '/labels', '/sources/files', '/publishing/writers', '/overview', '/reconciliation', '/tracks', '/artists'])
+      expect(leaks(await api('a', 'get', r), {}), r).toEqual([]);
+
+    const notFound = (res: request.Response) => [res.status, res.body.error?.code];
+    expect(notFound(await api('a', 'get', '/owners', { query: { label: B.label } }))).toEqual([404, 'not_found']);
+    expect(notFound(await api('a', 'post', '/settlements/operations', { body: { direction: 'in', amount: '1', artistId: A.artist, date: '2026-08-01', labelId: B.label } }))).toEqual([404, 'not_found']);
+    expect(notFound(await api('a', 'post', '/ads', { body: { items: [{ isrc: ISRC_B, month: '2026-07', amount: '1', labelId: B.label }] } }))).toEqual([404, 'not_found']);
+    const file = writeBelieve('2026-07', [{ isrc: ISRC_B, upc: UPC_B, net: '1' }], { account: B.account });
+    expect(notFound(await as('a', request(app).post('/api/v1/sources/believe')).query({ label: B.label }).attach('file', file.path, file.fileName))).toEqual([404, 'not_found']);
+  });
+
+  it('X-Org: the system administrator needs it, an unknown one is 404, a user may not send it', async () => {
+    const sys = (t: request.Test) => t.set('Cookie', cookie.sys);
+    const none = await sys(request(app).get('/api/v1/owners'));
+    expect([none.status, none.body.error?.code]).toEqual([400, 'org_required']);
+    const unknownOrg = await sys(request(app).get('/api/v1/owners')).set('X-Org', randomUUID());
+    expect([unknownOrg.status, unknownOrg.body.error?.code]).toEqual([404, 'org_not_found']);
+    const inB = await sys(request(app).get('/api/v1/owners')).set('X-Org', orgB);
+    const inBIds = (inB.body as { id: string }[]).map((o) => o.id);
+    expect(inBIds).toContain(B.owner);
+    expect(inBIds).not.toContain(A.owner);
+    const fromA = await as('a', request(app).get('/api/v1/owners')).set('X-Org', orgA);
+    expect([fromA.status, fromA.body.error?.code]).toEqual([403, 'forbidden']);
   });
 });
