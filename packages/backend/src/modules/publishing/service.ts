@@ -195,7 +195,10 @@ export function createPublishingService(db: Db, org: OrgScope, storageDir: strin
           await repo.setStatementTotal(id, picoToString(total));
         });
       } catch (e) {
-        if (created) await rm(storedPath, { force: true });
+        // Another process may have loaded the same bytes meanwhile and kept its statement on the copy this load created
+        // (its own COPYFILE_EXCL met ours): the copy is removed only when no statement of the organization points at it.
+        if (created && (await repo.statementBySha(sha256))?.storedPath !== storedPath)
+          await rm(storedPath, { force: true });
         if (isUniqueViolation(e)) {
           throw new ConflictError('This statement or its quarter is already loaded', 'duplicate_period');
         }
