@@ -138,9 +138,13 @@ for f in "${B17_FILES[@]}"; do [ -f "$f" ] || die "missing B17 statement $(basen
 shopt -s nullglob
 # 0to8: every *_1052428_*.zip of the raw folder (the loose .csv duplicates of 2023-12 and the unnamed report are not)
 FILES_0TO8=("$RAW_0TO8"/*_"$ACCOUNT_0TO8"_*.zip)
-# Echo8: every *_1055956_*.csv.zip, plus July 2026 under its proper name from <data>/stage (the copy in believe_echo8
-# is named «… 2.csv» and is not taken)
-FILES_ECHO8=("$RAW_ECHO8"/*_"$ACCOUNT_ECHO8"_*.csv.zip "$DATA"/stage/*_"$ACCOUNT_ECHO8"_2026-07-01_2026-07-01.csv)
+# Echo8: every *_1055956_*.csv.zip, plus July 2026 under its proper name from <data>/stage, else from data/real/stage
+# (the copy in believe_echo8 is named «… 2.csv» and is not taken; data/real is the data archive, D-093)
+FILES_ECHO8=("$RAW_ECHO8"/*_"$ACCOUNT_ECHO8"_*.csv.zip)
+JULY_ECHO8=("$DATA"/stage/*_"$ACCOUNT_ECHO8"_2026-07-01_2026-07-01.csv)
+[ "${#JULY_ECHO8[@]}" -gt 0 ] || JULY_ECHO8=("$ROOT"/data/real/stage/*_"$ACCOUNT_ECHO8"_2026-07-01_2026-07-01.csv)
+[ "${#JULY_ECHO8[@]}" -gt 0 ] || die "no July 2026 Echo8 report *_${ACCOUNT_ECHO8}_2026-07-01_2026-07-01.csv in $DATA/stage or data/real/stage"
+FILES_ECHO8+=("${JULY_ECHO8[@]}")
 shopt -u nullglob
 [ "${#FILES_0TO8[@]}" -eq "$EXPECT_FILES_0TO8" ] || die "0to8 Believe files: ${#FILES_0TO8[@]}, expected $EXPECT_FILES_0TO8"
 [ "${#FILES_ECHO8[@]}" -eq "$EXPECT_FILES_ECHO8" ] || die "Echo8 Believe files: ${#FILES_ECHO8[@]}, expected $EXPECT_FILES_ECHO8"
@@ -382,22 +386,14 @@ step "9-ads"
 run extract-main-ads python3 -I packages/backend/scripts/mvp/extract-main-ads.py
 run load-ads "${LOADER[@]}" ads --apply --org "$ORG"
 
-# ================================================================== 10. the books and the catalog
-step "10-books"
+# ================================================================== 10. the labels of the operations
+step "10-operation-labels"
 # assign-operation-labels first: the step operations-echo8 of assign-label-books needs its 7 Echo8 operations (D-168)
 run operation-labels "${TSX[@]}" packages/backend/scripts/assign-operation-labels.ts "$DATA" --org "$ORG" --apply
-if [ "$MARK_SOURCE_SUPPORTED" = 1 ]; then
-  run operation-label-source "${TSX[@]}" packages/backend/scripts/assign-operation-labels.ts "$DATA" --org "$ORG" --mark-source --apply
-fi
-run label-books "${TSX[@]}" packages/backend/scripts/assign-label-books.ts "$DATA" --org "$ORG" --apply
-run label-books-dry "${TSX[@]}" packages/backend/scripts/assign-label-books.ts "$DATA" --org "$ORG"
-grep -q 'stop' "$RUN/$STEP.label-books-dry.log" && die "assign-label-books dry run after --apply stops"
-grep -E '^[[:space:]]+(applied|→ 0to8: [1-9])' "$RUN/$STEP.label-books-dry.log" && die "assign-label-books dry run after --apply still has work"
-run track-labels "${TSX[@]}" packages/backend/scripts/derive-track-labels.ts "$DATA" --org "$ORG" --apply
-run track-labels-dry "${TSX[@]}" packages/backend/scripts/derive-track-labels.ts "$DATA" --org "$ORG"
-expect_line "$RUN/$STEP.track-labels-dry.log" "ISRCs changed 0,"
 
 # ================================================================== 11. the seven manual API writes of 2026-11-03
+# Before --mark-source (recipe 11's order: step 6 before the books). The replayed operation is created with
+# labelId 0to8, so its label_source is `operator` and assign-operation-labels never counts it as `default`.
 step "11-manual-writes"
 api GET "/documents?ownerId=$REPLAY_OWNER&kind=advance_basis"
 want 200 "GET /documents"
@@ -405,8 +401,9 @@ if [ "$(jget "sum(1 for x in d if '$REPLAY_MARKER' in x['title'])")" != 0 ]; the
   [ "$KEEP" = 1 ] || die "the replay is already there on a dropped stack"
   info "--keep: the replay exists (a document titled «$REPLAY_MARKER…»); not repeated"
 else
-  # 1-2. an approved advance_basis document of the owner
-  api POST /documents "{\"kind\":\"advance_basis\",\"title\":\"$REPLAY_MARKER: advance basis\",\"ownerId\":\"$REPLAY_OWNER\",\"requiresApproval\":true}" "$REPLAY_OPERATOR"
+  # 1-2. an approved advance_basis document of the owner (with a file: approve refuses a document without one,
+  # document_not_attached; the originals of 2026-11-03 carried a file reference too)
+  api POST /documents "{\"kind\":\"advance_basis\",\"title\":\"$REPLAY_MARKER: advance basis\",\"fileRef\":\"acceptance/replay-2026-11-03-advance-basis\",\"ownerId\":\"$REPLAY_OWNER\",\"requiresApproval\":true}" "$REPLAY_OPERATOR"
   want 201 "POST /documents advance_basis"
   DOC_ADVANCE="$(jget "d['id']")"
   api POST "/documents/$DOC_ADVANCE/approve" "{\"by\":\"$REPLAY_OPERATOR\"}" "$REPLAY_OPERATOR"
@@ -418,7 +415,7 @@ else
   api POST "/settlements/operations/$OPERATION/proof" "{\"fileRef\":\"acceptance/replay-2026-11-03-payment-proof\",\"title\":\"$REPLAY_MARKER: payment proof\"}" "$REPLAY_OPERATOR"
   want 200 "POST /settlements/operations/:id/proof"
   # 5-6. an approved appendix document (no owner)
-  api POST /documents "{\"kind\":\"appendix\",\"title\":\"$REPLAY_MARKER: appendix\",\"requiresApproval\":true}" "$REPLAY_OPERATOR"
+  api POST /documents "{\"kind\":\"appendix\",\"title\":\"$REPLAY_MARKER: appendix\",\"fileRef\":\"acceptance/replay-2026-11-03-appendix\",\"requiresApproval\":true}" "$REPLAY_OPERATOR"
   want 201 "POST /documents appendix"
   DOC_APPENDIX="$(jget "d['id']")"
   api POST "/documents/$DOC_APPENDIX/approve" "{\"by\":\"$REPLAY_OPERATOR\"}" "$REPLAY_OPERATOR"
@@ -433,8 +430,30 @@ else
   info "replayed: documents $DOC_ADVANCE, $DOC_APPENDIX (+ the payment proof), operation $OPERATION, split $SPLIT confirmed"
 fi
 
-# ================================================================== 12. the proofs
-step "12-compare"
+# ================================================================== 12. the books and the catalog
+step "12-books"
+if [ "$MARK_SOURCE_SUPPORTED" = 1 ]; then
+  # D-168 recorded `default` = 1 315 over the live history, where the manual operation of 2026-11-03 had been put
+  # under 0to8 by default (mixed advances 68). On a clean rebuild that operation is replayed by step 11 WITH a label
+  # (`operator`), so the mixed advances are 67 and `default` is 1 314 (+ 1 `operator`). The script's own check expects
+  # 1 315 and stops; --force passes it, and this step asserts the count itself: 1 314 (clean rebuild) or 1 315.
+  run operation-label-source "${TSX[@]}" packages/backend/scripts/assign-operation-labels.ts "$DATA" --org "$ORG" --mark-source --apply --force
+  DEFAULTS="$(sed -n 's/^[[:space:]]*source default: \([0-9][0-9]*\)$/\1/p' "$RUN/$STEP.operation-label-source.log" | tail -n 1)"
+  case "$DEFAULTS" in
+    1314|1315) info "label source default: $DEFAULTS (1 314 on a clean rebuild, 1 315 in the D-168 history)" ;;
+    *) die "label source default: «$DEFAULTS», expected 1314 (clean rebuild) or 1315 (D-168)" ;;
+  esac
+fi
+run label-books "${TSX[@]}" packages/backend/scripts/assign-label-books.ts "$DATA" --org "$ORG" --apply
+run label-books-dry "${TSX[@]}" packages/backend/scripts/assign-label-books.ts "$DATA" --org "$ORG"
+grep -q 'stop' "$RUN/$STEP.label-books-dry.log" && die "assign-label-books dry run after --apply stops"
+grep -E '^[[:space:]]+(applied|→ 0to8: [1-9])' "$RUN/$STEP.label-books-dry.log" && die "assign-label-books dry run after --apply still has work"
+run track-labels "${TSX[@]}" packages/backend/scripts/derive-track-labels.ts "$DATA" --org "$ORG" --apply
+run track-labels-dry "${TSX[@]}" packages/backend/scripts/derive-track-labels.ts "$DATA" --org "$ORG"
+expect_line "$RUN/$STEP.track-labels-dry.log" "ISRCs changed 0,"
+
+# ================================================================== 13. the proofs
+step "13-compare"
 run compare-reference "${TSX[@]}" packages/backend/scripts/compare-reference.ts "$REFERENCE" --api "http://localhost:$PORT" --cookie "erp_session=$SESSION"
 expect_line "$RUN/$STEP.compare-reference.log" "TOTAL differing: 0"
 run check-owner-scope "${TSX[@]}" packages/backend/scripts/check-owner-scope.ts "$DATA" --org "$ORG"
@@ -443,8 +462,8 @@ run check-label-books "${TSX[@]}" packages/backend/scripts/check-label-books.ts 
 expect_line "$RUN/$STEP.check-label-books.log" "differing: 0"
 expect_line "$RUN/$STEP.check-label-books.log" "(д) owners with a non-empty book '?': 0"
 
-# ================================================================== 13. the login proves the organization and the role
-step "13-me"
+# ================================================================== 14. the login proves the organization and the role
+step "14-me"
 api GET /auth/me
 want 200 "GET /auth/me"
 ME="$(jget "'%s|%s|%s|%s|%s' % (d['authMode'], d['user']['login'] if d['user'] else '', d['org']['id'] if d['org'] else '', d['org']['name'] if d['org'] else '', d['role'])")"
@@ -474,9 +493,9 @@ row "Believe files (loaded)" "$FILES_LOADED" 47
 row "Believe rows" "$CH_ROWS" "$EXPECT_ROWS"
 row "Believe Σ net" "$CH_NET" "$EXPECT_NET"
 echo
-info "compare-reference: $(grep -F 'TOTAL differing' "$RUN/12-compare.compare-reference.log")"
-info "check-owner-scope: $(grep -F 'differing owners' "$RUN/12-compare.check-owner-scope.log" | tail -n 1)"
-info "check-label-books: $(grep -E '^differing: ' "$RUN/12-compare.check-label-books.log")"
+info "compare-reference: $(grep -F 'TOTAL differing' "$RUN/13-compare.compare-reference.log")"
+info "check-owner-scope: $(grep -F 'differing owners' "$RUN/13-compare.check-owner-scope.log" | tail -n 1)"
+info "check-label-books: $(grep -E '^differing: ' "$RUN/13-compare.check-label-books.log")"
 info "organization $ORG_NAME $ORG; login $OPERATOR_LOGIN (org_admin); secrets in $SECRETS; log $LOG"
 echo
 echo "ACCEPTANCE PASSED ($STAMP)"

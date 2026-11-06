@@ -338,6 +338,21 @@ log in; migration 0017 turned every stage-2 user into an `org_admin` member of i
 absolute: the files are not moved. The Python extractors of recipe 9 read without an organization: valid only while
 the database holds one organization.
 
+**The scripted run** (D-173): `packages/backend/scripts/acceptance/clean-stack.sh --yes --data data/real --port 3002`
+does steps 1–9 with recipe 11 from `down -v` (destructive; read its `README.md`). Its order follows recipe 11:
+`assign-operation-labels --apply`, the seven manual writes (step 6), then `--mark-source --apply --force`,
+`assign-label-books`, `derive-track-labels`, the proofs. `--mark-source` expects `default` = 1 315 (D-168, the live
+history, where the manual operation of 2026-11-03 had gone under 0to8 by default); on a clean rebuild the replayed
+operation is created with `labelId` 0to8 (`operator`), so `default` is **1 314** + 1 `operator` (mixed advances 67, not
+68): the script passes `--force` and asserts `default` ∈ {1 314, 1 315} itself. The replayed documents need a
+`fileRef` (approve refuses `422 document_not_attached`). The July 2026 Echo8 report is taken from `<data>/stage`, else
+`data/real/stage`. Run of 2026-11-06 (`data/acceptance/20261106T063708Z`, finished by hand after the 1 314 stop):
+47 files, 75 744 752 rows; `assign-label-books` statements 4 → 0to8 (+2 done at load), ads 2 653 → 0to8, operations-echo8
+7; `derive-track-labels` 23 121 rows for 20 685 ISRCs, 2 436 with two intervals; `compare-reference` (default mode)
+`TOTAL differing: 0`; `check-owner-scope` `differing owners: 0` (1 151); `check-label-books … 200` (а) (б) (д) (ж) 0,
+`differing: 0`; `/auth/me` on / operator / 0to8 / `org_admin`; the counts of recipe 11 all equal (operations 2 663,
+documents 1 400, `track_labels` 23 121).
+
 ## 13. A new label from zero through the UI (D-172)
 
 The order of the onboarding checklist (`GET /api/v1/onboarding?label=<id>`, P1 under the label): each step links to the
