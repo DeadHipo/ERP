@@ -298,6 +298,8 @@ D-170. The stack starts without organizations and users; the first of each is ma
    `schema_migrations` row), and `CLICKHOUSE_DATABASE=believe_<x> node --env-file=.env
    packages/backend/scripts/migrate-clickhouse.ts` (it retargets `believe` / `believe_stage` to `believe_<x>` /
    `believe_<x>_stage`); then point the scripts at the pair with `DB_DATABASE` / `CLICKHOUSE_DATABASE`.
+   To prove the empty-stack path without touching the live project, `packages/backend/scripts/acceptance/clean-stack.sh
+   --project <name>` runs the whole acceptance on a separate compose project with its own containers, volumes and ports.
 2. `.env` (see `.env.example`): `AUTH_MODE=on`, `AUTH_SECRET=$(openssl rand -hex 32)` (≥ 32 bytes, never
    `change_me…`), `SYSTEM_ADMIN_KEY=$(openssl rand -hex 24)`; `AUTH_COOKIE_SECURE=1` only behind https.
 3. The system administrator: `ERP_NEW_PASSWORD=… npx tsx packages/backend/scripts/create-user.ts admin --system`

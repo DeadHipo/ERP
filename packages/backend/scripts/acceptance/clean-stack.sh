@@ -6,10 +6,10 @@
 #
 #   packages/backend/scripts/acceptance/clean-stack.sh [--data data/real] [--base data/pub] [--port 3002]
 #       [--reference data/backup/2026-11-05-before-org/reference] [--keep] [--skip-believe] [--no-mark-source] [--yes]
-#       [--private <name> [--replace-private] [--keep-private]]
+#       [--private <name> [--replace-private] [--keep-private]] [--project <name> [--down-after]]
 #
-# DESTRUCTIVE without --keep or --private: `docker compose … down -v` drops the PostgreSQL and ClickHouse volumes (the
-# live `erp` / `believe` stores and every test database). Asks first unless --yes.
+# DESTRUCTIVE without --keep, --private or --project: `docker compose … down -v` drops the PostgreSQL and ClickHouse
+# volumes (the live `erp` / `believe` stores and every test database). Asks first unless --yes.
 # --private <name> ([a-z0-9_]+): the whole acceptance on an empty private pair of stores on the running servers
 # (PostgreSQL erp_<name>, ClickHouse believe_<name> and believe_<name>_stage), the live stack untouched. Never runs
 # `docker compose`, asks nothing, and is incompatible with --keep and --skip-believe. Refuses stores that exist unless
@@ -17,6 +17,13 @@
 # commands that drop them are printed; --keep-private leaves out the commands. --data defaults to
 # data/acceptance/<name>-data; the secrets are data/acceptance/<name>-secrets.env and the loader's directory is the copy
 # data/acceptance/<name>-mvp-load (MVP_LOAD_DIR).
+# --project <name> ([a-z0-9-]+, not the live project): the whole acceptance on a SEPARATE compose project, with its own
+# containers, named volumes and host ports (55432, 58123, 59000, 55050; PROJECT_DB_PORT, PROJECT_CH_HTTP_PORT,
+# PROJECT_CH_NATIVE_PORT, PROJECT_PGADMIN_PORT override them) and a real `docker compose -p <name> … down -v` of its own
+# volumes first. Asks nothing; incompatible with --private, --keep and --skip-believe; refuses a project that this
+# script did not create. Checks that the live containers and volumes stay the same. The project stays up after the run
+# and the teardown command is printed; --down-after runs it after a pass. --data defaults to
+# data/acceptance/<name>-data; secrets and the loader's directory are named as with --private.
 # Writes data/acceptance/<run>/ (log, step outputs, server log) and data/acceptance/secrets.env (mode 600); never prints
 # a secret. Prints ids and counts only (no people's names). Exit code non-zero at the first failing step, named.
 # Must stay bash 3.2 compatible (macOS /bin/bash).
@@ -39,6 +46,10 @@ PRIVATE=0
 PRIVATE_NAME=""
 REPLACE_PRIVATE=0
 KEEP_PRIVATE=0
+PROJECT=0
+PROJECT_NAME=""
+DOWN_AFTER=0
+LIVE_PROJECT="royalty-erp" # the top-level `name:` of docker-compose.yml: the owner's stack
 while [ $# -gt 0 ]; do
   case "$1" in
     --data) DATA="$2"; shift 2 ;;
@@ -52,11 +63,16 @@ while [ $# -gt 0 ]; do
     --private) PRIVATE=1; PRIVATE_NAME="$2"; shift 2 ;;
     --replace-private) REPLACE_PRIVATE=1; shift ;;
     --keep-private) KEEP_PRIVATE=1; shift ;;
+    --project) PROJECT=1; PROJECT_NAME="$2"; shift 2 ;;
+    --down-after) DOWN_AFTER=1; shift ;;
     -h|--help) sed -n '2,/^# Must stay bash/p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 usage_error() { echo "$1" >&2; exit 2; }
+[ "$PRIVATE" = 0 ] || [ "$PROJECT" = 0 ] || usage_error "--project is incompatible with --private"
+[ "$PRIVATE" = 1 ] || { [ "$REPLACE_PRIVATE" = 0 ] && [ "$KEEP_PRIVATE" = 0 ]; } || usage_error "--replace-private and --keep-private need --private <name>"
+[ "$PROJECT" = 1 ] || [ "$DOWN_AFTER" = 0 ] || usage_error "--down-after needs --project <name>"
 if [ "$PRIVATE" = 1 ]; then
   case "$PRIVATE_NAME" in
     ''|*[!a-z0-9_]*) usage_error "--private: «$PRIVATE_NAME» is not [a-z0-9_]+" ;;
@@ -67,20 +83,51 @@ if [ "$PRIVATE" = 1 ]; then
   [ "$KEEP" = 0 ] || usage_error "--private is incompatible with --keep"
   [ "$SKIP_BELIEVE" = 0 ] || usage_error "--private is incompatible with --skip-believe: the stores start empty"
   [ -n "$DATA" ] || DATA="data/acceptance/$PRIVATE_NAME-data"
+elif [ "$PROJECT" = 1 ]; then
+  case "$PROJECT_NAME" in
+    ''|-*|*[!a-z0-9-]*) usage_error "--project: «$PROJECT_NAME» is not [a-z0-9-]+ starting with a letter or a digit" ;;
+  esac
+  [ "${#PROJECT_NAME}" -le 40 ] || usage_error "--project: the name is longer than 40 characters"
+  [ "$KEEP" = 0 ] || usage_error "--project is incompatible with --keep"
+  [ "$SKIP_BELIEVE" = 0 ] || usage_error "--project is incompatible with --skip-believe: the stores start empty"
+  # what a bare `docker compose` in this repo resolves to: `name:`, or COMPOSE_PROJECT_NAME when it is set
+  DEFAULT_PROJECT="$(docker compose -f docker-compose.yml -f docker-compose.dev.yml config --format json 2>/dev/null |
+    python3 -I -c 'import json,sys; print(json.load(sys.stdin)["name"])')" || usage_error "--project: docker compose config does not answer"
+  [ "$PROJECT_NAME" != "$LIVE_PROJECT" ] || usage_error "--project: $LIVE_PROJECT is the live project"
+  [ "$PROJECT_NAME" != "$DEFAULT_PROJECT" ] || usage_error "--project: $DEFAULT_PROJECT is the default compose project of the repo"
+  [ -n "$DATA" ] || DATA="data/acceptance/$PROJECT_NAME-data"
 else
-  [ "$REPLACE_PRIVATE" = 0 ] && [ "$KEEP_PRIVATE" = 0 ] || usage_error "--replace-private and --keep-private need --private <name>"
   [ -n "$DATA" ] || DATA="data/real"
 fi
+ISOLATED=0
+SCOPE_NAME=""
+[ "$PRIVATE" = 0 ] || { ISOLATED=1; SCOPE_NAME="$PRIVATE_NAME"; }
+[ "$PROJECT" = 0 ] || { ISOLATED=1; SCOPE_NAME="$PROJECT_NAME"; }
 abs() { case "$1" in /*) echo "$1" ;; *) echo "$ROOT/$1" ;; esac; }
 DATA="$(abs "$DATA")"; BASE="$(abs "$BASE")"; REFERENCE="$(abs "$REFERENCE")"
-if [ "$PRIVATE" = 1 ] && [ -d "$DATA" ] && [ "$(cd "$DATA" && pwd)" = "$ROOT/data/real" ]; then
-  usage_error "--private: --data must not be data/real (the file copies of the runs would mix)"
+if [ "$ISOLATED" = 1 ] && [ -d "$DATA" ] && [ "$(cd "$DATA" && pwd)" = "$ROOT/data/real" ]; then
+  usage_error "--data must not be data/real with --private or --project (the file copies of the runs would mix)"
 fi
 
 # ------------------------------------------------------------------ constants (recipe 11, D-169…D-172)
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.dev.yml)
-PG_CONTAINER="royalty-erp-postgres-1"
-CH_CONTAINER="royalty-erp-clickhouse-1"
+if [ "$PROJECT" = 1 ]; then
+  # -p on every call. It wins over COMPOSE_PROJECT_NAME, which wins over the top-level `name:`: the variable only catches
+  # a bare `docker compose` in a child process. pg.sh and stores.py take the container from ERP_PG_CONTAINER.
+  COMPOSE=(docker compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.dev.yml)
+  CONTAINER_PREFIX="$PROJECT_NAME"
+  export COMPOSE_PROJECT_NAME="$PROJECT_NAME"
+  export ERP_PG_CONTAINER="$PROJECT_NAME-postgres-1" ERP_CH_CONTAINER="$PROJECT_NAME-clickhouse-1"
+else
+  COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.dev.yml)
+  CONTAINER_PREFIX="$LIVE_PROJECT"
+fi
+PG_CONTAINER="${ERP_PG_CONTAINER:-$LIVE_PROJECT-postgres-1}"
+CH_CONTAINER="${ERP_CH_CONTAINER:-$LIVE_PROJECT-clickhouse-1}"
+# --project: what must stay the same, and the volumes of the project (compose names them <project>_<key>)
+LIVE_PG_CONTAINER="$LIVE_PROJECT-postgres-1"
+LIVE_CONTAINERS=("$LIVE_PG_CONTAINER" "$LIVE_PROJECT-clickhouse-1" "$LIVE_PROJECT-pgadmin-1")
+LIVE_VOLUMES=("${LIVE_PROJECT}_pg_data" "${LIVE_PROJECT}_ch_data" "${LIVE_PROJECT}_pgadmin_data")
+PROJECT_VOLUMES=("${PROJECT_NAME}_pg_data" "${PROJECT_NAME}_ch_data")
 ORG_NAME="0to8"
 ADMIN_LOGIN="admin"
 OPERATOR_LOGIN="operator"
@@ -115,10 +162,10 @@ ACC="$ROOT/data/acceptance"
 RUN="$ACC/$STAMP"
 SECRETS="$ACC/secrets.env"
 MVP_COPY=""
-if [ "$PRIVATE" = 1 ]; then
+if [ "$ISOLATED" = 1 ]; then
   # not the shared file: it holds the logins of the stack of the last non-private run
-  SECRETS="$ACC/$PRIVATE_NAME-secrets.env"
-  MVP_COPY="$ACC/$PRIVATE_NAME-mvp-load"
+  SECRETS="$ACC/$SCOPE_NAME-secrets.env"
+  MVP_COPY="$ACC/$SCOPE_NAME-mvp-load"
 fi
 mkdir -p "$RUN"
 chmod 700 "$ACC" "$RUN"
@@ -128,6 +175,7 @@ exec > >(tee -a "$LOG") 2>&1
 STEP="init"
 SERVER_PID=""
 PRIVATE_CREATED=0
+PROJECT_DROPPED=0
 step() { STEP="$1"; echo; echo "==== [$(date -u +%H:%M:%S)] step $STEP"; }
 info() { echo "  $*"; }
 die() { echo; echo "FAILED at step $STEP: $*"; exit 1; }
@@ -151,9 +199,24 @@ print_private_drop() {
   done
   info "  rm -rf '$DATA' '$MVP_COPY' '$SECRETS'"
 }
+# what the teardown removes: --data only at its default place, a directory given by hand is not ours to delete
+project_files() {
+  printf '%s\n' "$MVP_COPY" "$SECRETS"
+  if [ "$DATA" = "$ACC/$PROJECT_NAME-data" ]; then printf '%s\n' "$DATA"; fi
+}
+print_project_teardown() {
+  info "to drop the compose project and its files:"
+  info "  cd '$ROOT' && ${COMPOSE[*]} down -v"
+  info "  rm -rf $(project_files | sed "s/.*/'&'/" | tr '\n' ' ')"
+}
 on_exit() {
   local code=$?
   stop_server
+  if [ "$code" != 0 ] && [ "$PROJECT" = 1 ] && [ "$PROJECT_DROPPED" = 0 ]; then
+    echo
+    info "the compose project $PROJECT_NAME stays as it is"
+    print_project_teardown
+  fi
   if [ "$code" != 0 ] && [ "$PRIVATE_CREATED" = 1 ]; then
     echo
     info "the private stores stay; a new run needs --replace-private"
@@ -197,12 +260,30 @@ if [ "$PRIVATE" = 1 ]; then
   # the environment wins over .env: process.loadEnvFile and node --env-file do not override, stores.py and pg.sh read it first
   export DB_DATABASE="$DB_NAME" CLICKHOUSE_DATABASE="$CH_NAME" MVP_LOAD_DIR="$MVP_COPY"
 fi
+if [ "$PROJECT" = 1 ]; then
+  # the names of .env stay (they live inside the new containers); the ports do not. The environment wins over .env for
+  # compose interpolation, process.loadEnvFile, node --env-file and stores.py alike, and so for ch_query below.
+  DB_PORT="${PROJECT_DB_PORT:-55432}"
+  CLICKHOUSE_HTTP_PORT="${PROJECT_CH_HTTP_PORT:-58123}"
+  CLICKHOUSE_NATIVE_PORT="${PROJECT_CH_NATIVE_PORT:-59000}"
+  PGADMIN_PORT="${PROJECT_PGADMIN_PORT:-55050}"
+  PROJECT_PORTS="$DB_PORT $CLICKHOUSE_HTTP_PORT $CLICKHOUSE_NATIVE_PORT $PGADMIN_PORT"
+  for p in $PROJECT_PORTS; do
+    case "$p" in *[!0-9]*) die "port «$p» is not a number" ;; esac
+    for key in DB_PORT CLICKHOUSE_HTTP_PORT CLICKHOUSE_NATIVE_PORT PGADMIN_PORT; do
+      [ "$p" != "$(envfile "$key")" ] || die "port $p is $key of .env: the live stack"
+    done
+  done
+  export DB_HOST=localhost CLICKHOUSE_HOST=localhost DB_PORT CLICKHOUSE_HTTP_PORT CLICKHOUSE_NATIVE_PORT PGADMIN_PORT
+  export MVP_LOAD_DIR="$MVP_COPY"
+fi
 
-# one ClickHouse statement from stdin over HTTP (credentials from .env through a header file)
+# one ClickHouse statement from stdin over HTTP (credentials from .env through a header file; the host and port as the
+# child processes see them, the environment first: with --project they are the project's, never the live server)
 ch_query() {
   local hdr="$RUN/.ch.headers"
   ( umask 077; printf 'X-ClickHouse-User: %s\nX-ClickHouse-Key: %s\n' "$(envfile CLICKHOUSE_USERNAME)" "$(envfile CLICKHOUSE_PASSWORD)" > "$hdr" )
-  curl -fsS -H @"$hdr" --data-binary @- "http://$(envfile CLICKHOUSE_HOST):$(envfile CLICKHOUSE_HTTP_PORT)/" || { rm -f "$hdr"; return 1; }
+  curl -fsS -H @"$hdr" --data-binary @- "http://${CLICKHOUSE_HOST:-$(envfile CLICKHOUSE_HOST)}:${CLICKHOUSE_HTTP_PORT:-$(envfile CLICKHOUSE_HTTP_PORT)}/" || { rm -f "$hdr"; return 1; }
   rm -f "$hdr"
 }
 # psql inside the running container, stopping at the first error; pg_admin in the maintenance database, pg_private in
@@ -219,11 +300,111 @@ private_stores_found() { # the private names that exist on the servers, on one l
   } | tr '\n' ' '
 }
 
+# ------------------------------------------------------------------ --project: the guards of the live stack
+# one line per live container and volume; "absent" when it does not exist, so a stack that is not there stays comparable
+live_state() {
+  local c v
+  for c in "${LIVE_CONTAINERS[@]}"; do
+    docker container inspect -f '{{.Name}} {{.Id}} {{.State.StartedAt}}' "$c" 2>/dev/null || echo "$c absent"
+  done
+  for v in "${LIVE_VOLUMES[@]}"; do
+    docker volume inspect -f '{{.Name}} {{.CreatedAt}}' "$v" 2>/dev/null || echo "$v absent"
+  done
+}
+# read-only, in a read-only transaction of a psql of its own: no other session of the live server is touched
+live_audit() {
+  docker exec -e PGOPTIONS='-c default_transaction_read_only=on' "$LIVE_PG_CONTAINER" \
+    psql -X -U "$PG_USER" -d "$DB_NAME" -qAt -c 'select count(*) from audit.actions' 2>/dev/null
+}
+assert_live() { # when
+  local now audit
+  now="$(live_state)"
+  if [ "$now" != "$LIVE_STATE" ]; then
+    printf '  before:\n%s\n  now:\n%s\n' "$LIVE_STATE" "$now"
+    die "the live project $LIVE_PROJECT is not as it was at the start ($1): a container was restarted or replaced, or a volume was removed. Stop and check the live stack"
+  fi
+  audit="unavailable"
+  if [ "$LIVE_AUDIT" != unavailable ]; then
+    audit="$(live_audit || echo unavailable)"
+    [ "$audit" != unavailable ] || die "the live PostgreSQL does not answer ($1)"
+    [ "$audit" -ge "$LIVE_AUDIT" ] || die "live audit.actions went down from $LIVE_AUDIT to $audit ($1)"
+  fi
+  info "live project $LIVE_PROJECT unchanged $1: same container ids and StartedAt, volumes there; audit.actions $LIVE_AUDIT → $audit"
+}
+# the merged compose config: a fixed volume name, a container_name, a bind mount of the data or a live port would make
+# `down -v` or `up` reach the live project. The config holds passwords: it goes into python only.
+assert_project_config() {
+  local bad
+  bad="$("${COMPOSE[@]}" config --format json | python3 -I -c '
+import json, sys
+project, pg, http, native, admin = sys.argv[1:6]
+d = json.load(sys.stdin)
+bad = []
+if d.get("name") != project:
+    bad.append("project %s" % d.get("name"))
+for key, v in d.get("volumes", {}).items():
+    if v.get("external") or not str(v.get("name", "")).startswith(project + "_"):
+        bad.append("volume %s is named %s" % (key, v.get("name")))
+want = {"postgres": {5432: pg}, "clickhouse": {8123: http, 9000: native}, "pgadmin": {80: admin}}
+for name, s in d["services"].items():
+    if s.get("container_name"):
+        bad.append("service %s has container_name %s" % (name, s["container_name"]))
+    ports = {p["target"]: str(p.get("published")) for p in s.get("ports", [])}
+    if ports != want.get(name, {}):
+        bad.append("service %s publishes %s" % (name, ports))
+for name, target in (("postgres", "/var/lib/postgresql"), ("clickhouse", "/var/lib/clickhouse")):
+    if not any(v["type"] == "volume" and v["target"] == target for v in d["services"][name].get("volumes", [])):
+        bad.append("service %s keeps %s outside a named volume" % (name, target))
+print("; ".join(bad))
+' "$PROJECT_NAME" "$DB_PORT" "$CLICKHOUSE_HTTP_PORT" "$CLICKHOUSE_NATIVE_PORT" "$PGADMIN_PORT")" || die "docker compose -p $PROJECT_NAME config failed"
+  [ -z "$bad" ] || die "the compose config of $PROJECT_NAME is not isolated: $bad"
+}
+# a port is free, or published by the project itself (its `down -v` frees it)
+assert_port_free() {
+  docker ps --filter "label=com.docker.compose.project=$PROJECT_NAME" --format '{{.Ports}}' | grep -q ":$1->" && return 0
+  if lsof -ti "tcp:$1" -sTCP:LISTEN >/dev/null 2>&1; then die "port $1 is in use (PROJECT_*_PORT moves it)"; fi
+  if docker ps --format '{{.Ports}}' | grep -q ":$1->"; then die "port $1 is published by a container (PROJECT_*_PORT moves it)"; fi
+}
+# `down -v` only removes what its own project declares, but a project of that name may not be ours: this script writes
+# the secrets file before the first `up` and every teardown removes it with the volumes
+assert_project_ours() {
+  local found="" v
+  [ ! -f "$SECRETS" ] || return 0
+  found="$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT_NAME")"
+  for v in "${PROJECT_VOLUMES[@]}" "${PROJECT_NAME}_pgadmin_data"; do
+    if docker volume inspect "$v" >/dev/null 2>&1; then found="$found $v"; fi
+  done
+  [ -z "$found" ] || die "compose project $PROJECT_NAME exists and this script did not create it (no $SECRETS): take another name"
+}
+# docker's own clock on both sides (CreatedAt has whole seconds): true when $1 is not before $2
+docker_time_not_before() {
+  python3 -I -c '
+import re, sys
+from datetime import datetime
+def t(s):
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)$", s)
+    return datetime.fromisoformat(m.group(1) + m.group(2).replace("Z", "+00:00"))
+sys.exit(0 if t(sys.argv[1]) >= t(sys.argv[2]) else 1)
+' "$1" "$2"
+}
+
 echo "clean-stack acceptance $STAMP"
 info "repo $ROOT ($(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') $(git rev-parse --short HEAD 2>/dev/null || echo '?'))"
 info "data $DATA, base $BASE, reference $REFERENCE, port $PORT, keep $KEEP, skip-believe $SKIP_BELIEVE"
 info "stores: PostgreSQL $DB_NAME, ClickHouse $CH_NAME; run directory $RUN"
 [ "$PRIVATE" = 0 ] || info "private $PRIVATE_NAME: the live stack is not touched; secrets $SECRETS, loader directory $MVP_COPY"
+[ "$PROJECT" = 0 ] || info "compose project $PROJECT_NAME: containers $PG_CONTAINER, $CH_CONTAINER; ports $PROJECT_PORTS; secrets $SECRETS, loader directory $MVP_COPY"
+
+if [ "$PROJECT" = 1 ]; then
+  step "live-baseline"
+  docker info > /dev/null 2>&1 || die "docker does not answer"
+  RUN_STARTED="$(docker info --format '{{.SystemTime}}')"
+  LIVE_STATE="$(live_state)"
+  LIVE_AUDIT="$(live_audit || echo unavailable)"
+  printf '%s\n' "$LIVE_STATE" | sed 's/^/  /'
+  info "live audit.actions: $LIVE_AUDIT; docker time $RUN_STARTED"
+  [ "$LIVE_AUDIT" != unavailable ] || info "WARNING: the live PostgreSQL does not answer; only the containers and volumes are compared"
+fi
 
 # ------------------------------------------------------------------ inputs present (fail before touching anything)
 step "inputs"
@@ -258,9 +439,15 @@ if [ "$MARK_SOURCE" = auto ] && grep -q -- '--mark-source' packages/backend/scri
   MARK_SOURCE_SUPPORTED=1
 fi
 info "assign-operation-labels --mark-source: $([ $MARK_SOURCE_SUPPORTED = 1 ] && echo 'present, will run' || echo 'skipped')"
+[ "$ISOLATED" = 0 ] || [ -d "$ROOT/data/mvp-load" ] || die "no data/mvp-load (the loader's JSON inputs)"
+if [ "$PROJECT" = 1 ]; then
+  # here, not in step 0: nothing is dropped before these hold, and assert_project_ours reads the secrets file before it is written
+  assert_project_config
+  assert_project_ours
+  for p in $PROJECT_PORTS; do assert_port_free "$p"; done
+fi
 if [ "$PRIVATE" = 1 ]; then
   # here, not in step 0: a refused run must not reach the secrets, which would overwrite those of the existing stores
-  [ -d "$ROOT/data/mvp-load" ] || die "no data/mvp-load (the loader's JSON inputs)"
   pg_admin -c 'SELECT 1' > /dev/null || die "$PG_CONTAINER does not answer; --private never starts the stack"
   printf 'SELECT 1' | ch_query > /dev/null || die "ClickHouse does not answer; --private never starts the stack"
   FOUND="$(private_stores_found)"
@@ -365,14 +552,58 @@ create_private_stores() {
   run migrate-ch npm run migrate:ch
   [ "$(printf 'EXISTS TABLE %s.rows' "$CH_NAME" | ch_query)" = 1 ] || die "no table $CH_NAME.rows after the migrations"
   [ "$(printf "SELECT count() FROM system.databases WHERE name = '%s_stage'" "$CH_NAME" | ch_query)" = 1 ] || die "no database ${CH_NAME}_stage after the migrations"
-  # the loader's inputs: extract-main-ads.py writes into this copy, and the loader logs stay apart
+  copy_loader_directory
+}
+# the loader's inputs: extract-main-ads.py writes into this copy, and the loader logs stay apart
+copy_loader_directory() {
   mkdir -p "$MVP_COPY" "$DATA"
   rsync -a --delete --exclude '/log/' "$ROOT/data/mvp-load/" "$MVP_COPY/"
   info "loader directory: $MVP_COPY (copy of data/mvp-load without log/); data $DATA"
 }
+# the one-shot migrations run with up -d; migrate-clickhouse.ts is not safe in two processes: wait for both first
+wait_one_shots() {
+  local c code
+  for c in "$CONTAINER_PREFIX-postgres-migrate-1" "$CONTAINER_PREFIX-clickhouse-migrate-1"; do
+    code="$(docker wait "$c" 2>/dev/null || echo missing)"
+    [ "$code" = 0 ] || [ "$code" = missing ] || die "compose one-shot $c exited $code (docker logs $c)"
+    info "$c: exit $code"
+    [ "$code" = 0 ] || [ "$PROJECT" = 0 ] || die "compose one-shot $c did not run"
+  done
+}
+# --project: a real `down -v` of the project's own volumes, and the proof that the stack it leaves is new and empty
+create_project_stack() {
+  local v created rows owners
+  run down "${COMPOSE[@]}" down -v
+  for v in "${PROJECT_VOLUMES[@]}"; do
+    if docker volume inspect "$v" >/dev/null 2>&1; then die "volume $v is still there after down -v"; fi
+  done
+  assert_live "after down -v"
+  # no pgadmin: the run does not need it
+  run up "${COMPOSE[@]}" up -d postgres clickhouse postgres-migrate clickhouse-migrate
+  wait_one_shots
+  for v in "${PROJECT_VOLUMES[@]}"; do
+    created="$(docker volume inspect -f '{{.CreatedAt}}' "$v")" || die "no volume $v after up"
+    docker_time_not_before "$created" "$RUN_STARTED" || die "volume $v was created at $created, before this run ($RUN_STARTED)"
+    info "volume $v: new, created $created"
+  done
+  docker port "$PG_CONTAINER" 5432/tcp | grep -q ":$DB_PORT\$" || die "$PG_CONTAINER does not publish $DB_PORT"
+  docker port "$CH_CONTAINER" 8123/tcp | grep -q ":$CLICKHOUSE_HTTP_PORT\$" || die "$CH_CONTAINER does not publish $CLICKHOUSE_HTTP_PORT"
+  # `npm run migrate:pg` is a bare `docker compose run`: called here with the -p of the project. It reports nothing pending.
+  run migrate-pg "${COMPOSE[@]}" run --rm -T postgres-migrate
+  run migrate-ch npm run migrate:ch
+  # the migrations have run, so the tables must exist: a failing query is a failure here, not an empty store
+  owners="$(pg 'select count(*) from owners.owners')" || die "owners.owners cannot be read in $PG_CONTAINER"
+  [ "$owners" = 0 ] || die "owners.owners holds $owners rows on a stack that was just dropped"
+  rows="$(printf 'SELECT count() FROM %s.rows FORMAT TabSeparated' "$CH_NAME" | ch_query)" || die "$CH_NAME.rows cannot be read on port $CLICKHOUSE_HTTP_PORT"
+  [ "$rows" = 0 ] || die "$CH_NAME.rows holds $rows rows on a stack that was just dropped"
+  info "stores empty: owners.owners 0, $CH_NAME.rows 0"
+  copy_loader_directory
+}
 step "0-stack"
 if [ "$PRIVATE" = 1 ]; then
   create_private_stores
+elif [ "$PROJECT" = 1 ]; then
+  create_project_stack
 else
   if [ "$KEEP" = 0 ]; then
     if [ "$YES" = 0 ]; then
@@ -386,12 +617,7 @@ else
     info "--keep: the volumes stay (an empty migrated stack is expected)"
   fi
   run up "${COMPOSE[@]}" up -d
-  # the one-shot migrations run with up -d; migrate-clickhouse.ts is not safe in two processes: wait for both first
-  for c in royalty-erp-postgres-migrate-1 royalty-erp-clickhouse-migrate-1; do
-    code="$(docker wait "$c" 2>/dev/null || echo missing)"
-    [ "$code" = 0 ] || [ "$code" = missing ] || die "compose one-shot $c exited $code (docker logs $c)"
-    info "$c: exit $code"
-  done
+  wait_one_shots
   run migrate-pg npm run migrate:pg
   run migrate-ch npm run migrate:ch
 fi
@@ -646,5 +872,21 @@ if [ "$PRIVATE" = 1 ]; then
   info "the private stores stay: PostgreSQL $DB_NAME, ClickHouse $CH_NAME and ${CH_NAME}_stage"
   [ "$KEEP_PRIVATE" = 1 ] || print_private_drop
 fi
+if [ "$PROJECT" = 1 ]; then
+  echo
+  # after a pass only: a failed run stays for inspection, and on_exit prints the same command
+  if [ "$DOWN_AFTER" = 1 ]; then
+    stop_server
+    run teardown "${COMPOSE[@]}" down -v
+    PROJECT_DROPPED=1
+    project_files | while IFS= read -r f; do rm -rf "$f"; done
+    info "dropped: ${COMPOSE[*]} down -v, and the files of the project"
+  else
+    info "the compose project $PROJECT_NAME stays up"
+    print_project_teardown
+  fi
+  assert_live "at the end"
+fi
 echo
 echo "ACCEPTANCE PASSED ($STAMP)"
+[ "$PROJECT" = 0 ] || echo "clean stack: compose project $PROJECT_NAME, down -v on its own volumes"

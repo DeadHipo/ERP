@@ -1,7 +1,8 @@
 """Which stores and directories the stage-4/5 Python extractors read: the process environment first, then the repo
 `.env`, then the defaults (PostgreSQL `erp`, output `data/mvp-load`). Stdlib only, `python3 -I` compatible.
 
-  DB_DATABASE, DB_USERNAME                       PostgreSQL database and user (psql inside royalty-erp-postgres-1)
+  DB_DATABASE, DB_USERNAME                       PostgreSQL database and user (psql inside the container below)
+  ERP_PG_CONTAINER                               the PostgreSQL container, environment only (royalty-erp-postgres-1)
   CLICKHOUSE_HOST, CLICKHOUSE_HTTP_PORT,
   CLICKHOUSE_DATABASE, CLICKHOUSE_USERNAME,
   CLICKHOUSE_PASSWORD                            ClickHouse over HTTP
@@ -45,7 +46,8 @@ def mvp_load_dir(*parts):
 
 def psql(sql):
     """Read-only SELECT through psql in the PostgreSQL container; rows as lists of strings."""
-    out = subprocess.run(['docker', 'exec', 'royalty-erp-postgres-1', 'psql', '-U', setting('DB_USERNAME'),
+    container = os.environ.get('ERP_PG_CONTAINER') or 'royalty-erp-postgres-1'
+    out = subprocess.run(['docker', 'exec', container, 'psql', '-U', setting('DB_USERNAME'),
                           '-d', setting('DB_DATABASE'), '-At', '-F', '\t', '-c', sql],
                          capture_output=True, text=True, check=True).stdout
     return [l.split('\t') for l in out.splitlines()]

@@ -2,7 +2,7 @@
 
 READ-ONLY on every source. Writes JSON + README + reconciliation under <MVP_LOAD_DIR>/main/ (default data/mvp-load).
 Run:  python3 -I packages/backend/scripts/mvp/build_main.py
-Needs the ERP PostgreSQL container (royalty-erp-postgres-1) for owners.artists / owner_aliases (SELECT only); the
+Needs the ERP PostgreSQL container ($ERP_PG_CONTAINER, default royalty-erp-postgres-1) for owners.artists / owner_aliases (SELECT only); the
 database is DB_DATABASE from the environment, then the repo .env, then erp (stores.py).
 """
 import sys, os, re, json, subprocess, collections, unicodedata

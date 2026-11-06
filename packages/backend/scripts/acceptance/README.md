@@ -7,17 +7,17 @@ recipes 9, 11, 12 and 13 of `docs/agents/04_recipes.md` and D-169…D-172.
 ```
 packages/backend/scripts/acceptance/clean-stack.sh [--data data/real] [--base data/pub] [--port 3002]
     [--reference data/backup/2026-11-05-before-org/reference] [--keep] [--skip-believe] [--no-mark-source] [--yes]
-    [--private <name> [--replace-private] [--keep-private]]
+    [--private <name> [--replace-private] [--keep-private]] [--project <name> [--down-after]]
 ```
 
-**Destructive** unless `--keep` or `--private` is given. Without them the script runs `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v`.
+**Destructive** unless `--keep`, `--private` or `--project` is given. Without them the script runs `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v`.
 That drops the PostgreSQL and ClickHouse volumes: the live `erp` / `believe` stores, `erp_e2e`, and every test database.
 Take a snapshot first (recipe 10) and make sure no other session is using the stack. The script asks for `yes` unless
-`--yes` is given. To run the acceptance while someone works on the live stack, use `--private` (see below).
+`--yes` is given. To run the acceptance while someone works on the live stack, use `--project` or `--private` (see below).
 
 Needs: the data archive unpacked (`data/real`, `data/pub`, D-093), `context_data/ERP_data/` (the Believe reports, the
 B17 statements, `main_sheet/main.db`), `data/mvp-load/` (the loader's JSON inputs), the reference answers, `npm ci`,
-Docker, `openssl`, `python3`, `curl`, and for `--private` also `rsync` and `shasum`. Expect it to take one to two hours: 47 Believe files, the loader, and a
+Docker, `openssl`, `python3`, `curl`, for `--private` also `rsync` and `shasum`, for `--project` also `rsync`. Expect it to take one to two hours: 47 Believe files, the loader, and a
 check-owner-scope run of about 10 minutes.
 
 ## Private mode
@@ -67,7 +67,66 @@ packages/backend/scripts/acceptance/clean-stack.sh --private accept1
 about the Docker side of a truly empty stack: `down -v`, the empty volumes, `up -d` and the one-shot migration services.
 Those were exercised by the run `20261106T063708Z`, which went from `down -v` up to step 9. The database-side checks
 are otherwise the same steps; the only other difference is that the PostgreSQL migrations are applied by this script
-and not by `migrate-postgres.sh`.
+and not by `migrate-postgres.sh`. `--project` proves that side too.
+
+## Compose project mode
+
+`--project <name>` (`[a-z0-9-]+`, at most 40 characters) runs the **whole** acceptance on a separate docker compose
+project: its own containers, its own named volumes, its own host ports, and a real `down -v` on those volumes at the
+start. One command proves the empty-stack path end to end, which `--private` does not.
+
+It exists because the live stack (compose project `royalty-erp`) may hold the owner's work and his dev servers run on
+it. The default mode drops that stack, so a reset of the live stack needs his confirmation, a snapshot first (recipe 10)
+and no other session on it (the reset commands: `docs/идеи/лейбл_с_нуля/бриф_для_агента.md`). `--project` needs neither, and asks nothing: it only removes its own project's volumes.
+
+```
+packages/backend/scripts/acceptance/clean-stack.sh --project erp-accept               # the project stays up
+packages/backend/scripts/acceptance/clean-stack.sh --project erp-accept --down-after  # dropped after a pass
+docker compose -p erp-accept -f docker-compose.yml -f docker-compose.dev.yml down -v  # by hand, from the repo root
+```
+
+| what | live project | `--project <name>` |
+|---|---|---|
+| containers | `royalty-erp-{postgres,clickhouse}-1` | `<name>-{postgres,clickhouse}-1`; no pgadmin |
+| volumes | `royalty-erp_{pg,ch}_data` | `<name>_{pg,ch}_data` |
+| host ports | `.env` | PostgreSQL 55432, ClickHouse HTTP 58123, native 59000, pgAdmin 55050 (published by no container) |
+| databases | the names of `.env` | the same names, inside the new containers |
+| `--data` default | `data/real` | `data/acceptance/<name>-data`; `data/real` is refused |
+| secrets | `data/acceptance/secrets.env` | `data/acceptance/<name>-secrets.env` |
+| `MVP_LOAD_DIR` | unset (`data/mvp-load`) | `data/acceptance/<name>-mvp-load` |
+
+- **Reaching the project.** Every compose call has `-p <name>`, including the one behind `npm run migrate:pg`, which
+  is a bare `docker compose run` and is called directly here. `-p` beats `COMPOSE_PROJECT_NAME`, which beats the top-level
+  `name: royalty-erp`, so the script also exports `COMPOSE_PROJECT_NAME` for any child process. The volumes have no fixed
+  `name:` and the services no `container_name`; the script checks that in the merged config before it does anything.
+- **Reaching the stores.** The script exports `DB_HOST`, `DB_PORT`, `CLICKHOUSE_HOST`, `CLICKHOUSE_HTTP_PORT`,
+  `CLICKHOUSE_NATIVE_PORT`, `PGADMIN_PORT`, `MVP_LOAD_DIR`, `ERP_PG_CONTAINER` and `ERP_CH_CONTAINER`. The environment
+  wins over `.env` for compose, `process.loadEnvFile`, `node --env-file`, `stores.py`, `pg.sh` and the script's own
+  ClickHouse queries. The two container variables default to the live names, so other uses of those scripts do not change.
+- **Ports.** Taken ports are refused in the inputs step, except those the project itself publishes (a rerun). A port of
+  `.env` is always refused. `PROJECT_DB_PORT`, `PROJECT_CH_HTTP_PORT`, `PROJECT_CH_NATIVE_PORT` and
+  `PROJECT_PGADMIN_PORT` move them.
+- **Refused names:** `royalty-erp`, and the project a bare `docker compose` resolves to in this repo. A project that
+  exists without `<name>-secrets.env` is refused as well: this script did not create it. `--project` is incompatible
+  with `--private`, `--keep` and `--skip-believe`.
+- **Guards of the live stack.** Before anything (step `live-baseline`) the script records the id and `StartedAt` of the
+  live containers, the `CreatedAt` of the live volumes and a read-only `select count(*) from audit.actions` of the live
+  `erp`. Right after the `down -v` and again at the end it aborts unless they are the same; the audit count may only grow,
+  since the owner may be working. A live stack that is not running is compared as absent. An owner's own restart during
+  the run also aborts it: the run then proves nothing about the live stack.
+- **Proof of the empty stack**, in step 0: the volumes are gone after `down -v`; after `up` their `CreatedAt` is after the
+  start of the run (the clock of the Docker daemon on both sides); after the migrations `owners.owners` and
+  `believe.rows` hold 0 rows. A query that fails is a failure here, because the migrations have run.
+- **At the end** the script prints `ACCEPTANCE PASSED (<stamp>)` and
+  `clean stack: compose project <name>, down -v on its own volumes`. The project stays up and the teardown commands are
+  printed (also after a failure). `--down-after` runs them after a pass: `down -v`, then the loader copy, the secrets and
+  `--data` if it is at its default place. A `--data` given by hand is never deleted. The run directory stays.
+- **What is shared with the live stack.** The Docker VM (memory, CPU, disk), the images, the read-only repo mounts and the
+  credentials of `.env`. ClickHouse HTTP publishes on `0.0.0.0` as in `docker-compose.dev.yml`, so 58123 is reachable from
+  the network, with the password of `.env`. The VM has to hold a second copy of the stores (about 3.3 GB of volumes
+  today) and a second ClickHouse: each one sizes itself on the memory of the whole VM (`ops.xml`, ratio 0.8), and the load
+  slows the live stack. If the VM runs out of memory the live containers can suffer; the guards report it, they cannot
+  prevent it.
 
 ## Output
 
@@ -76,7 +135,7 @@ Everything goes to `data/acceptance/`, which is git-ignored under `data/`:
 - `<UTC stamp>/clean-stack.log` is the whole run.
 - `<UTC stamp>/<step>.<command>.log` holds each command's output.
 - `<UTC stamp>/server.log` is the API's log.
-- `secrets.env` (mode 600; `<name>-secrets.env` with `--private`) holds `AUTH_SECRET`, `SYSTEM_ADMIN_KEY`, the two passwords (`openssl rand`) and the
+- `secrets.env` (mode 600; `<name>-secrets.env` with `--private` or `--project`) holds `AUTH_SECRET`, `SYSTEM_ADMIN_KEY`, the two passwords (`openssl rand`) and the
   organization id. Secrets are never printed. Passwords reach `create-user.ts` through `ERP_NEW_PASSWORD`, and reach
   the login through stdin. The system key reaches curl through a header file. The ClickHouse password from `.env`
   also goes through a header file.
@@ -88,8 +147,9 @@ counts (this run against recipe 11) and then `ACCEPTANCE PASSED`.
 
 | step | what |
 |---|---|
-| inputs | Checks the inputs before touching anything: the reference dir, `data/pub`, the two B17 files, `main.db`, and the Believe file lists (34 / 13, one file per account and month). Checks that the port is free. Checks for `--mark-source`. With `--private`: `data/mvp-load`, both servers answer, the private stores do not exist (or `--replace-private` and no session). |
-| 0-stack | Runs `down -v` (unless `--keep`), then `up -d`. Waits for the one-shot `postgres-migrate` and `clickhouse-migrate` containers to exit 0. Then runs `npm run migrate:pg` and `npm run migrate:ch`. With `--private`: see Private mode. |
+| live-baseline | Only with `--project`: records the live containers, volumes and audit count (see Compose project mode). |
+| inputs | Checks the inputs before touching anything: the reference dir, `data/pub`, the two B17 files, `main.db`, and the Believe file lists (34 / 13, one file per account and month). Checks that the port is free. Checks for `--mark-source`. With `--private`: `data/mvp-load`, both servers answer, the private stores do not exist (or `--replace-private` and no session). With `--project`: `data/mvp-load`, the merged compose config is isolated, the project is ours or new, the four ports are free. |
+| 0-stack | Runs `down -v` (unless `--keep`), then `up -d`. Waits for the one-shot `postgres-migrate` and `clickhouse-migrate` containers to exit 0. Then runs `npm run migrate:pg` and `npm run migrate:ch`. With `--private`: see Private mode. With `--project`: `down -v` and `up -d` of postgres, clickhouse and the two one-shots only, the checks of Compose project mode, and the same migrations on the project. |
 | 1-system-admin | `create-user.ts admin --system` |
 | 2-server | `AUTH_MODE=on AUTH_SECRET SYSTEM_ADMIN_KEY PORT=<port> node --import tsx packages/backend/src/main.ts <data>` in the background. Waits for `/health`, then checks that the port's listener is this process. |
 | 3-organization | `POST /orgs {"name":"0to8"}` with `X-System-Key` and `X-Operator: admin`, giving the id. Then `export ERP_DEFAULT_ORG=<id>`; every script also gets `--org <id>`. |
@@ -121,7 +181,7 @@ marker `acceptance replay 2026-11-03` (the titles) or `acceptance/replay-2026-11
 - `--data <dir>`: the original-files directory for the server and the scripts. The stored copies go to
   `<data>/orgs/<id>/files/{sources,publishing}`. The Echo8 July 2026 file is taken from `<data>/stage/`, and from
   `data/real/stage/` when `<data>/stage/` lacks it (the inputs step fails when neither has it). Default: `data/real`
-  (`data/acceptance/<name>-data` with `--private`); the 2026-11-06 run used `--data data/real`.
+  (`data/acceptance/<name>-data` with `--private` or `--project`); the 2026-11-06 run used `--data data/real`.
 - `--base <dir>`: the SQLite base data. Default: `data/pub`.
 - `--port`: the API port. Default: 3002.
 - `--reference`: the reference answers. Default: `data/backup/2026-11-05-before-org/reference`.
@@ -142,6 +202,8 @@ marker `acceptance replay 2026-11-03` (the titles) or `acceptance/replay-2026-11
 - `--private <name>`: the whole acceptance on private stores (see Private mode).
 - `--replace-private`: with `--private`, drops the existing private stores of that name first.
 - `--keep-private`: with `--private`, does not print the drop commands after a passing run. The stores stay either way.
+- `--project <name>`: the whole acceptance on a separate compose project (see Compose project mode).
+- `--down-after`: with `--project`, drops the project and its files after a passing run.
 
 ## Assumptions
 
@@ -151,10 +213,11 @@ Where the recipes left a choice open, this is what the script does:
    differs from `.env`. It unsets both, along with `ERP_ORG` and `MVP_LOAD_DIR`, before any `docker compose` or `npm`
    call. A different name recreates the shared postgres container (stage 2 acceptance). If `.env` itself does not say
    `erp` / `believe`, the script only warns. `--private` skips the refusal and exports its own names and
-   `MVP_LOAD_DIR` after that `unset`; it runs no `docker compose`.
+   `MVP_LOAD_DIR` after that `unset`; it runs no `docker compose`. `--project` keeps the refusal: its containers hold the
+   names of `.env`.
 2. **Migrations.** `up -d` already runs both one-shot migration services, which have no profile. Because
    `migrate-clickhouse.ts` is not safe to run in two processes at once, the script waits for both containers
-   (`docker wait royalty-erp-{postgres,clickhouse}-migrate-1`, exit 0) before it runs `npm run migrate:pg` and
+   (`docker wait <project>-{postgres,clickhouse}-migrate-1`, exit 0) before it runs `npm run migrate:pg` and
    `npm run migrate:ch` by hand, as recipe 12 says. That second run should report nothing pending.
 3. **Order of steps 10–12.** The script follows recipe 11 (step 5, then step 6, then step 7):
    `assign-operation-labels --apply`, the manual writes, then `--mark-source`, `assign-label-books` and

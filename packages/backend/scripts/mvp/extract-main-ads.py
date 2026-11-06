@@ -2,7 +2,7 @@
 
 READ-ONLY on every source:
   - context_data/ERP_data/main_sheet/main.db (SQLite export of the 0to8 Main sheet, opened read-only)
-  - ERP PostgreSQL (docker exec royalty-erp-postgres-1 psql, SELECT only): owners.*, splits.*, labels.*, public.source_files
+  - ERP PostgreSQL (docker exec $ERP_PG_CONTAINER psql, default royalty-erp-postgres-1, SELECT only): owners.*, splits.*, labels.*, public.source_files
   - ClickHouse <CLICKHOUSE_DATABASE>.rows over HTTP, only files with status `loaded`
   - <MVP_LOAD_DIR>/main/cash_rows.json (the Main loader's rows, optional)
 The stores are those of the environment, then of the repo .env (stores.py): DB_DATABASE (default erp), DB_USERNAME,
