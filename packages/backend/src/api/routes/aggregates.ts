@@ -12,8 +12,21 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   const r = Router();
 
   r.get('/owners/payables', async (req, res) =>
-    res.json(await facade.ownerPayables(parse(S.payablesQuery, req.query))),
+    res.json(await facade.ownerPayables(parse(S.payablesAsOfQuery, req.query))),
   );
+  // the payroll of a label (D-173 §1.4): json (every sheet) or one sheet as csv; before /owners/:id
+  r.get('/owners/payroll', async (req, res) => {
+    const q = parse(S.payrollQuery, req.query);
+    if (q.format === 'csv') {
+      const { fileName, text } = await facade.payrollCsv(q.label, { asOf: q.asOf, area: q.area, sheet: q.sheet }, viewerOf(res));
+      const ascii = fileName.replace(/[^A-Za-z0-9._-]/g, '_');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+      res.send(text);
+      return;
+    }
+    res.json(await facade.payroll(q.label, { asOf: q.asOf, area: q.area }, viewerOf(res)));
+  });
   r.get('/tracks/summary', async (req, res) =>
     res.json(await facade.trackSummary(parse(S.trackSummaryQuery, req.query))),
   );

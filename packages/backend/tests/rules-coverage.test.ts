@@ -95,7 +95,9 @@ describe('README 5: buyout payment is not part of the balance', () => {
 });
 
 describe('README 5: operations', () => {
-  it('in/out with a signed amount and optional fields; no operation type is stored', async () => {
+  // D-173 rewrote this rule consciously: until stage 5 no operation type was stored (the fields said it, `meaningOf`);
+  // now the kind is stored, derived from the fields when not given, and the fields must fit it (CHECK operations_kind_rules).
+  it('in/out with a signed amount and optional fields; the kind is stored and fits its fields (D-173)', async () => {
     const f = await newFacade();
     const { owner, artists } = await confirmedOwner(f, 'Ops Owner', ['Ops']);
     const op = await f.createOperation({ labelId: f.testLabels['0to8'],
@@ -113,7 +115,12 @@ describe('README 5: operations', () => {
     expect(stored).toMatchObject({ direction: 'in', amountCents: 1234, period: '2026-07' });
     expect(stored?.scope).toEqual({ kind: 'isrcs', isrcs: [I1] });
     expect(Object.keys(op)).not.toContain('type');
-    expect(Object.keys(stored ?? {})).not.toContain('type');
+    // the kind the fields give (in > 0 = deduction), stored; the module answers the same row
+    expect([op.kind, stored?.kind, stored?.meaning]).toEqual(['deduction', 'deduction', 'deduction']);
+    // a kind that does not fit the fields is refused
+    await expect(
+      f.createOperation({ labelId: f.testLabels['0to8'], kind: 'credit', direction: 'in', amount: '12.34', artistId: artists[0]?.id as string, date: '2026-08-01', comment: 'x' }),
+    ).rejects.toMatchObject({ code: 'kind_sign' });
   });
 
   it('an outgoing operation without a scope is a plain payout and only the payout button makes one', async () => {

@@ -489,7 +489,8 @@ describe('payout snapshot attribution', () => {
     expect([whole.total.payable.toFixed(), whole.publishingRecouped.toFixed()]).toEqual(['150', '150']);
     const books = Object.fromEntries(Object.entries(whole.byLabel).map(([k, b]) => [k, [b.earned.toFixed(), b.recouped.toFixed(), b.payable.toFixed()]]));
     expect(books).toEqual({ '0to8': ['300', '150', '150'] });
-    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
+    // the button pays the whole book with area 'all' (D-173 О6: master by default; the numbers unchanged)
+    const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'], area: 'all' });
     expect(p.amountCents).toBe(15000);
     const snap = JSON.parse(JSON.stringify(await f.modules.settlements.getSnapshot(p.id))) as {
       labelId: string;

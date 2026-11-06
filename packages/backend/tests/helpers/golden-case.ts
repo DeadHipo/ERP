@@ -262,9 +262,22 @@ export class Case {
       const books = Object.values(b.byLabel);
       for (const k of ['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const)
         expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
+      // D-173: the new fields add up too; payable is the formula of D-173 in every book; Σ areas = the book
+      for (const k of ['buyouts', 'forgiven', 'writtenOff', 'adjustments'] as const)
+        expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
+      for (const [label, x] of [...Object.entries(b.byLabel), ['total', b.total] as const]) {
+        const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff);
+        expect(x.payable.toFixed(), `payable of ${name} ${label}`).toBe(formula.toFixed());
+        for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const)
+          expect(x.byArea.master[k].add(x.byArea.publishing[k]).toFixed(), `Σ areas ${k} of ${name} ${label}`).toBe(x[k].toFixed());
+      }
+      for (const p of b.positions) {
+        expect(p.recouped.add(p.forgiven).add(p.remaining).toFixed(), `position ${p.operationId} of ${name}`).toBe(p.amount.toFixed());
+        expect(p.remaining.gte(0) && p.forgiven.gte(0) && p.forgiven.lte(p.forgivenRecorded)).toBe(true);
+      }
       for (const a of b.artists) {
         const rows = Object.values(a.byLabel);
-        for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster'] as const)
+        for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster', 'forgiven'] as const)
           expect(sum(rows.map((x) => x[k])), `Σ books ${k} of ${a.pseudonym}`).toBe(a[k].toFixed());
       }
       expect(b.total.earned.toFixed(), `earned of ${name}`).toBe((earned.get(owner) ?? ZERO).toFixed());

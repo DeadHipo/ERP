@@ -27,7 +27,8 @@ export function parseIsrcList(raw: string): string[] {
 }
 import { ownerBalance, ownerIndex } from './balance';
 import { cItems } from './queue';
-import type { FacadeContext } from './context';
+import type { FacadeContext, PayoutArea } from './context';
+import { cutCalculation, cutFilter, cutOperations } from './as-of';
 import type { splitsApi } from './splits';
 import { ALL_VIEWER, viewerHolds, viewerSees, type Viewer } from './viewer';
 
@@ -125,7 +126,12 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
      * The payables list (N4): one calculation, a per-owner index of the units and publishing lines, then the very
      * `ownerBalance()` per owner. `from` / `to` / `basis` shape `waitingBreakdown` only (the totals are all-time).
      */
-    async ownerPayables(f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string; label?: string } = {}) {
+    async ownerPayables(
+      f: { from?: string; to?: string; basis?: 'report' | 'sales'; ids?: string; label?: string; asOf?: string; area?: PayoutArea } = {},
+    ) {
+      // D-173: `asOf` cuts the inputs of every balance (one calculation, `as-of.ts`); `area` changes only the gate (FIX-7)
+      const { asOf, area } = f;
+      const period = cutFilter({ from: f.from, to: f.to, basis: f.basis }, asOf);
       // `ids` (the visible rows of P9, D-163): only these owners, from a calculation of the units of their reach;
       // under a label (D-168): the owners visible under it, each balance projected to the label's book
       const only = f.ids === undefined ? undefined : parseIdList(f.ids);
@@ -135,17 +141,18 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         list: (await owners.listOwners()).filter((o) => (only === undefined || only.has(o.id)) && (!lc || lc.visible.ownerIds.has(o.id))),
         ops: await settlements.listOperations({}),
       }));
-      const calc = only
-        ? await calcScoped({ isrcs: (await ownersReach(modules, list.map((o) => o.id))).isrcs })
-        : await calcWithOps();
+      const calc = cutCalculation(
+        only ? await calcScoped({ isrcs: (await ownersReach(modules, list.map((o) => o.id))).isrcs }) : await calcWithOps(),
+        asOf,
+      );
       const index = ownerIndex(calc);
       const opsOf = groupBy(
-        ops.filter((o) => o.ownerId),
+        cutOperations(ops, asOf).filter((o) => o.ownerId),
         (o) => o.ownerId as string,
       );
       const items = list.map((o) => {
-        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], f, index.get(o.id) ?? { units: [], publishing: [] }, view);
-        const payouts = (opsOf.get(o.id) ?? []).filter((x) => x.active && x.meaning === 'payout' && (!view || x.labelId === view.labelId));
+        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], period, index.get(o.id) ?? { units: [], publishing: [] }, view);
+        const payouts = (opsOf.get(o.id) ?? []).filter((x) => x.active && x.kind === 'payout' && (!view || x.labelId === view.labelId));
         return {
           ownerId: o.id,
           name: o.name,
@@ -159,10 +166,14 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           paid: b.total.paid,
           returns: b.total.returns,
           credits: b.total.credits,
+          buyouts: b.total.buyouts,
+          forgiven: b.total.forgiven,
+          writtenOff: b.total.writtenOff,
+          adjustments: b.total.adjustments,
           payable: b.total.payable,
           payableShown: b.total.payableShown,
           payableNegative: b.total.payableNegative,
-          payout: gateOf(b),
+          payout: gateOf(b, area),
           blockingPayouts: b.blockingPayouts.length,
           pendingOperations: b.pendingOperations.length,
           lastPayoutDate: payouts.reduce<string | null>((m, x) => (m === null || x.date > m ? x.date : m), null),

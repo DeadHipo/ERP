@@ -84,6 +84,18 @@ export function createPublishingRepository(db: Db, org: OrgScope) {
     insertStatement: async (row: OrgFree<typeof pubStatements.$inferInsert>) => {
       await orm().insert(pubStatements).values(orgRow(org, row));
     },
+    /**
+     * A replaced statement (D-173): status `superseded`, its quarters freed for the new statement; its lines stay
+     * (the view groups `loaded` statements only, the caller refreshes it).
+     */
+    async supersedeStatement(id: string, replacedBy: string): Promise<void> {
+      await q(
+        `UPDATE publishing.pub_statements SET status = 'superseded', replaced_by = $3
+         WHERE org_id = $1 AND id = $2 AND status = 'loaded'`,
+        [id, replacedBy],
+      );
+      await q('DELETE FROM publishing.pub_statement_periods WHERE org_id = $1 AND statement_id = $2', [id]);
+    },
     insertStatementPeriod: async (period: string, statementId: string) => {
       await orm().insert(pubStatementPeriods).values(orgRow(org, { source: 'b17', period, statementId }));
     },

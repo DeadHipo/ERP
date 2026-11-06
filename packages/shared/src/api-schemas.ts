@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DOCUMENT_KINDS } from './document-kinds';
+import { LABEL_SOURCES, OPERATION_KINDS } from './operation-kinds';
 
 // Request schemas of the JSON API. Shared by the Express routes (validation) and the React client (typed calls).
 // This file must only depend on zod (and the plain lists of this package) so the browser bundle can import it.
@@ -144,6 +145,12 @@ export const scopeSchema = z.object({
 });
 
 export const createOperationBody = z.object({
+  kind: z
+    .enum(['payout', 'advance', 'deduction', 'credit', 'return', 'forgiveness', 'buyout', 'writeoff', 'adjustment'])
+    .optional()
+    .describe(
+      'The kind (D-173); without it the kind is derived from direction, sign, scope and ref as before; buyout, writeoff and adjustment only explicitly. A payout only migrated (else 422 use_payout_button), a return and a forgiveness only by their actions (400 use_return_action / use_forgive_action); 400 kind_direction, kind_sign, owner_required, artist_required, scope_required, scope_forbidden, writeoff_area, document_kind; 422 writeoff_exceeds',
+    ),
   direction: z.enum(['in', 'out']),
   amount: usd,
   artistId: z.string().nullish(),
@@ -156,18 +163,39 @@ export const createOperationBody = z.object({
   operationRef: z.string().nullish(),
   comment: z.string().min(1),
   labelId: z.string().nullish().describe('The own label the operation belongs to (D-168): required, 400 label_required without it'),
+  area: z
+    .enum(['master', 'publishing'])
+    .optional()
+    .describe('The area of the book (D-173): master by default; a write-off is always publishing (400 writeoff_area otherwise)'),
 });
 
 export const createPayoutBody = z.object({
   labelId: z.string().optional().describe('The own label the payout is made under (D-168): pays the payable of its book; 400 label_required without it'),
   comment: z.string().optional(),
+  area: z
+    .enum(['master', 'publishing', 'all'])
+    .optional()
+    .describe('The area paid (D-173): master by default; pays min(payable of the area, payable of the book) floored to cents; all = the whole book'),
 });
-/** `PATCH /settlements/operations/:id` (D-168): the label of an existing operation. */
-export const setOperationLabelBody = z.object({ labelId: z.string().min(1) });
+/** `PATCH /settlements/operations/:id` (D-168): the label of an existing operation; the reason is required (D-173). */
+export const setOperationLabelBody = z.object({
+  labelId: z.string().min(1),
+  reason: z.string().optional().describe('Why the label changes (D-173): required, 400 reason_required without it; kept in the audit summary'),
+});
 export const proofBody = z.object({ fileRef: z.string().min(1), title: z.string().optional() });
 export const deactivateBody = z.object({ reason: z.string().min(1), transferFailed: z.boolean().optional() });
 export const deferredBody = z.object({ deferred: z.boolean() });
 export const returnBody = z.object({ fileRef: z.string().min(1), date, comment: z.string().min(1) });
+/**
+ * `POST /settlements/operations/:id/forgive` (D-173): the forgiveness of an advance from a date. The amount is at most
+ * the unrecouped part (422 forgiveness_exceeds), the date not before the advance (422 forgiveness_before_advance).
+ */
+export const forgiveBody = z.object({
+  amount: usd.describe('Positive USD, at most the unrecouped part of the advance'),
+  date,
+  documentId: z.string().min(1).describe('The basis: adjustment_basis, contract, other or label_decision of the owner'),
+  comment: z.string().min(1),
+});
 export const mergeOwnersBody = z.object({
   fromId: z.string(),
   intoId: z.string(),
@@ -212,7 +240,15 @@ const flag = z.enum(['true', 'false']);
 export const operationsQuery = z.object({
   ownerId: z.string().optional(),
   artistId: z.string().optional(),
-  meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']).optional(),
+  meaning: z
+    .enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return'])
+    .optional()
+    .describe('The alias of `kind` (D-173): `recoupable_payout` = `advance`; `kind` wins when both are given'),
+  kind: z.enum(OPERATION_KINDS).optional().describe('The stored kind (D-173)'),
+  labelSource: z
+    .enum([...LABEL_SOURCES, 'none'])
+    .optional()
+    .describe('Who set the label (D-173): one, default (the history put under 0to8 by default, D-168), operator, payout; none = not marked'),
   direction: z.enum(['in', 'out']).optional(),
   needsProof: flag.optional().describe('true: payouts (out) that are active and have no payment proof'),
   active: flag.optional(),
@@ -517,3 +553,43 @@ export const releaseRegistryQuery = z.object({ q: z.string().optional(), ...labe
 
 /** `GET /onboarding`: the label is required (under «Все» = `400 label_required`). */
 export const onboardingQuery = labelQuery;
+
+// ---- the operation import (D-173 §1.5) ----
+
+/** `POST /settlements/operations/import`: the label (checked before the body), the preview flag, a default basis document. */
+export const operationImportQuery = z.object({
+  ...uploadLabelQuery.shape,
+  dryRun: z.enum(['0', '1']).default('1').describe('1 = preview (nothing is written, no audit row), 0 = apply (all or nothing)'),
+  documentId: z
+    .string()
+    .optional()
+    .describe('The basis document of the rows without a `document` cell whose kind takes one (advance, deduction, credit, buyout, writeoff, adjustment)'),
+});
+
+// ---- the payroll stage: asOf, the area, the payroll export (D-173) ----
+
+const asOfShape = {
+  asOf: month
+    .optional()
+    .describe('YYYY-MM (D-173): the balance as of the end of that month: units and statements of report months ≤ asOf, operations and positions dated ≤ its last day, advertising of months ≤ asOf; document statuses are those of now'),
+};
+const readArea = z
+  .enum(['master', 'publishing', 'all'])
+  .optional()
+  .describe('The area of the payout gate (D-173): without it all (the book); master / publishing: the gate pays min(payable of the area, payable of the book); the money fields stay the book');
+
+/** `GET /owners/:id/balance` (D-173): the label period query with `asOf` and the area of the gate. */
+export const balanceQuery = labelPeriodQuery.extend({ ...asOfShape, area: readArea });
+/** `GET /owners/payables` (D-173): with `asOf` and the area of the gate (the money fields of a row stay the book, FIX-7). */
+export const payablesAsOfQuery = payablesQuery.extend({ ...asOfShape, area: readArea });
+
+export const PAYROLL_SHEETS = ['payroll', 'waiting', 'buyouts', 'control'] as const;
+/** `GET /owners/payroll` (D-173 §1.4): the payroll of one label; json or csv (one sheet). */
+export const payrollQuery = z.object({
+  label: z.string().optional().describe('Id of an own label (required: 400 label_required; the payroll is the book of a label)'),
+  ...asOfShape,
+  area: z.enum(['master', 'publishing', 'all']).default('master').describe('The area of the payroll: master by default (the button), publishing, all'),
+  format: z.enum(['json', 'csv']).default('json').describe('json: every sheet; csv: one sheet (UTF-8 with BOM, `;`, every field quoted, decimal point)'),
+  sheet: z.enum(PAYROLL_SHEETS).default('payroll').describe('The sheet of the csv'),
+});
+export type PayrollQuery = z.infer<typeof payrollQuery>;

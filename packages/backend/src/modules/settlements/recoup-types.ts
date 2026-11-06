@@ -43,12 +43,19 @@ export interface Position {
   scope: Scope;
   /** The label of the position (D-168): recouped from the master income of that label only; null = any label. */
   labelId: string | null;
+  /**
+   * The counted forgivenesses of the position (D-173, `operation_ref` = the advance): the month of each date and its
+   * amount, in the order (date, id). A forgiveness frees the income of the months from its date on; absent = none.
+   */
+  forgiven?: { month: string; amount: Decimal }[];
 }
 
 export interface RecoupResult {
   positionId: string;
   amount: Decimal;
   recouped: Decimal;
+  /** The effective forgiveness (D-173): ≤ the recorded one; amount = recouped + forgiven + remaining. */
+  forgiven: Decimal;
   remaining: Decimal;
   consumed: { itemId: string; amount: Decimal }[];
 }

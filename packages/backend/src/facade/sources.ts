@@ -1,6 +1,7 @@
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../shared/errors';
 import { parseBelieveFileName, type LinesQuery } from '../modules/sources';
 import type { FacadeContext } from './context';
+import { ALL_VIEWER, assertViewerHolds, type Viewer } from './viewer';
 
 /** A Believe file or a B17 statement is loaded under an own label (D-169): `?label=` of the upload. */
 const LABEL_REQUIRED = 'Choose a label: a file is loaded under an own label (label=)';
@@ -61,6 +62,23 @@ export function sourcesApi(ctx: FacadeContext) {
       const label = await api.assertUploadLabel(labelId);
       const statement = await publishing.ingestB17({ ...input, labelId: label.id });
       return { statement, writers: await api.resolveWriters() };
+    },
+
+    /**
+     * Replaces a loaded B17 statement of an own label by a corrected file of the same quarters (D-173) and resolves the
+     * writers like `ingestB17`; the module refuses `replace_not_loaded`, `replace_label_differs`, `periods_differ`,
+     * `duplicate_file`. The old statement stays `superseded` with its lines (the payout snapshots reference its sha).
+     */
+    async replaceB17(
+      oldId: string,
+      input: { path: string; fileName: string; generatedAt?: string | null },
+      labelId: string | undefined,
+      viewer: Viewer = ALL_VIEWER,
+    ) {
+      const label = await api.assertUploadLabel(labelId);
+      assertViewerHolds(viewer, label.id);
+      const { superseded, statement } = await publishing.replaceStatement(oldId, input, label.id);
+      return { superseded, statement, writers: await api.resolveWriters() };
     },
 
     /**

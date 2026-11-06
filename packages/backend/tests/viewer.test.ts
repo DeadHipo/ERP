@@ -88,7 +88,7 @@ describe('the viewer of a label (D-171)', () => {
     await expect(f.setOperationDeferred(w.payB.id, true, vA)).rejects.toMatchObject(forbidden);
     await expect(f.deactivateOperation(w.payB.id, 'no', {}, vA)).rejects.toMatchObject(forbidden);
     await expect(f.attachPaymentProof(w.payB.id, { fileRef: 'dummy://p.pdf' }, vA)).rejects.toMatchObject(forbidden);
-    await expect(f.setOperationLabel(w.payB.id, w.A, vA)).rejects.toMatchObject(forbidden);
+    await expect(f.setOperationLabel(w.payB.id, w.A, 'a reason', vA)).rejects.toMatchObject(forbidden);
     await expect(f.returnPayout(w.payB.id, { fileRef: 'dummy://r.pdf', date: '2026-12-01', comment: 'r' }, vA)).rejects.toMatchObject(forbidden);
     // documents
     await expect(f.attachDocumentFile(w.docB.id, 'dummy://x.pdf', vA)).rejects.toMatchObject(forbidden);

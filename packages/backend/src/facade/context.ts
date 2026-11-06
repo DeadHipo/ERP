@@ -1,4 +1,5 @@
 import { NotFoundError, ValidationError } from '../shared/errors';
+import { BLOCKING_KINDS } from '@erp/shared/operation-kinds';
 import { SPLIT_DOCUMENT_KINDS } from '@erp/shared/document-kinds';
 import { type OwnersService } from '../modules/owners';
 import { type SplitsService } from '../modules/splits';
@@ -14,8 +15,12 @@ import { calculate, type PeriodFilter } from './calculation';
 import { artistBalance, ownerBalance, type BalanceView } from './balance';
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
+import { cutCalculation, cutFilter, cutOperations } from './as-of';
 import { viewerScope, type Viewer } from './viewer';
-import { floorToCents } from '../shared/money';
+import { Decimal, floorToCents } from '../shared/money';
+
+/** The area of a payout or of its gate (D-173 К10): `all` = the whole book. */
+export type PayoutArea = 'master' | 'publishing' | 'all';
 import { stubPaymentService, type PaymentService } from './payment-service';
 import type { Db } from '../shared/pg-db';
 import { timed, timedSync } from '../shared/timing';
@@ -114,8 +119,9 @@ export function createFacadeContext(
    * approved (counted only once approved). Migrated payouts never block.
    */
   async function blockingPayoutsOf(ownerId: string) {
+    // the blocking kinds (D-173 FIX-5): payouts and advances, never a buyout; the same rule as the module's and the balance's
     const pending = (await settlements.listOperations({ ownerId })).filter(
-      (o) => o.direction === 'out' && o.active && !o.migration,
+      (o) => (BLOCKING_KINDS as readonly string[]).includes(o.kind) && o.active && !o.migration,
     );
     const statuses = await owners.documentStatuses(
       pending.map((o) => o.paymentProofId).filter((x): x is string => !!x),
@@ -216,7 +222,16 @@ export function createFacadeContext(
    * Under a label (D-168) the same calculation is projected to that label's book: the recoup needs every income of
    * the owner, so the reach is never narrowed by the label.
    */
-  async function balanceWithFiles(ownerId: string, f: PeriodFilter = {}, view?: BalanceView) {
+  async function balanceWithFiles(
+    ownerId: string,
+    f: PeriodFilter = {},
+    view?: BalanceView,
+    /**
+     * D-173: `asOf` cuts the inputs of the balance at the end of a month (`as-of.ts`; the payout never passes it);
+     * `area` decides the gate only (without it: the book).
+     */
+    opts: { asOf?: string; area?: PayoutArea } = {},
+  ) {
     const id = await timed('owners.resolveOwnerId + getOwner', async () => {
       const id = await owners.resolveOwnerId(ownerId);
       await owners.getOwner(id);
@@ -228,7 +243,8 @@ export function createFacadeContext(
       (r) => `${r.length} ids`,
     );
     const reach = await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`);
-    const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
+    const full = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
+    const calc = cutCalculation(full, opts.asOf);
     // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
     const { owner, operations } = await timed(
       'pg snapshot: owner + operations',
@@ -241,9 +257,9 @@ export function createFacadeContext(
     );
     // `confirmedAny` is the gate's input only, never in the answer (D-169)
     const { confirmedAny, ...balance } = timedSync('ownerBalance (JS)', () =>
-      ownerBalance(calc, id, operations, f, {}, view),
+      ownerBalance(calc, id, cutOperations(operations, opts.asOf), cutFilter(f, opts.asOf), {}, view),
     );
-    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf({ ...balance, confirmedAny }) } };
+    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf({ ...balance, confirmedAny }, opts.area) } };
   }
 
   /**
@@ -282,12 +298,15 @@ export function createFacadeContext(
   /** The payout gate of a balance (N19): the very decision the payout button takes. */
   function gateOf(
     b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'confirmedAny' | 'blockingPayouts' | 'total'>,
+    /** D-173 К10: the area pays min(payable of the area, payable of the book); without it (or `all`) the book. */
+    area?: PayoutArea,
   ) {
+    const payable = area === undefined || area === 'all' ? b.total.payable : Decimal.min(b.total.byArea[area].payable, b.total.payable);
     return payoutGate({
       confirmed: b.confirmed,
       confirmedAny: b.confirmedAny,
       blocking: b.blockingPayouts,
-      payableCents: floorToCents(b.total.payable),
+      payableCents: floorToCents(payable),
       thresholdCents: config.payoutThresholdCents,
     });
   }

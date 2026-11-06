@@ -1,4 +1,5 @@
-import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import type { LabelSource, OperationKind } from '@erp/shared/operation-kinds';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import { operations, payoutSnapshots } from './schema';
@@ -9,8 +10,10 @@ export interface OperationFilter {
   ownerId?: string;
   artistId?: string;
   direction?: 'in' | 'out';
-  /** Derived in SQL from direction, sign, scope and operation_ref, exactly as `meaningOf`. */
-  meaning?: 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
+  /** The stored kind (D-173). */
+  kind?: OperationKind;
+  /** Who set the label (D-173); `null` = not marked yet. */
+  labelSource?: LabelSource | null;
   /** A payout (out) still active without a payment proof. */
   needsProof?: boolean;
   active?: boolean;
@@ -35,24 +38,6 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
       (await orm().select(C.operations).from(operations).where(orgWhere(org, operations, eq(operations.id, id))))[0],
     /** Newest first. */
     listOperations: (f: OperationFilter = {}) => {
-      const meaning = (m: NonNullable<OperationFilter['meaning']>): SQL =>
-        m === 'payout'
-          ? (and(eq(operations.direction, 'out'), isNull(operations.scope)) as SQL)
-          : m === 'recoupable_payout'
-            ? (and(eq(operations.direction, 'out'), isNotNull(operations.scope)) as SQL)
-            : m === 'return'
-              ? (and(
-                  eq(operations.direction, 'in'),
-                  lt(operations.amountCents, 0),
-                  isNotNull(operations.operationRef),
-                ) as SQL)
-              : m === 'credit'
-                ? (and(
-                    eq(operations.direction, 'in'),
-                    lt(operations.amountCents, 0),
-                    isNull(operations.operationRef),
-                  ) as SQL)
-                : (and(eq(operations.direction, 'in'), gte(operations.amountCents, 0)) as SQL);
       return orm()
         .select(C.operations)
         .from(operations)
@@ -63,7 +48,12 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
             f.ownerId ? eq(operations.ownerId, f.ownerId) : undefined,
             f.artistId ? eq(operations.artistId, f.artistId) : undefined,
             f.direction ? eq(operations.direction, f.direction) : undefined,
-            f.meaning ? meaning(f.meaning) : undefined,
+            f.kind ? eq(operations.kind, f.kind) : undefined,
+            f.labelSource === undefined
+              ? undefined
+              : f.labelSource === null
+                ? isNull(operations.labelSource)
+                : eq(operations.labelSource, f.labelSource),
             f.active === undefined
               ? undefined
               : f.active
@@ -84,7 +74,7 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
         .orderBy(desc(operations.date), desc(operations.createdAt));
     },
     allOperations: () => orm().select(C.operations).from(operations).where(orgWhere(org, operations)),
-    /** Operations that refer to the given payout (returns), active or not. */
+    /** Operations that refer to the given one (returns of a payout, forgivenesses of an advance), active or not. */
     operationsReferring: (operationRef: string) =>
       orm()
         .select(C.operations)
@@ -111,8 +101,11 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
     setExternalRef: async (id: string, externalRef: string) => {
       await orm().update(operations).set({ externalRef }).where(orgWhere(org, operations, eq(operations.id, id)));
     },
-    setLabel: async (id: string, labelId: string | null) => {
-      await orm().update(operations).set({ labelId }).where(orgWhere(org, operations, eq(operations.id, id)));
+    setLabel: async (id: string, labelId: string | null, labelSource: LabelSource | null) => {
+      await orm().update(operations).set({ labelId, labelSource }).where(orgWhere(org, operations, eq(operations.id, id)));
+    },
+    setLabelSource: async (id: string, labelSource: LabelSource) => {
+      await orm().update(operations).set({ labelSource }).where(orgWhere(org, operations, eq(operations.id, id)));
     },
     reassignOwner: async (fromOwnerId: string, intoOwnerId: string) => {
       await orm().update(operations).set({ ownerId: intoOwnerId }).where(orgWhere(org, operations, eq(operations.ownerId, fromOwnerId)));

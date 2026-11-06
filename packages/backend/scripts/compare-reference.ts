@@ -104,6 +104,11 @@ type Payable = {
   payableShown: Money;
   payout: { allowed: boolean; reason?: string; amountCents: number };
   adsCharged?: Money;
+  /** D-173: absent in the reference (= 0). */
+  buyouts?: Money;
+  forgiven?: Money;
+  writtenOff?: Money;
+  adjustments?: Money;
 };
 type Label = {
   id: string;
@@ -191,6 +196,8 @@ const PUBLISHING_BOOK = '0to8';
 const EXPECTED_FILES = 47;
 const EXPECTED_LINES = 75_744_752;
 const SHOW = 20;
+/** The kinds of the payroll (D-173): none in the history (К1), so 0 on a rebuilt stack. */
+const PAYROLL_KINDS = ['buyout', 'forgiveness', 'writeoff', 'adjustment'] as const;
 
 // ---------------------------------------------------------------- arguments
 
@@ -548,6 +555,7 @@ async function main() {
   }
 
   // ---- owners
+  // adsCharged is derived from payable (D-173: + adjustments − write-offs, both 0 in the reference)
   const withAds = (o: Payable): Payable => ({
     ...o,
     adsCharged: dec(o.earned)
@@ -555,6 +563,8 @@ async function main() {
       .sub(dec(o.paid))
       .add(dec(o.returns))
       .add(dec(o.credits))
+      .add(dec(o.adjustments))
+      .sub(dec(o.writtenOff))
       .sub(dec(o.payable))
       .toFixed(),
   });
@@ -615,6 +625,32 @@ async function main() {
     if (!strict)
       moved.tail.push(`Σ Δ recouped ${sum.recouped.toFixed()}, Σ Δ payable ${sum.payable.toFixed()}`);
     if (ids.length) moved.tail.push(`changed ownerIds (${ids.length}): ${ids.join(' ')}`);
+
+    // ---- kinds (D-173): the operations by kind; per owner Δpaid = 0 and Δpayable explained by the new terms and the
+    // recoup (a forgiveness frees income: recouped falls, payable rises by as much): Δpayable + Δrecouped − Δadjustments
+    // + ΔwrittenOff = 0. A buyout and a forgiveness stay outside payable. On the reference every Δ is 0.
+    const ops = await get<{ kind: string; active: boolean }[]>('/settlements/operations');
+    const byKind = new Map<string, number>();
+    for (const o of ops) if (o.active) byKind.set(o.kind, (byKind.get(o.kind) ?? 0) + 1);
+    const count = section('kinds.count (information)', true);
+    count.line(
+      `active operations by kind: ${[...byKind.entries()]
+        .sort()
+        .map(([k, n]) => `${k} ${n}`)
+        .join(', ')}`,
+    );
+    count.item('payroll kinds', PAYROLL_KINDS.filter((k) => byKind.has(k)).map((k) => `${k}: ${byKind.get(k)} (none in the history)`));
+    const kinds = section('kinds');
+    for (const [k, x] of a) {
+      const y = b.get(k);
+      if (!y) continue;
+      const delta = (f: 'paid' | 'payable' | 'recouped' | 'adjustments' | 'writtenOff') => dec(y[f]).sub(dec(x[f]));
+      const unexplained = delta('payable').add(delta('recouped')).sub(delta('adjustments')).add(delta('writtenOff'));
+      kinds.item(`owner ${y.ownerId}`, [
+        ...differences('paid', x.paid, y.paid),
+        ...(unexplained.isZero() ? [] : [`payable moved by ${unexplained.toFixed()} beyond adjustments, write-offs and the recoup`]),
+      ]);
+    }
   }
 
   // ---- owners under a label: the file is named by the reference id, the new id comes by the name

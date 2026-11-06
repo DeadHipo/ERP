@@ -82,7 +82,7 @@ function cellsOf(values: string[], cols: Map<SplitImportColumn, number>): Cells 
 }
 
 /** `;` or `,`: whichever the header line holds more of. */
-async function csvDelimiter(path: string): Promise<string> {
+export async function csvDelimiter(path: string): Promise<string> {
   const fh = await open(path, 'r');
   try {
     const buf = Buffer.alloc(64 * 1024);
@@ -154,7 +154,7 @@ export async function readSplitImportFile(path: string, fileName: string): Promi
   throw new ValidationError('The import file must be a .csv or an .xlsx');
 }
 
-async function sha256Of(path: string): Promise<string> {
+export async function sha256Of(path: string): Promise<string> {
   const h = createHash('sha256');
   for await (const chunk of createReadStream(path)) h.update(chunk as Buffer);
   return h.digest('hex');

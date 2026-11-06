@@ -77,7 +77,11 @@ export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
       responses: {
         [status]: {
           description: 'OK',
-          content: { 'application/json': { schema: op.response } },
+          content: {
+            'application/json': { schema: op.response },
+            // D-173: format=csv answers one sheet as text/csv
+            ...(op.csv ? { 'text/csv': { schema: z.string().describe('format=csv: UTF-8 with BOM, `;`, every field quoted') } } : {}),
+          },
         },
         400: {
           description: 'Invalid input (validation_error)',

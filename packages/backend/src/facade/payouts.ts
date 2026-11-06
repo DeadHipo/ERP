@@ -1,8 +1,20 @@
 import { NotFoundError, RuleViolationError, ValidationError } from '../shared/errors';
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
+import { assertDate } from '../shared/dates';
 import { todayIso } from '../shared/dates';
 import { type Scope } from '../modules/settlements';
-import type { FacadeContext } from './context';
+import {
+  KIND_DIRECTION,
+  KIND_DOCUMENT_KINDS,
+  KIND_SIGN,
+  KIND_WITH_SCOPE,
+  kindOf,
+  type OperationKind,
+} from '@erp/shared/operation-kinds';
+
+/** The kinds that go to an owner (no pseudonym needed) and need a basis document (D-173 §1.1). */
+const OWNER_DOCUMENT_KINDS: readonly OperationKind[] = ['buyout', 'writeoff', 'adjustment'];
+import type { FacadeContext, PayoutArea } from './context';
 import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
 
 export function payoutsApi(ctx: FacadeContext) {
@@ -14,11 +26,19 @@ export function payoutsApi(ctx: FacadeContext) {
 
   const api = {
     /**
-     * Adjustments (deduction, credit) and recoupable payouts (advance with scope). Settlements are tied to the artist;
-     * the owner comes from module 1. A plain payout of earned money is made only by the payout button (createPayout),
-     * except migrated payouts confirmed during data transfer.
+     * An operation of a kind (D-173): advances, deductions, credits (and migrated payouts) here; a plain payout of
+     * earned money is made only by the payout button (createPayout), a return by its action, a forgiveness by its own.
+     * Without `kind` the kind is derived from the fields as before D-173 (`kindOf`), so every earlier caller and the
+     * loader keep their answers. Settlements are tied to the artist; the owner comes from module 1. The refusals come in
+     * the order of D-173 §1.1: label_required → kind_direction → kind_sign → use_payout_button / use_return_action /
+     * use_forgive_action → owner_required / artist_required → scope_required / scope_forbidden / writeoff_area →
+     * document_required → document_kind → document_owner_mismatch → the gate of an advance (owner_not_confirmed,
+     * no_contract_for_label, payout_blocked) → writeoff_exceeds. A buyout, a write-off and an adjustment (D-173) go to
+     * an owner with a basis document and no gate (the document under the label is enough); a write-off is of the
+     * publishing area and at most the publishing the book still has (earned − recouped from it − earlier write-offs).
      */
     createOperation(input: {
+      kind?: OperationKind;
       direction: 'in' | 'out';
       amount: string;
       artistId?: string | null;
@@ -33,6 +53,12 @@ export function payoutsApi(ctx: FacadeContext) {
       migration?: boolean;
       /** The own label the operation belongs to (D-168); required unless the operation is a migrated one. */
       labelId?: string | null;
+      /** The area of the book (D-173): master by default, publishing for a write-off. */
+      area?: 'master' | 'publishing';
+      /** The cash register's id of the payment (the operation import, D-173 §1.5); the API body has none. */
+      externalRef?: string | null;
+      /** The payment channel, free text (the operation import, D-173 §1.5). */
+      channel?: string | null;
     }) {
       return db.transaction(async () => {
         const cents = new Decimal(input.amount).mul(100);
@@ -40,12 +66,23 @@ export function payoutsApi(ctx: FacadeContext) {
         if (!input.labelId && !input.migration)
           throw new ValidationError('An operation needs the label it belongs to (labelId)', undefined, 'label_required');
         if (input.labelId) await assertOwnLabel(input.labelId);
-        if (input.direction === 'out' && !input.scope && !input.migration) {
+        const explicit = input.kind !== undefined;
+        const kind: OperationKind =
+          input.kind ?? kindOf({ direction: input.direction, amountCents: cents.toNumber(), scope: input.scope ?? null, operationRef: input.operationRef });
+        if (KIND_DIRECTION[kind] !== input.direction)
+          throw new ValidationError(`A ${kind} is an "${KIND_DIRECTION[kind]}" operation`, { kind, expected: KIND_DIRECTION[kind] }, 'kind_direction');
+        const sign = KIND_SIGN[kind];
+        if (cents.isZero() || (sign === '+' && cents.isNegative()) || (sign === '-' && cents.isPositive()))
+          throw new ValidationError(`The amount of a ${kind} has the sign ${sign}`, { kind, sign }, 'kind_sign');
+        if (kind === 'payout' && !input.migration) {
           throw new RuleViolationError(
             'A payout of earned money is made with the payout button; an advance needs a scope',
             'use_payout_button',
           );
         }
+        if (kind === 'return') throw new ValidationError('Use the return action for returns', undefined, 'use_return_action');
+        if (kind === 'forgiveness')
+          throw new ValidationError('Use the forgive action of the advance', undefined, 'use_forgive_action');
         if (input.operationRef) throw new ValidationError('Use the return action for returns');
         let ownerId = input.ownerId ? await owners.resolveOwnerId(input.ownerId) : null;
         if (input.artistId) {
@@ -57,8 +94,36 @@ export function payoutsApi(ctx: FacadeContext) {
           ownerId = artistOwner;
         }
         if (ownerId) await owners.getOwner(ownerId);
-        // An advance (recoupable payout) is a payout: same gate as the payout button (README 5, 07 rule 2).
-        if (input.direction === 'out' && !input.migration && ownerId) {
+        if ((kind === 'payout' || OWNER_DOCUMENT_KINDS.includes(kind)) && !ownerId)
+          throw new ValidationError(`A ${kind} goes to an owner`, undefined, 'owner_required');
+        if ((kind === 'advance' || kind === 'deduction' || kind === 'credit') && !input.artistId)
+          throw new ValidationError(`A ${kind} is tied to an artist`, undefined, 'artist_required');
+        if (kind === 'advance' && !input.scope)
+          throw new ValidationError('An advance needs a recoup scope', undefined, 'scope_required');
+        if (explicit && input.scope && !(KIND_WITH_SCOPE as readonly string[]).includes(kind))
+          throw new ValidationError(`A ${kind} has no recoup scope`, undefined, 'scope_forbidden');
+        if (kind === 'writeoff' && input.area && input.area !== 'publishing')
+          throw new ValidationError('A write-off is of the publishing area', undefined, 'writeoff_area');
+        if (kind === 'advance' && !input.documentId)
+          throw new RuleViolationError('A recoupable payout (advance) needs a basis document', 'document_required');
+        if (OWNER_DOCUMENT_KINDS.includes(kind) && !input.documentId)
+          throw new RuleViolationError(`A ${kind} needs a basis document`, 'document_required');
+        // The basis document must fit the kind (KIND_DOCUMENT_KINDS): an advance by an advance agreement (or the
+        // contract), a deduction or a credit by an adjustment basis (or the contract / other).
+        if (input.documentId) {
+          const docKind = (await owners.getDocument(input.documentId)).kind;
+          const allowed: readonly string[] = KIND_DOCUMENT_KINDS[kind];
+          if (!allowed.includes(docKind))
+            throw new ValidationError(`A ${kind} cannot be based on a document of kind "${docKind}"`, { allowed }, 'document_kind');
+        }
+        for (const d of [input.documentId, input.paymentProofId]) {
+          if (!d) continue;
+          const doc = await owners.getDocument(d);
+          if (doc.ownerId && ownerId && doc.ownerId !== ownerId)
+            throw new RuleViolationError('The document belongs to another owner', 'document_owner_mismatch');
+        }
+        // An advance is a payout: same gate as the payout button (README 5, 07 rule 2).
+        if (kind === 'advance' && !input.migration && ownerId) {
           if (!(await owners.isOwnerConfirmed(ownerId))) {
             throw new RuleViolationError(
               'The owner has no approved contract: payout is not possible',
@@ -84,24 +149,15 @@ export function payoutsApi(ctx: FacadeContext) {
             );
           }
         }
-        // The basis document must fit the operation: an advance by an advance agreement (or the contract),
-        // an adjustment by an adjustment basis (or the contract / other).
-        if (input.documentId) {
-          const kind = (await owners.getDocument(input.documentId)).kind;
-          const allowed =
-            input.direction === 'out'
-              ? ['advance_basis', 'contract']
-              : ['adjustment_basis', 'contract', 'other'];
-          if (!allowed.includes(kind))
-            throw new ValidationError(
-              `A ${input.direction === 'out' ? 'recoupable payout' : 'adjustment'} cannot be based on a document of kind "${kind}"`,
-            );
-        }
-        for (const d of [input.documentId, input.paymentProofId]) {
-          if (!d) continue;
-          const doc = await owners.getDocument(d);
-          if (doc.ownerId && ownerId && doc.ownerId !== ownerId)
-            throw new RuleViolationError('The document belongs to another owner', 'document_owner_mismatch');
+        // a write-off takes at most the publishing the book still has (D-173 К6): earned − recouped from it − write-offs
+        if (kind === 'writeoff' && ownerId) {
+          const { balance } = await balanceWithFiles(ownerId, {}, input.labelId ? { labelId: input.labelId } : undefined);
+          const pub = balance.total.byArea.publishing;
+          const available = pub.earned.sub(pub.recouped).sub(balance.total.writtenOff);
+          if (cents.div(100).gt(available))
+            throw new RuleViolationError('The write-off is above the publishing the book has', 'writeoff_exceeds', {
+              available: Decimal.max(available, 0).toFixed(),
+            });
         }
         if (input.paymentProofId && input.direction === 'in') {
           throw new ValidationError('Payment proofs belong to payouts; an adjustment needs a basis document');
@@ -112,7 +168,14 @@ export function payoutsApi(ctx: FacadeContext) {
         ) {
           throw new ValidationError('A payment proof must be a document of kind "payment_proof"');
         }
-        return settlements.createOperation({ ...input, amountCents: cents.toNumber(), ownerId });
+        // a new operation's label is the operator's (D-173 §1.2); the module derives the same kind when none is given
+        return settlements.createOperation({
+          ...input,
+          kind: input.kind,
+          amountCents: cents.toNumber(),
+          ownerId,
+          labelSource: input.labelId ? 'operator' : null,
+        });
       });
     },
 
@@ -123,13 +186,15 @@ export function payoutsApi(ctx: FacadeContext) {
      * owner checks (the contract, the blocking payouts of the owner whatever their label). The checks, the calculation
      * and the recorded payout are one write transaction (D-121); the payment service is called after it commits.
      */
-    async createPayout(ownerId: string, input: { labelId?: string; comment?: string } = {}) {
+    async createPayout(ownerId: string, input: { labelId?: string; comment?: string; area?: PayoutArea } = {}) {
       if (!input.labelId) throw new ValidationError('A payout is made under a label (labelId)', undefined, 'label_required');
       const labelId = input.labelId;
+      // D-173 К10: the button pays one area, master by default: min(payable of the area, payable of the book)
+      const area: PayoutArea = input.area ?? 'master';
       const { op, id, cents } = await db.transaction(async () => {
         const label = await assertOwnLabel(labelId);
         const id = await owners.resolveOwnerId(ownerId);
-        const { balance, files: believeFiles } = await balanceWithFiles(id, {}, { labelId });
+        const { balance, files: believeFiles } = await balanceWithFiles(id, {}, { labelId }, { area });
         // One decision for the button and the screen (N19): the order owner_not_confirmed, no_contract_for_label,
         // payout_blocked, nothing_to_pay, below_threshold is the order of payoutGate().
         const gate = balance.payout;
@@ -166,17 +231,22 @@ export function payoutsApi(ctx: FacadeContext) {
         // "Which artist this payout is for": the payout split pro rata over the positive per-artist net
         // (earned minus recouped) and the owner's publishing net; the exact all-time figures are kept as well.
         const amount = centsToDecimal(cents);
+        // (the master area has no publishing row, the publishing area no pseudonym rows, D-173)
         const parts = [
-          ...balance.artists.map((a) => ({
+          ...(area === 'publishing' ? [] : balance.artists).map((a) => ({
             key: a.artistId,
             label: a.pseudonym,
             net: Decimal.max(a.earned.sub(a.recoupedFromMaster), 0),
           })),
-          {
-            key: 'publishing',
-            label: 'Publishing (owner)',
-            net: Decimal.max(balance.period.earnedPublishing.sub(balance.publishingRecouped), 0),
-          },
+          ...(area === 'master'
+            ? []
+            : [
+                {
+                  key: 'publishing',
+                  label: 'Publishing (owner)',
+                  net: Decimal.max(balance.period.earnedPublishing.sub(balance.publishingRecouped), 0),
+                },
+              ]),
         ];
         const totalNet = parts.reduce((s, p) => s.add(p.net), ZERO);
         const snapshot = {
@@ -185,6 +255,7 @@ export function payoutsApi(ctx: FacadeContext) {
           labelId: label.id,
           labelName: label.name,
           amountCents: cents,
+          area,
           payableExact: balance.total.payable.toFixed(),
           total: balance.total,
           payoutByArtist: parts
@@ -222,6 +293,8 @@ export function payoutsApi(ctx: FacadeContext) {
           date: todayIso(),
           comment: input.comment ?? 'Payout on demand',
           labelId: label.id,
+          // the book area of the payout (D-173): `all` is recorded as master, as the history (О5)
+          area: area === 'publishing' ? 'publishing' : 'master',
           snapshot,
         });
         return { op, id, cents };
@@ -237,7 +310,7 @@ export function payoutsApi(ctx: FacadeContext) {
       await checkOperation(operationId, viewer);
       return db.transaction(async () => {
         const op = await settlements.getOperation(operationId);
-        if (op.direction !== 'out' || !op.active || op.paymentProofId)
+        if (!(['payout', 'advance', 'buyout'] as readonly string[]).includes(op.kind) || !op.active || op.paymentProofId)
           throw new ValidationError('This operation cannot take a payment proof');
         const doc = await owners.createDocument({
           kind: 'payment_proof',
@@ -251,12 +324,20 @@ export function payoutsApi(ctx: FacadeContext) {
       });
     },
 
-    /** The label of an existing operation (D-168): the history before the split is marked by the operator. */
-    async setOperationLabel(operationId: string, labelId: string, viewer: Viewer = ALL_VIEWER) {
+    /**
+     * The label of an existing operation (D-168), with the operator's reason (D-173: `400 reason_required` without one;
+     * the reason and the previous label go into the audit summary). The label source becomes `operator`.
+     */
+    async setOperationLabel(operationId: string, labelId: string, reason: string | undefined, viewer: Viewer = ALL_VIEWER) {
+      if (!reason?.trim())
+        throw new ValidationError('A change of the label needs a reason', undefined, 'reason_required');
       await assertOwnLabel(labelId);
       await checkOperation(operationId, viewer);
       if (viewer.kind !== 'all') assertViewerHolds(viewer, labelId);
-      return settlements.setLabel(operationId, labelId);
+      return db.transaction(async () => {
+        const fromLabelId = (await settlements.getOperation(operationId)).labelId;
+        return { ...(await settlements.setLabel(operationId, labelId, 'operator')), fromLabelId };
+      });
     },
 
     /** A payout that did not arrive: a separate return operation with a confirming document (under the payout's label). */
@@ -264,7 +345,7 @@ export function payoutsApi(ctx: FacadeContext) {
       await checkOperation(operationId, viewer);
       return db.transaction(async () => {
         const op = await settlements.getOperation(operationId);
-        if (op.meaning !== 'payout' || !op.active || (!op.paymentProofId && !op.migration)) {
+        if (op.kind !== 'payout' || !op.active || (!op.paymentProofId && !op.migration)) {
           throw new RuleViolationError(
             'Only a counted payout (with payment proof) can be returned',
             'payout_not_counted',
@@ -280,6 +361,7 @@ export function payoutsApi(ctx: FacadeContext) {
           labelId: op.labelId,
         });
         return settlements.createOperation({
+          kind: 'return',
           direction: 'in',
           amountCents: -op.amountCents,
           ownerId: op.ownerId,
@@ -288,6 +370,59 @@ export function payoutsApi(ctx: FacadeContext) {
           documentId: doc.id,
           comment: input.comment,
           labelId: op.labelId,
+        });
+      });
+    },
+
+    /**
+     * The forgiveness of an advance from a date (D-173 §1.3): the advance must be active (422 operation_ref_not_advance),
+     * the date not before it (422 forgiveness_before_advance), the basis document of a forgiveness kind and of the same
+     * owner, the amount at most the unrecouped part (`remaining` of the position in the full recalculation, earlier
+     * forgivenesses included; an advance that does not count yet has 0: 422 forgiveness_exceeds { unrecouped }). The
+     * forgiveness takes the owner, pseudonym, label and area of its advance (label source `payout`). The recoup frees the
+     * income of the months from the date on (`layers/recoup.ts`): payable does not move at the moment.
+     */
+    async forgiveAdvance(
+      operationId: string,
+      input: { amount: string; date: string; documentId: string; comment: string },
+      viewer: Viewer = ALL_VIEWER,
+    ) {
+      await checkOperation(operationId, viewer);
+      return db.transaction(async () => {
+        const advance = await settlements.getOperation(operationId);
+        if (advance.kind !== 'advance' || !advance.active)
+          throw new RuleViolationError('Only an active advance can be forgiven', 'operation_ref_not_advance');
+        const cents = new Decimal(input.amount).mul(100);
+        if (!cents.isInteger()) throw new ValidationError('Settlement amounts are whole cents');
+        if (!cents.isPositive() || cents.isZero())
+          throw new ValidationError('The amount of a forgiveness has the sign +', { kind: 'forgiveness', sign: '+' }, 'kind_sign');
+        if (assertDate(input.date) < advance.date)
+          throw new RuleViolationError('A forgiveness cannot be dated before its advance', 'forgiveness_before_advance', {
+            advanceDate: advance.date,
+          });
+        const doc = await owners.getDocument(input.documentId);
+        const allowed: readonly string[] = KIND_DOCUMENT_KINDS.forgiveness;
+        if (!allowed.includes(doc.kind))
+          throw new ValidationError(`A forgiveness cannot be based on a document of kind "${doc.kind}"`, { allowed }, 'document_kind');
+        const ownerId = advance.ownerId ? await owners.resolveOwnerId(advance.ownerId) : null;
+        if (doc.ownerId && ownerId && (await owners.resolveOwnerId(doc.ownerId)) !== ownerId)
+          throw new RuleViolationError('The document belongs to another owner', 'document_owner_mismatch');
+        const position = ownerId
+          ? (await balanceWithFiles(ownerId)).balance.positions.find((p) => p.operationId === advance.id)
+          : undefined;
+        const unrecouped = position?.remaining ?? ZERO;
+        if (cents.div(100).gt(unrecouped))
+          throw new RuleViolationError('The forgiveness is above the unrecouped part of the advance', 'forgiveness_exceeds', {
+            unrecouped: unrecouped.toFixed(),
+          });
+        return settlements.createOperation({
+          kind: 'forgiveness',
+          direction: 'in',
+          amountCents: cents.toNumber(),
+          date: input.date,
+          operationRef: advance.id,
+          documentId: doc.id,
+          comment: input.comment,
         });
       });
     },

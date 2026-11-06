@@ -246,14 +246,18 @@ describe('two organizations behind the login: the API (D-170)', () => {
     owner: string; artist: string; artist2: string; track: string; document: string; split: string;
     participation: string; label: string; sublabel: string; rule: string; file: string; norm: string;
     operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
+    /** D-173: a B17 statement */
+    statement: string;
   };
-  type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown };
+  type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown; file?: { path: string; fileName: string } };
 
   let app: Express;
   const cookie: Record<'a' | 'b' | 'sys', string> = { a: '', b: '', sys: '' };
   let orgA = '';
   let orgB = '';
   let B: Ids;
+  /** The corrected file of the replacement walk (D-173). */
+  let replaceFile: { path: string; fileName: string };
   let A: { label: string; owner: string; artist: string; document: string; buyout: string };
 
   const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
@@ -261,7 +265,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
   async function api(who: 'a' | 'b', method: 'get' | 'post' | 'patch', url: string, c: Call = {}) {
     let t = as(who, request(app)[method]('/api/v1' + url));
     if (c.query) t = t.query(c.query);
-    if (c.body !== undefined) t = t.send(c.body as object);
+    if (c.file) t = t.attach('file', c.file.path, c.file.fileName);
+    else if (c.body !== undefined) t = t.send(c.body as object);
     return t;
   }
   async function ok(who: 'a' | 'b', method: 'post' | 'patch' | 'get', url: string, body?: unknown): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -320,13 +325,14 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const sb17 = await as('b', request(app).post('/api/v1/publishing/b17')).query({ label: lb.id }).attach('file', b17.path, b17.fileName);
     expect(sb17.status, JSON.stringify(sb17.body)).toBe(201);
     const writers = (await ok('b', 'get', '/publishing/writers')) as unknown as { writerNorm: string }[];
+    replaceFile = await writeB17('Q22026', [{ writer: 'A WRITER', title: 'A Song', payable: 11 }], 'scope_replace_Q22026.xlsx');
     await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
     const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
     const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
-      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555',
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
       grant: (await ok('b', 'post', '/support', { login: users.sys })).id,
@@ -339,7 +345,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(),
     };
   };
 
@@ -429,6 +435,12 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /tracks/:isrc/label': (x) => ({ params: { isrc: x.isrc }, body: { labelId: x.label, from: '2026-07-01' } }),
     'GET /releases/registry': (x) => ({ query: { label: x.label } }),
     'GET /onboarding': (x) => ({ query: { label: x.label } }),
+    // stage 5 (D-173): B's statement replaced under A's label answers as an unknown statement (404)
+    'POST /publishing/statements/:id/replace': (x) => ({ params: { id: x.statement }, query: { label: A.label }, file: replaceFile }),
+    // the payroll (D-173): B's label is an unknown label (404)
+    'GET /owners/payroll': (x) => ({ query: { label: x.label } }),
+    // the forgiveness (D-173): B's operation forgiven under a with a's document answers as an unknown advance
+    'POST /settlements/operations/:id/forgive': (x) => ({ params: { id: x.operation }, body: { amount: '1.00', date: '2026-08-15', documentId: A.document, comment: 'c' } }),
   };
   /** Writes that name no entity of another organization: they create in A and are not part of the walk. */
   // D-172: the uploads of stage 4 create in A from a file (their `?label=` is checked by the label guard before the
@@ -441,6 +453,10 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /splits/import',
     'POST /releases/import',
     'GET /onboarding/organization',
+    // D-173: the operation import creates in A from a file whose owners, pseudonyms and documents are resolved inside
+    // A's facade (another organization's are owner_not_found / pseudonym_not_found rows); its `?label=` is checked by
+    // the label guard before the body
+    'POST /settlements/operations/import',
   ];
 
   /**
@@ -506,6 +522,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     expect(notFound(await api('a', 'post', '/ads', { body: { items: [{ isrc: ISRC_B, month: '2026-07', amount: '1', labelId: B.label }] } }))).toEqual([404, 'not_found']);
     const file = writeBelieve('2026-07', [{ isrc: ISRC_B, upc: UPC_B, net: '1' }], { account: B.account });
     expect(notFound(await as('a', request(app).post('/api/v1/sources/believe')).query({ label: B.label }).attach('file', file.path, file.fileName))).toEqual([404, 'not_found']);
+    expect(notFound(await as('a', request(app).post('/api/v1/settlements/operations/import')).query({ label: B.label }).attach('file', file.path, 'operations.csv'))).toEqual([404, 'not_found']);
   });
 
   it('X-Org: the system administrator needs it, an unknown one is 404, a user may not send it', async () => {

@@ -25,6 +25,11 @@ interface OperationBase {
   preview?: boolean;
   /** Success status (default 200). */
   status?: 200 | 201;
+  /**
+   * D-173: with `format=csv` the operation answers `text/csv` (UTF-8 with BOM) instead of `response`: OpenAPI gives a
+   * second content, the contract test calls both and checks the csv header.
+   */
+  csv?: true;
   response: z.ZodType;
   /**
    * Who may call it (D-170): `public` without a session; `user` any session, no organization (`/auth/me`); `system` a
@@ -417,8 +422,8 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
-    summary: 'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4), or for a list of owner ids (their reach only, D-163); under a label the book of that label of the owners visible under it (D-168)',
-    query: S.payablesQuery,
+    summary: 'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4), or for a list of owner ids (their reach only, D-163); under a label the book of that label of the owners visible under it (D-168); asOf: the cut at the end of a month, area: the gate of an area only (D-173)',
+    query: S.payablesAsOfQuery,
     response: R.payablesSchema,
   },
   {
@@ -436,8 +441,8 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
-    summary: 'Owner balance: earned, recouped, paid, payable, with the book of every label; under a label (`label=`) the book of that label alone (D-168)',
-    query: S.labelPeriodQuery,
+    summary: 'Owner balance: earned, recouped, paid, payable, with the book of every label; under a label (`label=`) the book of that label alone (D-168); asOf: the cut at the end of a month, area: the gate of an area only (D-173)',
+    query: S.balanceQuery,
     response: R.balanceSchema,
   },
   {
@@ -446,7 +451,7 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'pay', subject: 'settlements', scope: 'label' },
     tag: 'owners',
-    summary: 'Payout button: pays the payable of the label\'s book (labelId), with a snapshot (D-168)',
+    summary: 'Payout button: pays the payable of the label\'s book (labelId), with a snapshot (D-168); area (master by default) pays min(payable of the area, payable of the book), the snapshot stores it (D-173)',
     body: S.createPayoutBody,
     status: 201,
     response: R.operationSchema,
@@ -1067,7 +1072,8 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read_money', subject: 'settlements', scope: 'label' },
     tag: 'settlements',
-    summary: 'Operations with the owner name, pseudonym and label name, filtered (17 N14); under a label (`label=`) those of it (D-168)',
+    summary:
+      'Operations with the owner name, pseudonym and label name, filtered (17 N14); under a label (`label=`) those of it (D-168); by the stored kind (`kind`, or its alias `meaning`) and the label source (`labelSource=default`: the history put under 0to8 by default, D-173)',
     query: S.operationsQuery,
     response: list(R.operationSchema),
   },
@@ -1077,7 +1083,8 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'pay', subject: 'settlements', scope: 'label' },
     tag: 'settlements',
-    summary: 'Record an adjustment, credit or recoupable payout under a label (labelId, D-168)',
+    summary:
+      'Record an advance, a deduction or a credit (or a migrated payout) under a label (labelId, D-168), of an explicit kind or of the kind its fields give (D-173); the label source is operator',
     body: S.createOperationBody,
     status: 201,
     response: R.operationSchema,
@@ -1085,7 +1092,21 @@ const operations: ApiOperation[] = [
       '400 label_required: no labelId',
       '400 label_not_own',
       '404 not_found: label',
+      '400 kind_direction: the direction is not the kind\'s (details { kind, expected })',
+      '400 kind_sign: the sign of the amount is not the kind\'s (details { kind, sign })',
+      '422 use_payout_button: a payout that is not migrated',
+      '400 use_return_action | use_forgive_action: a return or a forgiveness through this operation',
+      '400 owner_required | artist_required: a payout without an owner; an advance, deduction or credit without a pseudonym',
+      '400 scope_required: an advance without a recoup scope',
+      '400 scope_forbidden: a recoup scope on a kind that has none (an explicit kind)',
+      '422 document_required: an advance without a basis document',
+      '400 document_kind: the basis document is of a kind the operation does not accept (details { allowed })',
+      '422 document_owner_mismatch',
+      '422 owner_not_confirmed | payout_blocked: the gate of an advance',
       '422 no_contract_for_label: an advance under a label the owner has no approved contract with (D-169)',
+      '400 writeoff_area: a write-off of an area other than publishing (D-173)',
+      '422 document_required: a buyout, write-off or adjustment without a basis document (D-173)',
+      '422 writeoff_exceeds: a write-off above the publishing the book has (details { available }, D-173)',
     ],
   },
   {
@@ -1094,10 +1115,11 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'approve', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
-    summary: 'Set the label of an existing operation (the history before the split, D-168)',
+    summary:
+      'Set the label of an existing operation (the history before the split, D-168) with a reason (D-173): the label source becomes operator; the reason and the previous label (`fromLabelId`, also in the answer) go into the audit summary',
     body: S.setOperationLabelBody,
     response: R.operationSchema,
-    errors: ['400 label_not_own', '404 not_found'],
+    errors: ['400 reason_required: no reason', '400 label_not_own', '404 not_found'],
   },
   {
     method: 'post',
@@ -1128,7 +1150,7 @@ const operations: ApiOperation[] = [
     summary: 'Soft rollback of an operation',
     body: S.deactivateBody,
     response: R.operationSchema,
-    errors: ['409 payout_paid | payout_sent | has_returns'],
+    errors: ['409 payout_paid | payout_sent: a payout only (D-173) | has_returns: a payout with an active return | has_forgiveness: an advance with an active forgiveness'],
   },
   {
     method: 'post',
@@ -1140,6 +1162,47 @@ const operations: ApiOperation[] = [
     body: S.returnBody,
     status: 201,
     response: R.operationSchema,
+  },
+  {
+    method: 'post',
+    path: '/settlements/operations/:id/forgive',
+    access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
+    tag: 'settlements',
+    summary:
+      'Forgive an advance from a date (D-173): a forgiveness operation referring to the advance; the income of the months from the date on is no longer taken by it (payable does not move at the moment)',
+    body: S.forgiveBody,
+    status: 201,
+    response: R.operationSchema,
+    errors: [
+      '422 operation_ref_not_advance: not an active advance',
+      '422 forgiveness_before_advance: the date is before the advance',
+      '422 forgiveness_exceeds: above the unrecouped part (details.unrecouped)',
+      '400 document_kind | kind_sign',
+    ],
+  },
+  {
+    method: 'post',
+    path: '/settlements/operations/import',
+    access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'label' },
+    tag: 'settlements',
+    summary:
+      'Import operations from a csv of the cash register (D-173 §1.5, columns of OPERATION_IMPORT_COLUMNS) under an own label: every row goes through createOperation as migration: true (paid outside the ERP, counted at once; D-051 extended), label source operator. dryRun=1 (default) is the preview (200, every row classified, nothing written, no audit row); dryRun=0 applies all or nothing in one transaction (201, the created operation and payment proof ids). external_id is required for a payout and a buyout; a row whose content (kind, owner, pseudonym, date, amount, channel, external id) is an active operation already is unchanged. The label is checked before the body is received',
+    query: S.operationImportQuery,
+    upload: true,
+    preview: true,
+    status: 201,
+    response: R.operationImportSchema,
+    errors: [
+      '400 label_required: no label=',
+      '404 not_found: label',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
+      '400 validation_error: not a .csv',
+      '413 import_too_large: more than 5000 rows or 10 MB',
+      '422 import_invalid: the apply with error rows (details { rows: [{ line, code }] (first 200), errors }) or a refusal of createOperation while writing (details { line, cause }); nothing is written',
+    ],
   },
   {
     method: 'get',
@@ -1337,6 +1400,45 @@ const operations: ApiOperation[] = [
       'The onboarding checklist of the organization (D-172), its administrator\'s: the organization, own labels (and sublabels), active members (and organization administrators), Believe accounts (own labels without one)',
     response: R.orgOnboardingSchema,
     errors: ['403 forbidden: not an organization administrator'],
+  },
+  // the replacement of a B17 statement (D-173): approve, its own operation (the upload stays write)
+  {
+    method: 'post',
+    path: '/publishing/statements/:id/replace',
+    access: 'org',
+    ability: { action: 'approve', subject: 'publishing', scope: 'label' },
+    tag: 'publishing',
+    summary:
+      'Replace a loaded B17 statement by a corrected file (xlsx) of the same quarters under the same own label (D-173): in one transaction the old statement becomes superseded (its lines and sha stay: the payout snapshots reference it), its quarters go to the new statement, the grouped lines are refreshed; writers are resolved as on the upload. The label is checked before the body is received',
+    query: S.uploadLabelQuery,
+    upload: true,
+    status: 201,
+    response: R.b17ReplaceSchema,
+    errors: [
+      '400 label_required: no label=',
+      '404 not_found: label or statement',
+      '400 label_not_own: the label is a sublabel (details { labelId })',
+      '400 validation_error: not an .xlsx statement',
+      '409 replace_not_loaded: the statement is not loaded (superseded already) (details { status })',
+      '409 replace_label_differs: the statement is loaded under another label (details { labelId })',
+      '409 periods_differ: the quarters of the new file differ from those of the statement (details { old, new })',
+      '409 duplicate_period: a quarter of the file name belongs to another statement (details { existingStatementId })',
+      '409 duplicate_file: the same file (sha256) is already loaded',
+    ],
+  },
+  // the payroll export (D-173 §1.4): read_money under a label (a manager under its own label)
+  {
+    method: 'get',
+    path: '/owners/payroll',
+    access: 'org',
+    ability: { action: 'read_money', subject: 'owners', scope: 'label' },
+    tag: 'owners',
+    summary:
+      'The payroll of the book of one own label (D-173) from one calculation: a row per owner × pseudonym (recoupedFromMaster), the owner row (publishing, the operations), the total row of the area with the payout gate (payout_blocked by another label without its amount, below the threshold), the contract column (by decision = a label decision without a contract); the sheets waiting (by reason, with the already paid), buyouts and control (A = B + C + ours by account and month of the book). asOf: the cut at the end of a month; area: master by default. format=csv: one sheet (`sheet=`) as text/csv (UTF-8 with BOM, `;`, every field quoted), file payroll_<label>_<asOf|all>_<area>_<sheet>.csv',
+    query: S.payrollQuery,
+    csv: true,
+    response: R.payrollSchema,
+    errors: ['400 label_required: no label=', '404 not_found: label', '400 label_not_own: the label is a sublabel (details { labelId })', '403 label_forbidden: a label of another manager'],
   },
 ];
 

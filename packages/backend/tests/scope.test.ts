@@ -604,7 +604,7 @@ describe('the label as a book (D-168)', () => {
     const id = c.owners.get('A') as string;
     const before = await f.signals();
     expect(before.operationsWithoutLabel.map((o) => [o.operationId, o.meaning, o.pseudonym])).toEqual([[unlabelled.id, 'recoupable_payout', 'A']]);
-    const set = await f.setOperationLabel(unlabelled.id, zero);
+    const set = await f.setOperationLabel(unlabelled.id, zero, 'the history before the split');
     expect(set.labelId).toBe(zero);
     expect((await f.signals()).operationsWithoutLabel).toEqual([]);
     // the advance of 60 now takes the 0to8 income alone (50) and keeps 10 unrecouped; the Echo8 advance takes 20 of Echo8
@@ -614,7 +614,7 @@ describe('the label as a book (D-168)', () => {
       Echo8: ['20', '25'],
     });
     expect(a.positions.map((p) => [p.labelId, p.recouped.toFixed(), p.remaining.toFixed()])).toEqual([[zero, '50', '10'], [f.testLabels.Echo8, '20', '0']]);
-    await expect(f.setOperationLabel(unlabelled.id, 'no-such-label')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(f.setOperationLabel(unlabelled.id, 'no-such-label', 'a reason')).rejects.toMatchObject({ statusCode: 404 });
     await c.verify();
   });
 
@@ -883,7 +883,8 @@ describe('the book by the account of the file (D-169)', () => {
     expect((await f.signals({}, echo)).statementsWithoutLabel).toEqual([]);
     expect((await f.signals()).counts.statementsWithoutLabel).toBe(0);
     // the label payout pays the book master + publishing of Echo8, and records the files of that book only
-    const p = await f.createPayout(a, { labelId: echo });
+    // the button pays the whole book with area 'all' (D-173 О6: master by default; the numbers unchanged)
+    const p = await f.createPayout(a, { labelId: echo, area: 'all' });
     expect([p.amountCents, p.labelId]).toEqual([5000, echo]);
     const snapshot = (await f.modules.settlements.getSnapshot(p.id)) as { files: { believe: { id: string }[]; b17: { id: string }[] } };
     expect(snapshot.files.b17.map((x) => x.id)).toEqual([q2.statement.id]);
@@ -903,5 +904,104 @@ describe('the book by the account of the file (D-169)', () => {
     // the ISRCs of the two labels are disjoint here, so the answer under a label is the one of the full reads
     const scopedAnswer = text((await f.trackSummary({ label: echo })).items);
     expect(text((await withFullReads(c, () => f.trackSummary({ label: echo }))).items)).toBe(scopedAnswer);
+  });
+});
+
+describe('asOf and the areas of a book (D-173)', () => {
+  /**
+   * A: rows A 50 on I(1) (0to8 account) and I(2) (Echo8 account), publishing terms 50 % with a Q1 statement under 0to8
+   * (A 40); an advance of 30 under 0to8 dated 2026-02 (counted), an ad of 10 on I(1) in 2026-03. Everything is of
+   * report months ≤ 2026-04 and dated ≤ 2026-04-30.
+   */
+  async function asOfWorld() {
+    const c = await Case.start();
+    const f = c.f;
+    await c.person('A');
+    await c.track(I(1));
+    await c.track(I(2));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['A', '50']]);
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    const a = c.owners.get('A') as string;
+    await f.modules.owners.addOwnerAlias(a, 'OWNER, A');
+    await f.setPublishingTerms({ ownerId: a, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', a)).id });
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-04', [{ isrc: I(2), net: '60', label: 'Echo8' }], ACC2);
+    await f.ingestB17(await writeB17('Q12026', [{ writer: 'OWNER, A', title: 'Song', payable: '80', period: '1Q26' }]), zero);
+    const basis = await approvedDoc(f, 'advance_basis', a);
+    const adv = await f.createOperation({ labelId: zero, direction: 'out', amount: '30', artistId: c.id('A'), date: '2026-02-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance' });
+    await f.attachPaymentProof(adv.id, { fileRef: 'dummy://proof.pdf' });
+    await f.createAds([{ isrc: I(1), month: '2026-03', amount: '10', labelId: zero }]);
+    return { c, f, a, zero, echo };
+  }
+
+  it('the balance asOf = the full balance without the later operations and files', async () => {
+    const { c, f, a, zero, echo } = await asOfWorld();
+    // the world as it is at the end of 2026-04: the balance (period to 2026-04), each book, the payables rows
+    const before = {
+      all: text(await f.ownerBalance(a, { to: '2026-04' })),
+      zero: text(await f.ownerBalance(a, { to: '2026-04' }, zero)),
+      echo: text(await f.ownerBalance(a, { to: '2026-04' }, echo)),
+      payables: text((await f.ownerPayables({ to: '2026-04' })).items),
+      payablesZero: text((await f.ownerPayables({ to: '2026-04', label: zero })).items),
+    };
+    // later: files of 2026-05 on both accounts, a Q2 statement (2026-06), an advance, a forgiveness, an adjustment,
+    // a migrated payout, a deduction and an ad, all after 2026-04
+    await c.load('2026-05', [{ isrc: I(1), net: '200' }]);
+    await c.load('2026-05', [{ isrc: I(2), net: '20', label: 'Echo8' }], ACC2);
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '40' }]), echo);
+    const basis = await approvedDoc(f, 'advance_basis', a);
+    const late = await f.createOperation({ labelId: echo, direction: 'out', amount: '100', artistId: c.id('A'), date: '2026-05-10', scope: { kind: 'any' }, documentId: basis.id, comment: 'late advance' });
+    await f.attachPaymentProof(late.id, { fileRef: 'dummy://proof-late.pdf' });
+    const adjBasis = await approvedDoc(f, 'adjustment_basis', a);
+    // the late advance cannot take all of the Echo8 income: 1 of its unrecouped part forgiven
+    await f.forgiveAdvance(late.id, { amount: '1', date: '2026-05-15', documentId: adjBasis.id, comment: 'forgiven' });
+    await f.createOperation({ kind: 'adjustment', direction: 'in', amount: '-7.5', ownerId: a, date: '2026-06-01', documentId: adjBasis.id, comment: 'adjustment', labelId: zero });
+    await f.createOperation({ direction: 'out', amount: '3', ownerId: a, date: '2026-05-20', comment: 'paid outside', migration: true, labelId: zero });
+    await f.createOperation({ direction: 'in', amount: '2', artistId: c.id('A'), date: '2026-05-21', documentId: adjBasis.id, comment: 'deduction', labelId: echo });
+    await f.createAds([{ isrc: I(1), month: '2026-05', amount: '4', labelId: zero }]);
+    // the full balance moved; the balance asOf 2026-04 is the one of before, field by field
+    expect(text(await f.ownerBalance(a, { to: '2026-04' }))).not.toBe(before.all);
+    expect(text(await f.ownerBalance(a, { asOf: '2026-04' }))).toBe(before.all);
+    expect(text(await f.ownerBalance(a, { asOf: '2026-04' }, zero))).toBe(before.zero);
+    expect(text(await f.ownerBalance(a, { asOf: '2026-04' }, echo))).toBe(before.echo);
+    // a later `to` is cut to asOf; an earlier one stays
+    expect(text(await f.ownerBalance(a, { to: '2026-12', asOf: '2026-04' }))).toBe(before.all);
+    expect(text((await f.ownerPayables({ asOf: '2026-04' })).items)).toBe(before.payables);
+    expect(text((await f.ownerPayables({ asOf: '2026-04', label: zero })).items)).toBe(before.payablesZero);
+    await c.verify();
+  });
+
+  it('Σ areas = the book; the gate of an area pays min(payable of the area, payable of the book)', async () => {
+    const { c, f, a, zero } = await asOfWorld();
+    const full = await f.ownerBalance(a);
+    const books = [...Object.values(full.byLabel), full.total];
+    for (const b of books)
+      for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const) {
+        const areas = b.byArea as NonNullable<typeof b.byArea>;
+        expect(areas.master[k].add(areas.publishing[k]).toFixed(), k).toBe((b[k] as Decimal).toFixed());
+      }
+    // 0to8: master 50 − ad 10 − advance 30 recouped (by month: the 2026-03 master 50 before the 2026-03 publishing) = 10,
+    // publishing 40; Echo8: master 30
+    const z = full.byLabel['0to8'];
+    expect([z?.byArea.master.payable.toFixed(), z?.byArea.publishing.payable.toFixed(), z?.payable.toFixed(), full.byLabel.Echo8?.payable.toFixed()]).toEqual(['10', '40', '50', '30']);
+    const cents = async (area?: 'master' | 'publishing' | 'all') => (await f.ownerBalance(a, area ? { area } : {}, zero)).payout.amountCents;
+    expect([await cents(), await cents('all'), await cents('master'), await cents('publishing')]).toEqual([5000, 5000, 1000, 4000]);
+    // the payables row: the money stays the book, the gate is of the area (FIX-7)
+    const row = (await f.ownerPayables({ label: zero, area: 'publishing' })).items.find((i) => i.ownerId === a);
+    expect([row?.payable.toFixed(), row?.payout.amountCents]).toEqual(['50', 4000]);
+    // the button: master by default; the area paid is recorded in the operation and the snapshot
+    const p = await f.createPayout(a, { labelId: zero });
+    expect([p.amountCents, p.area]).toEqual([1000, 'master']);
+    const snapshot = (await f.modules.settlements.getSnapshot(p.id)) as { area: string; payoutByArtist: { key: string }[] };
+    expect([snapshot.area, snapshot.payoutByArtist.map((x) => x.key)]).toEqual(['master', [c.id('A')]]);
+    await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof-master.pdf' });
+    const q = await f.createPayout(a, { labelId: zero, area: 'publishing' });
+    expect([q.amountCents, q.area]).toEqual([4000, 'publishing']);
+    await f.attachPaymentProof(q.id, { fileRef: 'dummy://proof-publishing.pdf' });
+    const after = await f.ownerBalance(a);
+    expect([after.byLabel['0to8']?.byArea.master.paid.toFixed(), after.byLabel['0to8']?.byArea.publishing.paid.toFixed(), after.byLabel['0to8']?.payable.toFixed()]).toEqual(['10', '40', '0']);
+    await c.verify();
   });
 });

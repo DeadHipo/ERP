@@ -33,5 +33,14 @@ export function createAuditRepository(db: Db, org: OrgScope) {
         .where(orgWhere(org, actions, labelId === undefined ? undefined : eq(actions.labelId, labelId)))
         .orderBy(desc(actions.at), desc(actions.id))
         .limit(limit),
+    /** The summaries of every row of one route (method + template), oldest first. */
+    summariesOf: async (method: string, route: string): Promise<Record<string, unknown>[]> =>
+      (
+        await orm()
+          .select({ summary: actions.summary })
+          .from(actions)
+          .where(orgWhere(org, actions, eq(actions.method, method), eq(actions.route, route)))
+          .orderBy(actions.at, actions.id)
+      ).map((r) => r.summary),
   };
 }

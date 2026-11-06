@@ -10,7 +10,9 @@
     "./open-questions": "./src/open-questions.ts",
     "./document-kinds": "./src/document-kinds.ts",
     "./split-import": "./src/split-import.ts",
-    "./release-import": "./src/release-import.ts"
+    "./release-import": "./src/release-import.ts",
+    "./operation-kinds": "./src/operation-kinds.ts",
+    "./operation-import": "./src/operation-import.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

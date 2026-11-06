@@ -3,7 +3,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 
 // Publishing (B17 now): statements, their lines, writer -> owner mapping and the author's contract percentage.
 // Money is accrued to the owner (a person), never to an artist or a label.
-// The DDL is migrations/postgres/0005_publishing.sql and 0009_pub_terms_operation_type.sql, 0013, 0015 and 0016 (schema `publishing`); change both.
+// The DDL is migrations/postgres/0005_publishing.sql and 0009_pub_terms_operation_type.sql, 0013, 0015, 0016 and 0019 (schema `publishing`); change both.
 
 const s = pgSchema('publishing');
 
@@ -24,6 +24,8 @@ export const pubStatements = s.table('pub_statements', {
   warnings: text('warnings').notNull(),
   /** The own label the statement was loaded under (D-169, 0015); null = loaded before the labels. */
   labelId: text('label_id'),
+  /** The statement that replaced this one (D-173, 0019); null = not replaced. No foreign key (D-121). */
+  replacedBy: text('replaced_by'),
 }, (t) => [unique('pub_statements_org_sha256_key').on(t.orgId, t.sha256)]);
 
 export const pubStatementPeriods = s.table(

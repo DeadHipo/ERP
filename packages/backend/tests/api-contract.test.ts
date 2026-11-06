@@ -168,6 +168,15 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     else if (o.body !== undefined) req = req.send(o.body as object);
     const res = await req;
     // a preview (`dryRun` not 0, D-172) answers 200 and leaves no audit row
+    // D-173: an operation with a csv form answers text/csv for format=csv (UTF-8 with BOM, quoted fields)
+    if (op.csv && o.query?.format === 'csv') {
+      expect(res.status, `${operationKey(op)} csv -> ${res.text}`).toBe(200);
+      expect(res.headers['content-type']).toMatch(/^text\/csv; charset=utf-8/);
+      expect(res.headers['content-disposition']).toMatch(/^attachment; filename="[^"]+\.csv"/);
+      expect(res.text.startsWith('\uFEFF"')).toBe(true);
+      covered.add(operationKey(op));
+      return { text: res.text, contentDisposition: res.headers['content-disposition'] } as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
     const isPreview = !!op.preview && o.query?.dryRun !== '0';
     expect(res.status, `${operationKey(op)} -> ${JSON.stringify(res.body)}`).toBe(isPreview ? 200 : (op.status ?? 200));
     const parsed = op.response.safeParse(res.body);
@@ -513,6 +522,11 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     expect((await refused('/api/v1/publishing/b17', {}, b17File)).error.code).toBe('label_required');
     const b17 = await call('post', '/publishing/b17', { query: { label: zero.id }, file: b17File });
     expect(b17.statement.labelId).toBe(zero.id);
+    // the replacement of the statement (D-173): the same quarter and amounts, other bytes; the old one superseded
+    const b17Fix = await writeB17('Q22026', [{ writer: 'Writer Synthetic', title: 'Song', payable: 100 }, { writer: 'Writer Synthetic', title: 'Song', payable: 0 }], '0to8_Q22026_Publishing_Statement_Fix.xlsx');
+    expect((await refused(`/api/v1/publishing/statements/${b17.statement.id}/replace`, {}, b17Fix)).error.code).toBe('label_required');
+    const b17Replaced = await call('post', '/publishing/statements/:id/replace', { params: { id: b17.statement.id }, query: { label: zero.id }, file: b17Fix, labelId: zero.id });
+    expect([b17Replaced.superseded.status, b17Replaced.superseded.replacedBy, b17Replaced.statement.totalPayable]).toEqual(['superseded', b17Replaced.statement.id, '100']);
     // the split import (D-172): a refusal, the preview (no audit row), the apply
     const importFile = tmpPath('contract-splits.csv');
     writeFileSync(importFile, 'isrc,pseudonym,percent,from,document\nQZTST2600088,Contract Import Synth,25,2026-02-15,\n');
@@ -575,6 +589,15 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     await call('get', '/owners/payables', { query: { from: '2026-07', to: '2026-07' } });
     await call('get', '/owners/payables', { query: { ids: `${owner.id},${other.id}` } });
     await call('get', '/owners/payables', { query: { label: zero.id } });
+    // D-173: asOf and the area of the gate; the payroll of a label, json and one csv sheet
+    await call('get', '/owners/payables', { query: { label: zero.id, asOf: '2026-07', area: 'master' } });
+    await call('get', '/owners/:id/balance', { params: { id: owner.id }, query: { asOf: '2026-07', area: 'publishing' } });
+    const payroll = await call('get', '/owners/payroll', { query: { label: zero.id, asOf: '2026-07', area: 'all' } });
+    expect(payroll.label).toEqual({ id: zero.id, name: '0to8' });
+    const payrollCsv = await call('get', '/owners/payroll', { query: { label: zero.id, format: 'csv', sheet: 'control' } });
+    expect(payrollCsv.text.split('\r\n')[0]).toBe('\uFEFF"source";"account";"month";"A";"B";"C";"ours";"discrepancy"');
+    expect(payrollCsv.contentDisposition).toContain('payroll_0to8_all_master_control.csv');
+    expect((await R.get('/api/v1/owners/payroll')).body.error?.code).toBe('label_required');
     await call('get', '/owners', { query: { label: zero.id } });
     await call('get', '/artists', { query: { label: zero.id } });
     await call('get', '/artists/balances', { query: { label: zero.id } });
@@ -616,7 +639,7 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
     // settlements
-    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id }, labelId: zero.id });
+    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id, area: 'all' }, labelId: zero.id });
     expect(payout.labelId).toBe(zero.id);
     await call('get', '/settlements/operations/:id/snapshot', { params: { id: payout.id } });
     await call('post', '/settlements/operations/:id/deferred', {
@@ -633,8 +656,15 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
       body: { direction: 'in', amount: '1.00', artistId: a1.id, date: '2026-08-01', comment: 'penalty', labelId: zero.id },
       labelId: zero.id,
     });
-    const relabelled = await call('patch', '/settlements/operations/:id', { params: { id: deduction.id }, body: { labelId: own.id }, labelId: own.id });
-    expect(relabelled.labelId).toBe(own.id);
+    // the relabel needs a reason (D-173): the label source becomes operator, the previous label is in the answer
+    const noReason = await R.patch(`/api/v1/settlements/operations/${deduction.id as string}`).set('X-Operator', OPERATOR).send({ labelId: own.id });
+    expect([noReason.status, noReason.body.error?.code]).toEqual([400, 'reason_required']);
+    const relabelled = await call('patch', '/settlements/operations/:id', {
+      params: { id: deduction.id },
+      body: { labelId: own.id, reason: 'paid by the other book' },
+      labelId: own.id,
+    });
+    expect([relabelled.labelId, relabelled.labelSource, relabelled.fromLabelId, relabelled.kind]).toEqual([own.id, 'operator', zero.id, 'deduction']);
     await call('post', '/settlements/operations/:id/deactivate', {
       params: { id: deduction.id },
       body: { reason: 'mistake' },
@@ -645,12 +675,61 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
       body: { fileRef: 'dummy://r.pdf', date: '2099-12-31', comment: 'bounced' },
       labelId: zero.id,
     });
+    // the kinds of the payroll (D-173 commit 2): a buyout, an adjustment, a write-off refused above the publishing, the
+    // forgiveness of a counted advance
+    const adjustBasis = await call('post', '/documents', {
+      body: { kind: 'adjustment_basis', title: 'Adjustment', ownerId: owner.id, fileRef: 'dummy://adj.pdf', requiresApproval: false },
+    });
+    const buyoutOp = await call('post', '/settlements/operations', {
+      body: { kind: 'buyout', direction: 'out', amount: '10.00', ownerId: owner.id, date: '2026-08-01', documentId: buyoutDoc.id, comment: 'buyout', labelId: zero.id },
+      labelId: zero.id,
+    });
+    expect([buyoutOp.kind, buyoutOp.area]).toEqual(['buyout', 'master']);
+    const adjustmentOp = await call('post', '/settlements/operations', {
+      body: { kind: 'adjustment', direction: 'in', amount: '-1.50', ownerId: owner.id, date: '2026-08-01', documentId: adjustBasis.id, comment: 'adjustment', labelId: zero.id },
+      labelId: zero.id,
+    });
+    expect([adjustmentOp.kind, adjustmentOp.amountCents]).toEqual(['adjustment', -150]);
+    const writeoffRefused = await R.post('/api/v1/settlements/operations')
+      .set('X-Operator', OPERATOR)
+      .send({ kind: 'writeoff', direction: 'in', amount: '1000000.00', ownerId: owner.id, date: '2026-08-01', documentId: adjustBasis.id, comment: 'write-off', labelId: zero.id });
+    expect([writeoffRefused.status, writeoffRefused.body.error?.code]).toEqual([422, 'writeoff_exceeds']);
+    const advanceBasis = await call('post', '/documents', {
+      body: { kind: 'advance_basis', title: 'Advance', ownerId: owner.id, fileRef: 'dummy://adv.pdf', requiresApproval: false },
+    });
+    const advanceOp = await call('post', '/settlements/operations', {
+      body: { kind: 'advance', direction: 'out', amount: '5.00', artistId: a1.id, date: '2026-12-01', scope: { kind: 'any' }, documentId: advanceBasis.id, comment: 'advance', labelId: zero.id },
+      labelId: zero.id,
+    });
+    await call('post', '/settlements/operations/:id/proof', { params: { id: advanceOp.id }, body: { fileRef: 'dummy://adv-proof.pdf' }, labelId: zero.id });
+    const forgiven = await call('post', '/settlements/operations/:id/forgive', {
+      params: { id: advanceOp.id },
+      body: { amount: '1.00', date: '2026-12-15', documentId: adjustBasis.id, comment: 'forgiven' },
+      labelId: zero.id,
+    });
+    expect([forgiven.kind, forgiven.operationRef, forgiven.labelId, forgiven.amountCents]).toEqual(['forgiveness', advanceOp.id, zero.id, 100]);
+    const tooMuch = await R.post(`/api/v1/settlements/operations/${advanceOp.id as string}/forgive`)
+      .set('X-Operator', OPERATOR)
+      .send({ amount: '4.01', date: '2026-12-15', documentId: adjustBasis.id, comment: 'more' });
+    expect([tooMuch.status, tooMuch.body.error?.code, tooMuch.body.error?.details]).toEqual([422, 'forgiveness_exceeds', { unrecouped: '4' }]);
+    // the operation import (D-173 §1.5): a refusal, the preview (no audit row), the apply (migrated payouts)
+    const opsFile = tmpPath('contract-operations.csv');
+    writeFileSync(opsFile, `owner,date,amount,kind,external_id,channel\n${owner.id as string},2026-08-02,2.50,payout,contract-cash-1,Synthetic cash\n`);
+    const opsUpload = { path: opsFile, fileName: 'contract-operations.csv' };
+    expect((await refused('/api/v1/settlements/operations/import', {}, opsUpload)).error.code).toBe('label_required');
+    const opsPreview = await call('post', '/settlements/operations/import', { query: { label: zero.id }, file: opsUpload });
+    expect([opsPreview.applied, opsPreview.totals.create]).toEqual([false, 1]);
+    const opsImported = await call('post', '/settlements/operations/import', { query: { label: zero.id, dryRun: '0' }, file: opsUpload, labelId: zero.id });
+    expect(opsImported.result.operationIds).toHaveLength(1);
     await call('get', '/settlements/operations');
     await call('get', '/settlements/operations', { query: { label: zero.id } });
     const needing = await call('get', '/settlements/operations', {
       query: { ownerId: owner.id, meaning: 'payout', direction: 'out', needsProof: 'true', active: 'true', from: '2000-01-01', to: '2100-01-01' },
     });
     expect(Array.isArray(needing)).toBe(true);
+    // the stored kind and the label source (D-173); `meaning` stays the alias
+    const deductions = await call('get', '/settlements/operations', { query: { kind: 'deduction', labelSource: 'operator' } });
+    expect(deductions.map((o: { id: string }) => o.id)).toContain(deduction.id);
 
     await call('post', '/owners/merge', {
       body: { fromId: other.id, intoId: owner.id, reason: 'same person' },
@@ -936,9 +1015,9 @@ describe('API contract: the ability of every operation (D-171)', () => {
     }
   });
 
-  it('a preview mode (D-172) only on POST /splits/import, with dryRun in its query', () => {
+  it('a preview mode (D-172) only on the two imports (splits; operations, D-173), with dryRun in its query', () => {
     const previews = API_OPERATIONS.filter((o) => o.preview);
-    expect(previews.map(operationKey)).toEqual(['POST /splits/import']);
+    expect(previews.map(operationKey).sort()).toEqual(['POST /settlements/operations/import', 'POST /splits/import']);
     for (const o of previews) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
   });
 

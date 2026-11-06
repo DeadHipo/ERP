@@ -99,5 +99,13 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   // the onboarding checklists (D-172 stage 4 commit 6): the label's under its label, the organization's the org_admin's only
   'GET /onboarding': 'L',
   'GET /onboarding/organization': 'x',
+  // the replacement of a B17 statement (D-173 stage 5 commit 5): approve, the org_admin's only
+  'POST /publishing/statements/:id/replace': 'x',
+  // the forgiveness of an advance (D-173 stage 5 commit 2): pay, the org_admin's only
+  'POST /settlements/operations/:id/forgive': 'x',
+  // the operation import (D-173 stage 5 commit 4): pay, the org_admin's only
+  'POST /settlements/operations/import': 'x',
+  // the payroll export (D-173 stage 5 commit 3): read_money under its own label
+  'GET /owners/payroll': 'L',
 };
 

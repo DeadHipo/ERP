@@ -888,6 +888,42 @@ export function createOwnersService(db: Db, org: OrgScope) {
         .map((l) => ({ contractId: l.contractId, ownerId: ownerOf.get(l.contractId) as string, artistId: l.artistId }));
     },
 
+    /**
+     * Every confirming contract with its document (D-173, the contract column of the payroll): the contracts whose
+     * document is approved, with the document's kind, title, label (null = any) and approval.
+     */
+    async approvedContracts(): Promise<
+      {
+        ownerId: string;
+        number: string | null;
+        documentId: string;
+        title: string;
+        documentKind: string;
+        labelId: string | null;
+        approvedAt: string | null;
+        approvedBy: string | null;
+      }[]
+    > {
+      const [contracts, documents] = await db.snapshot(() => Promise.all([repo.allContracts(), repo.allDocuments()]));
+      const docs = new Map(documents.map((d) => [d.id, d]));
+      return contracts.flatMap((c) => {
+        const d = docs.get(c.documentId);
+        if (approvedContractLabel(c, docs) === undefined || !d) return [];
+        return [
+          {
+            ownerId: c.ownerId,
+            number: c.number,
+            documentId: d.id,
+            title: d.title,
+            documentKind: d.kind,
+            labelId: d.labelId,
+            approvedAt: d.approvedAt,
+            approvedBy: d.approvedBy,
+          },
+        ];
+      });
+    },
+
     async contractsOfOwner(
       ownerId: string,
     ): Promise<{ id: string; number: string | null; documentId: string; artistIds: string[] }[]> {

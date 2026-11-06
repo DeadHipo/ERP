@@ -65,6 +65,24 @@ export function createAuditService(db: Db, org: OrgScope) {
     async listRecent(limit = 50, labelId?: string): Promise<AuditAction[]> {
       return (await repo.recent(clampLimit(limit), labelId)).map(view);
     },
+    /**
+     * The operations relabelled by the operator (D-173): one entry per operation with at least one row of
+     * `PATCH /settlements/operations/:id`, with every label it was moved from (`fromLabelId` of the summary; the rows
+     * before D-173 have none).
+     */
+    async relabelledOperations(): Promise<{ operationId: string; fromLabelIds: string[] }[]> {
+      const byId = new Map<string, Set<string>>();
+      for (const summary of await repo.summariesOf('PATCH', '/settlements/operations/:id')) {
+        const params = summary.params as Record<string, unknown> | undefined;
+        const body = summary.body as Record<string, unknown> | undefined;
+        const id = params?.id;
+        if (typeof id !== 'string' || !id) continue;
+        const from = byId.get(id) ?? new Set<string>();
+        if (typeof body?.fromLabelId === 'string' && body.fromLabelId) from.add(body.fromLabelId);
+        byId.set(id, from);
+      }
+      return [...byId.entries()].map(([operationId, from]) => ({ operationId, fromLabelIds: [...from].sort() }));
+    },
   };
 }
 

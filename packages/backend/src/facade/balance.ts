@@ -1,5 +1,6 @@
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { inMonthRange, monthOf } from '../shared/dates';
+import { BLOCKING_KINDS } from '@erp/shared/operation-kinds';
 import type { IncomeItem, OperationView, Position } from '../modules/settlements';
 import { recoup } from './layers/recoup';
 import {
@@ -23,6 +24,8 @@ export interface ArtistLabelBook {
   recouped: Decimal;
   unrecouped: Decimal;
   recoupedFromMaster: Decimal;
+  /** The effective forgiveness of the positions this pseudonym holds (D-173), by the label of the position. */
+  forgiven: Decimal;
 }
 
 export interface ArtistBalance {
@@ -34,6 +37,8 @@ export interface ArtistBalance {
   unrecouped: Decimal;
   /** Part of this artist's master income consumed by recoupment (of any position). */
   recoupedFromMaster: Decimal;
+  /** The effective forgiveness of the positions this pseudonym holds (D-173). */
+  forgiven: Decimal;
   tracks: { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }[];
   /** The row per book (by name, '?' = without a label); Σ over the books = the row (D-168, D-169). */
   byLabel: Record<string, ArtistLabelBook>;
@@ -44,6 +49,10 @@ export interface PositionView {
   artistId: string;
   amount: Decimal;
   recouped: Decimal;
+  /** The effective forgiveness (D-173): amount = recouped + forgiven + remaining. */
+  forgiven: Decimal;
+  /** The counted forgivenesses as recorded (D-173): above `forgiven` = the signal `forgivenessReduced`. */
+  forgivenRecorded: Decimal;
   remaining: Decimal;
   scope: unknown;
   date: string;
@@ -67,6 +76,25 @@ export interface AdChargeView {
 }
 
 /**
+ * The money of one area of a book (D-173 К10): earned and recouped by the stream of the income (master, publishing),
+ * advertising master, the operations by their `area` (the history and every kind but a write-off: master).
+ * Σ of the two areas = the book, field by field.
+ */
+export interface AreaBook {
+  earned: Decimal;
+  recouped: Decimal;
+  adsCharged: Decimal;
+  paid: Decimal;
+  returns: Decimal;
+  credits: Decimal;
+  buyouts: Decimal;
+  writtenOff: Decimal;
+  adjustments: Decimal;
+  payable: Decimal;
+}
+export type Area = 'master' | 'publishing';
+
+/**
  * The book of one label (D-168): every money field of the owner's total, partitioned by label. earned and waiting by
  * the label the unit's file was loaded under, publishing by the label of its statement (D-169); recouped by the label of the income consumed; adsCharged by the
  * charge's label; paid, returns, credits by the operation's label. Σ over the books, «without a label» included,
@@ -81,9 +109,19 @@ export interface LabelBook {
   paid: Decimal;
   returns: Decimal;
   credits: Decimal;
+  /** Counted buyouts under the label (D-173): neither paid nor in payable (README §5). */
+  buyouts: Decimal;
+  /** The effective forgiveness of the positions of the label (D-173): reduces what is unrecouped, not payable. */
+  forgiven: Decimal;
+  /** Counted publishing write-offs (D-173): taken off payable. */
+  writtenOff: Decimal;
+  /** −Σ counted adjustments (D-173): added to payable with their sign. */
+  adjustments: Decimal;
   payable: Decimal;
   payableShown: Decimal;
   payableNegative: boolean;
+  /** The two areas of the book (D-173 К10): Σ = the book, field by field. */
+  byArea: Record<Area, AreaBook>;
 }
 
 /** A balance restricted to one label (D-168): the same computation projected to that label's book. */
@@ -132,11 +170,18 @@ export interface OwnerBalance {
     paid: Decimal;
     returns: Decimal;
     credits: Decimal;
+    /** D-173: buyouts (outside payable), effective forgiveness (outside payable), write-offs (−), adjustments (+). */
+    buyouts: Decimal;
+    forgiven: Decimal;
+    writtenOff: Decimal;
+    adjustments: Decimal;
     payable: Decimal;
     /** Negative payable is kept as is; the owner sees 0. */
     payableShown: Decimal;
     /** True when payable < 0 (the screen shows `payableShown` and a note; the client does not compare money). */
     payableNegative: boolean;
+    /** The two areas of the owner (D-173 К10): Σ = total, field by field. */
+    byArea: Record<Area, AreaBook>;
   };
   /**
    * The book of every label (by name, '?' = without a label: a file or a statement, an operation or a charge without a
@@ -174,12 +219,14 @@ export function classifyOperation(
   if (o.direction === 'out') {
     if (documentStatus(o.paymentProofId) !== 'approved')
       return { counted: false, why: 'no payment proof yet' };
-    // A recoupable payout (advance) applies, with its scope, only when its basis document is approved (07, question 8).
-    if (o.scope && documentStatus(o.documentId) !== 'approved')
+    // A recoupable payout (advance) applies, with its scope, only when its basis document is approved (07, question 8);
+    // a buyout likewise with its buyout document (D-173).
+    if ((o.kind === 'advance' || o.kind === 'buyout') && documentStatus(o.documentId) !== 'approved')
       return { counted: false, why: 'basis document not approved' };
     return { counted: true };
   }
-  // Deductions and credits need an approved basis document; a return is confirmed by its return document.
+  // Deductions, credits, forgivenesses, write-offs and adjustments need an approved basis document; a return is
+  // confirmed by its return document.
   const docOk = documentStatus(o.documentId) === 'approved';
   if (!docOk) return { counted: false, why: 'no approved document' };
   return { counted: true };
@@ -200,6 +247,20 @@ class ByKey<T> {
   }
 }
 
+type AreaAcc = Omit<AreaBook, 'payable'>;
+const newArea = (): AreaAcc => ({
+  earned: ZERO,
+  recouped: ZERO,
+  adsCharged: ZERO,
+  paid: ZERO,
+  returns: ZERO,
+  credits: ZERO,
+  buyouts: ZERO,
+  writtenOff: ZERO,
+  adjustments: ZERO,
+});
+const AREA_FIELDS = Object.keys(newArea()) as (keyof AreaAcc)[];
+
 interface BookAcc {
   earned: Decimal;
   waiting: Decimal;
@@ -208,7 +269,12 @@ interface BookAcc {
   paid: Decimal;
   returns: Decimal;
   credits: Decimal;
+  buyouts: Decimal;
+  forgiven: Decimal;
+  writtenOff: Decimal;
+  adjustments: Decimal;
   publishingRecouped: Decimal;
+  area: Record<Area, AreaAcc>;
 }
 const newBook = (): BookAcc => ({
   earned: ZERO,
@@ -218,8 +284,25 @@ const newBook = (): BookAcc => ({
   paid: ZERO,
   returns: ZERO,
   credits: ZERO,
+  buyouts: ZERO,
+  forgiven: ZERO,
+  writtenOff: ZERO,
+  adjustments: ZERO,
   publishingRecouped: ZERO,
+  area: { master: newArea(), publishing: newArea() },
 });
+/** Adds `v` to a field of the area `area` of a book (D-173 К10). */
+const addArea = (b: BookAcc, area: Area, field: keyof AreaAcc, v: Decimal) => {
+  b.area[area][field] = b.area[area][field].add(v);
+};
+/**
+ * payable = earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-050, D-157, D-173);
+ * buyouts and forgiveness stay outside. The terms of D-173 are added after the earlier ones, so a book without them
+ * keeps its exact value.
+ */
+const payableOf = (b: Omit<AreaAcc, 'buyouts'>) =>
+  b.earned.sub(b.recouped).sub(b.paid).sub(b.adsCharged).add(b.returns).add(b.credits).add(b.adjustments).sub(b.writtenOff);
+const areaBook = (a: AreaAcc): AreaBook => ({ ...a, payable: payableOf(a) });
 
 interface PeriodAcc {
   received: Decimal;
@@ -255,6 +338,7 @@ interface ArtistAcc {
   recouped: Decimal;
   unrecouped: Decimal;
   recoupedFromMaster: Decimal;
+  forgiven: Decimal;
   tracks: Map<string, TrackAcc>;
 }
 const newArtistAcc = (): ArtistAcc => ({
@@ -263,6 +347,7 @@ const newArtistAcc = (): ArtistAcc => ({
   recouped: ZERO,
   unrecouped: ZERO,
   recoupedFromMaster: ZERO,
+  forgiven: ZERO,
   tracks: new Map(),
 });
 
@@ -280,8 +365,9 @@ function namedKeys(calc: Calculation, keys: Iterable<string>): { key: string; na
 
 /**
  * Balance of one owner, recalculated from scratch:
- * payable = earned (B) - recouped (positions in scope) - payouts with proof - advertising charged + returns + credits.
- * Advances are not subtracted as such; only their recouped part reduces the payable amount.
+ * payable = earned (B) - recouped (positions in scope) - payouts with proof - advertising charged + returns + credits
+ * + adjustments - write-offs (D-173). Advances are not subtracted as such; only their recouped part reduces the payable
+ * amount; a forgiveness frees the later income of its advance, a buyout is outside the balance.
  *
  * Every field is partitioned by label (D-168, `byLabel`): the recoup always runs over every income of the owner, then
  * the consumed amounts are attributed to the label of the income they took. A `view` restricts the answer to one
@@ -349,6 +435,7 @@ export function ownerBalance(
       const t = artist ? trackOf(artist, u.isrc) : undefined;
       if (a.category === 'B') {
         book.earned = book.earned.add(a.amount);
+        addArea(book, 'master', 'earned', a.amount);
         // Income items are netted per artist + ISRC + report month + book, so negative lines reduce recoup capacity;
         // the book is a suffix (D-169): the order of the items in the recoup stays, and one ISRC-month from the files of
         // two labels gives two items, each recouping only the positions of its own book.
@@ -400,6 +487,7 @@ export function ownerBalance(
     const inP = pubInPeriod(p, f);
     if (p.category === 'B') {
       book.earned = book.earned.add(p.authorAmount);
+      addArea(book, 'publishing', 'earned', p.authorAmount);
       const id = `p|${p.reportMonth}`;
       const prev = incomeById.get(id);
       if (prev) prev.amount = prev.amount.add(p.authorAmount);
@@ -449,6 +537,8 @@ export function ownerBalance(
   const positions: Position[] = [];
   const pending: { operationId: string; why: string; key: string }[] = [];
   const opInPeriod = (o: OperationView) => inMonthRange(monthOf(o.date), f.from, f.to);
+  // the counted forgivenesses per advance (D-173), in the order (date, id)
+  const forgivenOf = new Map<string, { date: string; id: string; amount: Decimal }[]>();
   for (const o of ops) {
     const c = classifyOperation(o, calc.documentStatus);
     const key = keyOf(o.labelId);
@@ -458,26 +548,61 @@ export function ownerBalance(
     }
     const amount = centsToDecimal(o.amountCents);
     const book = books.of(key);
-    if (o.meaning === 'payout') {
-      book.paid = book.paid.add(amount);
-      if (opInPeriod(o)) periods.of(key).paid = periods.of(key).paid.add(amount);
-    } else if (o.meaning === 'recoupable_payout' || o.meaning === 'deduction') {
-      if (o.meaning === 'recoupable_payout' && opInPeriod(o))
-        periods.of(key).advancesPaid = periods.of(key).advancesPaid.add(amount);
-      positions.push({
-        id: o.id,
-        ownerId,
-        artistId: calc.artistIndex.get(o.artistId as string)?.id ?? (o.artistId as string),
-        month: o.meaning === 'recoupable_payout' ? monthOf(o.date) : null,
-        amount,
-        scope: o.scope ?? { kind: 'any' },
-        labelId: o.labelId,
-      });
-    } else if (o.meaning === 'return') {
-      book.returns = book.returns.add(amount.neg());
-    } else {
-      book.credits = book.credits.add(amount.neg());
+    // by the stored kind (D-173); the history has the five kinds of `kindOf`
+    switch (o.kind) {
+      case 'payout':
+        book.paid = book.paid.add(amount);
+        addArea(book, o.area, 'paid', amount);
+        if (opInPeriod(o)) periods.of(key).paid = periods.of(key).paid.add(amount);
+        break;
+      case 'advance':
+      case 'deduction':
+        if (o.kind === 'advance' && opInPeriod(o))
+          periods.of(key).advancesPaid = periods.of(key).advancesPaid.add(amount);
+        positions.push({
+          id: o.id,
+          ownerId,
+          artistId: calc.artistIndex.get(o.artistId as string)?.id ?? (o.artistId as string),
+          month: o.kind === 'advance' ? monthOf(o.date) : null,
+          amount,
+          scope: o.scope ?? { kind: 'any' },
+          labelId: o.labelId,
+        });
+        break;
+      case 'return':
+        book.returns = book.returns.add(amount.neg());
+        addArea(book, o.area, 'returns', amount.neg());
+        break;
+      case 'credit':
+        book.credits = book.credits.add(amount.neg());
+        addArea(book, o.area, 'credits', amount.neg());
+        break;
+      case 'buyout':
+        book.buyouts = book.buyouts.add(amount);
+        addArea(book, o.area, 'buyouts', amount);
+        break;
+      case 'writeoff':
+        book.writtenOff = book.writtenOff.add(amount);
+        addArea(book, o.area, 'writtenOff', amount);
+        break;
+      case 'adjustment':
+        book.adjustments = book.adjustments.add(amount.neg());
+        addArea(book, o.area, 'adjustments', amount.neg());
+        break;
+      case 'forgiveness': {
+        const list = forgivenOf.get(o.operationRef as string) ?? [];
+        list.push({ date: o.date, id: o.id, amount });
+        forgivenOf.set(o.operationRef as string, list);
+        break;
+      }
     }
+  }
+  // the forgivenesses go with their advance (a forgiveness of an advance that does not count frees nothing)
+  for (const p of positions) {
+    const list = forgivenOf.get(p.id);
+    if (!list) continue;
+    list.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    p.forgiven = list.map((x) => ({ month: monthOf(x.date), amount: x.amount }));
   }
 
   // Advertising is taken off payable at once and in full, like a payout (D-157): not recouped from income.
@@ -491,7 +616,10 @@ export function ownerBalance(
     labelId: ad.labelId,
   }));
   adViews.sort((a, b) => (a.month !== b.month ? (a.month < b.month ? 1 : -1) : a.adId.localeCompare(b.adId)));
-  for (const a of adViews) books.of(keyOf(a.labelId)).adsCharged = books.of(keyOf(a.labelId)).adsCharged.add(a.amount);
+  for (const a of adViews) {
+    books.of(keyOf(a.labelId)).adsCharged = books.of(keyOf(a.labelId)).adsCharged.add(a.amount);
+    addArea(books.of(keyOf(a.labelId)), 'master', 'adsCharged', a.amount);
+  }
 
   // The recoup runs over every income of the owner; what a position took is attributed to the label of that income.
   const results = recoup(positions, income);
@@ -504,6 +632,7 @@ export function ownerBalance(
       const key = keyOf(item.labelId);
       const book = books.of(key);
       book.recouped = book.recouped.add(c.amount);
+      addArea(book, item.stream, 'recouped', c.amount);
       if (itemInPeriod.has(c.itemId)) periods.of(key).recouped = periods.of(key).recouped.add(c.amount);
       if (item.stream === 'publishing') book.publishingRecouped = book.publishingRecouped.add(c.amount);
       else {
@@ -515,12 +644,19 @@ export function ownerBalance(
     }
     const holder = artistOf(p.artistId, keyOf(p.labelId));
     if (holder) holder.unrecouped = holder.unrecouped.add(r.remaining);
+    // the effective forgiveness (D-173) in the book of the position's label and of its holder
+    if (!r.forgiven.isZero()) {
+      books.of(keyOf(p.labelId)).forgiven = books.of(keyOf(p.labelId)).forgiven.add(r.forgiven);
+      if (holder) holder.forgiven = holder.forgiven.add(r.forgiven);
+    }
     const op = ops.find((o) => o.id === r.positionId) as OperationView;
     positionViews.push({
       operationId: r.positionId,
       artistId: p.artistId,
       amount: r.amount,
       recouped: r.recouped,
+      forgiven: r.forgiven,
+      forgivenRecorded: sumOver(p.forgiven ?? [], (x) => x.amount),
       remaining: r.remaining,
       scope: p.scope,
       date: op.date,
@@ -534,7 +670,7 @@ export function ownerBalance(
     inView(k.key),
   );
   const bookOf = (acc: BookAcc, labelId: string | null): LabelBook => {
-    const payable = acc.earned.sub(acc.recouped).sub(acc.paid).sub(acc.adsCharged).add(acc.returns).add(acc.credits);
+    const payable = payableOf(acc);
     return {
       labelId,
       earned: acc.earned,
@@ -544,15 +680,23 @@ export function ownerBalance(
       paid: acc.paid,
       returns: acc.returns,
       credits: acc.credits,
+      buyouts: acc.buyouts,
+      forgiven: acc.forgiven,
+      writtenOff: acc.writtenOff,
+      adjustments: acc.adjustments,
       payable,
       payableShown: Decimal.max(payable, 0),
       payableNegative: payable.isNegative() && !payable.isZero(),
+      byArea: { master: areaBook(acc.area.master), publishing: areaBook(acc.area.publishing) },
     };
   };
   const byLabel: OwnerBalance['byLabel'] = {};
   const selectedBooks: BookAcc[] = [];
   const selectedPeriods: PeriodAcc[] = [];
-  const isZero = (b: LabelBook) => [b.earned, b.waiting, b.recouped, b.adsCharged, b.paid, b.returns, b.credits].every((x) => x.isZero());
+  const isZero = (b: LabelBook) =>
+    [b.earned, b.waiting, b.recouped, b.adsCharged, b.paid, b.returns, b.credits, b.buyouts, b.forgiven, b.writtenOff, b.adjustments].every((x) =>
+      x.isZero(),
+    );
   for (const { key, name } of named) {
     const acc = books.of(key);
     const book = bookOf(acc, key === NONE ? null : key);
@@ -566,7 +710,12 @@ export function ownerBalance(
   const per = (pick: (p: PeriodAcc) => Decimal) => sumOver(selectedPeriods, pick);
   const waitingBreakdown: Partial<Record<CReason, Decimal>> = {};
   for (const p of selectedPeriods) for (const [r, v] of Object.entries(p.waitingBreakdown)) addBreakdown(waitingBreakdown, r as CReason, v);
-  const payable = tot((b) => b.earned.sub(b.recouped).sub(b.paid).sub(b.adsCharged).add(b.returns).add(b.credits));
+  const payable = tot(payableOf);
+  const totalArea = (area: Area): AreaBook => {
+    const acc = newArea();
+    for (const k of AREA_FIELDS) acc[k] = tot((b) => b.area[area][k]);
+    return areaBook(acc);
+  };
 
   const artists: ArtistBalance[] = [...artistsOfOwner.values()].map((a) => {
     const by = artistAcc.get(a.id);
@@ -579,13 +728,14 @@ export function ownerBalance(
       recouped: ZERO,
       unrecouped: ZERO,
       recoupedFromMaster: ZERO,
+      forgiven: ZERO,
       tracks: [],
       byLabel: {},
     };
     const tracks = new Map<string, TrackAcc>();
     for (const { key, name } of keys) {
       const acc = (by as ByKey<ArtistAcc>).of(key);
-      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
+      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster, acc.forgiven].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
       row.byLabel[name] = {
         labelId: key === NONE ? null : key,
         earned: acc.earned,
@@ -593,12 +743,14 @@ export function ownerBalance(
         recouped: acc.recouped,
         unrecouped: acc.unrecouped,
         recoupedFromMaster: acc.recoupedFromMaster,
+        forgiven: acc.forgiven,
       };
       row.earned = row.earned.add(acc.earned);
       row.waiting = row.waiting.add(acc.waiting);
       row.recouped = row.recouped.add(acc.recouped);
       row.unrecouped = row.unrecouped.add(acc.unrecouped);
       row.recoupedFromMaster = row.recoupedFromMaster.add(acc.recoupedFromMaster);
+      row.forgiven = row.forgiven.add(acc.forgiven);
       for (const t of acc.tracks.values()) {
         const m = tracks.get(t.isrc) ?? { isrc: t.isrc, net: ZERO, amount: ZERO, waiting: ZERO };
         m.net = m.net.add(t.net);
@@ -642,9 +794,14 @@ export function ownerBalance(
       paid: tot((b) => b.paid),
       returns: tot((b) => b.returns),
       credits: tot((b) => b.credits),
+      buyouts: tot((b) => b.buyouts),
+      forgiven: tot((b) => b.forgiven),
+      writtenOff: tot((b) => b.writtenOff),
+      adjustments: tot((b) => b.adjustments),
       payable,
       payableShown: Decimal.max(payable, 0),
       payableNegative: payable.isNegative() && !payable.isZero(),
+      byArea: { master: totalArea('master'), publishing: totalArea('publishing') },
     },
     byLabel,
     artists,
@@ -656,7 +813,8 @@ export function ownerBalance(
     blockingPayouts: ops // the same rule as the facade's payout gate: no proof, deferred, or proof not approved
       .filter(
         (o) =>
-          o.direction === 'out' &&
+          // the blocking kinds (D-173 FIX-5): payouts and advances, never a buyout
+          (BLOCKING_KINDS as readonly string[]).includes(o.kind) &&
           o.active &&
           !o.migration &&
           (o.paymentProofId === null || o.deferred || calc.documentStatus(o.paymentProofId) !== 'approved'),
@@ -825,7 +983,7 @@ export function artistBalance(
 
   const paidBy = new ByKey(() => ({ paid: ZERO }));
   for (const o of ops) {
-    if (o.meaning !== 'payout' || !o.artistId || (calc.artistIndex.get(o.artistId)?.id ?? o.artistId) !== id) continue;
+    if (o.kind !== 'payout' || !o.artistId || (calc.artistIndex.get(o.artistId)?.id ?? o.artistId) !== id) continue;
     if (!inView(keyOf(o.labelId))) continue;
     if (classifyOperation(o, calc.documentStatus).counted) paidBy.of(keyOf(o.labelId)).paid = paidBy.of(keyOf(o.labelId)).paid.add(centsToDecimal(o.amountCents));
   }

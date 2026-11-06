@@ -27,6 +27,8 @@ export interface StatementView {
   warnings: string[];
   /** The own label the statement was loaded under (D-169): opaque text, the facade checks it; null = before the labels. */
   labelId: string | null;
+  /** The statement that replaced this one (D-173); null = not replaced. */
+  replacedBy: string | null;
 }
 
 const view = (s: StatementRow): StatementView => ({
@@ -43,6 +45,7 @@ const view = (s: StatementRow): StatementView => ({
   totalPayable: s.totalPayable,
   warnings: JSON.parse(s.warnings) as string[],
   labelId: s.labelId ?? null,
+  replacedBy: s.replacedBy ?? null,
 });
 
 /** A unique violation of PostgreSQL (sha256 or the quarter of a statement, taken by a concurrent load). */
@@ -77,19 +80,55 @@ export function createPublishingService(db: Db, org: OrgScope, storageDir: strin
     }): Promise<StatementView> {
       return serial(() => load(input));
     },
+
+    /**
+     * Replaces a loaded statement by a corrected file of the same quarters (D-173, closes D-041 by a mechanism): the
+     * same `load()` in the same queue and ONE transaction. The old statement must be `loaded` (409
+     * `replace_not_loaded`) and of the label `labelId` (409 `replace_label_differs`); the quarters of the new lines
+     * must equal its quarters as sets (409 `periods_differ` `{ old, new }`); the same bytes are `duplicate_file`. The old
+     * statement becomes `superseded`: its lines, its file and its sha stay (the payout snapshots reference the sha);
+     * its quarters are re-pointed to the new statement, the grouped lines are refreshed (the view takes `loaded` only).
+     */
+    replaceStatement(
+      oldId: string,
+      input: { path: string; fileName: string; generatedAt?: string | null },
+      labelId: string,
+    ): Promise<{ superseded: StatementView; statement: StatementView }> {
+      return serial(async () => {
+        const statement = await load({ ...input, labelId }, { oldId });
+        return { superseded: await rest.getStatement(oldId), statement };
+      });
+    },
   };
+
+  /** The refusals of a replacement against the old statement as it is now (before the body and again in the transaction). */
+  async function replaceable(oldId: string, labelId: string | null | undefined): Promise<StatementRow> {
+    const old = await repo.getStatement(oldId);
+    if (!old) throw new NotFoundError('Statement', oldId);
+    if (old.status !== 'loaded')
+      throw new ConflictError(`Statement ${oldId} is ${old.status}: only a loaded statement is replaced`, 'replace_not_loaded', {
+        status: old.status,
+      });
+    if ((old.labelId ?? null) !== (labelId ?? null))
+      throw new ConflictError('The statement is loaded under another label', 'replace_label_differs', {
+        labelId: old.labelId ?? null,
+      });
+    return old;
+  }
 
   async function load(input: {
     path: string;
     fileName: string;
     generatedAt?: string | null;
     labelId?: string | null;
-  }): Promise<StatementView> {
+  }, replace?: { oldId: string }): Promise<StatementView> {
     {
       if (!/\.xlsx$/i.test(input.fileName)) throw new ValidationError('B17 statements are accepted as .xlsx');
+      if (replace) await replaceable(replace.oldId, input.labelId);
       for (const q of quartersFromFileName(input.fileName)) {
         const taken = await periodTaken(q);
-        if (taken) {
+        // a replacement takes the quarters of the statement it replaces
+        if (taken && taken.statementId !== replace?.oldId) {
           throw new ConflictError(
             `A B17 statement for ${q} is already loaded. A second file for the same period is not accepted.`,
             'duplicate_period',
@@ -122,6 +161,18 @@ export function createPublishingService(db: Db, org: OrgScope, storageDir: strin
         if (lines.length === 0) throw new ValidationError('The statement has no lines');
         const periods = [...new Set(lines.map((l) => l.period))].sort();
         await tx(async () => {
+          if (replace) {
+            const old = await replaceable(replace.oldId, input.labelId);
+            const oldPeriods = (JSON.parse(old.periods) as string[]).slice().sort();
+            if (oldPeriods.length !== periods.length || oldPeriods.some((p, i) => p !== periods[i]))
+              throw new ConflictError(
+                'The quarters of the new file differ from those of the statement it replaces',
+                'periods_differ',
+                { old: oldPeriods, new: periods },
+              );
+            // the old statement keeps its lines, file and sha; its quarters go to the new statement
+            await repo.supersedeStatement(replace.oldId, id);
+          }
           for (const p of periods) {
             const taken = await periodTaken(p);
             if (taken)

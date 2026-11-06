@@ -254,3 +254,37 @@ describe('api details and limits', () => {
     await writer(app).get('/api/v1/signals?limit=5001').expect(400);
   });
 });
+
+// D-173: the relabel of an operation keeps the operator's reason and the previous label in the summary; the signal
+// operationsRelabelled counts the operations with such a row (under a label: now in it or moved out of it).
+describe('the relabel of an operation (D-173)', () => {
+  it('needs a reason; the summary has the label, the previous label and the reason; the signal counts it', async () => {
+    const f = await newFacade();
+    const app = createApp(f, { tmpDir: join(TMP, 'audit-uploads') });
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    const owner = await f.modules.owners.createOwner({ name: 'Relabel Owner Synthetic', kind: 'person' });
+    const artist = await f.modules.owners.createArtist({ pseudonym: 'Relabel Artist', ownerId: owner.id });
+    const op = await writer(app)
+      .post('/api/v1/settlements/operations')
+      .send({ direction: 'in', amount: '2.00', artistId: artist.id, date: '2026-08-01', comment: 'x', labelId: zero })
+      .expect(201);
+    expect([op.body.kind, op.body.labelSource]).toEqual(['deduction', 'operator']);
+    const id = op.body.id as string;
+    const refused = await writer(app).patch(`/api/v1/settlements/operations/${id}`).send({ labelId: echo }).expect(400);
+    expect(refused.body.error.code).toBe('reason_required');
+    await writer(app).patch(`/api/v1/settlements/operations/${id}`).send({ labelId: echo, reason: '  ' }).expect(400);
+    expect((await f.auditOf(id)).map((r) => r.route)).toEqual(['/settlements/operations']); // the creation only
+    const moved = await writer(app).patch(`/api/v1/settlements/operations/${id}`).send({ labelId: echo, reason: 'paid by Echo8' }).expect(200);
+    expect([moved.body.labelId, moved.body.fromLabelId, moved.body.labelSource]).toEqual([echo, zero, 'operator']);
+    const [row] = await f.auditOf(id);
+    expect(row).toMatchObject({ method: 'PATCH', route: '/settlements/operations/:id', labelId: echo });
+    expect(row?.summary).toEqual({ params: { id }, body: { labelId: echo, fromLabelId: zero, reason: 'paid by Echo8' } });
+    // the signal: everywhere, under the new label, under the label it left; another operation is not counted
+    expect((await f.signals()).operationsRelabelled).toBe(1);
+    expect((await f.signals({}, echo)).operationsRelabelled).toBe(1);
+    expect((await f.signals({}, zero)).operationsRelabelled).toBe(1);
+    const body = (await writer(app).get('/api/v1/signals').expect(200)).body as { operationsRelabelled: number; counts: Record<string, number> };
+    expect([body.operationsRelabelled, body.counts.operationsRelabelled]).toEqual([1, 1]);
+  });
+});

@@ -7,7 +7,7 @@ import { periodScope, scoped, type UnitScope } from './scope';
 import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
 import { ALL_VIEWER, type Viewer } from './viewer';
-import type { FacadeContext } from './context';
+import type { FacadeContext, PayoutArea } from './context';
 import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
 import { catalogSignals } from './catalog';
@@ -119,7 +119,7 @@ export async function reconciliationFrom(
  * limit). Needs the sources, owners, splits and publishing modules for the lists that are not in the calculation.
  */
 export async function signalsFrom(
-  ctx: Pick<FacadeContext, 'owners' | 'splits' | 'sources' | 'publishing' | 'modules' | 'settlements'>,
+  ctx: Pick<FacadeContext, 'owners' | 'splits' | 'sources' | 'publishing' | 'modules' | 'settlements' | 'audit' | 'balanceWithFiles'>,
   calc: Calculation,
   f: PeriodFilter = {},
   /** Under a label (D-168): the reference lists are restricted to the label's ISRCs (the units already are). */
@@ -133,7 +133,7 @@ export async function signalsFrom(
   /** Under a label (D-172): its id, so that only its release registry is compared with its units. */
   labelId?: string,
 ) {
-  const { owners, splits, sources, publishing, modules, settlements } = ctx;
+  const { owners, splits, sources, publishing, modules, settlements, audit } = ctx;
   const attrs = await sources.pairAttributes();
   const inLabel = (isrc: string | null) => !visible || (isrc !== null && visible.isrcs.has(isrc));
   const outsideAccount = new Map<string, { account: string; month: string; labelName: string; ourLabelName: string; accountLabelName: string; net: Decimal; units: number }>();
@@ -266,7 +266,7 @@ export async function signalsFrom(
         .filter((s) => s.labelId === null)
         .map((s) => ({ statementId: s.id, periods: s.periods, fileName: s.fileName }))
         .sort((a, b) => (a.periods[0] ?? '').localeCompare(b.periods[0] ?? '') || a.statementId.localeCompare(b.statementId));
-  const { tracks, parts, unlabelled, ownerNames, history, registry } = await modules.db.snapshot(async () => ({
+  const { tracks, parts, unlabelled, ownerNames, history, registry, defaultLabelled, relabelled, labelOfOperation, forgivenesses } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
     // the release registry (D-172): navigation, compared with the UPCs of the units of each book for two signals
     registry: await owners.releases.list(),
@@ -275,8 +275,52 @@ export async function signalsFrom(
     parts: await splits.listParticipations(),
     // active operations without a label (D-168): the history before the split, marked by the operator on P21
     unlabelled: await settlements.listOperations({ labelId: null, active: true }),
+    // D-173: the history put under 0to8 by default (D-168), for the product owner to revisit; under a label its own
+    defaultLabelled: await settlements.listOperations({
+      labelSource: 'default',
+      active: true,
+      ...(labelId === undefined ? {} : { labelId }),
+    }),
+    // D-173: the operations relabelled by the operator (the audit of PATCH /settlements/operations/:id)
+    relabelled: await audit.relabelledOperations(),
+    labelOfOperation:
+      labelId === undefined ? null : new Map((await settlements.allOperations()).map((o) => [o.id, o.labelId])),
     ownerNames: new Map((await owners.listOwners()).map((o) => [o.id, o.name])),
+    // D-173: the active forgivenesses (their owners' balances tell the effective part); under a label its own
+    forgivenesses: await settlements.listOperations({
+      kind: 'forgiveness',
+      active: true,
+      ...(labelId === undefined ? {} : { labelId }),
+    }),
   }));
+  // D-173 К2: an advance whose recorded forgiveness is above the effective one (income before the date came later);
+  // the full balance of each owner with a forgiveness (the recoup needs every income of the owner)
+  const forgivenessReduced: {
+    operationId: string;
+    ownerId: string;
+    ownerName: string | null;
+    artistId: string;
+    pseudonym: string | null;
+    labelId: string | null;
+    recorded: Decimal;
+    effective: Decimal;
+  }[] = [];
+  const advances = new Set(forgivenesses.map((o) => o.operationRef));
+  for (const ownerId of [...new Set(forgivenesses.map((o) => o.ownerId).filter((x): x is string => !!x))].sort()) {
+    const { balance } = await ctx.balanceWithFiles(ownerId);
+    for (const p of balance.positions)
+      if (advances.has(p.operationId) && p.forgivenRecorded.gt(p.forgiven))
+        forgivenessReduced.push({
+          operationId: p.operationId,
+          ownerId: balance.ownerId,
+          ownerName: ownerNames.get(balance.ownerId) ?? null,
+          artistId: p.artistId,
+          pseudonym: calc.artistIndex.get(p.artistId)?.pseudonym ?? null,
+          labelId: p.labelId,
+          recorded: p.forgivenRecorded,
+          effective: p.forgiven,
+        });
+  }
   const partById = new Map(parts.map((p) => [p.id, p]));
   const lists = {
     unallocated: {
@@ -364,12 +408,33 @@ export async function signalsFrom(
       labelId === undefined ? registry : registry.filter((r) => r.labelId === labelId),
       (isrc, upc) => attrs.get(`${isrc}|${upc}`)?.releaseTitle ?? '',
     ),
+    // D-173: the active operations whose label is the default of the history (D-168: mixed or no units → 0to8)
+    operationsDefaultLabel: defaultLabelled
+      .map((o) => ({
+        operationId: o.id,
+        kind: o.kind,
+        labelId: o.labelId,
+        ownerId: o.ownerId,
+        ownerName: o.ownerId ? (ownerNames.get(o.ownerId) ?? null) : null,
+        artistId: o.artistId,
+        pseudonym: o.artistId ? (calc.artistIndex.get(o.artistId)?.pseudonym ?? null) : null,
+        date: o.date,
+        amountCents: o.amountCents,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || a.operationId.localeCompare(b.operationId)),
+    forgivenessReduced,
+    // D-173: the number of operations the operator relabelled; under a label those now in it or moved out of it
+    operationsRelabelled:
+      labelOfOperation === null
+        ? relabelled.length
+        : relabelled.filter((r) => labelOfOperation.get(r.operationId) === labelId || r.fromLabelIds.includes(labelId as string)).length,
   };
   const counts: Record<string, number> = {
     unallocated: lists.unallocated.pairs.length,
     isrcsWithoutSplit: lists.isrcsWithoutSplit.length,
   };
   for (const [name, v] of Object.entries(lists)) if (Array.isArray(v)) counts[name] = v.length;
+  counts.operationsRelabelled = lists.operationsRelabelled;
   return { ...lists, counts };
 }
 
@@ -382,13 +447,20 @@ export function reportsApi(ctx: FacadeContext) {
     },
 
     /** The owner balance from the units of the owner's reach (D-163, D-164); under a label its book (D-168). */
-    async ownerBalance(ownerId: string, f: PeriodFilter = {}, labelId?: string, viewer: Viewer = ALL_VIEWER) {
+    async ownerBalance(
+      ownerId: string,
+      f: PeriodFilter & { asOf?: string; area?: PayoutArea } = {},
+      labelId?: string,
+      viewer: Viewer = ALL_VIEWER,
+    ) {
       // a viewer of some labels (D-171): an owner visible under one of them, else 404
       if (viewer.kind !== 'all') {
         await owners.getOwner(ownerId);
         await ctx.scopeOf(viewer).assertOwnerVisible(ownerId);
       }
-      return (await balanceWithFiles(ownerId, f, await ctx.viewOf(labelId))).balance;
+      // D-173: `asOf` cuts the inputs, `area` decides the gate only
+      const { asOf, area, ...period } = f;
+      return (await balanceWithFiles(ownerId, period, await ctx.viewOf(labelId), { asOf, area })).balance;
     },
 
     /** The reach of an owner (D-163): its pseudonyms and the ISRCs their money can come from. */
@@ -434,7 +506,7 @@ export function reportsApi(ctx: FacadeContext) {
       const [reconciliation, sg, statements, ownerList] = await Promise.all([
         reconciliationFrom(ctx, calc, f),
         signalsFrom(ctx, calc, f),
-        publishing.listStatements(),
+        publishing.activeStatements(), // a superseded statement is not counted (D-173), as a Believe file not loaded
         owners.listOwners(),
       ]);
       const queue = cQueue(calc, f, {}, { ownerNames: new Map(ownerList.map((o) => [o.id, o.name])) });

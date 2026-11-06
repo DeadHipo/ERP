@@ -130,7 +130,12 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
           c.column_name !== 'org_id' && !liteColumns.has(c.column_name) && c.is_nullable === 'NO' && c.column_default === null,
       );
       if (missing.length > 0) {
-        throw new Error(`${t}: SQLite has no column(s) ${missing.map((c) => c.column_name).join(', ')}`);
+        // an empty table has nothing to fill the column with: skip it (e.g. `operations.kind`, D-173); rows still refuse
+        const rows = (lite.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
+        if (rows > 0)
+          throw new Error(`${t}: SQLite has no column(s) ${missing.map((c) => c.column_name).join(', ')}`);
+        console.log(`${m.module}.${t}: skipped, 0 rows in SQLite (no column(s) ${missing.map((c) => c.column_name).join(', ')})`);
+        continue;
       }
       const columns = pgColumns.map((c) => c.column_name).filter((c) => liteColumns.has(c));
       const extra = [...liteColumns].filter((c) => !columns.includes(c));

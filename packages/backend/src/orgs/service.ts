@@ -25,7 +25,7 @@ export async function orgCounts(facade: Facade, users: number) {
   return {
     labels: labels.length,
     files: files.filter((f) => f.status === 'loaded').length,
-    statements: statements.length,
+    statements: statements.filter((s) => s.status === 'loaded').length, // a superseded one is not counted (D-173)
     owners: owners.length,
     users,
   };

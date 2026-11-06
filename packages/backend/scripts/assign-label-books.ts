@@ -178,7 +178,7 @@ const operationsEcho8: Step = async (f) => {
     return false;
   }
   if (!apply) return true;
-  for (const o of ops) await f.setOperationLabel(o.id, zero);
+  for (const o of ops) await f.setOperationLabel(o.id, zero, 'D-169 operations-echo8: by R6 Main 0to8 paid it');
   console.log(`  applied ${ops.length} labels`);
   return true;
 };

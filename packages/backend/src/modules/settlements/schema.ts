@@ -1,10 +1,12 @@
 import { bigint, boolean, date, pgSchema, text } from 'drizzle-orm/pg-core';
+import { LABEL_SOURCES, OPERATION_KINDS } from '@erp/shared/operation-kinds';
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Settlements and payouts: every balance change is an operation `in` or `out` with a signed amount in integer cents.
-// There are no operation types; optional fields (artist, period, scope, document, payment proof, operation ref) say
-// what an operation is.
-// The DDL is migrations/postgres/0004_settlements.sql and 0014_label_books.sql (schema `settlements`); change both.
+// The kind of an operation is stored (D-173, migration 0019: the history got the kind its fields gave, `kindOf`) and
+// its fields fit it (the CHECK `operations_kind_rules`); before D-173 there was no kind and the fields alone said it.
+// The DDL is migrations/postgres/0004_settlements.sql, 0014_label_books.sql and 0019_operation_kinds.sql (schema
+// `settlements`); change both.
 
 const s = pgSchema('settlements');
 
@@ -31,6 +33,14 @@ export const operations = s.table('operations', {
   deactivatedReason: text('deactivated_reason'),
   /** The own label the operation belongs to (D-168); null = without a label (the history before the split). */
   labelId: text('label_id'),
+  /** The kind (D-173): one of `OPERATION_KINDS`. */
+  kind: text('kind', { enum: OPERATION_KINDS }).notNull(),
+  /** Who set the label (D-173): `LABEL_SOURCES`; null until `assign-operation-labels.ts --mark-source`. */
+  labelSource: text('label_source', { enum: LABEL_SOURCES }),
+  /** The payment channel, free text (D-173). */
+  channel: text('channel'),
+  /** The area of the book (D-173): `master` (the history) or `publishing`. */
+  area: text('area', { enum: ['master', 'publishing'] }).notNull().default('master'),
 });
 
 export const payoutSnapshots = s.table('payout_snapshots', {

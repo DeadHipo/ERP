@@ -44,7 +44,7 @@ export function ownersRouter(facade: Facade) {
   r.get('/owners/:id', async (req, res) => res.json(await facade.ownerDetail(param(req, 'id'), viewerOf(res))));
   r.get('/owners/:id/balance', async (req, res) =>
     timed(`GET /owners/${param(req, 'id')}/balance`, async () => {
-      const { label, ...period } = parse(S.labelPeriodQuery, req.query);
+      const { label, ...period } = parse(S.balanceQuery, req.query);
       const b = await facade.ownerBalance(param(req, 'id'), period, label, viewerOf(res));
       timedSync('res.json (serialize + send)', () => res.json(b));
     }),

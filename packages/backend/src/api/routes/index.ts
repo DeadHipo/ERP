@@ -25,7 +25,7 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.use(sourcesRouter(facade, opts));
   r.use(publishingRouter(facade, opts));
   r.use(reportsRouter(facade));
-  r.use(settlementsRouter(facade));
+  r.use(settlementsRouter(facade, opts));
   r.use(labelsRouter(facade));
   r.use(participationsRouter(facade));
   r.use(auditRouter(facade));

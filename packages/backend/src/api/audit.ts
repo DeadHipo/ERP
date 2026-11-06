@@ -58,6 +58,7 @@ export const RESPONSE_LABEL_ROUTES = new Set([
   'POST /settlements/operations/:id/deferred',
   'POST /settlements/operations/:id/deactivate',
   'POST /settlements/operations/:id/return',
+  'POST /settlements/operations/:id/forgive',
   'PATCH /ads/:id',
   'POST /ads/:id/deactivate',
   'PATCH /documents/:id',
@@ -71,7 +72,12 @@ export const RESPONSE_LABEL_ROUTES = new Set([
  */
 export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
   string,
-  { preview: (query: Record<string, unknown>) => boolean; summary: (response: unknown) => Record<string, unknown>; ids: (response: unknown) => string[] }
+  {
+    preview: (query: Record<string, unknown>) => boolean;
+    /** `body` = the request body (D-173: the reason of a relabel). */
+    summary: (response: unknown, body: Record<string, unknown>) => Record<string, unknown>;
+    ids: (response: unknown) => string[];
+  }
 > = new Map([
   [
     'POST /splits/import',
@@ -130,6 +136,53 @@ export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
         return { fileName: r.fileName, sha256: r.sha256, rows: r.rows, inserted: r.inserted, updated: r.updated, unchanged: r.unchanged };
       },
       ids: () => [],
+    },
+  ],
+  [
+    // the replacement of a B17 statement (D-173): the old and the new statement and the quarters, from the response
+    'POST /publishing/statements/:id/replace',
+    {
+      preview: () => false,
+      summary: (response: unknown) => {
+        const r = asRecord(response);
+        const s = asRecord(r.statement);
+        return { superseded: asRecord(r.superseded).id, statement: s.id, periods: s.periods };
+      },
+      ids: (response: unknown) => {
+        const r = asRecord(response);
+        return [asRecord(r.superseded).id, asRecord(r.statement).id].filter((x): x is string => typeof x === 'string');
+      },
+    },
+  ],
+  [
+    // the relabel of an operation (D-173): the new label and the reason from the body (the one free text the audit
+    // keeps, by the plan: the operator's reason for moving money between books), the previous label from the response
+    'PATCH /settlements/operations/:id',
+    {
+      preview: () => false,
+      summary: (response: unknown, body: Record<string, unknown>) => ({
+        labelId: body.labelId,
+        fromLabelId: asRecord(response).fromLabelId ?? null,
+        reason: body.reason,
+      }),
+      ids: () => [],
+    },
+  ],
+  [
+    // the operation import (D-173 §1.5): the counts and the sums by kind from the response, the created ids
+    'POST /settlements/operations/import',
+    {
+      preview: (query: Record<string, unknown>) => query.dryRun !== '0',
+      summary: (response: unknown) => {
+        const r = asRecord(response);
+        const t = asRecord(r.totals);
+        return { fileName: r.fileName, sha256: r.sha256, rows: t.rows, create: t.create, unchanged: t.unchanged, warnings: t.warnings, byKind: t.byKind };
+      },
+      ids: (response: unknown) => {
+        const res = asRecord(asRecord(response).result);
+        const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+        return [...list(res.operationIds), ...list(res.proofIds)];
+      },
     },
   ],
 ]);
@@ -290,7 +343,7 @@ export function operatorTrace(facade: Facade): RequestHandler {
       return {
         facade,
         entityIds: [...new Set([...entityIdsOf(params, reqBody), ...fromResponse.ids(body)])],
-        summary: { params, body: fromResponse.summary(body), ...(bySupport(res) ? { support: true as const } : {}) },
+        summary: { params, body: fromResponse.summary(body, reqBody), ...(bySupport(res) ? { support: true as const } : {}) },
         labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
       };
     }

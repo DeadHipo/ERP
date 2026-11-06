@@ -3,6 +3,7 @@ import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
 import { receiveUpload, uploadLabel } from '../upload';
+import { viewerOf } from '../viewer';
 
 /** Publishing (B17): statement upload, writers, contract terms. */
 export function publishingRouter(facade: Facade, opts: { tmpDir: string }) {
@@ -21,6 +22,23 @@ export function publishingRouter(facade: Facade, opts: { tmpDir: string }) {
             generatedAt: up.fields['generatedAt'] || null,
           },
           labelId,
+        ),
+      );
+    } finally {
+      await up.cleanup();
+    }
+  });
+  // the replacement of a loaded statement (D-173): approve, the label before the body as for the upload
+  r.post('/publishing/statements/:id/replace', async (req, res) => {
+    const labelId = await uploadLabel(facade, req);
+    const up = await receiveUpload(req, opts.tmpDir);
+    try {
+      res.status(201).json(
+        await facade.replaceB17(
+          param(req, 'id'),
+          { path: up.path, fileName: up.fileName, generatedAt: up.fields['generatedAt'] || null },
+          labelId,
+          viewerOf(res),
         ),
       );
     } finally {

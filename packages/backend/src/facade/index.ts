@@ -24,6 +24,8 @@ import { catalogApi } from './catalog';
 import { splitImportApi } from './split-import';
 import { releaseRegistryApi } from './release-registry';
 import { onboardingApi } from './onboarding';
+import { payrollApi } from './payroll';
+import { operationImportApi } from './operation-import';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -64,6 +66,7 @@ export function openFacade(config: FacadeConfig) {
   });
 
   const splitsPart = splitsApi(ctx);
+  const payoutsPart = payoutsApi(ctx);
   return {
     db,
     /** The organization every module of this facade is opened under (D-170). */
@@ -76,7 +79,7 @@ export function openFacade(config: FacadeConfig) {
     ...reportsApi(ctx),
     ...ownerViewApi(ctx),
     ...artistViewApi(ctx, splitsPart),
-    ...payoutsApi(ctx),
+    ...payoutsPart,
     ...auditApi(ctx),
     ...searchApi(ctx),
     ...adsApi(ctx),
@@ -84,6 +87,8 @@ export function openFacade(config: FacadeConfig) {
     ...splitImportApi(ctx, splitsPart),
     ...releaseRegistryApi(ctx),
     ...onboardingApi(ctx),
+    ...payrollApi(ctx),
+    ...operationImportApi(ctx, payoutsPart),
   };
 }
 

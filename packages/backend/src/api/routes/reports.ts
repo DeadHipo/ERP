@@ -52,6 +52,7 @@ export function reportsRouter(facade: Facade) {
       tracksWithoutLabel: cut(s.tracksWithoutLabel),
       releasesIncomplete: cut(s.releasesIncomplete),
       releasesUnknown: cut(s.releasesUnknown),
+      operationsDefaultLabel: cut(s.operationsDefaultLabel),
     });
   });
 

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { SPLIT_IMPORT_ACTIONS, SPLIT_IMPORT_ISSUE_CODES, type SplitImportIssueCode } from './split-import';
+import { LABEL_SOURCES, OPERATION_KINDS } from './operation-kinds';
+import { OPERATION_IMPORT_ACTIONS, OPERATION_IMPORT_ISSUE_CODES, type OperationImportIssueCode } from './operation-import';
 
 // Response bodies of the JSON API (the contract of /api/v1). Shared by the server (OpenAPI, contract tests) and the
 // React client (types). Money and percents are exact decimal strings; dates are YYYY-MM-DD, months YYYY-MM.
@@ -351,11 +353,14 @@ export const statementSchema = z.object({
   generatedAt: timestamp,
   generatedAtSource: z.string(),
   uploadedAt: timestamp,
-  status: z.string(),
+  status: z
+    .enum(['loaded', 'superseded', 'failed'])
+    .describe('loaded = counted; superseded = replaced by a corrected file of the same quarters, its lines kept (D-173)'),
   lineCount: z.number().int(),
   totalPayable: money,
   warnings: z.array(z.string()),
   labelId: z.string().nullable().describe('The own label the statement was loaded under (D-169); null = loaded before the labels'),
+  replacedBy: z.string().nullable().describe('The statement that replaced this one (D-173); null = not replaced'),
 });
 
 export const sourceFilesSchema = z.object({
@@ -619,6 +624,39 @@ export const signalsSchema = z.object({
   releasesUnknown: z
     .array(z.object({ upc: z.string(), bookLabelId: z.string(), releaseTitle: z.string(), net: money }))
     .describe('UPCs of the units of a book whose label has a release registry without that UPC (D-172, information: import a fresh export)'),
+  operationsDefaultLabel: z
+    .array(
+      z.object({
+        operationId: z.string(),
+        kind: z.enum(OPERATION_KINDS),
+        labelId: z.string().nullable(),
+        ownerId: z.string().nullable(),
+        ownerName: z.string().nullable(),
+        artistId: z.string().nullable(),
+        pseudonym: z.string().nullable(),
+        date,
+        amountCents: z.number().int(),
+      }),
+    )
+    .describe('Active operations whose label is the default of the history (D-168: a mixed owner or no units → 0to8; label source `default`, D-173): the product owner revisits them, the operator relabels with a reason'),
+  forgivenessReduced: z
+    .array(
+      z.object({
+        operationId: z.string().describe('The advance'),
+        ownerId: z.string(),
+        ownerName: z.string().nullable(),
+        artistId: z.string(),
+        pseudonym: z.string().nullable(),
+        labelId: z.string().nullable(),
+        recorded: money.describe('Σ counted forgivenesses of the advance'),
+        effective: money.describe('What the recoup could forgive: income before the date came after the forgiveness'),
+      }),
+    )
+    .describe('Advances whose recorded forgiveness is above the effective one (D-173 К2): the income before the date recouped it first'),
+  operationsRelabelled: z
+    .number()
+    .int()
+    .describe('The number of operations the operator relabelled (PATCH /settlements/operations/:id in the audit, D-173); under a label those now in it or moved out of it'),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -708,6 +746,34 @@ export const payoutGateSchema = z.object({
 });
 export type PayoutGate = z.infer<typeof payoutGateSchema>;
 
+/**
+ * The money of one area of a book (D-173 К10): earned and recouped by the stream of the income, advertising master, the
+ * operations by their `area` (the history master, a write-off publishing); Σ of the two areas = the book.
+ */
+export const areaBookSchema = z.object({
+  earned: money,
+  recouped: money,
+  adsCharged: money,
+  paid: money,
+  returns: money,
+  credits: money,
+  buyouts: money,
+  writtenOff: money,
+  adjustments: money,
+  payable: money,
+});
+/** The book fields of D-173: optional, so that a payout snapshot recorded before it still passes (FIX-6). */
+const kindBookFields = {
+  buyouts: money.optional().describe('Counted buyouts (D-173): neither paid nor in payable'),
+  forgiven: money.optional().describe('The effective forgiveness of the advances (D-173): reduces what is unrecouped, not payable'),
+  writtenOff: money.optional().describe('Counted publishing write-offs (D-173): taken off payable'),
+  adjustments: money.optional().describe('−Σ counted adjustments (D-173): added to payable with their sign'),
+  byArea: z
+    .object({ master: areaBookSchema, publishing: areaBookSchema })
+    .optional()
+    .describe('The two areas (D-173): Σ = the book, field by field'),
+};
+
 /** The book of one label of an owner (D-168): every money field of `total`, partitioned by label. */
 export const labelBookSchema = z.object({
   labelId: z.string().nullable().describe('null = without a label (an unmapped label string, publishing, an operation or a charge without a label)'),
@@ -718,6 +784,7 @@ export const labelBookSchema = z.object({
   paid: money,
   returns: money,
   credits: money,
+  ...kindBookFields,
   payable: money,
   payableShown: money,
   payableNegative: z.boolean(),
@@ -755,7 +822,8 @@ export const balanceSchema = z.object({
     paid: money,
     returns: money,
     credits: money,
-    payable: money,
+    ...kindBookFields,
+    payable: money.describe('earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-173)'),
     payableShown: money,
     payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
   }),
@@ -775,7 +843,15 @@ export const balanceSchema = z.object({
       tracks: z.array(z.object({ isrc: z.string(), net: money, amount: money, waiting: money })),
       byLabel: z.record(
         z.string(),
-        z.object({ labelId: z.string().nullable(), earned: money, waiting: money, recouped: money, unrecouped: money, recoupedFromMaster: money }),
+        z.object({
+          labelId: z.string().nullable(),
+          earned: money,
+          waiting: money,
+          recouped: money,
+          unrecouped: money,
+          recoupedFromMaster: money,
+          forgiven: money.optional().describe('The effective forgiveness of the positions this pseudonym holds (D-173)'),
+        }),
       ),
     }),
   ),
@@ -796,6 +872,10 @@ export const balanceSchema = z.object({
       artistId: z.string(),
       amount: money,
       recouped: money,
+      forgiven: money.optional().describe('The effective forgiveness (D-173): amount = recouped + forgiven + remaining'),
+      forgivenRecorded: money
+        .optional()
+        .describe('The counted forgivenesses as recorded (D-173): above `forgiven` when income before the date came later (signal forgivenessReduced)'),
       remaining: money,
       scope: z.object({ kind: z.string() }),
       date,
@@ -986,8 +1066,22 @@ export const operationSchema = z.object({
   createdAt: timestamp,
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
-  meaning: z.enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return']),
+  meaning: z
+    .enum(['payout', 'recoupable_payout', 'deduction', 'credit', 'return'])
+    .describe('The alias of `kind` before D-173 (`recoupable_payout` = `advance`)'),
   labelId: z.string().nullable().describe('The own label of the operation (D-168); null = without a label'),
+  kind: z.enum(OPERATION_KINDS).describe('The stored kind of the operation (D-173)'),
+  labelSource: z
+    .enum(LABEL_SOURCES)
+    .nullable()
+    .describe('Who set the label (D-173): one, default, operator, payout; null = not marked yet'),
+  channel: z.string().nullable().describe('The payment channel, free text (D-173)'),
+  area: z.enum(['master', 'publishing']).describe('The area of the book (D-173); the history is master'),
+  fromLabelId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Present on PATCH /settlements/operations/:id: the label before the change (D-173)'),
   labelName: z.string().nullable().optional().describe('Present on GET /settlements/operations; null without a label'),
   ownerName: z
     .string()
@@ -1039,6 +1133,10 @@ export const payableItemSchema = z.object({
   paid: money,
   returns: money,
   credits: money,
+  buyouts: kindBookFields.buyouts,
+  forgiven: kindBookFields.forgiven,
+  writtenOff: kindBookFields.writtenOff,
+  adjustments: kindBookFields.adjustments,
   payable: money,
   payableShown: money,
   payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
@@ -1221,6 +1319,7 @@ export const payoutSnapshotSchema = z.object({
   labelId: z.string().optional().describe('The label the payout was made under (D-168); absent in snapshots before it'),
   labelName: z.string().optional(),
   amountCents: z.number().int(),
+  area: z.enum(['master', 'publishing', 'all']).optional().describe('The area paid (D-173); absent in snapshots before it'),
   payableExact: money,
   total: balanceSchema.shape.total.extend({ adsCharged: money.optional() }),
   payoutByArtist: z.array(z.object({ key: z.string(), label: z.string(), net: money, shareOfPayout: money })),
@@ -1579,3 +1678,140 @@ export const orgOnboardingSchema = z.object({
   steps: z.array(z.object({ key: z.enum(ORG_ONBOARDING_KEYS), ...onboardingStepBase })),
 });
 export type OrgOnboarding = z.infer<typeof orgOnboardingSchema>;
+
+/** The replacement of a B17 statement (D-173): the old statement now `superseded`, the new one `loaded`, the writers. */
+export const b17ReplaceSchema = z.object({
+  superseded: statementSchema,
+  statement: statementSchema,
+  writers: resolveWritersSchema,
+});
+
+// ---- the operation import (D-173 §1.5, P29) ----
+
+const operationImportIssue = z.object({
+  code: z.enum(OPERATION_IMPORT_ISSUE_CODES as [OperationImportIssueCode, ...OperationImportIssueCode[]]),
+  severity: z.enum(['error', 'warning', 'info']),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+/** One data row of the operation file as read, resolved and classified. */
+export const operationImportRowSchema = z.object({
+  line: z.number().int().describe('Line of the file (the header is line 1)'),
+  kind: z.string().describe('The kind as written in the file'),
+  owner: z.string().nullable().describe('The owner cell as written'),
+  pseudonym: z.string().nullable().describe('The pseudonym cell as written'),
+  ownerId: z.string().nullable().describe('The resolved owner (by id or the one exact name, or the owner of the pseudonym)'),
+  artistId: z.string().nullable().describe('The resolved pseudonym (the surviving id)'),
+  amount: z.string().describe('The amount as written, or the parsed decimal'),
+  date: z.string(),
+  externalId: z.string().nullable(),
+  documentId: z.string().nullable().describe('The resolved basis document (the cell or the documentId of the request)'),
+  action: z.enum(OPERATION_IMPORT_ACTIONS),
+  issues: z.array(operationImportIssue),
+});
+export const operationImportSchema = z.object({
+  labelId: z.string(),
+  fileName: z.string(),
+  sha256: z.string(),
+  dryRun: z.boolean(),
+  applied: z.boolean(),
+  totals: z.object({
+    rows: z.number().int(),
+    create: z.number().int(),
+    unchanged: z.number().int(),
+    errors: z.number().int().describe('Error issues (a row may carry several)'),
+    warnings: z.number().int(),
+    byKind: z.record(z.string(), money).describe('The sum of the rows to create, per kind'),
+  }),
+  rows: z.array(operationImportRowSchema),
+  result: z
+    .object({ operationIds: z.array(z.string()), proofIds: z.array(z.string()) })
+    .nullable()
+    .describe('The created operations and payment proofs of an apply; null in a preview'),
+});
+export type OperationImport = z.infer<typeof operationImportSchema>;
+
+// ---- the payroll export (D-173 §1.4) ----
+
+const payrollMoney = {
+  earned: money,
+  recouped: money.describe('pseudonym row: recoupedFromMaster (taken from its master income by any position); owner row: publishingRecouped; total: the area'),
+  unrecouped: money.describe('What the positions held by the pseudonym still wait for'),
+  adsCharged: money,
+  paid: money,
+  returns: money,
+  credits: money,
+  buyouts: money,
+  forgiven: money,
+  writtenOff: money,
+  adjustments: money,
+};
+export const payrollRowSchema = z.object({
+  rowKind: z.enum(['pseudonym', 'owner', 'total']),
+  labelName: z.string(),
+  ownerId: z.string(),
+  ownerName: z.string(),
+  artistId: z.string().nullable(),
+  pseudonym: z.string().nullable(),
+  contract: z
+    .object({
+      number: z.string().nullable().describe('The number of the contract record (often none)'),
+      documentId: z.string(),
+      title: z.string(),
+      documentKind: z.string().describe('contract or label_decision (a decision of the label, without a contract)'),
+      labelId: z.string().nullable().describe('The label of the document; null = any label'),
+      approvedAt: z.string().nullable(),
+      approvedBy: z.string().nullable(),
+    })
+    .nullable()
+    .describe('The approved contract of the owner under the label (its label first, then «any label»; the newest approval)'),
+  byDecision: z.boolean().describe('Confirmed only by a label decision, without a contract (D-172)'),
+  ...payrollMoney,
+  payable: money.nullable().describe('total row only'),
+  payableShown: money.nullable(),
+  gate: z
+    .object({
+      allowed: z.boolean(),
+      reason: payoutGateSchema.shape.reason,
+      amountCents: z.number().int().nullable().describe('null when blocked by a payout of another label (its amount is not shown)'),
+      blockedByOtherLabel: z.boolean(),
+    })
+    .nullable()
+    .describe('total row only: the payout gate of the area'),
+  belowThreshold: z.boolean(),
+});
+export type PayrollRow = z.infer<typeof payrollRowSchema>;
+
+export const payrollSchema = z.object({
+  calculatedAt: timestamp,
+  label: z.object({ id: z.string(), name: z.string() }),
+  asOf: month.nullable(),
+  area: z.enum(['master', 'publishing', 'all']),
+  rows: z.array(payrollRowSchema),
+  waiting: z.array(
+    z.object({ ownerId: z.string(), ownerName: z.string(), reason: cReasonSchema, amount: money, paidAlready: money }),
+  ),
+  buyouts: z.array(
+    z.object({
+      operationId: z.string(),
+      ownerId: z.string(),
+      ownerName: z.string(),
+      date,
+      amount: money,
+      documentId: z.string().nullable(),
+      counted: z.boolean(),
+    }),
+  ),
+  control: z.array(
+    z.object({ source: z.enum(['believe', 'b17']), account: z.string(), month, A: money, B: money, C: money, ours: money, discrepancy: money }),
+  ),
+  totals: z.object({
+    payable: money,
+    payableShown: money,
+    bookB: money.describe('Σ earned of the total rows'),
+    reconciliationB: money.describe('Σ B of the control rows of the area (believe: master, b17: publishing)'),
+    bookBMatches: z.boolean(),
+    relabelledOperations: z.number().int(),
+    defaultLabelOperations: z.number().int(),
+  }),
+});
+export type Payroll = z.infer<typeof payrollSchema>;

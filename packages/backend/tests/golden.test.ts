@@ -1428,6 +1428,151 @@ describe('G56 (D-169): a payout under a label requires an approved contract with
   });
 });
 
+describe('G57–G60 (D-173): buyout, forgiveness, write-off and adjustment in the books', () => {
+  /** owner A: row A 50 on I(1), unit 100 of 2026-03 in the 0to8 account: earned 50, payable 50. */
+  const base = () =>
+    single(async (c) => {
+      await c.person('A');
+      await c.split(I(1), [['A', '50']]);
+    });
+
+  it('G57: a buyout is in the book, neither paid nor in payable, and never blocks the button', async () => {
+    const c = await base();
+    const f = c.f;
+    const owner = c.owners.get('A') as string;
+    const zero = f.testLabels['0to8'];
+    const doc = await approvedDoc(f, 'buyout', owner);
+    const buyout = await f.createOperation({ kind: 'buyout', direction: 'out', amount: '1000', ownerId: owner, date: '2026-04-01', documentId: doc.id, comment: 'buyout', labelId: zero });
+    expect([buyout.kind, buyout.area, buyout.labelSource]).toEqual(['buyout', 'master', 'operator']);
+    // without its proof the buyout does not count and does not block: the button pays 50.00
+    let b = await c.balance('A');
+    expect([b.total.buyouts.toFixed(), b.total.payable.toFixed(), b.blockingPayouts.length, b.payout.allowed, b.payout.amountCents]).toEqual(['0', '50', 0, true, 5000]);
+    await f.attachPaymentProof(buyout.id, { fileRef: 'dummy://buyout-proof.pdf' });
+    b = await c.balance('A');
+    expect([b.total.earned, b.total.paid, b.total.buyouts, b.total.payable].map((x) => x.toFixed())).toEqual(['50', '0', '1000', '50']);
+    expect([b.byLabel['0to8']?.buyouts.toFixed(), b.total.byArea.master.buyouts.toFixed(), b.blockingPayouts]).toEqual(['1000', '1000', []]);
+    await c.verify();
+    const payout = await f.createPayout(owner, { labelId: zero });
+    expect(payout.amountCents).toBe(5000);
+    // control: the same 1 000 as a migrated payout would take payable to −950
+    await f.createOperation({ direction: 'out', amount: '1000', ownerId: owner, date: '2026-04-01', comment: 'control', migration: true, labelId: zero });
+    b = await c.balance('A');
+    expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['1000', '-950']);
+  });
+
+  it('G58, G58b: a forgiveness from a date leaves payable at the moment and frees the income after the date', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    await c.person('A');
+    await c.track(I(1));
+    await c.split(I(1), [['A', '50']]);
+    await c.load('2026-02', [{ isrc: I(1), net: '100' }]);
+    const owner = c.owners.get('A') as string;
+    const basis = await approvedDoc(f, 'advance_basis', owner);
+    const adv = await f.createOperation({ labelId: zero, direction: 'out', amount: '100', artistId: c.id('A'), date: '2026-01-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance' });
+    await f.attachPaymentProof(adv.id, { fileRef: 'dummy://proof.pdf' });
+    const state = async () => {
+      const b = await c.balance('A');
+      const p = b.positions[0];
+      return [b.total.recouped, b.total.forgiven, p?.remaining, b.total.payable].map((x) => x?.toFixed());
+    };
+    // step 1: recouped 50 of the 2026-02 income
+    expect(await state()).toEqual(['50', '0', '50', '0']);
+    // step 2: forgiven 30 from 2026-04-10: payable does not move
+    const decision = await approvedDoc(f, 'adjustment_basis', owner);
+    const forgiveness = await f.forgiveAdvance(adv.id, { amount: '30', date: '2026-04-10', documentId: decision.id, comment: 'forgiven' });
+    expect([forgiveness.kind, forgiveness.operationRef, forgiveness.ownerId, forgiveness.artistId, forgiveness.labelId, forgiveness.labelSource]).toEqual([
+      'forgiveness', adv.id, owner, c.id('A'), zero, 'payout',
+    ]);
+    expect(await state()).toEqual(['50', '30', '20', '0']);
+    expect((await c.balance('A')).byLabel['0to8']?.forgiven.toFixed()).toBe('30');
+    await c.verify();
+    // the refusals: above the unrecouped 20, before the advance, not an advance
+    await expect(f.forgiveAdvance(adv.id, { amount: '21', date: '2026-04-10', documentId: decision.id, comment: 'more' })).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'forgiveness_exceeds',
+      details: { unrecouped: '20' },
+    });
+    await expect(f.forgiveAdvance(adv.id, { amount: '5', date: '2025-12-31', documentId: decision.id, comment: 'early' })).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'forgiveness_before_advance',
+    });
+    const payout = await f.createOperation({ direction: 'out', amount: '0.01', ownerId: owner, date: '2026-04-01', comment: 'a payout', migration: true, labelId: zero });
+    await f.deactivateOperation(payout.id, 'only for the refusal');
+    await expect(f.forgiveAdvance(payout.id, { amount: '5', date: '2026-04-10', documentId: decision.id, comment: 'wrong' })).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'operation_ref_not_advance',
+    });
+    await expect(f.deactivateOperation(adv.id, 'mistake')).rejects.toMatchObject({ statusCode: 409, code: 'has_forgiveness' });
+    // step 3: the 2026-04 income 50: the capacity from 2026-04 is 100 − 50 − 30 = 20, so 30 of it is payable
+    await c.load('2026-04', [{ isrc: I(1), net: '100' }]);
+    expect(await state()).toEqual(['70', '30', '0', '30']);
+    expect((await f.signals()).forgivenessReduced).toEqual([]);
+    await c.verify();
+    // G58b: the 2026-03 income arrives after the forgiveness: it recoups first, the forgiveness has nothing left
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    expect(await state()).toEqual(['100', '0', '0', '50']);
+    const s = await f.signals();
+    expect(s.forgivenessReduced.map((x) => [x.operationId, x.ownerId, x.recorded.toFixed(), x.effective.toFixed()])).toEqual([[adv.id, owner, '30', '0']]);
+    expect(s.counts.forgivenessReduced).toBe(1);
+    await c.verify();
+  });
+
+  it('G59: a write-off of publishing is taken off payable, at most the publishing the book has', async () => {
+    const c = await base();
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    const owner = c.owners.get('A') as string;
+    await f.modules.owners.addOwnerAlias(owner, 'OWNER, A');
+    await f.modules.publishing.setTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', owner)).id });
+    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]), zero);
+    const basis = await approvedDoc(f, 'adjustment_basis', owner);
+    const writeoff = (amount: string, area?: 'master' | 'publishing') =>
+      f.createOperation({ kind: 'writeoff', direction: 'in', amount, ownerId: owner, date: '2026-07-01', documentId: basis.id, comment: 'write-off', labelId: zero, ...(area ? { area } : {}) });
+    await expect(writeoff('31')).rejects.toMatchObject({ statusCode: 422, code: 'writeoff_exceeds', details: { available: '30' } });
+    await expect(writeoff('5', 'master')).rejects.toMatchObject({ statusCode: 400, code: 'writeoff_area' });
+    const op = await writeoff('20');
+    expect([op.kind, op.area, op.scope]).toEqual(['writeoff', 'publishing', null]);
+    const b = await c.balance('A');
+    expect([b.total.earned, b.total.writtenOff, b.total.payable].map((x) => x.toFixed())).toEqual(['80', '20', '60']);
+    expect([b.total.byArea.master.earned, b.total.byArea.publishing.earned, b.total.byArea.master.payable, b.total.byArea.publishing.payable].map((x) => x.toFixed())).toEqual([
+      '50', '30', '50', '10',
+    ]);
+    await expect(writeoff('11')).rejects.toMatchObject({ code: 'writeoff_exceeds', details: { available: '10' } });
+    // the button of the publishing area pays min(payable of the area 10, payable of the book 60) = 10.00 (D-173 К10)
+    expect((await f.ownerBalance(owner, { area: 'publishing' }, zero)).payout.amountCents).toBe(1000);
+    const paid = await f.createPayout(owner, { labelId: zero, area: 'publishing' });
+    expect([paid.amountCents, paid.area]).toEqual([1000, 'publishing']);
+    expect(((await f.modules.settlements.getSnapshot(paid.id)) as { area: string; payoutByArtist: { key: string }[] }).area).toBe('publishing');
+    await c.verify();
+  });
+
+  it('G60: an adjustment adds to payable with its sign, in its own book only', async () => {
+    const c = await base();
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    const owner = c.owners.get('A') as string;
+    const basis = await approvedDoc(f, 'adjustment_basis', owner);
+    const adjust = (amount: string) =>
+      f.createOperation({ kind: 'adjustment', direction: 'in', amount, ownerId: owner, date: '2026-10-15', documentId: basis.id, comment: 'adjustment', labelId: zero });
+    await adjust('-170.55');
+    let b = await c.balance('A');
+    expect([b.total.adjustments, b.total.payable].map((x) => x.toFixed())).toEqual(['170.55', '220.55']);
+    await adjust('20.55');
+    b = await c.balance('A');
+    expect([b.total.adjustments, b.total.payable].map((x) => x.toFixed())).toEqual(['150', '200']);
+    expect(Object.keys(b.byLabel)).toEqual(['0to8']); // the Echo8 book does not appear
+    expect([b.payout.allowed, b.payout.amountCents]).toEqual([true, 20000]);
+    // asOf 2026-09: the adjustments of 2026-10-15 are not in the cut, payable 50 (D-173 §3.3)
+    expect((await f.ownerBalance(owner, { asOf: '2026-09' })).total.payable.toFixed()).toBe('50');
+    await expect(f.createOperation({ kind: 'adjustment', direction: 'in', amount: '1', ownerId: owner, date: '2026-10-15', comment: 'no basis', labelId: zero })).rejects.toMatchObject({
+      code: 'document_required',
+    });
+    await c.verify();
+  });
+});
+
 describe('G61 (D-172): an approved label decision confirms the owner like a contract', () => {
   /**
    * rows A 30, B 20 on I(1); participation P 10 (net, top); unit 100. B's owner is confirmed by a contract whose
