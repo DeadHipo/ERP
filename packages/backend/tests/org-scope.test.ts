@@ -245,7 +245,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   type Ids = {
     owner: string; artist: string; artist2: string; track: string; document: string; split: string;
     participation: string; label: string; sublabel: string; rule: string; file: string; norm: string;
-    operation: string; ad: string; isrc: string; upc: string; account: string;
+    operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
   };
   type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown };
 
@@ -256,6 +256,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   let B: Ids;
   let A: { label: string; owner: string; artist: string; document: string; buyout: string };
 
+  const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
   const as = <T extends request.Test>(who: 'a' | 'b' | 'sys', t: T): T => t.set('Cookie', cookie[who]).set('X-Operator', 'org-scope') as T;
   async function api(who: 'a' | 'b', method: 'get' | 'post' | 'patch', url: string, c: Call = {}) {
     let t = as(who, request(app)[method]('/api/v1' + url));
@@ -279,7 +280,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     mkdirSync(dataDir, { recursive: true });
     const orgs = createOrgFacades({ stores: { db: stack.db, pool: stack.pg.pool, columnar: stack.columnar }, dataDir, payoutThresholdCents: 0 });
     const auth = createAuthService(stack.db);
-    const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
     await auth.createUser({ login: users.a, password: PASSWORD, orgId: orgA, role: 'org_admin', createdBy: 'tests' });
     await auth.createUser({ login: users.b, password: PASSWORD, orgId: orgB, role: 'org_admin', createdBy: 'tests' });
     await auth.createUser({ login: users.sys, password: PASSWORD, system: true, createdBy: 'tests' });
@@ -327,7 +327,11 @@ describe('two organizations behind the login: the API (D-170)', () => {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555',
+      // D-171: a member of B and a (revoked) support grant of B
+      member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
+      grant: (await ok('b', 'post', '/support', { login: users.sys })).id,
     };
+    await ok('b', 'post', `/support/${B.grant}/revoke`);
   });
 
   const unknown = (): Ids => {
@@ -335,7 +339,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666',
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(),
     };
   };
 
@@ -343,6 +347,13 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const CASES: Record<string, (x: Ids) => Call> = {
     'GET /search': () => ({ query: { q: 'Secret' } }),
     'GET /owners': (x) => ({ query: { label: x.label } }),
+    'GET /users': () => ({}),
+    'POST /users': (x) => ({ body: { login: `scope-new-${sfx}`, password: 'p', role: 'label_manager', labelIds: [x.label] } }),
+    'PATCH /users/:id': (x) => ({ params: { id: x.member }, body: { active: false } }),
+    'POST /users/:id/password': (x) => ({ params: { id: x.member }, body: { password: 'p' } }),
+    'GET /support': () => ({}),
+    'POST /support': () => ({ body: { login: `scope-bm-${sfx}` } }),
+    'POST /support/:id/revoke': (x) => ({ params: { id: x.grant } }),
     'POST /owners/merge': (x) => ({ body: { fromId: x.owner, intoId: A.owner, reason: 'r' } }),
     'GET /owners/payables': (x) => ({ query: { ids: x.owner } }),
     'GET /owners/:id': (x) => ({ params: { id: x.owner } }),
@@ -487,7 +498,16 @@ describe('two organizations behind the login: the API (D-170)', () => {
     expect([none.status, none.body.error?.code]).toEqual([400, 'org_required']);
     const unknownOrg = await sys(request(app).get('/api/v1/owners')).set('X-Org', randomUUID());
     expect([unknownOrg.status, unknownOrg.body.error?.code]).toEqual([404, 'org_not_found']);
+    // D-171: only under a support grant of B's administrator
+    const refused = await sys(request(app).get('/api/v1/owners')).set('X-Org', orgB);
+    expect([refused.status, refused.body.error?.code]).toEqual([403, 'support_required']);
+    const granted = await as('b', request(app).post('/api/v1/support')).send({ login: users.sys });
+    expect(granted.status, JSON.stringify(granted.body)).toBe(201);
     const inB = await sys(request(app).get('/api/v1/owners')).set('X-Org', orgB);
+    expect(inB.status).toBe(200);
+    // the grant of B opens nothing in A
+    const inA = await sys(request(app).get('/api/v1/owners')).set('X-Org', orgA);
+    expect([inA.status, inA.body.error?.code]).toEqual([403, 'support_required']);
     const inBIds = (inB.body as { id: string }[]).map((o) => o.id);
     expect(inBIds).toContain(B.owner);
     expect(inBIds).not.toContain(A.owner);

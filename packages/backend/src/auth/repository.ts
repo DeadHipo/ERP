@@ -1,11 +1,12 @@
-import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import type { Db } from '../shared/pg-db';
 import { organizations } from '../orgs/schema';
-import { memberships, sessions, userLabels, users, type Role } from './schema';
+import { memberships, sessions, supportGrants, userLabels, users, type Role } from './schema';
 
 export type UserRow = typeof users.$inferSelect;
 export type MembershipRow = typeof memberships.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+export type SupportGrantRow = typeof supportGrants.$inferSelect;
 
 /**
  * All SQL of the users, memberships and sessions (schema `auth`, D-170, D-171). Global, not under an organization: a
@@ -82,6 +83,48 @@ export function createAuthRepository(db: Db) {
       for (const r of rows) out.set(r.userId, [...(out.get(r.userId) ?? []), r.labelId]);
       return out;
     },
+    /** Every membership of a user (active or not), any organization. */
+    allMembershipsOf: (userId: string) => orm().select().from(memberships).where(eq(memberships.userId, userId)),
+    /** Every user with the memberships (active or not) and the organization names, by login (system screens). */
+    usersWithMemberships: async () => {
+      const all = await orm().select().from(users).orderBy(asc(users.login));
+      const rows = await orm()
+        .select({ userId: memberships.userId, orgId: memberships.orgId, orgName: organizations.name, role: memberships.role, disabledAt: memberships.disabledAt })
+        .from(memberships)
+        .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+        .orderBy(asc(organizations.name), asc(memberships.orgId));
+      return { users: all, memberships: rows };
+    },
+    updateMembership: async (userId: string, orgId: string, set: { role?: Role; disabled?: boolean }): Promise<void> => {
+      if (set.role === undefined && set.disabled === undefined) return;
+      await orm()
+        .update(memberships)
+        .set({
+          ...(set.role !== undefined ? { role: set.role } : {}),
+          ...(set.disabled !== undefined ? { disabledAt: set.disabled ? sql`now()` : null } : {}),
+        })
+        .where(and(eq(memberships.userId, userId), eq(memberships.orgId, orgId)));
+    },
+    deleteUserLabels: async (userId: string, orgId: string): Promise<void> => {
+      await orm().delete(userLabels).where(and(eq(userLabels.userId, userId), eq(userLabels.orgId, orgId)));
+    },
+    /** The active `org_admin` memberships of an organization other than `exceptUserId`, whose users are not disabled. */
+    countOtherActiveAdmins: async (orgId: string, exceptUserId: string): Promise<number> =>
+      (
+        await orm()
+          .select({ n: sql<number>`count(*)::int` })
+          .from(memberships)
+          .innerJoin(users, eq(users.id, memberships.userId))
+          .where(
+            and(
+              eq(memberships.orgId, orgId),
+              eq(memberships.role, 'org_admin'),
+              isNull(memberships.disabledAt),
+              isNull(users.disabledAt),
+              ne(memberships.userId, exceptUserId),
+            ),
+          )
+      )[0]?.n ?? 0,
     countActiveMembers: async (orgId: string): Promise<number> =>
       (
         await orm()
@@ -89,6 +132,48 @@ export function createAuthRepository(db: Db) {
           .from(memberships)
           .where(and(eq(memberships.orgId, orgId), isNull(memberships.disabledAt)))
       )[0]?.n ?? 0,
+
+    // ---- support grants (D-171) ----
+    insertGrant: async (row: typeof supportGrants.$inferInsert): Promise<SupportGrantRow> =>
+      (await orm().insert(supportGrants).values(row).returning())[0] as SupportGrantRow,
+    /** The grants of an organization with the login of the grantee, newest first (at most `limit`). */
+    grantsOf: (orgId: string, limit: number) =>
+      orm()
+        .select({ grant: supportGrants, login: users.login, active: sql<boolean>`(${supportGrants.revokedAt} IS NULL AND ${supportGrants.expiresAt} > now())` })
+        .from(supportGrants)
+        .innerJoin(users, eq(users.id, supportGrants.userId))
+        .where(eq(supportGrants.orgId, orgId))
+        .orderBy(desc(supportGrants.grantedAt), desc(supportGrants.id))
+        .limit(limit),
+    grantOf: async (orgId: string, id: string) =>
+      (
+        await orm()
+          .select({ grant: supportGrants, login: users.login, active: sql<boolean>`(${supportGrants.revokedAt} IS NULL AND ${supportGrants.expiresAt} > now())` })
+          .from(supportGrants)
+          .innerJoin(users, eq(users.id, supportGrants.userId))
+          .where(and(eq(supportGrants.orgId, orgId), eq(supportGrants.id, id)))
+      )[0],
+    revokeGrant: async (id: string, by: string): Promise<void> => {
+      await orm()
+        .update(supportGrants)
+        .set({ revokedAt: sql`now()`, revokedBy: by })
+        .where(and(eq(supportGrants.id, id), isNull(supportGrants.revokedAt)));
+    },
+    /** The live grants (not revoked, not expired) of an organization to a user. */
+    liveGrants: (orgId: string, userId: string) =>
+      orm()
+        .select()
+        .from(supportGrants)
+        .where(and(eq(supportGrants.orgId, orgId), eq(supportGrants.userId, userId), isNull(supportGrants.revokedAt), gt(supportGrants.expiresAt, sql`now()`))),
+    /** Is there a grant that ran out (not revoked, expired) of an organization to a user? */
+    hasExpiredGrant: async (orgId: string, userId: string): Promise<boolean> =>
+      (
+        await orm()
+          .select({ id: supportGrants.id })
+          .from(supportGrants)
+          .where(and(eq(supportGrants.orgId, orgId), eq(supportGrants.userId, userId), isNull(supportGrants.revokedAt), lte(supportGrants.expiresAt, sql`now()`)))
+          .limit(1)
+      ).length > 0,
 
     // ---- sessions ----
     insertSession: async (row: { id: string; userId: string; orgId: string | null; expiresAt: string }): Promise<void> => {

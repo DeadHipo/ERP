@@ -2,20 +2,22 @@ import express from 'express';
 import { createLoginLimiter } from '../auth/limits';
 import { authenticateOrSystemKey, noStore, originGuard, type AuthConfig } from '../auth/middleware';
 import type { AuthService } from '../auth/service';
-import type { OrgFacades } from '../orgs/facades';
+import type { OrgEntry, OrgFacades } from '../orgs/facades';
 import { orgRoutes, resolveOrg } from '../orgs/middleware';
 import { serveClient, unknownApiRoute } from './app';
 import { errorHandler } from './http';
 import { requestId } from './request-id';
+import { createOrgAdminRouter } from './org-admin-router';
 import { createSystemRouter } from './system-router';
 
 /**
  * The application of the server (D-170, D-171): every organization of the database behind the login. The chain:
  * requestId → `Cache-Control: no-store` and the `Origin` check of writes (/api) → express.json →
  * authenticateOrSystemKey (/api) → the system routes (`/health`, `/openapi.json`, `/docs`,
- * `/auth/*`, `/orgs*` with requireUser / requireSystem and the system trace) → resolveOrg (the organization of the
- * session, `X-Org` of the system administrator, ERP_DEFAULT_ORG in `off`) → the router of the organization
- * (operatorTrace → labelGuard → the v1 routes).
+ * `/auth/*`, `/orgs*`, `/system/users*` with their access checks and the system trace) → resolveOrg (the organization
+ * of the session, `X-Org` of the system administrator under a support grant, ERP_DEFAULT_ORG in `off`) → `/users*`,
+ * `/support*` (the auth service, D-171) → the router of the organization (operatorTrace → labelGuard → authorize →
+ * the v1 routes).
  */
 export function createServerApp(deps: {
   orgs: OrgFacades;
@@ -41,7 +43,12 @@ export function createServerApp(deps: {
       limiter,
     }),
   );
-  app.use('/api/v1', resolveOrg(orgs, auth.config), orgRoutes);
+  app.use(
+    '/api/v1',
+    resolveOrg(orgs, auth.config, (orgId, userId) => auth.service.supportState(orgId, userId)),
+    createOrgAdminRouter({ auth: auth.service, facadeOf: (res) => (res.locals.entry as OrgEntry).facade }),
+    orgRoutes,
+  );
   app.use('/api', unknownApiRoute);
   serveClient(app, deps.clientDist);
   app.use(errorHandler);

@@ -1296,8 +1296,8 @@ const memberRole = z.enum(['org_admin', 'label_manager']);
 /**
  * `GET /auth/me`, `POST /auth/login`: the session; with `AUTH_MODE=off` no user, the default organization and the role
  * `local`. D-171: the role in the session's organization (`system` for a system administrator), the labels the user
- * may choose (an `org_admin` and `local`: every own label, `allLabels`), the user's active memberships; `support`
- * comes with the support grants (null until then).
+ * may choose (an `org_admin` and `local`: every own label, `allLabels`), the user's active memberships; `support` the
+ * live grant a system administrator works under (role `support`, the organization of `X-Org` or of the enter).
  */
 export const meSchema = z.object({
   authMode: z.enum(['on', 'off']),
@@ -1323,6 +1323,10 @@ export const orgSummarySchema = orgSchema.extend({
     owners: z.number().int(),
     users: z.number().int(),
   }),
+  support: z
+    .object({ expiresAt: timestamp, write: z.boolean() })
+    .nullable()
+    .describe("The live support grant of this organization to the asking system administrator (D-171); null without one"),
 });
 export type OrgSummary = z.infer<typeof orgSummarySchema>;
 /** A member of an organization (D-171): never a password hash; `active` = the membership, `disabled` = the user. */
@@ -1338,3 +1342,26 @@ export const memberSchema = z.object({
 });
 export type Member = z.infer<typeof memberSchema>;
 export const okSchema = z.object({ ok: z.literal(true) });
+/** A user as the system administrator sees it (D-171): never a password hash; the memberships with their state. */
+export const systemUserSchema = z.object({
+  id: z.string(),
+  login: z.string(),
+  isSystemAdmin: z.boolean(),
+  disabled: z.boolean(),
+  memberships: z.array(z.object({ orgId: z.string(), orgName: z.string(), role: memberRole, active: z.boolean() })),
+});
+export type SystemUser = z.infer<typeof systemUserSchema>;
+/** A support grant of an organization (D-171): `active` = not revoked and not expired. */
+export const supportGrantSchema = z.object({
+  id: z.string(),
+  orgId: z.string(),
+  login: z.string(),
+  write: z.boolean(),
+  grantedBy: z.string(),
+  grantedAt: timestamp,
+  expiresAt: timestamp,
+  revokedAt: timestamp.nullable(),
+  revokedBy: z.string().nullable(),
+  active: z.boolean(),
+});
+export type SupportGrant = z.infer<typeof supportGrantSchema>;

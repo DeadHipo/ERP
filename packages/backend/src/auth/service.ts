@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from '../shared/errors';
 import type { Db } from '../shared/pg-db';
 import { dummyHash, hashPassword, needsRehash, verifyPassword } from './password';
-import { createAuthRepository, type MembershipRow, type UserRow } from './repository';
+import { createAuthRepository, type MembershipRow, type SupportGrantRow, type UserRow } from './repository';
 import { ROLES, type Role } from './schema';
 
 // Users, memberships and sessions (D-170, D-171). Not a module of the facade: global, above the facade and the
@@ -49,6 +49,36 @@ export interface PublicUser {
   isSystemAdmin: boolean;
   disabled: boolean;
 }
+
+/** A user as the system administrator sees it (D-171). */
+export interface SystemUser extends PublicUser {
+  memberships: { orgId: string; orgName: string; role: Role; active: boolean }[];
+}
+
+/** A support grant of an organization to a system administrator (D-171). */
+export interface SupportGrant {
+  id: string;
+  orgId: string;
+  login: string;
+  write: boolean;
+  grantedBy: string;
+  grantedAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  /** Not revoked and not expired. */
+  active: boolean;
+}
+
+/** The support access of a system administrator to an organization: a live grant, only expired ones, or none. */
+export type SupportState =
+  | { state: 'live'; write: boolean; expiresAt: string }
+  | { state: 'expired' }
+  | { state: 'none' };
+
+/** The longest support grant (D-171 В12) and the default one. */
+export const SUPPORT_MAX_MS = 7 * 24 * 3600 * 1000;
+export const SUPPORT_DEFAULT_MS = 24 * 3600 * 1000;
 
 /** An organization the user may choose at the login (`409 org_choice_required`). */
 export interface OrgChoice {
@@ -139,6 +169,50 @@ export function createAuthService(db: Db) {
     if (!m || m.disabledAt !== null) return undefined;
     const labelIds = m.role === 'label_manager' ? ((await repo.labelsOf(orgId, [u.id])).get(u.id) ?? []) : [];
     return { id: u.id, login: u.login, isSystemAdmin: false, orgId, role: m.role, labelIds, sessionId };
+  }
+
+  const grantOf = (g: SupportGrantRow, login: string, active: boolean): SupportGrant => ({
+    id: g.id,
+    orgId: g.orgId,
+    login,
+    write: g.write,
+    grantedBy: g.grantedBy,
+    grantedAt: g.grantedAt,
+    expiresAt: g.expiresAt,
+    revokedAt: g.revokedAt,
+    revokedBy: g.revokedBy,
+    active,
+  });
+
+  /** The membership of a user in an organization, or 404 (a user of another organization is unknown here). */
+  async function membershipOrNotFound(orgId: string, userId: string): Promise<MembershipRow> {
+    const m = await repo.membership(userId, orgId);
+    if (!m) throw new NotFoundError('Member', userId);
+    return m;
+  }
+
+  async function userById(id: string): Promise<UserRow> {
+    const row = await repo.byId(id);
+    if (!row) throw new NotFoundError('User', id);
+    return row;
+  }
+
+  async function disable(row: UserRow, disabled: boolean): Promise<PublicUser> {
+    return db.transaction(async () => {
+      const out = publicOf((await repo.setDisabled(row.id, disabled)) as UserRow);
+      if (disabled) await repo.revokeSessionsOf(row.id);
+      return out;
+    });
+  }
+
+  async function newPassword(row: UserRow, password: string): Promise<PublicUser> {
+    if (!password) throw new ValidationError('A password is required');
+    const hash = await hashPassword(password);
+    return db.transaction(async () => {
+      const out = publicOf((await repo.setPasswordHash(row.id, hash)) as UserRow);
+      await repo.revokeSessionsOf(row.id);
+      return out;
+    });
   }
 
   const service = {
@@ -307,25 +381,138 @@ export function createAuthService(db: Db) {
     },
 
     /** Disables or enables a user everywhere; disabling revokes every session. */
-    async setDisabled(login: string, disabled: boolean): Promise<PublicUser> {
-      const row = await existing(login);
-      return db.transaction(async () => {
-        const out = publicOf((await repo.setDisabled(row.id, disabled)) as UserRow);
-        if (disabled) await repo.revokeSessionsOf(row.id);
-        return out;
-      });
-    },
+    setDisabled: async (login: string, disabled: boolean): Promise<PublicUser> => disable(await existing(login), disabled),
 
     /** A new password by the administrator; every session of the user is revoked. */
     async resetPassword(login: string, password: string): Promise<PublicUser> {
       if (!password) throw new ValidationError('A password is required');
-      const row = await existing(login);
-      const hash = await hashPassword(password);
-      return db.transaction(async () => {
-        const out = publicOf((await repo.setPasswordHash(row.id, hash)) as UserRow);
-        await repo.revokeSessionsOf(row.id);
-        return out;
+      return newPassword(await existing(login), password);
+    },
+
+    // ---- the members of an organization (D-171: `/users*` of its org_admin, `/orgs/:id/users*` of the system) ----
+
+    /** One member of an organization (404 for a user who is not one). */
+    member: (orgId: string, userId: string): Promise<Member> => member(orgId, userId),
+
+    /**
+     * Changes a membership: the role, the labels of a manager (replaced as a whole; the caller checks they are own
+     * labels of the organization), `active` (false suspends it and ends the user's sessions in this organization).
+     * 404 for a user who is not a member; 409 `last_org_admin` when the change leaves the organization without an
+     * active administrator (the first appointment is always allowed: nothing is taken away then).
+     */
+    async updateMember(
+      orgId: string,
+      userId: string,
+      patch: { role?: Role; labelIds?: string[]; active?: boolean },
+      by: string,
+    ): Promise<Member> {
+      await db.transaction(async () => {
+        const m = await membershipOrNotFound(orgId, userId);
+        const current = m.role === 'label_manager' ? ((await repo.labelsOf(orgId, [userId])).get(userId) ?? []) : [];
+        const role = patch.role ?? m.role;
+        const labelIds = patch.labelIds ?? (role === 'org_admin' ? [] : current);
+        const active = patch.active ?? m.disabledAt === null;
+        assertRoleLabels(role, labelIds);
+        const wasAdmin = m.role === 'org_admin' && m.disabledAt === null;
+        const staysAdmin = role === 'org_admin' && active;
+        if (wasAdmin && !staysAdmin && (await repo.countOtherActiveAdmins(orgId, userId)) === 0)
+          throw new ConflictError('The organization keeps at least one administrator', 'last_org_admin');
+        await repo.updateMembership(userId, orgId, {
+          ...(role !== m.role ? { role } : {}),
+          ...(active !== (m.disabledAt === null) ? { disabled: !active } : {}),
+        });
+        await repo.deleteUserLabels(userId, orgId);
+        await repo.insertUserLabels([...new Set(labelIds)].map((labelId) => ({ userId, orgId, labelId, createdBy: by })));
+        if (!active) await repo.revokeSessionsOf(userId, { orgId });
       });
+      return member(orgId, userId);
+    },
+
+    /**
+     * A new password of a member set by the organization's administrator; every session of the user ends. 404 for a
+     * user who is not a member; 403 `forbidden` when the user is also a member of another organization (only the
+     * system administrator may reset it then, D-171 В2).
+     */
+    async setMemberPassword(orgId: string, userId: string, password: string): Promise<void> {
+      await membershipOrNotFound(orgId, userId);
+      if ((await repo.allMembershipsOf(userId)).some((m) => m.orgId !== orgId))
+        throw new ForbiddenError('The user is a member of another organization: only the system administrator resets the password');
+      await newPassword(await userById(userId), password);
+    },
+
+    // ---- every user (the system administrator, D-171) ----
+
+    /** Every user with the memberships (never a hash), by login. */
+    async systemUsers(): Promise<SystemUser[]> {
+      const { users: all, memberships: rows } = await repo.usersWithMemberships();
+      return all.map((u) => ({
+        ...publicOf(u),
+        memberships: rows
+          .filter((m) => m.userId === u.id)
+          .map((m) => ({ orgId: m.orgId, orgName: m.orgName, role: m.role, active: m.disabledAt === null })),
+      }));
+    },
+    async systemUser(id: string): Promise<SystemUser> {
+      const found = (await service.systemUsers()).find((u) => u.id === id);
+      if (!found) throw new NotFoundError('User', id);
+      return found;
+    },
+    /** Disables or enables a user by id everywhere (disabling ends every session). */
+    setDisabledById: async (id: string, disabled: boolean): Promise<PublicUser> => disable(await userById(id), disabled),
+    /** A new password by id; every session ends. */
+    resetPasswordById: async (id: string, password: string): Promise<PublicUser> => newPassword(await userById(id), password),
+
+    // ---- support grants (D-171) ----
+
+    /**
+     * The organization's administrator lets a system administrator (by login) in until `expiresAt` (ISO; default 24 h,
+     * at most 7 days ahead, in the future: else 400 `validation_error`); `write` allows writes. A login that is not an
+     * active system administrator is 404 `not_found`, the same answer as an unknown one.
+     */
+    async grantSupport(input: { orgId: string; login: string; expiresAt?: string; write: boolean; grantedBy: string }): Promise<SupportGrant> {
+      const row = await repo.byLogin(normLogin(input.login));
+      if (!row || !row.isSystemAdmin || row.disabledAt !== null) throw new NotFoundError('User', input.login);
+      const now = Date.now();
+      const until = input.expiresAt !== undefined ? new Date(input.expiresAt).getTime() : now + SUPPORT_DEFAULT_MS;
+      if (!Number.isFinite(until) || until <= now) throw new ValidationError('The support access must end in the future');
+      if (until > now + SUPPORT_MAX_MS) throw new ValidationError('The support access lasts at most 7 days');
+      const g = await db.transaction(() =>
+        repo.insertGrant({
+          id: randomUUID(),
+          orgId: input.orgId,
+          userId: row.id,
+          write: input.write,
+          grantedBy: input.grantedBy,
+          expiresAt: new Date(until).toISOString(),
+        }),
+      );
+      return grantOf(g, row.login, true);
+    },
+
+    /** The grants of an organization (expired and revoked too), the 50 newest. */
+    supportGrants: async (orgId: string): Promise<SupportGrant[]> =>
+      (await repo.grantsOf(orgId, 50)).map((r) => grantOf(r.grant, r.login, r.active)),
+
+    /** Revokes a grant of the organization (404 for another's or an unknown id); idempotent. */
+    async revokeSupport(orgId: string, id: string, by: string): Promise<SupportGrant> {
+      if (!(await repo.grantOf(orgId, id))) throw new NotFoundError('Support grant', id);
+      await db.transaction(() => repo.revokeGrant(id, by));
+      const r = await repo.grantOf(orgId, id);
+      if (!r) throw new NotFoundError('Support grant', id);
+      return grantOf(r.grant, r.login, r.active);
+    },
+
+    /**
+     * The support access of a system administrator to an organization, read on every request: the live grants (the
+     * latest end; write if any of them allows it), else `expired` when a grant ran out unrevoked, else `none`.
+     */
+    async supportState(orgId: string, userId: string): Promise<SupportState> {
+      const live = await repo.liveGrants(orgId, userId);
+      if (live.length) {
+        const expiresAt = live.map((g) => g.expiresAt).sort().at(-1) as string;
+        return { state: 'live', write: live.some((g) => g.write), expiresAt };
+      }
+      return (await repo.hasExpiredGrant(orgId, userId)) ? { state: 'expired' } : { state: 'none' };
     },
   };
   return service;
@@ -356,6 +543,8 @@ export function meOf(input: {
   memberships: { orgId: string; orgName: string; role: Role }[];
   /** The operations the session may call (`allowedOperations`). */
   abilities: string[];
+  /** The live support grant a system administrator works under (D-171). */
+  support?: { orgId: string; expiresAt: string; write: boolean } | null;
 }) {
   const { user, org } = input;
   return {
@@ -366,7 +555,7 @@ export function meOf(input: {
     labels: input.labels,
     allLabels: input.allLabels,
     memberships: input.memberships,
-    support: null,
+    support: input.support ?? null,
     abilities: input.abilities,
   };
 }

@@ -39,9 +39,9 @@ describe('abilities (D-171)', () => {
   it('the frozen literal names exactly the operations of an organization; the counts of the plan', () => {
     expect(Object.keys(MANAGER_ANSWER).sort()).toEqual(orgOps.map(operationKey).sort());
     const count = (c: string) => Object.values(MANAGER_ANSWER).filter((v) => v === c).length;
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([75, 24, 16, 6, 29]);
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([82, 24, 16, 6, 36]);
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([16, 21, 14, 12, 6, 6]);
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([16, 21, 14, 12, 6, 13]);
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {

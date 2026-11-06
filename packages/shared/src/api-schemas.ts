@@ -434,3 +434,43 @@ export const createMemberUserBody = z.object({
   role: memberRole,
   labelIds: z.array(z.string().min(1)).default([]),
 });
+const loginOf = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9._-]{3,64}$/);
+/**
+ * `POST /orgs/:id/members` (D-171): an existing user (by login) becomes a member (404 not_found for an unknown login,
+ * 409 already_member, 400 validation_error for a system administrator).
+ */
+export const addMemberBody = z.object({
+  login: loginOf,
+  role: memberRole,
+  labelIds: z.array(z.string().min(1)).default([]),
+});
+/**
+ * `PATCH /users/:id`, `PATCH /orgs/:id/users/:userId` (D-171): the role, the labels of a manager (replaced as a whole)
+ * and `active` (the membership; false suspends it and ends its sessions in this organization). 409 last_org_admin.
+ */
+export const updateMemberBody = z
+  .object({
+    role: memberRole.optional(),
+    labelIds: z.array(z.string().min(1)).optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((b) => b.role !== undefined || b.labelIds !== undefined || b.active !== undefined, {
+    message: 'Nothing to change: role, labelIds or active',
+  });
+/** `POST /users/:id/password`, `POST /system/users/:id/password` (D-171): a new password; every session ends. */
+export const setPasswordBody = z.object({ password: z.string().min(1).max(200) });
+/** `PATCH /system/users/:id` (D-171): disable (every session ends) or enable a user everywhere. */
+export const updateSystemUserBody = z.object({ disabled: z.boolean() });
+/**
+ * `POST /support` (D-171): the organization administrator grants a system administrator (by login) support access until
+ * `expiresAt` (at most 7 days ahead; default 24 h); `write` allows writes (never approve, pay or admin).
+ */
+export const grantSupportBody = z.object({
+  login: loginOf,
+  expiresAt: z.iso.datetime({ offset: true }).optional(),
+  write: z.boolean().default(false),
+});

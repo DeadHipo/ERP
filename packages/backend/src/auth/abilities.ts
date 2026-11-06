@@ -211,3 +211,21 @@ export const systemKeyPrincipal = (): Principal => ({
 
 /** `approve:documents`: the ability as the `details.ability` of a `403 forbidden`. */
 export const abilityName = (a: Ability): string => `${a.action}:${a.subject}`;
+
+/**
+ * The principal of the system administrator working in an organization under a live support grant (D-171): every
+ * book, read and read money; write only with a write grant; never approve, pay or admin.
+ */
+export const supportPrincipal = (
+  user: { id: string; login: string; sessionId: string | null },
+  orgId: string,
+  write: boolean,
+): Principal => ({
+  kind: 'support',
+  userId: user.id,
+  login: user.login,
+  orgId,
+  sessionId: user.sessionId,
+  labelIds: 'all',
+  supportWrite: write,
+});

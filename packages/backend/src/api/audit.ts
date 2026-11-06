@@ -38,6 +38,11 @@ const SUMMARY_FIELDS = [
   'recoveryPercent',
   'scope',
   'labelId',
+  // the members and the support grants (D-171): never the login or the password
+  'role',
+  'active',
+  'write',
+  'expiresAt',
 ];
 /** Summary fields kept even when null: clearing them is the write (`PATCH /documents/:id { labelId: null }`, D-169). */
 const NULLABLE_SUMMARY_FIELDS = new Set(['labelId']);
@@ -145,9 +150,13 @@ interface TraceTarget {
   /** The facade whose audit module records the row. */
   facade: Pick<Facade, 'recordAction'>;
   entityIds: string[];
-  summary: { params: Record<string, unknown>; body: Record<string, unknown> };
+  /** `support: true` marks a write of the system administrator working under a support grant (D-171). */
+  summary: { params: Record<string, unknown>; body: Record<string, unknown>; support?: true };
   labelId: string | null;
 }
+
+/** A write of the system administrator under a support grant (`resolveOrg` set the principal, D-171). */
+const bySupport = (res: Response): boolean => (res.locals.principal as { kind?: string } | undefined)?.kind === 'support';
 
 /**
  * Requires `X-Operator` on a write and records one audit row after a 2xx answer, before it is sent; `target` decides
@@ -204,12 +213,12 @@ function traceWrites(
 
 /** Mount before the routes of an organization: every write of the organization leaves a row in its audit. */
 export function operatorTrace(facade: Facade): RequestHandler {
-  return traceWrites(async (req, route, params, body) => {
+  return traceWrites(async (req, route, params, body, res) => {
     const reqBody = asRecord(req.body);
     return {
       facade,
       entityIds: [...new Set([...entityIdsOf(params, reqBody), ...createdIdsOf(body)])],
-      summary: summaryOf(params, reqBody),
+      summary: { ...summaryOf(params, reqBody), ...(bySupport(res) ? { support: true as const } : {}) },
       labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
     };
   });
@@ -221,13 +230,23 @@ export function operatorTrace(facade: Facade): RequestHandler {
  * summary keeps neither the login nor the password nor the name.
  */
 export function systemTrace(facadeOf: (orgId: string) => Promise<Pick<Facade, 'recordAction'>>): RequestHandler {
-  return traceWrites(async (_req, _route, params, body) => {
+  return traceWrites(async (req, route, params, body) => {
     const created = asRecord(body);
     const orgId = params.id ?? (typeof created.id === 'string' ? created.id : '');
     const ids = [orgId, ...(params.id && typeof created.id === 'string' ? [created.id] : [])].filter((x) => !!x);
-    return { facade: await facadeOf(orgId), entityIds: [...new Set(ids)], summary: { params, body: {} }, labelId: null };
+    if (params.userId) ids.push(params.userId);
+    // the role and the state of a membership, never a login or a password; entering as support is marked (D-171)
+    const picked = summaryOf({}, asRecord(req.body)).body;
+    const support = route === '/orgs/:id/support/enter' ? { support: true as const } : {};
+    return { facade: await facadeOf(orgId), entityIds: [...new Set(ids)], summary: { params, body: picked, ...support }, labelId: null };
   });
 }
+
+/**
+ * The writes on a user outside any organization (`/system/users*`, D-171): `X-Operator` is required as on every
+ * write, no audit row (no organization); the route logs the request id, the target and the outcome.
+ */
+export const noOrgTrace = (): RequestHandler => traceWrites(async () => null);
 
 /**
  * The user's own writes (`POST /auth/password`, D-171): a member's row goes into the audit of the session's

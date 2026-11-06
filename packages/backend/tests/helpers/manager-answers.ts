@@ -79,5 +79,13 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /ads/:id': 'R',
   'PATCH /ads/:id': 'R',
   'POST /ads/:id/deactivate': 'R',
+  // the users of the organization and the support grants (stage 3 commit 4): the org_admin's only
+  'GET /users': 'x',
+  'POST /users': 'x',
+  'PATCH /users/:id': 'x',
+  'POST /users/:id/password': 'x',
+  'GET /support': 'x',
+  'POST /support': 'x',
+  'POST /support/:id/revoke': 'x',
 };
 

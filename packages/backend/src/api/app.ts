@@ -8,6 +8,7 @@ import type { Facade } from '../facade';
 import type { OrgFacades } from '../orgs/facades';
 import { createOrgsService, OrgNotFoundError } from '../orgs/service';
 import { errorHandler } from './http';
+import { createOrgAdminRouter } from './org-admin-router';
 import { createOrgRouter } from './org-router';
 import { requestId } from './request-id';
 import { createSystemRouter } from './system-router';
@@ -73,6 +74,7 @@ export function createApp(
     res.locals.principal = localPrincipal(facade.orgId);
     next();
   });
+  app.use('/api/v1', createOrgAdminRouter({ auth, facadeOf: () => facade }));
   app.use('/api/v1', createOrgRouter(facade, { tmpDir: opts.tmpDir }));
   app.use('/api', unknownApiRoute);
   serveClient(app, opts.clientDist);

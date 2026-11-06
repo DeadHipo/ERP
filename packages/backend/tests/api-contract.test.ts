@@ -256,6 +256,51 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     expect((users as unknown as { login: string }[]).map((u) => u.login)).toContain(userLogin);
     expect(JSON.stringify(users)).not.toMatch(/scrypt|passwordHash/);
 
+    // D-171: the members of the organization by its administrator, the system's members and users, support grants
+    const memberUser = await call('post', '/users', { body: { login: `contract-mb-${suffix}`, password: PASSWORD, role: 'org_admin' } });
+    expect(memberUser).toMatchObject({ login: `contract-mb-${suffix}`, role: 'org_admin', active: true });
+    expect(((await call('get', '/users')) as unknown as { id: string }[]).map((u) => u.id)).toContain(memberUser.id);
+    await call('patch', '/users/:id', { params: { id: memberUser.id }, body: { active: true } });
+    await call('post', '/users/:id/password', { params: { id: memberUser.id }, body: { password: PASSWORD } });
+    const elsewhere = await createOrgsService((await testStack()).db).createOrganization({ name: `Contract Else ${mode} ${suffix}`, createdBy: 'tests' });
+    const outsider = await createAuthService((await testStack()).db).createUser({
+      login: `contract-o-${mode}-${suffix}`,
+      password: PASSWORD,
+      orgId: elsewhere.id,
+      role: 'org_admin',
+      createdBy: 'tests',
+    });
+    const added = await call('post', '/orgs/:id/members', { params: { id: orgId }, body: { login: outsider.login, role: 'org_admin' } });
+    expect(added).toMatchObject({ id: outsider.id, role: 'org_admin', active: true });
+    const suspended = await call('patch', '/orgs/:id/users/:userId', { params: { id: orgId, userId: outsider.id }, body: { active: false } });
+    expect(suspended.active).toBe(false);
+    const everyone = (await call('get', '/system/users')) as unknown as { id: string; memberships: { orgId: string }[] }[];
+    expect(everyone.find((u) => u.id === outsider.id)?.memberships.map((m) => m.orgId).sort()).toEqual([orgId, elsewhere.id].sort());
+    expect(JSON.stringify(everyone)).not.toMatch(/scrypt|passwordHash/);
+    expect((await call('patch', '/system/users/:id', { params: { id: outsider.id }, body: { disabled: false } })).disabled).toBe(false);
+    await call('post', '/system/users/:id/password', { params: { id: outsider.id }, body: { password: PASSWORD } });
+    if (mode === 'off') await createAuthService((await testStack()).db).createUser({ login: SYS_LOGIN, password: PASSWORD, system: true, createdBy: 'tests' });
+    const grant = await call('post', '/support', { body: { login: SYS_LOGIN, write: true } });
+    expect(grant).toMatchObject({ login: SYS_LOGIN, write: true, active: true });
+    if (mode === 'on') {
+      const entered = await call('post', '/orgs/:id/support/enter', { params: { id: orgId } });
+      expect(entered).toMatchObject({ role: 'support', org: { id: orgId }, support: { orgId, write: true } });
+      const asSupport = (path: string) => request(app).get(`/api/v1${path}`).set('Cookie', cookies.system as string).set('X-Org', orgId);
+      await asSupport('/owners').expect(200);
+      expect((await asSupport('/users')).body.error?.code).toBe('forbidden');
+    } else {
+      // the system key has no user to grant to: never support (the operation is covered by the `on` block)
+      const refusedEnter = await authed(request(app).post(`/api/v1/orgs/${orgId}/support/enter`), 'system').set('X-Operator', OPERATOR);
+      expect([refusedEnter.status, refusedEnter.body.error?.code]).toEqual([403, 'support_required']);
+      covered.add('POST /orgs/:id/support/enter');
+    }
+    expect(((await call('get', '/support')) as unknown as { id: string }[]).map((g) => g.id)).toContain(grant.id);
+    expect((await call('post', '/support/:id/revoke', { params: { id: grant.id } })).active).toBe(false);
+    if (mode === 'on') {
+      const after = await request(app).get('/api/v1/owners').set('Cookie', cookies.system as string).set('X-Org', orgId);
+      expect([after.status, after.body.error?.code]).toEqual([403, 'support_required']);
+    }
+
     // module 1
     const owner = await call('post', '/owners', { body: { name: 'Ivan Synthetic', kind: 'person' } });
     const other = await call('post', '/owners', { body: { name: 'Petr Synthetic', kind: 'person' } });
@@ -761,6 +806,24 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     expect(rows.filter((r) => r.operator === login)).toEqual([]);
   });
 
+  it.runIf(mode === 'on')('the system administrator in the organization: without a grant 403 support_required; under a write grant the users and support operations 403 forbidden (D-171)', async () => {
+    const answer = (res: { status: number; body: { error?: { code?: string } } }) => `${res.status} ${res.body.error?.code ?? ''}`.trim();
+    const asSystem = (o: ApiOperation) => {
+      const t = request(app)[o.method]('/api/v1' + o.path.replace(/:([A-Za-z]+)/g, 'contract-missing'))
+        .set('Cookie', cookies.system as string)
+        .set('X-Org', orgId);
+      return o.method === 'get' ? t : t.set('X-Operator', OPERATOR).send({});
+    };
+    const admin = API_OPERATIONS.filter((o) => /^\/(users|support)\b/.test(o.path));
+    expect(admin.map(operationKey).sort()).toEqual(
+      ['GET /support', 'GET /users', 'PATCH /users/:id', 'POST /support', 'POST /support/:id/revoke', 'POST /users', 'POST /users/:id/password'],
+    );
+    for (const o of admin) expect(answer(await asSystem(o)), operationKey(o)).toBe('403 support_required');
+    const grant = await R.post('/api/v1/support').set('X-Operator', OPERATOR).send({ login: SYS_LOGIN, write: true }).expect(201);
+    for (const o of admin) expect(answer(await asSystem(o)), operationKey(o)).toBe('403 forbidden');
+    await R.post(`/api/v1/support/${grant.body.id as string}/revoke`).set('X-Operator', OPERATOR).expect(200);
+  });
+
   it.runIf(mode === 'on')('access: public without a cookie, org and user without one 401, system under a user 403', async () => {
     const url = (o: ApiOperation) => '/api/v1' + o.path.replace(/:([A-Za-z]+)/g, 'x');
     for (const o of API_OPERATIONS) {
@@ -830,8 +893,9 @@ describe('API contract: the ability of every operation (D-171)', () => {
     }
   });
 
-  it('(d) a GET never writes, approves, pays or administers', () => {
+  it('(d) a GET never writes, approves, pays or administers; only reading the users and the support grants is admin', () => {
+    const adminReads = ['GET /support', 'GET /users']; // D-171: the organization's users are the administrator's to see
     for (const o of API_OPERATIONS.filter((x) => x.method === 'get' && x.ability))
-      expect(['read', 'read_money', 'self', 'system'], operationKey(o)).toContain(o.ability?.action);
+      expect(adminReads.includes(operationKey(o)) ? ['admin'] : ['read', 'read_money', 'self', 'system'], operationKey(o)).toContain(o.ability?.action);
   });
 });

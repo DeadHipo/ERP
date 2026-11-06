@@ -187,8 +187,11 @@ describe('the login over HTTP (D-170)', () => {
     await request(app).get('/api/v1/orgs').set('X-System-Key', SYSTEM_KEY).expect(200);
     const sys = pair(cookieOf(await login(SYS).expect(200)));
     await request(app).get('/api/v1/orgs').set('Cookie', sys).expect(200);
-    // the key with X-Org works in an organization, as the system administrator's session does
-    await request(app).get('/api/v1/owners').set('X-System-Key', SYSTEM_KEY).set('X-Org', orgId).expect(200);
+    // the key never works in an organization, the system administrator's session only under a support grant (D-171)
+    const key = await request(app).get('/api/v1/owners').set('X-System-Key', SYSTEM_KEY).set('X-Org', orgId);
+    expect([key.status, key.body.error?.code]).toEqual([403, 'support_required']);
+    const noGrant = await request(app).get('/api/v1/owners').set('Cookie', sys).set('X-Org', orgId);
+    expect([noGrant.status, noGrant.body.error?.code]).toEqual([403, 'support_required']);
     // an unknown path under /api without a session is 401 (the session is checked before the routes)
     expect((await request(app).get('/api/v1/no-such-route')).status).toBe(401);
   });

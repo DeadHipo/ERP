@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
 import * as S from '@erp/shared/api-schemas';
-import { allowedOperations, localPrincipal, principalOfUser } from '../../auth/abilities';
 import type { LoginLimiter } from '../../auth/limits';
 import {
   clearedSessionCookie,
@@ -10,18 +9,16 @@ import {
   sessionUserOf,
   type AuthConfig,
 } from '../../auth/middleware';
-import { meOf, noMembership, OrgChoiceRequiredError, type AuthService, type MeRole, type SessionUser } from '../../auth/service';
+import { noMembership, OrgChoiceRequiredError, type AuthService, type SessionUser } from '../../auth/service';
 import { nowSeconds, signToken, TOKEN_TTL_SECONDS } from '../../auth/token';
 import type { Facade } from '../../facade';
+import { xOrgOf } from '../../orgs/middleware';
 import type { OrgsService } from '../../orgs/service';
 import { TooManyAttemptsError, UnauthenticatedError, ValidationError } from '../../shared/errors';
 import { selfTrace } from '../audit';
 import { parse } from '../http';
-import { API_OPERATIONS, operationKey } from '../operations';
+import { createMe, type SupportContext } from '../me';
 import { requestIdOf } from '../request-id';
-
-/** Every operation with its ability, for `me.abilities` (D-171). */
-const OPERATION_ABILITIES = API_OPERATIONS.map((o) => ({ key: operationKey(o), ability: o.ability }));
 
 /**
  * The login (D-170, D-171): `POST /auth/login` picks the organization (several memberships: `409 org_choice_required`
@@ -36,41 +33,17 @@ export function authRouter(deps: {
   facadeOf: (orgId: string) => Promise<Facade>;
   limiter: LoginLimiter;
 }) {
-  const { auth, config, orgs, facadeOf, limiter } = deps;
+  const { auth, config, facadeOf, limiter } = deps;
   const r = Router();
 
-  /** The own labels of an organization, by name. */
-  async function ownLabels(orgId: string): Promise<{ id: string; name: string }[]> {
-    const all = await (await facadeOf(orgId)).modules.labels.listLabels();
-    return all
-      .filter((l) => l.kind === 'own')
-      .map((l) => ({ id: l.id, name: l.name }))
-      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-  }
+  const me = createMe(deps);
 
-  async function me(user: SessionUser | undefined) {
-    const orgId = config.mode === 'off' ? config.defaultOrg : (user?.orgId ?? undefined);
-    const org = orgId ? await orgs.findOrganization(orgId) : undefined;
-    let role: MeRole | null = null;
-    let labels: { id: string; name: string }[] = [];
-    let allLabels = false;
-    if (config.mode === 'off') {
-      role = 'local';
-      allLabels = true;
-      if (org) labels = await ownLabels(org.id);
-    } else if (user?.isSystemAdmin) {
-      role = 'system';
-    } else if (user && org) {
-      role = user.role;
-      const own = await ownLabels(org.id);
-      allLabels = user.role === 'org_admin';
-      labels = allLabels ? own : own.filter((l) => user.labelIds.includes(l.id));
-    }
-    const memberships = user && config.mode === 'on' ? await auth.memberships(user.id) : [];
-    // the abilities of the principal, without a request label (a manager's label operations count with one label)
-    const principal = config.mode === 'off' ? localPrincipal(org?.id ?? null) : user ? principalOfUser(user) : undefined;
-    const abilities = principal ? allowedOperations(principal, OPERATION_ABILITIES) : [];
-    return meOf({ mode: config.mode, user, org, role, labels, allLabels, memberships, abilities });
+  /** A live support grant of the system administrator for `X-Org` (D-171): `me` then answers as support there. */
+  async function supportOf(req: Request, user: SessionUser | undefined): Promise<SupportContext | undefined> {
+    const orgId = xOrgOf(req);
+    if (!orgId || !user?.isSystemAdmin || config.mode !== 'on') return undefined;
+    const s = await auth.supportState(orgId, user.id);
+    return s.state === 'live' ? { orgId, expiresAt: s.expiresAt, write: s.write } : undefined;
   }
 
   const clientIp = (req: Request) => req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -122,8 +95,9 @@ export function authRouter(deps: {
     res.json({ ok: true });
   });
 
-  r.get('/auth/me', requireUser(config), async (_req, res) => {
-    res.json(await me(config.mode === 'on' ? sessionUserOf(res) : undefined));
+  r.get('/auth/me', requireUser(config), async (req, res) => {
+    const user = config.mode === 'on' ? sessionUserOf(res) : undefined;
+    res.json(await me(user, await supportOf(req, user)));
   });
 
   r.post('/auth/password', requireUser(config), selfTrace(facadeOf), async (req, res) => {
