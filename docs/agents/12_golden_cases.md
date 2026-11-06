@@ -76,6 +76,7 @@ sublabel) → categorise.
 | G50 | owner A with rows A 50 on I(1) (`Test Label` → 0to8, unit 100, in the file of the 0to8 account) and on I(2) (`Echo8`, unit 60, in the file of the Echo8 account, the same month; D-169); an advance 40 without a label (migrated) and an advance 10 under Echo8, both of 2026-03; then the button under 0to8 | books: 0to8 earned 50, recouped 40 (the advance without a label takes I(1) first), payable 10; Echo8 earned 30, recouped 10 (its advance takes Echo8 alone), payable 20; the payout under 0to8 pays 10.00 and carries the label; after its proof 0to8 paid 10, payable 0; total payable 20 | 80 | 0 | 80 | D-168 |
 | G51 | row A 50 on I(1); unit 100 with the label string `Echo8` in the file of the 0to8 account (R6: the book is the label of the file) | A 50; the reconciliation row of the 0to8 account has the one book 0to8 (A 100, B 50, ours 50); `ourShareByLabel.Echo8` 50 (the string); the unit: book 0to8, label of record Echo8; the signal `labelOutsideAccount` 1 (100); A's balance has the book 0to8 only, under Echo8 earned 0 | 50 | 0 | 50 | D-169 |
 | G52 | row A 50 on I(1); an advance 100 under 0to8 of 2026-03 (scope `any`, with proof); I(1) earns 120 in the 0to8 account in 2026-03 and 80 in the Echo8 account in 2026-04 (the ISRC moved); variant «the same month»: both in 2026-03 | 0to8 earned 60, recouped 60 (the advance takes the 0to8 income alone), remaining 40, payable 0; Echo8 earned 40, recouped 0, payable 40; total earned 100, recouped 60, payable 40; the same numbers in the variant (the income item of an ISRC-month carries its book) | 100 | 0 | 100 | D-169 |
+| G54 | row A 50 on I(1); unit 100 with the string `Echo8` in the file of the Echo8 account (2026-03); an ad 10 of 2026-03 on I(1), recovery 100 %, paid by 0to8 | books: 0to8 earned 0, adsCharged 10, payable −10; Echo8 earned 50, adsCharged 0, payable 50; total payable 40; `adOutsideBook` 1 (payer 0to8, book Echo8); `createAds` without `labelId` → `label_required` | 50 | 0 | 50 | D-169 |
 
 ## Publishing cases
 
@@ -156,3 +157,7 @@ sublabel) → categorise.
   60 = 0, payable_Echo8 = 40 − 0 = 40, total 40 (the brief's «0» was wrong: the Echo8 income is not the advance's).
   In the same month the master income item id is `m|artist|isrc|month|<book>`: two items (60 and 40), not one of 100
   recouped from 0to8.
+- G54 (D-169, R9): the label of an advertising record is its payer. A's part of the ad is 10 × 50 / 50 = 10 (the only
+  row), recovered 100 % = 10, charged to the book of the payer 0to8 (payable_0to8 = 0 − 10 = −10), while the income
+  50 sits in the Echo8 book of its file (payable_Echo8 = 50); total 50 − 10 = 40. The record is the one `adOutsideBook`
+  row: its payer is not the income book of I(1) in 2026-03. A record without a label is refused (`label_required`).

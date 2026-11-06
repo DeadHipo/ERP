@@ -1,13 +1,18 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { AdView } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
+import { adQueries } from '../../api/queries/ads';
 import { useAction } from '../../api/queries/core';
 import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useOwnLabels } from '../../components/LabelSwitch';
+import { QueryView } from '../../components/PageState';
 import { FormDialog } from '../../components/FormDialog';
 import { EntityPicker } from '../../components/fields/EntityPicker';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
+import { useLabel } from '../../lib/label';
 import { formatMoney } from '../../lib/money';
 import { LabelField, useLabelChoice } from '../../components/fields/LabelField';
 import { fmt, ru } from '../../i18n/ru';
@@ -45,7 +50,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   const [scope, setScope] = useState<AdScopeKind>('any');
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState(false);
-  // a record without an ISRC belongs to an own label explicitly (D-168); the switch of the header is the default
+  // the payer (D-169): every record names the own label whose book it charges; the switch of the header is the default
   const { labelId, setLabelId, labelName } = useLabelChoice();
   const onArtist = target === 'artist';
   const typedIsrc = isrc.trim();
@@ -61,7 +66,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
             recoveryPercent: percent.trim(),
             scope,
             ...(comment.trim() ? { comment: comment.trim() } : {}),
-            ...(labelId ? { labelId } : {}),
+            labelId,
           },
         ],
       }),
@@ -73,7 +78,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   );
   const whoOk = onArtist ? artist !== null && (typedIsrc === '' || ISRC.test(typedIsrc)) : ISRC.test(typedIsrc);
   const scopeOk = scope !== 'isrc' || ISRC.test(typedIsrc);
-  const labelOk = typedIsrc !== '' || labelId !== '';
+  const labelOk = labelId !== '';
   const filled = whoOk && scopeOk && labelOk && MONTH.test(month.trim()) && AMOUNT.test(amount.trim()) && PERCENT.test(percent.trim());
   return (
     <>
@@ -131,7 +136,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           options={AD_SCOPES.map((s) => ({ id: s, label: t.scopes[s] }))}
         />
         <span className="text-xs text-muted">{t.create.scopeHint}</span>
-        <LabelField name="ad-label" label={t.create.label} value={labelId} onChange={setLabelId} isRequired={typedIsrc === ''} />
+        <LabelField name="ad-label" label={t.create.label} value={labelId} onChange={setLabelId} isRequired />
         <span className="text-xs text-muted">{t.create.labelHint}</span>
         <TextField name="ad-comment" label={t.create.comment} value={comment} onChange={setComment} />
       </FormDialog>
@@ -146,7 +151,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           fmt(t.create.lines.amount, { amount: AMOUNT.test(amount.trim()) ? formatMoney(amount.trim()) : amount }),
           fmt(t.create.lines.percent, { percent: percent.trim() }),
           fmt(t.create.lines.scope, { scope: t.scopes[scope] }),
-          ...(labelId ? [fmt(t.create.lines.label, { label: labelName })] : []),
+          fmt(t.create.lines.label, { label: labelName }),
         ]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
@@ -162,6 +167,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
   const b = t.batch;
   const [text, setText] = useState('');
   const [confirm, setConfirm] = useState(false);
+  const { labelId, setLabelId, labelName } = useLabelChoice(); // the payer of every line (D-169)
   const rows = parseBatch(text);
   const good = rows.filter((r) => r.error === null);
   const bad = rows.filter((r) => r.error !== null);
@@ -176,6 +182,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
           source: 'batch',
           ...(r.externalRef ? { externalRef: r.externalRef } : {}),
           ...(r.comment ? { comment: r.comment } : {}),
+          labelId,
         })),
       }),
     {
@@ -183,7 +190,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
       success: (r) => fmt(b.toast, { created: r.created.length, skipped: r.skipped.length }),
     },
   );
-  const ready = good.length > 0 && bad.length === 0;
+  const ready = good.length > 0 && bad.length === 0 && labelId !== '';
   return (
     <>
       <FormDialog
@@ -203,6 +210,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
           </ActionButton>
         }
       >
+        <LabelField name="ad-batch-label" label={b.label} value={labelId} onChange={setLabelId} isRequired />
         <label className="flex flex-col gap-1 text-sm">
           {b.text}
           <textarea
@@ -237,7 +245,7 @@ export function BatchAdDialog(props: { onClose: () => void }) {
         isOpen={confirm}
         onOpenChange={setConfirm}
         title={b.confirmTitle}
-        lines={[fmt(b.lines.count, { n: good.length }), b.lines.effect]}
+        lines={[fmt(b.lines.count, { n: good.length }), fmt(b.lines.label, { label: labelName }), b.lines.effect]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />
@@ -245,18 +253,27 @@ export function BatchAdDialog(props: { onClose: () => void }) {
   );
 }
 
-/** «Процент и область»: `PATCH /ads/:id` after a confirmation that says the balances are recalculated. */
+/**
+ * «Изменить»: the recovery percent, the scope and the payer (D-155, D-169) → a confirmation that says the balances are
+ * recalculated → `PATCH /ads/:id` (the payer is sent only when it changed). A record without a payer (P21
+ * `adsWithoutLabel`) starts from the switch of the header.
+ */
 export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
   const ad = props.ad;
+  const own = useOwnLabels();
   const [percent, setPercent] = useState(ad.recoveryPercent);
   const [scope, setScope] = useState<AdScopeKind>(ad.scope);
+  const { labelId: switchLabel } = useLabel();
+  const [labelId, setLabelId] = useState(ad.labelId ?? switchLabel);
   const [confirm, setConfirm] = useState(false);
-  const run = useAction(() => api.ads.update(ad.id, { recoveryPercent: percent.trim(), scope }), {
-    invalidate: 'all',
-    success: () => t.edit.toast,
-  });
+  const labelChanged = labelId !== '' && labelId !== ad.labelId;
+  const nameOf = (id: string | null) => (id ? (own.find((l) => l.id === id)?.name ?? id) : t.noPayer);
+  const run = useAction(
+    () => api.ads.update(ad.id, { recoveryPercent: percent.trim(), scope, ...(labelChanged ? { labelId } : {}) }),
+    { invalidate: 'all', success: () => t.edit.toast },
+  );
   const scopes = ad.isrc ? AD_SCOPES : AD_SCOPES.filter((s) => s !== 'isrc');
-  const filled = PERCENT.test(percent.trim());
+  const filled = PERCENT.test(percent.trim()) && labelId !== '';
   return (
     <>
       <FormDialog
@@ -264,7 +281,13 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
         onOpenChange={(o) => (o ? null : props.onClose())}
         title={t.edit.title}
         footer={
-          <ActionButton name="ad-edit-submit" isDisabled={!filled} isPending={run.isPending} onPress={() => setConfirm(true)}>
+          <ActionButton
+            name="ad-edit-submit"
+            isDisabled={!filled}
+            reason={filled ? undefined : ru.actions.hints.fillFields}
+            isPending={run.isPending}
+            onPress={() => setConfirm(true)}
+          >
             {t.edit.submit}
           </ActionButton>
         }
@@ -278,6 +301,8 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
           onChange={(v) => setScope(scopeOf(v))}
           options={scopes.map((s) => ({ id: s, label: t.scopes[s] }))}
         />
+        <LabelField name="ad-edit-label" label={t.edit.label} value={labelId} onChange={setLabelId} isRequired />
+        <span className="text-xs text-muted">{t.create.labelHint}</span>
       </FormDialog>
       <ConfirmDialog
         isOpen={confirm}
@@ -287,12 +312,29 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
           expenseLine(ad),
           fmt(t.edit.lines.percent, { from: ad.recoveryPercent, to: percent.trim() }),
           fmt(t.edit.lines.scope, { from: t.scopes[ad.scope], to: t.scopes[scope] }),
+          ...(labelChanged ? [fmt(t.edit.lines.label, { from: nameOf(ad.labelId), to: nameOf(labelId) })] : []),
           t.edit.lines.recalc,
         ]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
       />
     </>
+  );
+}
+
+/**
+ * The edit dialog of a P21 row (`adsWithoutLabel`, `adOutsideBook`, D-169): the row carries only `adId`, so the record
+ * is read (`GET /ads/:id`) and `EditAdDialog` opens on it; while it loads the dialog shows the state of the read.
+ */
+export function EditAdByIdDialog(props: { adId: string; onClose: () => void }) {
+  const query = useQuery(adQueries.detail(props.adId));
+  if (query.data) return <EditAdDialog ad={query.data} onClose={props.onClose} />;
+  return (
+    <FormDialog isOpen onOpenChange={(o) => (o ? null : props.onClose())} title={t.edit.title}>
+      <QueryView query={query} money>
+        {() => null}
+      </QueryView>
+    </FormDialog>
   );
 }
 

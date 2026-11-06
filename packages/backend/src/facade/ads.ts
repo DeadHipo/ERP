@@ -35,8 +35,15 @@ export interface AdResult {
   recoveryPercent: Decimal;
   scope: AdScope;
   status: AdStatus;
+  /** The payer (D-169, R9): the record's own label, the book the expense charges; null = the record has no label ('?'). */
   ourLabelId: string | null;
   ourLabelName: string | null;
+  /**
+   * The book of the ISRC's income at the month of the expense (the label of the files of its units, D-169); null when
+   * the ISRC has no unit (or no ISRC) or its units sit in files without a label. Information only: decides no money.
+   */
+  incomeBookLabelId: string | null;
+  incomeBookLabelName: string | null;
   sublabelName: string | null;
   parts: AdPart[];
   /** amount − Σ recovered: borne by the sublabel (its rule's recipient pseudonym) or by us. */
@@ -55,6 +62,11 @@ export interface AdContext {
   labelOwners: Set<string>;
   /** The Believe label string of an ISRC at a month (the nearest month that has a line), or undefined. */
   labelStringOf: (isrc: string, month: string) => string | undefined;
+  /**
+   * The book of an ISRC's income at a month (the same nearest month as `labelStringOf`; of several books that month the
+   * one with the larger net, a tie: the first by name): an own label id, null = files without a label, undefined = no unit.
+   */
+  bookOf: (isrc: string, month: string) => string | null | undefined;
 }
 
 /** One expense: the split of its month, the parts of the artists, the recovered and unrecovered parts. */
@@ -63,9 +75,11 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
   const percent = new Decimal(ad.recoveryPercent);
   const date = monthStart(ad.month);
   const labelString = ad.isrc ? ctx.labelStringOf(ad.isrc, ad.month) : undefined;
+  // the label string of the ISRC's line at the month decides only the sublabel rule (who bears the unrecovered part)
   const l = labelString !== undefined ? ctx.labelOf(labelString, date) : undefined;
-  // the label of the ISRC's line at the month; the record's own label when no line of the ISRC is mapped (D-168)
-  const ourLabelId = l ? (l.kind === 'own' ? l.id : l.ownLabelId) : ad.labelId;
+  // the payer is the record's label (D-169, R9), whatever the line says
+  const ourLabelId = ad.labelId;
+  const incomeBookLabelId = ad.isrc ? (ctx.bookOf(ad.isrc, ad.month) ?? null) : null;
   const rule = l && l.kind === 'sublabel' && l.rule && !l.rule.percent.isZero() ? l.rule : null;
   const canon = (id: string) => ctx.artistIndex.get(id);
 
@@ -121,6 +135,8 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
     status,
     ourLabelId,
     ourLabelName: ourLabelId ? (ctx.labelName(ourLabelId) ?? null) : null,
+    incomeBookLabelId,
+    incomeBookLabelName: incomeBookLabelId ? (ctx.labelName(incomeBookLabelId) ?? null) : null,
     sublabelName: l && l.kind === 'sublabel' ? l.name : null,
     parts,
     unrecovered,
@@ -191,9 +207,37 @@ export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[
   return out;
 }
 
+/** A record whose payer is not the book of its ISRC's income at the month (D-169, signal `adOutsideBook`). */
+export interface AdOutsideBook {
+  adId: string;
+  isrc: string;
+  month: string;
+  amount: Decimal;
+  payerLabelName: string;
+  bookLabelName: string;
+}
+
+/**
+ * The records whose payer differs from the book of the ISRC's income at the month (both known). One pure function for
+ * the full signals and the signals under a label (D-169): newest month first, then by id.
+ */
+export function adsOutsideBook(results: readonly AdResult[]): AdOutsideBook[] {
+  return results
+    .filter((r) => r.isrc !== null && r.ourLabelId !== null && r.incomeBookLabelId !== null && r.ourLabelId !== r.incomeBookLabelId)
+    .map((r) => ({
+      adId: r.adId,
+      isrc: r.isrc as string,
+      month: r.month,
+      amount: r.amount,
+      payerLabelName: r.ourLabelName ?? '?',
+      bookLabelName: r.incomeBookLabelName ?? '?',
+    }))
+    .sort((a, b) => b.month.localeCompare(a.month) || a.adId.localeCompare(b.adId));
+}
+
 export interface AdSummaryRow {
   month: string;
-  /** Our label of record by name ('?' when the ISRC has no mapped label line). */
+  /** The payer by name (D-169; '?' for a record without a label). */
   label: string;
   count: number;
   amount: Decimal;
@@ -203,7 +247,7 @@ export interface AdSummaryRow {
   noSplit: Decimal;
 }
 
-/** Per month and label of record: the whole expense, what artists return, what sublabels and we bear. */
+/** Per month and payer: the whole expense, what artists return, what sublabels and we bear. */
 export function adSummary(results: AdResult[], from?: string, to?: string): AdSummaryRow[] {
   const rows = new Map<string, AdSummaryRow>();
   for (const r of results) {

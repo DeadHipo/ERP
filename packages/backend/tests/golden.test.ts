@@ -1314,6 +1314,33 @@ describe('G51, G52 (D-169): the book of a unit is the label of its file', () => 
   });
 });
 
+describe('G54 (D-169): the label of an advertising record is its payer', () => {
+  it('an ad paid by 0to8 on an ISRC whose income that month is in the Echo8 account charges the 0to8 book', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    await c.person('A');
+    await c.track(I(1));
+    await c.split(I(1), [['A', '50']]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100', label: 'Echo8' }], ACC2);
+    const { created } = await f.createAds([{ isrc: I(1), month: '2026-03', amount: '10', labelId: zero }]);
+    const b = await c.balance('A');
+    expect(Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, [x.earned, x.adsCharged, x.payable].map((v) => v.toFixed())]))).toEqual({
+      '0to8': ['0', '10', '-10'],
+      Echo8: ['50', '0', '50'],
+    });
+    expect([b.total.earned, b.total.adsCharged, b.total.payable].map((v) => v.toFixed())).toEqual(['50', '10', '40']);
+    expect(b.ads.map((x) => [x.labelId, x.amount.toFixed()])).toEqual([[zero, '10']]);
+    const s = await f.signals();
+    expect(s.adOutsideBook.map((x) => [x.adId, x.isrc, x.month, x.amount.toFixed(), x.payerLabelName, x.bookLabelName])).toEqual([
+      [created[0]?.id, I(1), '2026-03', '10', '0to8', 'Echo8'],
+    ]);
+    expect([s.counts.adOutsideBook, s.counts.adsWithoutLabel]).toEqual([1, 0]);
+    await expect(f.createAds([{ isrc: I(1), month: '2026-03', amount: '10' }])).rejects.toMatchObject({ code: 'label_required' });
+    await c.verify();
+  });
+});
+
 describe('signals of 10 §6 without a golden number (M29, D-130)', () => {
   it('tracksWithNote lists a noted track without changing an amount; participantsWithoutOwner carries the amount', async () => {
     let orphan = '';

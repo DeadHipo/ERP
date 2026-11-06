@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, expectMoneyCalls, isrc, openAs, sc, settled } from '../helpers';
+import { apiPost, expectMoneyCalls, isrc, labelOf, openAs, sc, settled } from '../helpers';
 
 // P12 Псевдоним (D-165): the money of one pseudonym from its reach, read on S24/1 (A: split 50, the owner's migration
 // payout carries no pseudonym) and S23 (NG: the sublabel recipient with an advance), then the advertising charged to a
@@ -90,7 +90,7 @@ test('the owner page links to the pseudonym; the splits list and the document ca
 
 test('S24/2 A (actor): an expense of 10 on its ISRC is charged to the pseudonym at once and shows on both cards', async ({ page, request }) => {
   const k = sc(24, 2);
-  const created = await apiPost(request, '/ads', { items: [{ isrc: isrc(24, 2, 1), month: '2026-03', amount: '10', comment: 'e2e artist ad' }] });
+  const created = await apiPost(request, '/ads', { items: [{ isrc: isrc(24, 2, 1), month: '2026-03', amount: '10', comment: 'e2e artist ad', labelId: labelOf('0to8') }] });
   expect(created.status).toBe(201);
   const adId = (created.body as { created: { id: string }[] }).created[0]?.id ?? '';
   await openArtist(page, k.artists.A ?? '');

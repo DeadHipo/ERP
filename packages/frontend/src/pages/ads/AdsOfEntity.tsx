@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useLabel } from '../../lib/label';
+import { useLabel, useWriteLabel } from '../../lib/label';
 import { adQueries } from '../../api/queries/ads';
 import { ActionButton } from '../../components/ActionButton';
 import { EntityLink } from '../../components/EntityLink';
@@ -18,7 +18,8 @@ const LIMIT = 200;
 /** «Реклама» of one track (P6, the tab) or one pseudonym (P12): its records, a link to the rest, and adding one here. */
 export function AdsOfEntity(props: { isrc?: string; artistId?: string; pseudonym?: string }) {
   const [creating, setCreating] = useState(false);
-  const { labelId } = useLabel(); // the label view (D-168)
+  const { labelId } = useLabel(); // the label view: the records the label pays (D-169)
+  const write = useWriteLabel(); // a record is written under a label: closed under «Все»
   const filter = { ...(props.isrc ? { isrc: props.isrc } : { artistId: props.artistId }), ...(labelId ? { label: labelId } : {}) };
   const query = useQuery(adQueries.list({ ...filter, limit: LIMIT }));
   const e = t.entity;
@@ -28,7 +29,7 @@ export function AdsOfEntity(props: { isrc?: string; artistId?: string; pseudonym
       title={e.title}
       testId="entity-ads"
       toolbar={
-        <ActionButton name="create-ad" onPress={() => setCreating(true)}>
+        <ActionButton name="create-ad" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating(true)}>
           {t.create.open}
         </ActionButton>
       }

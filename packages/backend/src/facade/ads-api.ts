@@ -21,7 +21,7 @@ export interface AdsQuery {
   status?: AdStatus;
   /** Also the deactivated records (they take part in nothing). */
   includeInactive?: boolean;
-  /** Records whose label of record is this own label (D-168): a filter of the result, the read stays by ISRC. */
+  /** Records paid by this own label (D-169, R9: the record's label); filtered before the calculation. */
   labelId?: string;
   limit?: number;
   offset?: number;
@@ -64,7 +64,9 @@ export function adsApi(ctx: FacadeContext) {
       return ads.createMany(items);
     },
 
-    async updateAd(id: string, patch: { recoveryPercent?: string; scope?: AdScope }) {
+    /** The recovery percent, the scope (D-155) and the payer (D-169: an own label). */
+    async updateAd(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }) {
+      if (patch.labelId !== undefined) await assertOwnLabel(patch.labelId);
       return ads.update(id, patch);
     },
 
@@ -81,6 +83,7 @@ export function adsApi(ctx: FacadeContext) {
         ...(q.from ? { from: q.from } : {}),
         ...(q.to ? { to: q.to } : {}),
         ...(q.includeInactive ? {} : { active: true }),
+        ...(q.labelId ? { labelId: q.labelId } : {}),
       });
       // only the allocations of the listed records are read: the units of their ISRCs suffice (D-161)
       const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf(records), publishingLines: false })));
@@ -91,7 +94,6 @@ export function adsApi(ctx: FacadeContext) {
       for (const rec of records) {
         const r = byId.get(rec.id);
         if (q.status && r?.status !== q.status) continue;
-        if (q.labelId && r?.ourLabelId !== q.labelId) continue;
         if (artistId) {
           const hit =
             (rec.artistId && (calc.artistIndex.get(rec.artistId)?.id ?? rec.artistId) === artistId) ||
@@ -119,15 +121,17 @@ export function adsApi(ctx: FacadeContext) {
       return viewOf(rec, calc.ads.find((r) => r.adId === id), calc.artistIndex);
     },
 
-    /** Per month and label of record: the expense, what artists return, what sublabels and we bear (YYYY-MM). */
+    /** Per month and payer: the expense, what artists return, what sublabels and we bear (YYYY-MM). */
     async adsSummary(f: { from?: string; to?: string; labelId?: string } = {}) {
       for (const m of [f.from, f.to])
         if (m && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) throw new ValidationError(`Invalid month "${m}"`);
       if (f.labelId) await assertOwnLabel(f.labelId);
-      // every active record takes part: the units of their ISRCs (all months: the label of an earlier month may decide)
-      const calc = await calculate(scoped(modules, { isrcs: isrcsOf(await ads.list({ active: true })), publishingLines: false }));
-      // under a label: the records whose label of record is that label (D-168)
-      const rows = adSummary(f.labelId ? calc.ads.filter((r) => r.ourLabelId === f.labelId) : calc.ads, f.from, f.to);
+      // the active records (under a label: those it pays, D-169) take part: the units of their ISRCs (all months: the
+      // label string of an earlier month may decide the sublabel rule)
+      const records = await ads.list({ active: true, ...(f.labelId ? { labelId: f.labelId } : {}) });
+      const calc = await calculate(scoped(modules, { isrcs: isrcsOf(records), publishingLines: false }));
+      const ids = new Set(records.map((r) => r.id));
+      const rows = adSummary(calc.ads.filter((r) => ids.has(r.adId)), f.from, f.to);
       const total = (k: 'amount' | 'recoveredFromArtists' | 'borneBySublabels' | 'borneByUs' | 'noSplit') =>
         rows.reduce((s, r) => s.add(r[k]), ZERO);
       return {

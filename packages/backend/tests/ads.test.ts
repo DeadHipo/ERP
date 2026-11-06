@@ -3,7 +3,7 @@ import { Decimal } from '../src/shared/money';
 import type { AdExpense } from '../src/modules/ads';
 import type { SplitAtDate } from '../src/modules/splits';
 import type { LabelOfRecord } from '../src/modules/labels';
-import { adPositionsByOwner, adSummary, allocateAd, isMcPseudonym, type AdContext } from '../src/facade/ads';
+import { adPositionsByOwner, adsOutsideBook, adSummary, allocateAd, isMcPseudonym, type AdContext } from '../src/facade/ads';
 import {
   approvedAppendix,
   confirmedOwner,
@@ -35,7 +35,7 @@ const ad = (over: Partial<AdExpense> = {}): AdExpense => ({
   createdAt: '2026-11-03T00:00:00.000Z',
   active: true,
   deactivatedReason: null,
-  labelId: null,
+  labelId: 'L-own',
   ...over,
 });
 
@@ -80,6 +80,7 @@ function world(opts: { split?: [string, string][] | null; label?: 'own' | 'subla
     artistIndex: artists,
     labelOwners: new Set(['olabel', 'osub']),
     labelStringOf: () => 'Test Label',
+    bookOf: () => 'L-own',
   };
   return ctx;
 }
@@ -151,6 +152,21 @@ describe('ads: allocation of one expense (pure)', () => {
     expect(recovered.add(r.unrecovered).toFixed()).toBe('100');
   });
 
+  it('the payer is the record label (D-169); the line decides only the sublabel rule; adsOutsideBook compares it with the income book', () => {
+    const ctx = { ...world({ label: 'sublabel', rulePercent: '50' }), labelName: (id: string) => ({ 'L-own': '0to8', 'L-echo': 'Echo8' })[id], bookOf: () => 'L-echo' };
+    const r = allocateAd(ad({ recoveryPercent: '0', labelId: 'L-own' }), ctx);
+    expect([r.ourLabelId, r.ourLabelName, r.incomeBookLabelId, r.incomeBookLabelName, r.sublabelName]).toEqual(['L-own', '0to8', 'L-echo', 'Echo8', 'Sub']);
+    expect(r.borneBy).toMatchObject({ kind: 'sublabel', artistId: 'sub' });
+    expect(adPositionsByOwner([r]).get('osub')?.map((p) => p.labelId)).toEqual(['L-own']);
+    expect(adsOutsideBook([r]).map((x) => [x.adId, x.isrc, x.month, x.amount.toFixed(), x.payerLabelName, x.bookLabelName])).toEqual([
+      ['ad1', I1, '2026-07', '100', '0to8', 'Echo8'],
+    ]);
+    // the same book, no income book or no payer: not outside
+    expect(adsOutsideBook([allocateAd(ad(), world())])).toEqual([]);
+    expect(adsOutsideBook([allocateAd(ad(), { ...world(), bookOf: () => undefined })])).toEqual([]);
+    expect(adsOutsideBook([allocateAd(ad({ labelId: null }), ctx)])).toEqual([]);
+  });
+
   it('summary per month and label: total, returned, sublabels, us, without split', () => {
     const rows = adSummary([
       allocateAd(ad({ id: 'x1', recoveryPercent: '50' }), world()),
@@ -188,7 +204,7 @@ describe('ads: the owner balance (stack)', () => {
     const f = await newFacade();
     const { a } = await stackWorld(f);
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('60');
-    const { created } = await f.createAds([{ isrc: I1, month: '2026-07', amount: '40' }]);
+    const { created } = await f.createAds([{ isrc: I1, month: '2026-07', amount: '40', labelId: f.testLabels['0to8'] }]);
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.payable.toFixed()).toBe('20');
     expect(b.total.adsCharged.toFixed()).toBe('40');
@@ -199,7 +215,7 @@ describe('ads: the owner balance (stack)', () => {
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('60');
     // D-157: charged at once and in full, above the income too: payable goes negative (shown as 0)
     await f.updateAd(id, { recoveryPercent: '100' });
-    await f.createAds([{ isrc: I1, month: '2026-12', amount: '100' }]);
+    await f.createAds([{ isrc: I1, month: '2026-12', amount: '100', labelId: f.testLabels['0to8'] }]);
     const more = await f.ownerBalance(a.owner.id);
     expect(more.total.adsCharged.toFixed()).toBe('140');
     expect(more.total.payable.toFixed()).toBe('-80');
@@ -214,7 +230,7 @@ describe('ads: the owner balance (stack)', () => {
   it('the whole amount is charged whatever the income of the ISRC; deactivation removes it', async () => {
     const f = await newFacade();
     const { a } = await stackWorld(f);
-    const { created } = await f.createAds([{ isrc: I2, month: '2026-07', amount: '30', scope: 'isrc' }]);
+    const { created } = await f.createAds([{ isrc: I2, month: '2026-07', amount: '30', scope: 'isrc', labelId: f.testLabels['0to8'] }]);
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.adsCharged.toFixed()).toBe('30'); // I2 gives the artist 10 only, the 30 is charged anyway
     expect(b.total.payable.toFixed()).toBe('30');
@@ -247,10 +263,10 @@ describe('ads: the owner balance (stack)', () => {
     });
     await f.ingestBelieve(writeBelieve('2026-08', [{ isrc: I2, upc: UPC, net: '40', labelName: 'Sub One' }]), f.testLabels['0to8']);
     const first = await f.createAds([
-      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1' },
+      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1', labelId: own?.id ?? null },
     ]);
     const again = await f.createAds([
-      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1' },
+      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1', labelId: own?.id ?? null },
     ]);
     expect(first.created).toHaveLength(1);
     expect(again).toEqual({ created: [], skipped: ['post-1'] });
@@ -272,13 +288,121 @@ describe('ads: the owner balance (stack)', () => {
 
   it('refuses a bad record: no ISRC and no pseudonym, amount 0, percent above 100, an unknown pseudonym', async () => {
     const f = await newFacade();
-    await expect(f.createAds([{ month: '2026-07', amount: '1' }])).rejects.toMatchObject({ statusCode: 400 });
-    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '0' }])).rejects.toMatchObject({ statusCode: 400 });
+    await expect(f.createAds([{ month: '2026-07', amount: '1', labelId: f.testLabels['0to8'] }])).rejects.toMatchObject({ statusCode: 400 });
+    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '0', labelId: f.testLabels['0to8'] }])).rejects.toMatchObject({ statusCode: 400 });
     await expect(
-      f.createAds([{ isrc: I1, month: '2026-07', amount: '5', recoveryPercent: '101' }]),
+      f.createAds([{ isrc: I1, month: '2026-07', amount: '5', recoveryPercent: '101', labelId: f.testLabels['0to8'] }]),
     ).rejects.toMatchObject({ statusCode: 400 });
-    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', artistId: 'nope' }])).rejects.toMatchObject({
+    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', artistId: 'nope', labelId: f.testLabels['0to8'] }])).rejects.toMatchObject({
       statusCode: 404,
     });
   });
+
+  it('a record without a label is refused (label_required)', async () => {
+    const f = await newFacade();
+    await stackWorld(f);
+    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5' }])).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'label_required',
+      message: expect.stringMatching(/^Item 1: /),
+    });
+    await expect(
+      f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: f.testLabels['0to8'] }, { isrc: I2, month: '2026-07', amount: '5' }]),
+    ).rejects.toMatchObject({ code: 'label_required', message: expect.stringMatching(/^Item 2: /) });
+    const own = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8');
+    const sub = await f.modules.labels.createLabel({ name: 'Sub One', kind: 'sublabel', ownLabelId: own?.id ?? null });
+    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: sub.id }])).rejects.toMatchObject({ code: 'label_not_own' });
+    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: 'no-such-label' }])).rejects.toMatchObject({ statusCode: 404 });
+    expect((await f.listAds()).count).toBe(0);
+  });
+
+  it('a migrated record may come without a label', async () => {
+    const f = await newFacade();
+    const { a, a1 } = await stackWorld(f);
+    const { created } = await f.createAds([{ isrc: I1, month: '2026-07', amount: '40', migration: true }]);
+    expect(created.map((x) => [x.labelId, x.migration])).toEqual([[null, true]]);
+    // without an ISRC even a migrated record needs its payer
+    await expect(f.createAds([{ isrc: null, artistId: a1.id, month: '2026-07', amount: '1', migration: true }])).rejects.toMatchObject({ code: 'label_required' });
+    // it charges the book '?' and is listed by the signal until it is labelled
+    const b = await f.ownerBalance(a.owner.id);
+    expect(Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, x.adsCharged.toFixed()]))).toEqual({ '0to8': '0', '?': '40' });
+    const s = await f.signals();
+    expect(s.adsWithoutLabel.map((x) => [x.adId, x.isrc, x.month, x.amount.toFixed()])).toEqual([[created[0]?.id, I1, '2026-07', '40']]);
+    expect(s.counts.adsWithoutLabel).toBe(1);
+    expect((await f.signals({}, f.testLabels['0to8'])).adsWithoutLabel).toEqual([]);
+    // its percent may change before it is labelled; the module sets only a missing label
+    await f.updateAd(created[0]?.id as string, { recoveryPercent: '50' });
+    expect(await f.modules.ads.assignLabel(created[0]?.id as string, f.testLabels['0to8'])).toBe(true);
+    expect(await f.modules.ads.assignLabel(created[0]?.id as string, f.testLabels.Echo8)).toBe(false);
+    expect((await f.getAd(created[0]?.id as string)).labelId).toBe(f.testLabels['0to8']);
+    expect((await f.signals()).adsWithoutLabel).toEqual([]);
+  });
+
+  it('the label is changed by PATCH', async () => {
+    const f = await newFacade();
+    const { a } = await stackWorld(f);
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    const { created } = await f.createAds([{ isrc: I1, month: '2026-07', amount: '40', labelId: zero }]);
+    const id = created[0]?.id as string;
+    const books = async () =>
+      Object.fromEntries(Object.entries((await f.ownerBalance(a.owner.id)).byLabel).map(([k, x]) => [k, [x.adsCharged.toFixed(), x.payable.toFixed()]]));
+    expect(await books()).toEqual({ '0to8': ['40', '20'] });
+    const moved = await f.updateAd(id, { labelId: echo });
+    expect([moved.labelId, moved.recoveryPercent, moved.scope]).toEqual([echo, '100', 'any']);
+    // the charge moves to the payer's book; the income stays in the book of its file
+    expect(await books()).toEqual({ '0to8': ['0', '60'], Echo8: ['40', '-40'] });
+    expect((await f.getAd(id)).allocation).toMatchObject({ ourLabelId: echo, ourLabelName: 'Echo8', incomeBookLabelId: zero, incomeBookLabelName: '0to8' });
+    expect((await f.signals()).adOutsideBook.map((x) => [x.adId, x.payerLabelName, x.bookLabelName])).toEqual([[id, 'Echo8', '0to8']]);
+    const own = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8');
+    const sub = await f.modules.labels.createLabel({ name: 'Sub One', kind: 'sublabel', ownLabelId: own?.id ?? null });
+    await expect(f.updateAd(id, { labelId: sub.id })).rejects.toMatchObject({ code: 'label_not_own' });
+    await expect(f.updateAd(id, { labelId: 'no-such-label' })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(f.updateAd(id, {})).rejects.toMatchObject({ statusCode: 400 });
+    expect((await f.getAd(id)).labelId).toBe(echo);
+  });
+
+  it('the summary goes by the payer', async () => {
+    const f = await newFacade();
+    await stackWorld(f);
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    // both on ISRCs of the 0to8 file: the payer decides the row, not the line of the ISRC
+    await f.createAds([
+      { isrc: I1, month: '2026-07', amount: '40', labelId: echo },
+      { isrc: I2, month: '2026-07', amount: '10', labelId: zero },
+    ]);
+    const rows = (await f.adsSummary()).rows.map((r) => [r.month, r.label, r.count, r.amount.toFixed()]);
+    expect(rows).toEqual([
+      ['2026-07', '0to8', 1, '10'],
+      ['2026-07', 'Echo8', 1, '40'],
+    ]);
+    expect((await f.adsSummary({ labelId: echo })).rows.map((r) => [r.label, r.amount.toFixed()])).toEqual([['Echo8', '40']]);
+    expect((await f.adsSummary({ labelId: zero })).totals.amount.toFixed()).toBe('10');
+    expect((await f.listAds({ labelId: echo })).items.map((x) => [x.isrc, x.allocation?.ourLabelName])).toEqual([[I1, 'Echo8']]);
+    expect((await f.listAds({ labelId: zero })).items.map((x) => x.isrc)).toEqual([I2]);
+  });
+
+  it('the owner charged under a label is visible under it', async () => {
+    const f = await newFacade();
+    await stackWorld(f);
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    // owner B has a row on I3 only, which reports in the Echo8 account; 0to8 pays an ad on I3
+    const I3 = 'QZTST2600003';
+    const b = await confirmedOwner(f, 'Owner B', ['B1']);
+    const b1 = b.artists[0] as { id: string };
+    await f.modules.owners.createTrack({ title: I3, isrc: I3, upc: UPC, artistIds: [b1.id] });
+    await f.createSplit({ isrc: I3, validFrom: '2020-01-01', shares: [{ artistId: b1.id, percent: '50' }], documentId: (await approvedAppendix(f, b.owner.id)).id });
+    await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I3, upc: UPC, net: '30', labelName: 'Echo8' }], { account: '1055956' }), echo);
+    expect((await f.ownerList({ label: zero })).map((o) => o.id)).not.toContain(b.owner.id);
+    await f.createAds([{ isrc: I3, month: '2026-07', amount: '8', labelId: zero }]);
+    expect((await f.ownerList({ label: zero })).map((o) => o.id)).toContain(b.owner.id);
+    expect((await f.artistList({ label: zero })).map((x) => x.pseudonym)).toContain('B1');
+    const under = await f.ownerBalance(b.owner.id, {}, zero);
+    expect([under.total.earned.toFixed(), under.total.adsCharged.toFixed(), under.total.payable.toFixed()]).toEqual(['0', '8', '-8']);
+    // the signal under each label: 0to8 pays it, Echo8 holds the income
+    for (const id of [zero, echo]) expect((await f.signals({}, id)).adOutsideBook.map((x) => [x.isrc, x.payerLabelName, x.bookLabelName])).toEqual([[I3, '0to8', 'Echo8']]);
+  });
 });
+

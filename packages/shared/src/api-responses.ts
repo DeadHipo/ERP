@@ -503,6 +503,21 @@ export const signalsSchema = z.object({
       }),
     )
     .describe("Loaded Believe files without a label (D-169): their units sit in the book '?'; empty under a label"),
+  adsWithoutLabel: z
+    .array(z.object({ adId: z.string(), isrc: z.string().nullable(), month, amount: money }))
+    .describe("Active advertising records without a payer (D-169): they charge the book '?'; the operator sets the label (PATCH /ads/:id); empty under a label"),
+  adOutsideBook: z
+    .array(
+      z.object({
+        adId: z.string(),
+        isrc: z.string(),
+        month,
+        amount: money,
+        payerLabelName: z.string().describe('The label of the record: the book it charges'),
+        bookLabelName: z.string().describe('The book of the ISRC income at the month of the expense'),
+      }),
+    )
+    .describe('Advertising records whose payer is not the book of the ISRC income at their month (D-169, information); under a label those it pays or whose income book it is'),
 });
 export type Signals = z.infer<typeof signalsSchema>;
 
@@ -1189,7 +1204,7 @@ export const adExpenseSchema = z.object({
   createdAt: timestamp,
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
-  labelId: z.string().nullable().describe('The own label of a record without an ISRC (D-168); the fallback for one with an ISRC'),
+  labelId: z.string().nullable().describe('The payer (D-169): the own label whose book the expense charges; required, null only for a migrated record not yet labelled'),
 });
 export type AdExpense = z.infer<typeof adExpenseSchema>;
 
@@ -1202,9 +1217,11 @@ export const adViewSchema = adExpenseSchema.extend({
       recoveryPercent: money,
       scope: z.enum(['any', 'publishing', 'isrc']),
       status: z.enum(['allocated', 'pre_allocated', 'no_split', 'no_artist']),
-      ourLabelId: z.string().nullable(),
+      ourLabelId: z.string().nullable().describe("The payer (D-169): the record's label, the book the expense charges"),
       ourLabelName: z.string().nullable(),
-      sublabelName: z.string().nullable(),
+      incomeBookLabelId: z.string().nullable().describe('The book of the ISRC income at the month of the expense (information, D-169)'),
+      incomeBookLabelName: z.string().nullable(),
+      sublabelName: z.string().nullable().describe('The sublabel of the ISRC label string at the month: its rule bears the unrecovered part'),
       parts: z.array(adPartSchema),
       unrecovered: money,
       borneBy: z.discriminatedUnion('kind', [
@@ -1226,7 +1243,7 @@ export const adSummarySchema = z.object({
   rows: z.array(
     z.object({
       month,
-      label: z.string().describe("our label of record ('?' when the ISRC has no mapped line)"),
+      label: z.string().describe("the payer by name (D-169; '?' for a record without a label)"),
       count: z.number().int(),
       amount: money,
       recoveredFromArtists: money,

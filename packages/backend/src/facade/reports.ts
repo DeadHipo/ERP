@@ -8,6 +8,7 @@ import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
 import type { LabelVisibility } from './label-scope';
+import { adsOutsideBook, type AdOutsideBook } from './ads';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
 export interface KpiSums {
@@ -120,6 +121,12 @@ export async function signalsFrom(
   f: PeriodFilter = {},
   /** Under a label (D-168): the reference lists are restricted to the label's ISRCs (the units already are). */
   visible?: LabelVisibility,
+  /**
+   * Under a label: the advertising records outside their book where the label is the payer or the income book (D-169),
+   * from a calculation over the ISRCs of those records (the label's calculation does not see the other label's units).
+   * Without it the list comes from `calc.ads` (a full calculation).
+   */
+  adOutside?: AdOutsideBook[],
 ) {
   const { owners, splits, sources, publishing, modules, settlements } = ctx;
   const attrs = await sources.pairAttributes();
@@ -324,6 +331,14 @@ export async function signalsFrom(
       (a, b) => a.account.localeCompare(b.account) || a.month.localeCompare(b.month) || a.labelName.localeCompare(b.labelName),
     ),
     filesWithoutLabel,
+    // active advertising records without a payer (D-169): migrated records until `assign-label-books --step ads`
+    adsWithoutLabel: visible
+      ? []
+      : calc.ads
+          .filter((r) => r.ourLabelId === null)
+          .map((r) => ({ adId: r.adId, isrc: r.isrc, month: r.month, amount: r.amount }))
+          .sort((a, b) => b.month.localeCompare(a.month) || a.adId.localeCompare(b.adId)),
+    adOutsideBook: adOutside ?? adsOutsideBook(calc.ads),
   };
   const counts: Record<string, number> = {
     unallocated: lists.unallocated.pairs.length,
@@ -360,7 +375,26 @@ export function reportsApi(ctx: FacadeContext) {
       // under a label (D-168, D-169): the units of the label's files only, no B17 lines (publishing has no label yet)
       const lc = await ctx.labelContext(labelId);
       const scope: UnitScope = lc ? { labelIds: [lc.book.id], publishingLines: false } : {};
-      return signalsFrom(ctx, await calculate(scoped(modules, scope)), f, lc?.visible);
+      const calc = await calculate(scoped(modules, scope));
+      if (!lc) return signalsFrom(ctx, calc, f);
+      // the ads the label pays or whose ISRC is in its files: their income books need every unit of their ISRCs (D-169)
+      const L = lc.book.id;
+      const isrcs = [
+        ...new Set(
+          (await ctx.ads.list({ active: true }))
+            .filter((ad) => ad.isrc !== null && (ad.labelId === L || lc.visible.isrcs.has(ad.isrc)))
+            .map((ad) => ad.isrc as string),
+        ),
+      ].sort();
+      const outside =
+        isrcs.length === 0
+          ? []
+          : adsOutsideBook(
+              (await calculate(scoped(modules, { isrcs, publishingLines: false }))).ads.filter(
+                (r) => r.ourLabelId === L || r.incomeBookLabelId === L,
+              ),
+            );
+      return signalsFrom(ctx, calc, f, lc.visible, outside);
     },
 
     /** Everything on the overview page from ONE calculation (17 N1). */

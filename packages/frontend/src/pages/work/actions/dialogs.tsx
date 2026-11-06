@@ -24,12 +24,14 @@ import { useApproveLines } from './approve-lines';
 
 // The dialogs of the queue and signal actions (16 §2.6, §2.7; 17 §6). Each is opened by the page for one row and
 // closed by `onClose` after its final write succeeded. Irreversible final steps go through `ConfirmDialog`. The owner
-// actions live in `owner-dialogs.tsx` and the label rule close in `rule-dialogs.tsx`; this file re-exports them so the
+// actions live in `owner-dialogs.tsx`, the label rule close in `rule-dialogs.tsx` and the ad edit of a signal row in
+// `pages/ads/AdDialogs.tsx` (`EditAdByIdDialog`, D-169); this file re-exports them so the
 // action table (`action-table.ts`) names every dialog from one module.
 
 export { AssignOwnerDialog, CreateContractDialog, MergeOwnerDialog } from './owner-dialogs';
 export { CloseRuleDialog } from './rule-dialogs';
 export { SetOperationLabelDialog } from './label-dialogs';
+export { EditAdByIdDialog } from '../../ads/AdDialogs';
 
 const a = ru.actions;
 const f = a.fields;

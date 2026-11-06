@@ -92,7 +92,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /publishing/terms': { page: 'P18', route: '/publishing', note: 'action-set-terms; also the queue' },
 
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
-  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, D-169) in pages/work/signals/label-signals.tsx' },
+  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, adsWithoutLabel, adOutsideBook, D-169) in pages/work/signals/label-signals.tsx' },
   'GET /overview': { page: 'P1', route: '/', note: 'also the queue summary of P2' },
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 
@@ -103,11 +103,11 @@ export const OPERATION_COVERAGE: Record<
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },
   'POST /settlements/operations/:id/deactivate': { page: 'P20', route: '/operations', note: 'action-deactivate; shared with P10' },
   'POST /settlements/operations/:id/return': { page: 'P20', route: '/operations', note: 'action-return; shared with P10' },
-  'GET /ads': { page: 'P22', route: '/ads', note: 'the records grid with the URL filters (isrc, status, from, to)' },
-  'POST /ads': { page: 'P22', route: '/ads', note: 'action-create-ad (one record), action-create-ads-batch (a pasted list)' },
-  'GET /ads/:id': { page: 'P22', route: '/ads/:id', note: 'the card of one expense: who bears it, history' },
-  'GET /ads/summary': { page: 'P22', route: '/ads', note: 'the summary by month and label of record' },
-  'PATCH /ads/:id': { page: 'P22', route: '/ads', note: 'action-ad-edit: recovery percent and scope' },
+  'GET /ads': { page: 'P22', route: '/ads', note: 'the records grid with the URL filters (isrc, status, from, to); label= of the switch = the payer, the «Плательщик» column (D-169)' },
+  'POST /ads': { page: 'P22', route: '/ads', note: 'action-create-ad (one record), action-create-ads-batch (a pasted list); every item carries the payer labelId (ad-label / ad-batch-label, default the switch), both closed under «Все» (D-169)' },
+  'GET /ads/:id': { page: 'P22', route: '/ads/:id', note: 'the card of one expense: the payer (ad-label), the income book when it differs (ad-income-book), who bears it, history; read by EditAdByIdDialog of P21 (D-169)' },
+  'GET /ads/summary': { page: 'P22', route: '/ads', note: 'the summary by month and payer; label= of the switch = the payer (D-169)' },
+  'PATCH /ads/:id': { page: 'P22', route: '/ads', note: 'action-ad-edit: recovery percent, scope and the payer (ad-edit-label, sent when changed); also from P21 adsWithoutLabel / adOutsideBook (action-set-payer, D-169)' },
   'POST /ads/:id/deactivate': { page: 'P22', route: '/ads', note: 'action-ad-deactivate' },
   'GET /settlements/operations/:id/snapshot': { page: 'P20', route: '/operations', note: 'action-snapshot; also the balance tab of P10' },
 

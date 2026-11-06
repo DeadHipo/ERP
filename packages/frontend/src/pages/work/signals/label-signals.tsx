@@ -5,13 +5,13 @@ import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
 import { ru } from '../../../i18n/ru';
 import { centsToText } from '../../owners/components/cents';
-import { SetOperationLabelDialog } from '../actions/dialogs';
+import { EditAdByIdDialog, SetOperationLabelDialog } from '../actions/dialogs';
 import { SIGNAL_ACTIONS } from '../actions/action-table';
-import { actionCol, btn, c, Grid, info, moneyCol, t, textCol, type ListProps } from './signal-grid';
+import { actionCol, btn, c, Grid, info, isrcCol, moneyCol, t, textCol, type ListProps } from './signal-grid';
 
 /**
  * The label lists of P21 (D-168, D-169): one renderer per list name. `SignalsPage.tsx` asks this table first, so a new
- * label list (`statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook`) is one entry here plus its string in
+ * label list (`statementsWithoutLabel`) is one entry here plus its string in
  * `i18n/ru/signals.ts` and its row in `actions/action-table.ts`.
  */
 export const LABEL_SIGNALS = {
@@ -92,6 +92,42 @@ export const LABEL_SIGNALS = {
       />
     );
   },
+  adsWithoutLabel: ({ data, count, open, close }: ListProps): ReactNode => {
+    type R = Signals['adsWithoutLabel'][number];
+    return (
+      <Grid<R>
+        name="adsWithoutLabel"
+        count={count}
+        rows={data.adsWithoutLabel}
+        rowKey={(r) => r.adId}
+        columns={[
+          adMonthCol<R>(),
+          isrcCol<R>((r) => r.isrc),
+          moneyCol('amount', c.amount, (r) => r.amount),
+          actionCol((r) => btn('set-payer', ru.actions.setPayer, () => open(<EditAdByIdDialog adId={r.adId} onClose={close} />))),
+        ]}
+      />
+    );
+  },
+  adOutsideBook: ({ data, count, open, close }: ListProps): ReactNode => {
+    type R = Signals['adOutsideBook'][number];
+    return (
+      <Grid<R>
+        name="adOutsideBook"
+        count={count}
+        rows={data.adOutsideBook}
+        rowKey={(r) => r.adId}
+        columns={[
+          adMonthCol<R>(),
+          isrcCol<R>((r) => r.isrc),
+          moneyCol('amount', c.amount, (r) => r.amount),
+          { ...textCol<R>('payer', c.payer, (r) => r.payerLabelName), cellRenderer: (p: { data?: R }) => <span data-col="payer">{p.data?.payerLabelName}</span> },
+          { ...textCol<R>('book', c.incomeBook, (r) => r.bookLabelName), cellRenderer: (p: { data?: R }) => <span data-col="book">{p.data?.bookLabelName}</span> },
+          actionCol((r) => btn('set-payer', ru.actions.setPayer, () => open(<EditAdByIdDialog adId={r.adId} onClose={close} />))),
+        ]}
+      />
+    );
+  },
 } satisfies Partial<Record<keyof typeof SIGNAL_ACTIONS, (props: ListProps) => ReactNode>>;
 
 export type LabelSignalName = keyof typeof LABEL_SIGNALS;
@@ -99,4 +135,14 @@ export type LabelSignalName = keyof typeof LABEL_SIGNALS;
 /** The action column of an information list (`SIGNAL_ACTIONS[name].information`): the note, no button. */
 function informationCol<T>(name: LabelSignalName): ColDef<T> {
   return actionCol<T>(() => (SIGNAL_ACTIONS[name].information ? info(t.info) : null));
+}
+
+/** The month of an advertising record as the link to its card (P22 `/ads/:id`). */
+function adMonthCol<T extends { adId: string; month: string }>(): ColDef<T> {
+  return {
+    colId: 'month',
+    headerName: c.month,
+    valueGetter: (p) => p.data?.month ?? '',
+    cellRenderer: (p: { data?: T }) => (p.data ? <EntityLink kind="ad" id={p.data.adId} label={p.data.month} /> : null),
+  };
 }

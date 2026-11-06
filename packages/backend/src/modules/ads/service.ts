@@ -26,7 +26,10 @@ export interface AdExpense {
   createdAt: string;
   active: boolean;
   deactivatedReason: string | null;
-  /** The own label of a record without an ISRC (D-168); with an ISRC the line of the ISRC decides, this is the fallback. */
+  /**
+   * The payer (D-169, R9): the own label whose book the expense charges. Required for a new record; null only for a
+   * migrated record with an ISRC until the script `assign-label-books --step ads` labels it.
+   */
   labelId: string | null;
 }
 
@@ -52,6 +55,8 @@ export interface AdExpenseFilter {
   from?: string;
   to?: string;
   active?: boolean;
+  /** The payer (D-169): an own label id; null = the records without a label. */
+  labelId?: string | null;
 }
 
 const HUNDRED = new Decimal(100);
@@ -95,6 +100,7 @@ const toRepoFilter = (f: AdExpenseFilter): ExpenseFilter => ({
   from: f.from ? monthStart(assertMonth(f.from)) : undefined,
   to: f.to ? monthStart(assertMonth(f.to)) : undefined,
   active: f.active,
+  labelId: f.labelId,
 });
 
 /**
@@ -114,8 +120,10 @@ export function createAdsService(db: Db) {
     const scope = parseScope(input.scope);
     if (scope === 'isrc' && !isrc) throw new ValidationError('Scope "isrc" needs an ISRC');
     const labelId = input.labelId?.trim() || null;
-    // a record without an ISRC has no line to take the label from (D-168)
-    if (!isrc && !labelId) throw new ValidationError('An expense without an ISRC needs the label it belongs to', undefined, 'label_required');
+    // the payer is required (D-169, R9); only a migrated record with an ISRC may come without it (the stage 4 loader),
+    // the script `assign-label-books --step ads` labels it afterwards
+    if (!labelId && !(input.migration && isrc))
+      throw new ValidationError('An expense needs the own label that pays it (labelId)', undefined, 'label_required');
     return {
       id: newId(),
       isrc,
@@ -179,22 +187,32 @@ export function createAdsService(db: Db) {
     async all(): Promise<AdExpense[]> {
       return (await repo.all()).map(view);
     },
-    /** The two fields that may change at any time (D-155): the recovery percent and the scope. */
-    async update(id: string, patch: { recoveryPercent?: string; scope?: AdScope }): Promise<AdExpense> {
+    /**
+     * The fields that may change at any time: the recovery percent and the scope (D-155), the payer (D-169; the facade
+     * checks that it is an own label).
+     */
+    async update(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }): Promise<AdExpense> {
       return repo.transaction(async () => {
         const cur = await this.get(id);
         if (!cur.active) throw new ValidationError(`Ad expense ${id} is deactivated`);
-        if (patch.recoveryPercent === undefined && patch.scope === undefined)
-          throw new ValidationError('Nothing to change (recoveryPercent or scope)');
+        if (patch.recoveryPercent === undefined && patch.scope === undefined && patch.labelId === undefined)
+          throw new ValidationError('Nothing to change (recoveryPercent, scope or labelId)');
         const scope = patch.scope === undefined ? cur.scope : parseScope(patch.scope);
         if (scope === 'isrc' && !cur.isrc) throw new ValidationError('Scope "isrc" needs an ISRC');
+        const labelId = patch.labelId?.trim();
+        if (patch.labelId !== undefined && !labelId) throw new ValidationError('An expense needs the own label that pays it (labelId)', undefined, 'label_required');
         await repo.update(id, {
           scope,
           recoveryPercent:
             patch.recoveryPercent === undefined ? cur.recoveryPercent : parseRecoveryPercent(patch.recoveryPercent),
+          ...(patch.labelId === undefined ? {} : { labelId }),
         });
         return this.get(id);
       });
+    },
+    /** Sets the payer of a record that has none (the script `assign-label-books`, D-169); false when it already has one. */
+    async assignLabel(id: string, labelId: string): Promise<boolean> {
+      return repo.assignLabel(id, labelId);
     },
     async deactivate(id: string, reason: string): Promise<AdExpense> {
       return repo.transaction(async () => {

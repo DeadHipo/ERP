@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useLabel } from '../../lib/label';
+import { useLabel, useWriteLabel } from '../../lib/label';
 import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
 import type { adsQuery } from '@erp/shared/api-schemas';
@@ -21,6 +21,7 @@ import { compareDecimal, formatMoney } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { Section, SimpleTable, Td } from '../owners/components/Fact';
+import { useOwnLabels } from '../../components/LabelSwitch';
 import { BatchAdDialog, CreateAdDialog, DeactivateAdDialog, EditAdDialog } from './AdDialogs';
 
 const t = ru.ads;
@@ -59,7 +60,8 @@ function useAdsFilter(): [Filter, (f: Record<Key, string>) => void] {
 export function AdsPage() {
   const [filter, apply] = useAdsFilter();
   const [creating, setCreating] = useState<'one' | 'batch' | null>(null);
-  const { labelId } = useLabel(); // the label view (D-168): the records whose label of record is the label
+  const { labelId } = useLabel(); // the label view (D-169): the records the label pays
+  const write = useWriteLabel(); // a record is written under a label: closed under «Все»
   const label = labelId ? { label: labelId } : {};
   const summary = useQuery(adQueries.summary({ from: filter.from, to: filter.to, ...label }));
   const list = useQuery(adQueries.list({ ...filter, ...label, limit: LIST_LIMIT }));
@@ -70,10 +72,16 @@ export function AdsPage() {
         subtitle={t.subtitle}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            <ActionButton name="create-ad" onPress={() => setCreating('one')}>
+            <ActionButton name="create-ad" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setCreating('one')}>
               {t.create.open}
             </ActionButton>
-            <ActionButton name="create-ads-batch" variant="secondary" onPress={() => setCreating('batch')}>
+            <ActionButton
+              name="create-ads-batch"
+              variant="secondary"
+              isDisabled={write.closed}
+              reason={write.closed ? write.reason : undefined}
+              onPress={() => setCreating('batch')}
+            >
               {t.batch.open}
             </ActionButton>
           </div>
@@ -235,7 +243,11 @@ type P = { data?: AdView };
 
 function AdsGrid(props: { rows: AdView[] }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const columns = useMemo(() => adColumns(setDialog), []);
+  const own = useOwnLabels();
+  const columns = useMemo(() => {
+    const names = new Map(own.map((l) => [l.id, l.name]));
+    return adColumns(setDialog, (id) => (id ? (names.get(id) ?? id) : t.noPayer));
+  }, [own]);
   return (
     <>
       <OperatorNotice />
@@ -265,7 +277,14 @@ const borneText = (ad: AdView) => {
     : fmt(t.borne.ours, { amount: formatMoney(a.borneBy.amount) });
 };
 
-function adColumns(open: (d: Dialog) => void): ColDef<AdView>[] {
+/** The payer (D-169) and, when the income of the ISRC sits in another book that month, that book. */
+const payerText = (ad: AdView, nameOf: (id: string | null) => string) => {
+  const book = ad.allocation?.incomeBookLabelName;
+  const payer = nameOf(ad.labelId);
+  return book && ad.allocation?.incomeBookLabelId !== ad.labelId ? `${payer} (${fmt(t.bookOf, { book })})` : payer;
+};
+
+function adColumns(open: (d: Dialog) => void, nameOf: (id: string | null) => string): ColDef<AdView>[] {
   const c = t.cols;
   return [
     {
@@ -318,12 +337,16 @@ function adColumns(open: (d: Dialog) => void): ColDef<AdView>[] {
     {
       colId: 'label',
       headerName: c.label,
-      minWidth: 120,
-      valueGetter: (p) => {
-        const a = p.data?.allocation;
-        return a ? [a.ourLabelName, a.sublabelName].filter((x) => x).join(' / ') : '';
-      },
+      minWidth: 140,
+      valueGetter: (p) => (p.data ? payerText(p.data, nameOf) : ''),
+      cellRenderer: (p: P) =>
+        p.data ? (
+          <span data-col="payer" data-label-id={p.data.labelId ?? ''} className={p.data.labelId ? '' : 'text-danger'}>
+            {payerText(p.data, nameOf)}
+          </span>
+        ) : null,
     },
+    { colId: 'sublabel', headerName: c.sublabel, minWidth: 110, valueGetter: (p) => p.data?.allocation?.sublabelName ?? '' },
     {
       colId: 'artists',
       headerName: c.artists,

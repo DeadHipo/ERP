@@ -11,6 +11,8 @@ export interface ExpenseFilter {
   from?: string;
   to?: string;
   active?: boolean;
+  /** The payer (D-169): an own label id; null = the records without a label. */
+  labelId?: string | null;
 }
 
 /** All SQL of the ads module lives here (schema `ads`). */
@@ -47,6 +49,7 @@ export function createAdsRepository(db: Db) {
             f.artistIds ? inArray(expenses.artistId, f.artistIds.length ? f.artistIds : ['']) : undefined,
             f.from ? gte(expenses.month, f.from) : undefined,
             f.to ? lte(expenses.month, f.to) : undefined,
+            f.labelId === undefined ? undefined : f.labelId === null ? isNull(expenses.labelId) : eq(expenses.labelId, f.labelId),
             f.active === undefined
               ? undefined
               : f.active
@@ -58,10 +61,19 @@ export function createAdsRepository(db: Db) {
     all: () => orm().select().from(expenses),
     update: async (
       id: string,
-      set: Partial<Pick<ExpenseRow, 'recoveryPercent' | 'scope' | 'deactivatedAt' | 'deactivatedReason'>>,
+      set: Partial<Pick<ExpenseRow, 'recoveryPercent' | 'scope' | 'deactivatedAt' | 'deactivatedReason' | 'labelId'>>,
     ) => {
       await orm().update(expenses).set(set).where(eq(expenses.id, id));
     },
+    /** Sets the label of a record that has none (a migration script, D-169); false when it already has one. */
+    assignLabel: async (id: string, labelId: string): Promise<boolean> =>
+      (
+        await orm()
+          .update(expenses)
+          .set({ labelId })
+          .where(and(eq(expenses.id, id), isNull(expenses.labelId)))
+          .returning({ id: expenses.id })
+      ).length > 0,
   };
 }
 

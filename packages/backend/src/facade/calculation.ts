@@ -292,24 +292,42 @@ export async function calculate(
   );
 
   // Advertising (D-155, D-156): the label string of an ISRC at a month is the one of its line that month (the largest
-  // net if several), else of the nearest earlier month, else of the earliest later one.
+  // net if several), else of the nearest earlier month, else of the earliest later one. It decides the sublabel rule
+  // only; the payer is the record's label (D-169, R9). The book of the ISRC's income at the month (information, the
+  // signal `adOutsideBook`) takes the same nearest month; of several books that month the larger net, a tie: by name.
   const ads = timedSync('ads (JS)', () => {
     if (adExpenses.length === 0) return [];
-    const byIsrc = new Map<string, Map<string, { label: string; net: Decimal }>>();
+    const byIsrc = new Map<string, Map<string, { label: string; net: Decimal; books: Map<string | null, Decimal> }>>();
     for (const u of units) {
       let months = byIsrc.get(u.isrc);
       if (!months) byIsrc.set(u.isrc, (months = new Map()));
       const cur = months.get(u.reportingMonth);
-      if (!cur || u.net.abs().gt(cur.net.abs())) months.set(u.reportingMonth, { label: u.labelName, net: u.net });
+      if (!cur) months.set(u.reportingMonth, { label: u.labelName, net: u.net, books: new Map([[u.bookLabelId, u.net]]) });
+      else {
+        if (u.net.abs().gt(cur.net.abs())) Object.assign(cur, { label: u.labelName, net: u.net });
+        cur.books.set(u.bookLabelId, (cur.books.get(u.bookLabelId) ?? ZERO).add(u.net));
+      }
     }
-    const labelStringOf = (isrc: string, month: string) => {
+    const atMonth = (isrc: string, month: string) => {
       const months = byIsrc.get(isrc);
       if (!months) return undefined;
       const exact = months.get(month);
-      if (exact) return exact.label;
+      if (exact) return exact;
       const keys = [...months.keys()].sort();
       const earlier = keys.filter((k) => k < month).pop();
-      return months.get(earlier ?? (keys[0] as string))?.label;
+      return months.get(earlier ?? (keys[0] as string));
+    };
+    const labelStringOf = (isrc: string, month: string) => atMonth(isrc, month)?.label;
+    const bookName = (id: string | null) => (id === null ? '?' : (labelIndex.labelName(id) ?? id));
+    const bookOf = (isrc: string, month: string) => {
+      const m = atMonth(isrc, month);
+      if (!m) return undefined;
+      let best: { id: string | null; net: Decimal } | undefined;
+      for (const [id, net] of m.books) {
+        const c = best ? net.cmp(best.net) : 1;
+        if (!best || c > 0 || (c === 0 && bookName(id).localeCompare(bookName(best.id)) < 0)) best = { id, net };
+      }
+      return best?.id;
     };
     return adExpenses.map((ad) =>
       allocateAd(ad, {
@@ -319,6 +337,7 @@ export async function calculate(
         artistIndex,
         labelOwners,
         labelStringOf,
+        bookOf,
       }),
     );
   });

@@ -27,8 +27,8 @@ async function world() {
   ]);
   await c.load('2026-04', [{ isrc: I(1), net: '200' }, { isrc: I(3), net: '30', upc: UPC2 }], ACC2);
   const { created } = await c.f.createAds([
-    { isrc: I(1), month: '2026-03', amount: '40' },
-    { isrc: I(3), month: '2026-04', amount: '10', recoveryPercent: '30' },
+    { isrc: I(1), month: '2026-03', amount: '40', labelId: c.f.testLabels['0to8'] },
+    { isrc: I(3), month: '2026-04', amount: '10', recoveryPercent: '30', labelId: c.f.testLabels['0to8'] },
   ]);
   return { c, adId: (created[0] as { id: string }).id };
 }
@@ -297,7 +297,7 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
       comment: 'advance',
     });
     await f.attachPaymentProof(advance.id, { fileRef: 'dummy://proof-a.pdf' });
-    await f.createAds([{ isrc: I(1), month: '2026-03', amount: '40' }]);
+    await f.createAds([{ isrc: I(1), month: '2026-03', amount: '40', labelId: f.testLabels['0to8'] }]);
     return { c, advance };
   }
 
@@ -502,7 +502,7 @@ describe('the label as a book (D-168)', () => {
     const unlabelled = await advance('60', null); // a migrated advance: without a label, as the history before the split
     const echoAdvance = await advance('20', echo);
     await f.createAds([
-      { isrc: I(1), month: '2026-03', amount: '10' },
+      { isrc: I(1), month: '2026-03', amount: '10', labelId: zero },
       { isrc: null, artistId: c.id('A'), month: '2026-03', amount: '5', labelId: echo },
     ]);
     return { c, f, zero, echo, unlabelled, echoAdvance };
@@ -671,12 +671,16 @@ describe('the label as a book (D-168)', () => {
     reads.length = 0;
     expect((await f.signals({}, echo)).labelOutsideAccount).toEqual([]);
     expect((await f.signals({}, zero)).labelOutsideAccount).toEqual([]);
-    expect(reads.map((r) => [r.filter.labelIds, r.units])).toEqual([[[echo], 3], [[zero], 2]]);
+    // the ads under a label (D-169): the income book of the ISRCs the label pays (I1 under 0to8) needs every unit of them
+    expect(reads.map((r) => [r.filter.labelIds, r.filter.isrcs, r.units])).toEqual([[[echo], undefined, 3], [[zero], undefined, 2], [undefined, [I(1)], 1]]);
     // the operations and the advertising under a label
     expect((await f.listOperations({ labelId: echo })).map((o) => [o.amountCents, o.labelName])).toEqual([[2000, 'Echo8']]);
     expect((await f.listOperations({ labelId: null })).map((o) => o.amountCents)).toEqual([6000]);
     expect((await f.listAds({ labelId: echo })).items.map((a) => [a.amountCents, a.allocation?.ourLabelName])).toEqual([[500, 'Echo8']]);
     expect((await f.listAds({ labelId: zero })).items.map((a) => a.amountCents)).toEqual([1000]);
+    // under a label = the full answer restricted to the records the label pays (D-169: the payer, not the line)
+    const allAds = (await f.listAds()).items;
+    for (const id of [zero, echo]) expect(text((await f.listAds({ labelId: id })).items)).toBe(text(allAds.filter((x) => x.labelId === id)));
     expect((await f.adsSummary({ labelId: echo })).rows.map((r) => [r.label, r.amount.toFixed()])).toEqual([['Echo8', '5']]);
     expect((await f.adsSummary()).totals.amount.toFixed()).toBe('15');
     // the reconciliation and the overview: «Все» with the book of its files' label on every row (D-169)

@@ -10,6 +10,7 @@ import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
+import { useOwnLabels } from '../../components/LabelSwitch';
 import { formatDateTime } from '../../lib/datetime';
 import { ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
@@ -46,6 +47,10 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
   const [dialog, setDialog] = useState<'edit' | 'deactivate' | null>(null);
   const audit = useQuery(adQueries.audit(ad.id));
   const a = ad.allocation;
+  const own = useOwnLabels();
+  // the payer (D-169) is the label of the record; the income book of the ISRC that month is shown when it differs
+  const payer = ad.labelId ? (a?.ourLabelName ?? own.find((l) => l.id === ad.labelId)?.name ?? ad.labelId) : t.noPayer;
+  const otherBook = a?.incomeBookLabelName && a.incomeBookLabelId !== ad.labelId ? a.incomeBookLabelName : null;
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -75,7 +80,14 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
           <Text testId="ad-percent" label={d.percent}>{ad.recoveryPercent} %</Text>
           <Text testId="ad-scope" label={d.scope}>{t.scopes[ad.scope]}</Text>
           <Text testId="ad-status" label={d.status}>{a ? t.status[a.status] : t.inactive}</Text>
-          <Text testId="ad-label" label={d.label}>{a?.ourLabelName ?? '—'}</Text>
+          <Text testId="ad-label" label={d.label}>
+            <span data-label-id={ad.labelId ?? ''} className={ad.labelId ? '' : 'text-danger'}>{payer}</span>
+          </Text>
+          {otherBook ? (
+            <Text testId="ad-income-book" label={d.incomeBook}>
+              <span title={d.incomeBookHint}>{otherBook}</span>
+            </Text>
+          ) : null}
           {a?.sublabelName ? <Text testId="ad-sublabel" label={d.sublabel}>{a.sublabelName}</Text> : null}
           <Text testId="ad-source" label={d.source}>{ad.migration ? t.migration : ad.source}</Text>
           {ad.externalRef ? <Text testId="ad-ref" label={d.ref}><span className="break-all">{ad.externalRef}</span></Text> : null}

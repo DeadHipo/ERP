@@ -361,12 +361,16 @@ export const adExpenseInput = z.object({
   externalRef: z.string().nullish().describe('A post link or a source row; a known one is skipped'),
   source: z.string().optional(),
   comment: z.string().optional(),
-  labelId: z.string().nullish().describe('The own label of a record without an ISRC (D-168): required then, 400 label_required; with an ISRC the fallback when no line of the ISRC is mapped'),
+  labelId: z.string().nullish().describe('The payer, required (D-169): the own label whose book the expense charges; 400 label_required without it, 400 label_not_own for a sublabel'),
 });
 export const createAdsBody = z.object({ items: z.array(adExpenseInput).min(1).max(20000) });
 export const updateAdBody = z
-  .object({ recoveryPercent: recoveryPercent.optional(), scope: adScope.optional() })
-  .refine((b) => b.recoveryPercent !== undefined || b.scope !== undefined, 'recoveryPercent or scope');
+  .object({
+    recoveryPercent: recoveryPercent.optional(),
+    scope: adScope.optional(),
+    labelId: z.string().min(1).optional().describe('The payer (D-169): an own label'),
+  })
+  .refine((b) => b.recoveryPercent !== undefined || b.scope !== undefined || b.labelId !== undefined, 'recoveryPercent, scope or labelId');
 export const deactivateAdBody = z.object({ reason: z.string().min(1) });
 export const adsQuery = z.object({
   isrc: z.string().optional(),

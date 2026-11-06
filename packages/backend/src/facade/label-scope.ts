@@ -39,7 +39,9 @@ export interface LabelVisibility {
 /**
  * Who is visible under a label (D-168, derived, never stored): a pseudonym that has a split row or a participation on
  * an ISRC of the label's files (D-169), is the recipient of a sublabel rule of the label, or carries an operation or an advertising
- * record under it; an owner whose pseudonym is visible, or that carries an operation under the label.
+ * record under it; an owner whose pseudonym is visible, or that carries an operation under the label. An advertising
+ * record paid by the label (D-169, R9) makes visible its pseudonym and the split rows of its ISRC (a superset of the
+ * pseudonyms it charges), even when the ISRC is in another label's files.
  */
 export async function labelVisibility(
   modules: Pick<Modules, 'owners' | 'splits' | 'labels' | 'sources' | 'ads'> & { settlements: SettlementsService },
@@ -50,7 +52,10 @@ export async function labelVisibility(
   const idx = await owners.artistIndex();
   const canon = (id: string) => idx.get(id)?.id ?? id;
   const artistIds = new Set<string>();
-  for (const s of await splits.listSplits()) if (isrcs.has(s.isrc)) for (const sh of s.shares) artistIds.add(canon(sh.artistId));
+  const paid = await ads.list({ active: true, labelId: book.id });
+  const adIsrcs = new Set(paid.map((ad) => ad.isrc).filter((x): x is string => x !== null));
+  for (const s of await splits.listSplits())
+    if (isrcs.has(s.isrc) || adIsrcs.has(s.isrc)) for (const sh of s.shares) artistIds.add(canon(sh.artistId));
   for (const p of await splits.listParticipations()) {
     if (!isrcs.has(p.isrc)) continue;
     artistIds.add(canon(p.artistId));
@@ -58,7 +63,7 @@ export async function labelVisibility(
   }
   for (const l of await labels.listLabels())
     if (l.ownLabelId === book.id) for (const r of l.rules) artistIds.add(canon(r.recipientArtistId));
-  for (const ad of await ads.list({ active: true })) if (ad.labelId === book.id && ad.artistId) artistIds.add(canon(ad.artistId));
+  for (const ad of paid) if (ad.artistId) artistIds.add(canon(ad.artistId));
   const ownerIds = new Set<string>();
   for (const o of await settlements.listOperations({ labelId: book.id, active: true })) {
     if (o.artistId) artistIds.add(canon(o.artistId));

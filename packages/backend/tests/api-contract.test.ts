@@ -384,11 +384,15 @@ describe('API contract', () => {
       body: { fromId: other.id, intoId: owner.id, reason: 'same person' },
     });
 
-    // advertising expenses (D-156): a batch, the list with the allocation, the summary, a percent change, a rollback
+    // advertising expenses (D-156): a batch, the list with the allocation, the summary, a percent change, a rollback;
+    // every record carries its payer (D-169)
+    const adRefused = (await request(app).post('/api/v1/ads').set('X-Operator', OPERATOR).send({ items: [{ isrc: I1, month: '2026-07', amount: '1' }] }))
+      .body as { error: { code: string; message: string } };
+    expect([adRefused.error.code, adRefused.error.message.startsWith('Item 1: ')]).toEqual(['label_required', true]);
     const ads = await call('post', '/ads', {
       body: {
         items: [
-          { isrc: I1, month: '2026-07', amount: '12.50', recoveryPercent: '50', externalRef: 'contract-ad-1' },
+          { isrc: I1, month: '2026-07', amount: '12.50', recoveryPercent: '50', externalRef: 'contract-ad-1', labelId: zero.id },
           { month: '2026-07', amount: '3', artistId: a1.id, scope: 'any', labelId: zero.id },
         ],
       },
@@ -404,6 +408,9 @@ describe('API contract', () => {
     expect(oneAd.allocation.isrc).toBe(I1);
     const patched = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { recoveryPercent: '0' } });
     expect(patched.recoveryPercent).toBe('0');
+    const echoPayer = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === 'Echo8') as { id: string };
+    const repaid = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { labelId: echoPayer.id } });
+    expect(repaid.labelId).toBe(echoPayer.id);
     await call('post', '/ads/:id/deactivate', { params: { id: ads.created[1].id }, body: { reason: 'contract test' } });
     await call('get', '/owners/:id/balance', { params: { id: owner.id } });
 
