@@ -19,10 +19,12 @@ import { reference } from './ru/reference';
 import { splitImport } from './ru/splitImport';
 import { operations } from './ru/operations';
 import { onboarding } from './ru/onboarding';
+import { claude } from './ru/claude';
 import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
 /** The one Russian dictionary of the interface, split by domain. A "t" is just importing `ru`. */
 export const ru = {
+  claude,
   common,
   nav,
   shell,

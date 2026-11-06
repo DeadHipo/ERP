@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-178 by topic)
+# Decision index (D-001 … D-179 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -85,6 +85,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-154 The library ledger of the frontend (every dependency, exact version, the entry that chose it), guarded by `tests/libraries.test.ts` · in force
 - D-171 Frontend (commit 5, planned): the login with the organization choice, `LabelSwitch` from `me.labels` («Все» only with `allLabels`), `ActionButton op` / `NavItem op` closed by `me.abilities` (R4: the backend decides), P26 «Пользователи» with support grants, P27 `/system/users`, e2e `37-roles` · the second login step, the sidebar and the buttons by `me.abilities` (`ActionButton op`), P26 «Пользователи», P27 `/system/users`, the support banner
 - D-172 Frontend: P28 «Импорт сплитов» (entry from P15 only, no nav item), `AssumeDialog`, the kind «Решение лейбла», the checklists on P1, the catalog label on P5/P7, `TrackLabelsDialog` P6, `ReleaseImportDialog` P7, the registry on P8, four lists on P21, `components/fields/UploadForm.tsx` · P28 import, AssumeDialog, TrackLabelsDialog, the catalog column, the releases registry, the P1 checklist, UploadForm shared
+- D-179 Frontend: P31 «Подключить Claude» `/claude` (the commands for the address of the page, a placeholder for the token), `@erp/shared/mcp-connection` · in force
 - D-176 Frontend: P10 the tab «Допуск» (the gate with its reason, the payee, the holds, the answers, the threshold, four dialogs and the reason dialog); the gate chips `hold`, `no_payee`, `needs_answer` · in force
 - D-175 Frontend: the C reason `no_split` (the queue hint, `CreateSplitDialog` as its action), P1 «Без сплита (ждёт в C)», P28 the classes `label_only` / `label_row_with_rows` · in force
 - D-174 Frontend: P30 «Старт 15.10» `/operations/start` (the list of the book, the import with a preview as P29, the deactivation with a reason; a sidebar item under «Деньги»); P10 `balance-start`, `start-missing`, `balance-start-section`, the `start` column of the books and the areas; the gate chip `start_missing`; the payroll column `start`; e2e 45 · in force

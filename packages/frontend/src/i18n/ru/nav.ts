@@ -29,6 +29,7 @@ export const nav = {
     systemOrgs: 'Организации',
     systemUsers: 'Пользователи',
     users: 'Пользователи',
+    claude: 'Подключить Claude',
   },
   subpages: {
     sourceLines: 'Строки отчётов',

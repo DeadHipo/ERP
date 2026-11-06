@@ -516,6 +516,7 @@ an answer «pay» → ready. The checks «no payee» / «needs an answer» are o
 
 1. Put `MCP_READ_TOKEN=<openssl rand -hex 32>` in `.env`, run the API (it needs `ERP_DEFAULT_ORG`).
 2. `.mcp.json` in the repo root starts `packages/backend/scripts/mcp-erp.ts`: open a new Claude Code session in the repo and allow the server `erp`. `ERP_API_URL` switches the API (default `http://localhost:3000`).
+   Somebody without the repository takes the command from the page «Подключить Claude» (`/claude`, D-179) and the token from the administrator.
 3. The tools are the GET operations without `auth`, `orgs`, `users`, named from `operationId` (`get-owners-by-id-balance`). Long lists answer 50 rows with `total`: pass `limit` (≤ 500) and `offset`.
 4. A new read field needs a `.describe()` (`tests/api-descriptions.test.ts`): a common name goes through `D` of `api-responses.ts`. A money answer Claude has to interpret gets `explain: true` in `operations.ts` (D-178).
 5. A new long list: add `...S.pageQuery.shape` to its query, `pagedList` / `pagedField` in the route, `...pageFields` or `R.listOrPage` in the response. The token never writes: a new write needs no check here, `RULES.reader` refuses it.

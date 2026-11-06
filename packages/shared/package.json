@@ -13,7 +13,8 @@
     "./release-import": "./src/release-import.ts",
     "./operation-kinds": "./src/operation-kinds.ts",
     "./operation-import": "./src/operation-import.ts",
-    "./start-import": "./src/start-import.ts"
+    "./start-import": "./src/start-import.ts",
+    "./mcp-connection": "./src/mcp-connection.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

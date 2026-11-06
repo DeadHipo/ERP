@@ -37,7 +37,7 @@ describe('navFor (D-171)', () => {
     expect(ids(manager)).toEqual(['signals', 'questions', 'owners']);
     expect(homeFor(manager)).toBe('/signals');
     const admin = navFor({ isSystemAdmin: false, inOrg: true }, { authMode: 'on', abilities: ['GET /overview', 'GET /users'] });
-    expect(ids(admin)).toEqual(['overview', 'queue', 'questions', 'users']);
+    expect(ids(admin)).toEqual(['overview', 'queue', 'questions', 'users', 'claude']);
   });
 
   it('gives a system administrator outside an organization the system section only', () => {

@@ -46,6 +46,8 @@ export const ROUTE_PATHS = {
   systemUsers: 'system/users',
   /** P26: the users and the support grants of the organization, for its administrator (D-171). */
   users: 'users',
+  /** P31: how to connect Claude over MCP (D-179); reads nothing of the API. */
+  claude: 'claude',
 } as const;
 
 /** Every route as an absolute pattern; the overview is the index route `/`. */

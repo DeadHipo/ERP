@@ -6,6 +6,7 @@ import {
   BuildingLibraryIcon,
   BuildingOffice2Icon,
   ChartPieIcon,
+  ChatBubbleLeftRightIcon,
   ClockIcon,
   DocumentTextIcon,
   FlagIcon,
@@ -111,7 +112,11 @@ export const SYSTEM_NAV: NavSection = {
 export const ORG_NAV: NavSection = {
   id: 'org',
   label: ru.nav.sections.org,
-  items: [{ id: 'users', label: items.users, icon: UserCircleIcon, path: '/users', op: 'GET /users' }],
+  items: [
+    { id: 'users', label: items.users, icon: UserCircleIcon, path: '/users', op: 'GET /users' },
+    // the token reads every label: the page is for those who may manage the organization (D-179)
+    { id: 'claude', label: items.claude, icon: ChatBubbleLeftRightIcon, path: '/claude', op: 'GET /users' },
+  ],
 };
 
 /**
