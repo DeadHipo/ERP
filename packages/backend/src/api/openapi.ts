@@ -37,7 +37,7 @@ export function responseFieldsOf(schema: z.ZodType, prefix = '', depth = 0): str
 }
 
 /** The description of an operation: the summary (a client may show only this field), the errors, the response fields. */
-function descriptionOf(op: ApiOperation): string {
+export function descriptionOf(op: ApiOperation): string {
   const fields = op.explain ? responseFieldsOf(op.response) : [];
   return [
     op.summary,

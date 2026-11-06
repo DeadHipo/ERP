@@ -7,6 +7,8 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   root,
+  // the repo's `.env`: only VITE_* reach the client (VITE_PUBLIC_ORIGIN, D-180)
+  envDir: '../..',
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

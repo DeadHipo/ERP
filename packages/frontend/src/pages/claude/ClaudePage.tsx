@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Button } from '@heroui/react';
-import { claudeCodeCommand, claudeDesktopConfig } from '@erp/shared/mcp-connection';
+import { claudeCodeCommand, mcpHeader, mcpUrl } from '@erp/shared/mcp-connection';
 import { PageHeader } from '../../components/PageHeader';
 import { ru } from '../../i18n/ru';
 
@@ -50,10 +50,13 @@ function CodeBlock(props: { id: string; text: string }) {
   );
 }
 
-/** P31: the connection of Claude (D-179). The address is the one the page is open on; the token is never shown here. */
+/** The address Claude reaches: the public one of the installation, else the one the page is open on. */
+const publicOrigin = (): string => import.meta.env.VITE_PUBLIC_ORIGIN || window.location.origin;
+
+/** P31: the remote connection of Claude (D-179, D-180). The token is never shown here. */
 export function ClaudePage() {
-  const { origin, protocol, hostname } = window.location;
-  const insecure = protocol !== 'https:' && hostname !== 'localhost' && hostname !== '127.0.0.1';
+  const origin = publicOrigin();
+  const insecure = !origin.startsWith('https:');
   return (
     <div data-testid="claude-page" className="flex max-w-4xl flex-col gap-4">
       <PageHeader title={t.title} subtitle={t.subtitle} />
@@ -67,6 +70,8 @@ export function ClaudePage() {
       </Section>
       <Section title={t.need.title}>
         <List items={t.need.items} />
+        <p>{t.need.address}</p>
+        <CodeBlock id="claude-url" text={mcpUrl(origin)} />
       </Section>
       <Section title={t.code.title}>
         <p>{t.code.text}</p>
@@ -74,10 +79,15 @@ export function ClaudePage() {
         <p>{t.code.check}</p>
         <CodeBlock id="claude-code-check" text="claude mcp list" />
       </Section>
-      <Section title={t.desktop.title}>
-        <p>{t.desktop.text}</p>
-        <List items={[t.desktop.mac, t.desktop.windows]} />
-        <CodeBlock id="claude-desktop-config" text={claudeDesktopConfig(origin, t.tokenPlaceholder)} />
+      <Section title={t.web.title}>
+        <ol className="list-decimal pl-5">
+          {t.web.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+        <p>{t.web.header}</p>
+        <CodeBlock id="claude-header" text={mcpHeader(t.tokenPlaceholder)} />
+        <p className="text-muted">{t.web.team}</p>
       </Section>
       <Section title={t.try.title}>
         <List items={t.try.items} />

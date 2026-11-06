@@ -17,6 +17,7 @@
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@clickhouse/client": "^1.24.1",
     "@erp/shared": "*",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "busboy": "^1.6.0",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.45.4",

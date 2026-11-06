@@ -1,5 +1,5 @@
-// How Claude connects to the ERP over MCP (D-177, D-179): one description for the local script
-// (`scripts/mcp-erp.ts`) and for the commands of the page P31. Plain strings, no dependency.
+// How Claude connects to the ERP over MCP (D-177, D-179, D-180): the instructions of the server, the local script
+// (`scripts/mcp-erp.ts`) and the remote endpoint of the page P31. Plain strings, no dependency.
 
 const PACKAGE = '@ivotoby/openapi-mcp-server@1.17.0';
 
@@ -43,14 +43,12 @@ export const mcpServerEnv = (token: string): Record<string, string> => ({
   SERVER_INSTRUCTIONS: MCP_INSTRUCTIONS,
 });
 
-/** The command that adds the server to Claude Code for the user. */
-export function claudeCodeCommand(origin: string, token: string): string {
-  const env = Object.entries(mcpServerEnv(token)).map(([k, v]) => `-e '${k}=${v}'`);
-  return ['claude mcp add erp --scope user', ...env, '-- npx', ...mcpServerArgs(origin)].join(' ');
-}
+/** The address of the remote endpoint (D-180). */
+export const mcpUrl = (origin: string): string => `${origin.replace(/\/+$/, '')}/api/mcp`;
 
-/** The block of `claude_desktop_config.json`. */
-export function claudeDesktopConfig(origin: string, token: string): string {
-  const server = { command: 'npx', args: mcpServerArgs(origin), env: mcpServerEnv(token) };
-  return JSON.stringify({ mcpServers: { erp: server } }, null, 2);
-}
+/** The header every client sends. */
+export const mcpHeader = (token: string): string => `Authorization: Bearer ${token}`;
+
+/** The command that adds the remote server to Claude Code for the user. */
+export const claudeCodeCommand = (origin: string, token: string): string =>
+  `claude mcp add --transport http --scope user erp ${mcpUrl(origin)} --header "${mcpHeader(token)}"`;

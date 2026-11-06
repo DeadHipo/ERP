@@ -6,6 +6,7 @@ import type { OrgEntry, OrgFacades } from '../orgs/facades';
 import { orgRoutes, resolveOrg } from '../orgs/middleware';
 import { serveClient, unknownApiRoute } from './app';
 import { errorHandler } from './http';
+import { mcpEndpoint } from './mcp';
 import { requestId } from './request-id';
 import { createOrgAdminRouter } from './org-admin-router';
 import { createSystemRouter } from './system-router';
@@ -33,6 +34,8 @@ export function createServerApp(deps: {
   app.use('/api', noStore, originGuard(auth.config));
   app.use(express.json({ limit: '1mb' }));
   app.use('/api', authenticateOrSystemKey(auth.service, auth.config));
+  // D-180: the remote MCP endpoint, the read token only; its tools call the routes below
+  app.use('/api/mcp', mcpEndpoint());
   app.use(
     '/api/v1',
     createSystemRouter({

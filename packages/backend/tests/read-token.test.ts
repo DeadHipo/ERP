@@ -104,6 +104,52 @@ describe('the read token and the paging (D-177)', () => {
     expect(authConfigFromEnv({ AUTH_MODE: 'off', MCP_READ_TOKEN: TOKEN }).readToken).toBe(TOKEN);
   });
 
+  describe('the remote MCP endpoint (D-180)', () => {
+    const rpc = (app: Express, method: string, params: object = {}, headers: Record<string, string> = bearer()) =>
+      request(app)
+        .post('/api/mcp')
+        .set({ Accept: 'application/json, text/event-stream', ...headers })
+        .send({ jsonrpc: '2.0', id: 1, method, params });
+    const init = { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } };
+    type Tool = { name: string; description: string; inputSchema: { properties: Record<string, unknown>; required?: string[] } };
+    type Called = { content: { text: string }[]; isError?: boolean };
+
+    it.each([
+      ['off', () => off],
+      ['on', () => on],
+    ])('AUTH_MODE=%s: only the read token gets in', async (_mode, app) => {
+      await rpc(app(), 'initialize', init, {}).expect(401);
+      await rpc(app(), 'initialize', init, bearer('x'.repeat(64))).expect(401);
+      const res = await rpc(app(), 'initialize', init).expect(200);
+      expect(JSON.stringify(res.body)).toContain('A = B + C + ours');
+      await request(app()).get('/api/mcp').set(bearer()).expect(405);
+    });
+
+    it('lists only the reads, with their parameters and the meaning of the fields', async () => {
+      const tools = ((await rpc(on, 'tools/list').expect(200)).body as { result: { tools: Tool[] } }).result.tools;
+      const names = tools.map((t) => t.name);
+      expect(names).toContain('get-owners');
+      expect(names.every((n) => n.startsWith('get-'))).toBe(true);
+      expect(names).not.toContain('get-users');
+      expect(names).not.toContain('get-orgs');
+      const balance = tools.find((t) => t.name === 'get-owners-by-id-balance');
+      expect(balance?.description).toContain('- total.payable:');
+      expect(balance?.inputSchema.required).toEqual(['id']);
+      expect(balance?.inputSchema.properties).toHaveProperty('label');
+      expect(tools.find((t) => t.name === 'get-search')?.inputSchema.required).toEqual(['q']);
+    });
+
+    it('a tool answers through the API: the page, the errors, an unknown tool', async () => {
+      const call = async (name: string, args: object) =>
+        ((await rpc(on, 'tools/call', { name, arguments: args }).expect(200)).body as { result: Called }).result;
+      const page = await call('get-owners', { limit: 2, offset: 1 });
+      expect(page.isError).toBe(false);
+      expect(JSON.parse(page.content[0]?.text ?? '')).toMatchObject({ limit: 2, offset: 1 });
+      expect((await call('get-owners-by-id', { id: randomUUID() })).isError).toBe(true);
+      expect((await call('post-owners', {})).isError).toBe(true);
+    });
+  });
+
   it('every operation has a unique readable operationId of at most 64 characters', () => {
     const ids = API_OPERATIONS.map(operationIdOf);
     expect(new Set(ids).size).toBe(ids.length);
