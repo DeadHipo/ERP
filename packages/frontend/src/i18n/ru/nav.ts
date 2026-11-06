@@ -32,6 +32,7 @@ export const nav = {
   subpages: {
     sourceLines: 'Строки отчётов',
     artistDuplicates: 'Дубликаты',
+    splitImport: 'Импорт сплитов',
     states: 'Состояния (стенд)',
   },
   collapse: 'Свернуть меню',

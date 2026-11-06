@@ -138,6 +138,7 @@ const BREADCRUMB_ITEMS: readonly NavItem[] = BREADCRUMB_SECTIONS.flatMap((s) => 
 export const SUBPAGES: Readonly<Record<string, string>> = {
   '/sources/lines': ru.nav.subpages.sourceLines,
   '/artists/duplicates': ru.nav.subpages.artistDuplicates,
+  '/splits/import': ru.nav.subpages.splitImport,
   '/dev/states': ru.nav.subpages.states,
 };
 

@@ -13,13 +13,14 @@ import { EntityLink } from '../../../components/EntityLink';
 import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
 import { TextField } from '../../../components/fields/TextField';
-import { ru } from '../../../i18n/ru';
+import { fmt, ru } from '../../../i18n/ru';
 import { CReasonList } from '../components/CReasonList';
 import { MoneyTab } from './MoneyTab';
 import { RulesTab } from './RulesTab';
 import { DocumentsTab } from './DocumentsTab';
 import { HistoryTab } from './HistoryTab';
 import { AdsOfEntity } from '../../ads/AdsOfEntity';
+import { TrackLabelsDialog, currentInterval } from './TrackLabelsDialog';
 
 const t = ru.catalog.track;
 const m = ru.catalog.money;
@@ -70,6 +71,7 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
                   </span>
                 ))}
           </span>
+          <TrackCatalogLabel isrc={isrc} />
           <NoteEditor data={data} />
         </div>
       }
@@ -95,6 +97,29 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
         },
       ]}
     />
+  );
+}
+
+/**
+ * The catalog label of the ISRC (D-172): the open interval of its label history (`GET /tracks/:isrc/labels`, no money)
+ * and «История лейбла» (`TrackLabelsDialog`). Not the book: the money of a month row sits in the label of its file.
+ */
+function TrackCatalogLabel({ isrc }: { isrc: string }) {
+  const c = ru.catalog.catalogLabel;
+  const query = useQuery(trackQueries.labels(isrc));
+  const [open, setOpen] = useState(false);
+  const now = query.data ? currentInterval(query.data) : null;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {c.header}:{' '}
+      <span data-testid="track-catalog-label" data-label-id={now?.labelId ?? ''} title={c.hint}>
+        {now ? `${now.labelName} (${fmt(c.since, { from: now.validFrom })})` : c.none}
+      </span>
+      <ActionButton name="track-labels" write={false} op="GET /tracks/:isrc/labels" variant="tertiary" onPress={() => setOpen(true)}>
+        {c.history}
+      </ActionButton>
+      {open ? <TrackLabelsDialog isrc={isrc} onClose={() => setOpen(false)} /> : null}
+    </span>
   );
 }
 

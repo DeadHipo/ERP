@@ -439,6 +439,42 @@ and `isrcsWithoutSplit` (`7`); S08/4 `isrcsWithoutSplit` `QZTST2708401` `100`; S
 `assumptions` Q1 `40` → `20`; S08/1 `assumptions` q11 as two rows keyed by document (`facade/reports.ts`: `documentId|basis`): `4.25` (the participation's appendix) and `19.125` (the NG-081 rule's contract), asserted by document id, S08/4 r1 `50`; S19 `ambiguousWriters`; S37
 `sublabelWithoutRule`.
 
+### Stage 4 (D-172): the split import, the assumption, the checklist, the label history, the release registry
+
+None is seeded: each spec builds its synthetic data (files in the spec, writes by `apiPost`) on keys of its own.
+
+**S44 (P28, `38-split-import`; keys nn=44 because S38 is seeded)** under 0to8, ISRCs `QZTST2744101` / `QZTST2744102` (no report lines). The bad file
+(`Import Artist 38A` 60 % from 2026-01-15 with `Import Owner 38A`, `Import Artist 38B` 50 % from 2026-01-01) = rows 2,
+groups 1, errors > 0; `import-row-2` `data-action="blocked"`, `data-group="QZTST2744101|2026-01-01"`, chips
+`issue-split_sum_above_100` (error), `issue-date_floored` (info, the «С» cell shows 2026-01-01), `issue-new_pseudonym`
+(warning); `action-split-import-apply` closed with `import-blocked-reason`. The fixed file (38A 60 %, 38B 20 %; 38A 100 %
+on the second ISRC from 2026-02-01) = errors 0, create 2, artistsNew 2, ownersNew 1, `issue-our_share` 20; the apply
+answers «сплитов 2; новых псевдонимов 2; новых владельцев 1», two `link-import-splits`; the same file again = unchanged 2,
+the apply closed; P15 `?isrc=QZTST2744101` one row «Import Artist 38A 60 %, Import Artist 38B 20 %». Under «Все» the
+form is closed (`upload-closed-reason`); the template downloads `split-import-template.csv`.
+
+**S45 (P15 assumption, `38-split-import`)** the P15 row of that split: `action-assume-<id>` → `assume-preview`
+`data-count="1"`, label 0to8, reason → «Допущение принято: сплитов 1, пропущено 0», the row button closed; the API again
+= 422 `nothing_to_assume`. (The money: no report lines, so P1 does not move; G-cases of `tests/assume.test.ts` own it.)
+
+**S46 (P1 checklist, `39-onboarding`)** a new own label `Onboard e2e`: `onboarding-step-label` done, `accounts` / `files`
+todo, `publishing` info, `[data-col="accounts"]` 0, `onboarding-link-accounts` → `/labels/<id>`. With account `2746100` and
+one report (March 2026, net 10, label string `Onboard Label 39` without an alias): `accounts` and `files` done (files 1,
+`onboarding-account-2746100` «2026-03 – 2026-03»), `unmapped` todo with `[data-col="unmapped"]` 1 and the string,
+`splits` todo; the link goes to `/signals/labelUnmapped`. «Свернуть» (`action-onboarding-collapse`, `data-collapsed`)
+survives a reload. Under «Все» the administrator's `org-checklist`: `org-step-labels` and `org-step-users` done.
+
+**S47 (P6 / P5 label history, `40-catalog`)** `QZTST2747101` (no report lines): `track-catalog-label` «—», the dialog
+`track-labels` empty; «Задать лейбл» 0to8 from 2026-01-15 → row `track-label-2026-01-01` (`data-source="operator"`);
+the replacement from the same month (`action-replace-track-label-2026-01-01`) with Echo8 keeps one row; the same again =
+409 `catalog_same_label`; the header names Echo8; P5 `action-catalog-current` (`?catalog=current`) lists the ISRC with
+`[data-col="catalogLabel"]` Echo8.
+
+**S48 (P7 / P8 release registry, `40-catalog`)** account `2748100` added to 0to8 and one report (March 2026, net 10,
+UPC `2748100000001`, one ISRC) uploaded on P19 and its track registered by API (P7 lists the UPCs of registered tracks); then the export of 0to8 with that UPC and «# of track» 2: `release-import-result` rows 1, inserted 1; again unchanged 1; P7 under 0to8
+`[data-col="registered"]` `data-value="true"`, `[data-col="registryTrackCount"]` 2; `?view=registry` row
+`registry-<0to8>-2748100000001` with `isrcsInUnits` 1; P8 `release-registry-<0to8>` with `release-incomplete` «1 из 2».
+
 ### SS: page states (one spec, `page.route` mocks, no seed dependency)
 
 | Id | Mock | Expected |
@@ -506,7 +542,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169); `action-create-document` closed under «Все» («выберите лейбл»), `Ref spec doc` created under 0to8 as «любой лейбл» | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |
 | 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous); D-169 the B17 lines in the book 0to8 (P1 b17 rows, P19 `statement-label`, P10 W1 under «Все» / 0to8 / Echo8, S42 part) | reads (adds W1 terms `Print`) |
 | 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
-| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 17 lists, `filesWithoutLabel`, `statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
+| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 21 lists (D-172: +4), `filesWithoutLabel`, `statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
 | 22 | `22-duplicates.spec.ts` | S30 (assign owner, create split from the candidate) | acts |
 | 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
 | 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
@@ -523,6 +559,9 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=`; D-169 P9 payouts view S18 W2 under 0to8, not under Echo8 | acts |
 | 36 | `36-orgs.spec.ts` | D-170 «Граница арендатора» and D-171 support, no scenario of its own: the seed's users (`e2e-operator`, `e2e-sysadmin`, `e2e-b`, `e2e-multi`, `e2e-manager`) and organization B («Org B e2e»: own label `Label B e2e`, owner `Owner B e2e`). Own contexts without the session: `/` → `/login`, `invalid_credentials` sentence, `?next=` back; the system administrator on P24 (A users 3; B labels 1, files 0, statements 0, owners 1, users 2), creates `Org C e2e` and user `e2e-c` on P25 (a label manager is not offered: the labels of C are an organization read, `user-labels-unavailable` = the `support_required` sentence); «Работать в организации» closed (`org-support` `data-active="false"`, the API 403 `support_required`) until `e2e-c` (empty P1) grants support (`POST /support`, `e2e-sysadmin`, +1 h, `write: true`; its audit row under `e2e-c`); then the enter → the shell names C with «поддержка» and `support-banner` (`data-write="true"`), `/labels` empty, C's audit by entity C = `POST /orgs`, `POST /orgs/:id/users`, `POST /orgs/:id/support/enter` under `e2e-sysadmin`, «Выйти из организации»; `e2e-b`: the switch offers «Все» and `Label B e2e` only, B's owner opens, A's `owner:0to8` → `not_found`, `/system/orgs` → `forbidden`, a write's audit operator is the login (not `X-Operator`), «Выйти» | acts (B: owner `Owner B2 e2e`; C and its grant) |
 | 37 | `37-roles.spec.ts` | D-171 roles, no scenario of its own: `e2e-manager` (label manager of A with 0to8) lands on P21 (no `nav-overview`, `nav-queue`, `nav-users`), the switch offers 0to8 only and pulls a link under Echo8 back to 0to8; creates the document `Roles doc e2e` under 0to8 on P13 (201), its `action-approve` is closed «нет права», P17 `action-create-label` too; the API: approve 403 `forbidden`, a document under Echo8 403 `label_forbidden`, `/owners?label=Echo8` 403 `label_forbidden`, `/owners` 400 `label_required`, `/overview` 403. `e2e-multi`: the second login step (`login-org-step`, `field-login-org`, `action-login-org`) into B, B's owner opens. `e2e-operator` on P26: creates the manager `e2e-roles-mgr` with 0to8 (`field-user-label-<id>`), it signs in; suspends it (`field-user-active`): its next request is 401; on «Поддержка» grants `e2e-sysadmin` read-only and revokes it (`support-<id>` `data-state` active → revoked) | acts (A: the document `Roles doc e2e`, the user `e2e-roles-mgr`, one revoked grant) |
+| 38 | `38-split-import.spec.ts` | S44 (P28 preview, blocked file, apply, replay), S45 (the P15 assumption) | acts (A: two splits on `QZTST27441xx`, pseudonyms `Import Artist 38A/B`, owner `Import Owner 38A`, one assumption document) |
+| 39 | `39-onboarding.spec.ts` | S46 (the label checklist from an empty label; the organization checklist under «Все») | acts (A: the own label `Onboard e2e`, account `2746100`, one report) |
+| 40 | `40-catalog.spec.ts` | S47 (the label history on P6, the P5 column and filter), S48 (the release registry: import, P7, the registry view, P8) | acts (A: one operator interval on `QZTST2747101`; account `2748100` of 0to8 with one report; the registry row of 0to8) |
 | – | `smoke.spec.ts` | the shell (the sidebar = `navFor` of `me.abilities`: an `org_admin` sees every section and «Организация»), the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders (also `/users`) | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks (`/auth/me` mocked as the login off, D-170) | no seed |
 

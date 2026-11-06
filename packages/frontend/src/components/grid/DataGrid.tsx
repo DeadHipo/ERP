@@ -39,6 +39,8 @@ export function DataGrid<T>(props: {
   loading?: boolean;
   /** A `data-testid` for the row element (e.g. `queue-group-<kind>-<id>`), set when AG Grid creates the row. */
   rowTestId?: (row: T) => string;
+  /** More `data-*` attributes of the row element (P28 `import-row-<line>` with `data-action`, `data-group`, D-172). */
+  rowAttributes?: (row: T) => Record<string, string>;
   /** The grid grows with its rows (no inner scroll, every row of the page is in the DOM): for short lists. */
   autoHeight?: boolean;
   /** `false` for a list paged by the server (the page has its own pager): one pagination control per grid. */
@@ -124,11 +126,13 @@ export function DataGrid<T>(props: {
   const localeText = useMemo(() => AG_GRID_LOCALE_RU, []);
   const pageSize = props.pageSize ?? PAGE_SIZES[0];
   const rowTestId = props.rowTestId;
+  const rowAttributes = props.rowAttributes;
   const processRowPostCreate = useCallback(
     (p: { eRow: HTMLElement; node: { data?: T } }) => {
       if (rowTestId && p.node.data) p.eRow.setAttribute('data-testid', rowTestId(p.node.data));
+      if (rowAttributes && p.node.data) for (const [k, v] of Object.entries(rowAttributes(p.node.data))) p.eRow.setAttribute(k, v);
     },
-    [rowTestId],
+    [rowTestId, rowAttributes],
   );
 
   return (

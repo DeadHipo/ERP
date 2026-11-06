@@ -27,6 +27,7 @@ export const ACTION_OPS = {
   'clear-note': 'PATCH /tracks/:id',
   'set-label': 'PATCH /settlements/operations/:id',
   'set-payer': 'PATCH /ads/:id',
+  'track-labels': 'POST /tracks/:isrc/label',
 } as const satisfies Record<string, OperationKey>;
 
 export type RowAction = keyof typeof ACTION_OPS;

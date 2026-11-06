@@ -2,11 +2,12 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { ColDef } from 'ag-grid-community';
 import type { Signals } from '@erp/shared/api-responses';
+import { useOwnLabels } from '../../../components/LabelSwitch';
 import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
 import { ru } from '../../../i18n/ru';
 import { centsToText } from '../../owners/components/cents';
-import { EditAdByIdDialog, SetOperationLabelDialog } from '../actions/dialogs';
+import { EditAdByIdDialog, SetOperationLabelDialog, TrackLabelsDialog } from '../actions/dialogs';
 import { SIGNAL_ACTIONS } from '../actions/action-table';
 import { actionCol, btn, c, Grid, info, isrcCol, moneyCol, t, textCol, type ListProps } from './signal-grid';
 
@@ -154,6 +155,86 @@ export const LABEL_SIGNALS = {
       />
     );
   },
+  // ---- D-172: the label history and the release registry (information, except tracksWithoutLabel) ----
+  catalogOutsideAccount: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['catalogOutsideAccount'][number];
+    return (
+      <Grid<R>
+        name="catalogOutsideAccount"
+        count={count}
+        rows={data.catalogOutsideAccount}
+        rowKey={(r) => `${r.isrc}|${r.account}`}
+        rowId={(r) => `${r.isrc}|${r.account}|${r.bookLabelId}|${r.firstMonth}`}
+        columns={[
+          isrcCol<R>((r) => r.isrc),
+          textCol('account', c.account, (r) => r.account),
+          labelCol<R>('book', c.book, (r) => r.bookLabelId),
+          labelCol<R>('catalogLabel', c.catalogLabel, (r) => r.catalogLabelId),
+          textCol('months', c.months, (r) => `${r.firstMonth} – ${r.lastMonth}`),
+          textCol('units', c.units, (r) => String(r.units)),
+          moneyCol('net', c.net, (r) => r.net),
+          informationCol<R>('catalogOutsideAccount'),
+        ]}
+      />
+    );
+  },
+  tracksWithoutLabel: ({ data, count, open, close }: ListProps): ReactNode => {
+    type R = Signals['tracksWithoutLabel'][number];
+    return (
+      <Grid<R>
+        name="tracksWithoutLabel"
+        count={count}
+        rows={data.tracksWithoutLabel}
+        rowKey={(r) => r.isrc}
+        columns={[
+          isrcCol<R>((r) => r.isrc),
+          textCol('lastMonth', c.lastMonth, (r) => r.lastMonth),
+          labelCol<R>('book', c.book, (r) => r.bookLabelId),
+          moneyCol('net', c.net, (r) => r.net),
+          actionCol((r) => btn('track-labels', ru.catalog.catalogLabel.history, () => open(<TrackLabelsDialog isrc={r.isrc} onClose={close} />))),
+        ]}
+      />
+    );
+  },
+  releasesIncomplete: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['releasesIncomplete'][number];
+    return (
+      <Grid<R>
+        name="releasesIncomplete"
+        count={count}
+        rows={data.releasesIncomplete}
+        rowKey={(r) => r.upc}
+        rowId={(r) => `${r.upc}|${r.labelId}`}
+        columns={[
+          upcCol<R>((r) => r.upc),
+          textCol('title', c.releaseTitle, (r) => r.title),
+          labelCol<R>('label', c.registryLabel, (r) => r.labelId),
+          textCol('trackCount', c.trackCount, (r) => String(r.trackCount)),
+          textCol('isrcsInUnits', c.isrcsInUnits, (r) => String(r.isrcsInUnits)),
+          informationCol<R>('releasesIncomplete'),
+        ]}
+      />
+    );
+  },
+  releasesUnknown: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['releasesUnknown'][number];
+    return (
+      <Grid<R>
+        name="releasesUnknown"
+        count={count}
+        rows={data.releasesUnknown}
+        rowKey={(r) => r.upc}
+        rowId={(r) => `${r.upc}|${r.bookLabelId}`}
+        columns={[
+          upcCol<R>((r) => r.upc),
+          textCol('title', c.title, (r) => r.releaseTitle),
+          labelCol<R>('book', c.book, (r) => r.bookLabelId),
+          moneyCol('net', c.net, (r) => r.net),
+          informationCol<R>('releasesUnknown'),
+        ]}
+      />
+    );
+  },
 } satisfies Partial<Record<keyof typeof SIGNAL_ACTIONS, (props: ListProps) => ReactNode>>;
 
 export type LabelSignalName = keyof typeof LABEL_SIGNALS;
@@ -170,5 +251,33 @@ function adMonthCol<T extends { adId: string; month: string }>(): ColDef<T> {
     headerName: c.month,
     valueGetter: (p) => p.data?.month ?? '',
     cellRenderer: (p: { data?: T }) => (p.data ? <EntityLink kind="ad" id={p.data.adId} label={p.data.month} /> : null),
+  };
+}
+
+/** The name of an own label by id (the labels of the switch); «—» for none. */
+function LabelName({ id, col }: { id: string | null; col: string }) {
+  const own = useOwnLabels();
+  return (
+    <span data-col={col} data-label-id={id ?? ''}>
+      {id === null ? '—' : (own.find((l) => l.id === id)?.name ?? id)}
+    </span>
+  );
+}
+
+function labelCol<T>(colId: string, headerName: string, get: (r: T) => string | null): ColDef<T> {
+  return {
+    colId,
+    headerName,
+    valueGetter: (p) => (p.data ? (get(p.data) ?? '') : ''),
+    cellRenderer: (p: { data?: T }) => (p.data ? <LabelName id={get(p.data)} col={colId} /> : null),
+  };
+}
+
+function upcCol<T>(get: (r: T) => string): ColDef<T> {
+  return {
+    colId: 'upc',
+    headerName: c.upc,
+    valueGetter: (p) => (p.data ? get(p.data) : ''),
+    cellRenderer: (p: { data?: T }) => (p.data ? <EntityLink kind="upc" id={get(p.data)} /> : null),
   };
 }

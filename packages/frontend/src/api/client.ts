@@ -206,6 +206,19 @@ export const tracks = {
   update: (trackId: string, body: z.input<typeof S.updateTrackBody>) =>
     call('PATCH', `/tracks/${id(trackId)}`, { body, schema: R.trackSchema }),
   explain: (isrc: string) => call('GET', `/tracks/${id(isrc)}/explain`, { schema: R.explainSchema }),
+  /** The label history of an ISRC (D-172): navigation, not money. */
+  labels: (isrc: string) => call('GET', `/tracks/${id(isrc)}/labels`, { schema: R.trackLabelsSchema }),
+  /** An operator interval of the label history; the same `from` as an operator interval replaces it. Answers the history. */
+  setLabel: (isrc: string, body: z.input<typeof S.setTrackLabelBody>) =>
+    call('POST', `/tracks/${id(isrc)}/label`, { body, schema: R.trackLabelsSchema }),
+};
+
+/** The release registry of a label (D-172): the Believe release export, no money. */
+export const releases = {
+  importFile: (file: File, labelId: string) =>
+    call('POST', '/releases/import', { query: uploadQuery(labelId), body: fileForm(file), schema: R.releaseImportSchema }),
+  registry: (query: z.input<typeof S.releaseRegistryQuery> = {}) =>
+    call('GET', '/releases/registry', { query, schema: R.releaseRegistrySchema }),
 };
 
 export const documents = {
@@ -239,6 +252,15 @@ export const splits = {
     call('POST', '/splits/buyout', { body, schema: list(R.splitSchema) }),
   confirm: (splitId: string, body: z.input<typeof S.confirmSplitBody>) =>
     call('POST', `/splits/${id(splitId)}/confirm`, { body, schema: R.splitSchema }),
+  /** The split import (D-172, P28): `dryRun` true = the preview (nothing written), false = the apply (all or nothing). */
+  importFile: (file: File, labelId: string, dryRun: boolean) =>
+    call('POST', '/splits/import', {
+      query: { label: labelId, dryRun: dryRun ? '1' : '0' } satisfies z.input<typeof S.splitImportQuery>,
+      body: fileForm(file),
+      schema: R.splitImportSchema,
+    }),
+  /** «Принять как допущение» (D-172): one `assumption` document for the splits of the group without a document. */
+  assume: (body: z.input<typeof S.assumeSplitsBody>) => call('POST', '/splits/assume', { body, schema: R.assumeResultSchema }),
 };
 
 export const participations = {
@@ -306,6 +328,10 @@ export const reports = {
   /** One reason of the C queue grouped by what unblocks it, largest first, paged (N3). */
   queue: (reason: z.output<typeof R.cReasonSchema>, query: z.input<typeof S.queueQuery> = {}) =>
     call('GET', `/queue/${id(reason)}`, { query, schema: R.queuePageSchema }),
+  /** The onboarding checklist of one own label (D-172; no calculation). */
+  onboarding: (query: z.input<typeof S.onboardingQuery>) => call('GET', '/onboarding', { query, schema: R.onboardingSchema }),
+  /** The onboarding checklist of the organization, its administrator's (D-172). */
+  orgOnboarding: () => call('GET', '/onboarding/organization', { schema: R.orgOnboardingSchema }),
 };
 
 /** The operations list and the payout snapshot are in `api/money.ts` (with their filters and schemas). */

@@ -19,4 +19,8 @@ export const signals = {
   statementsWithoutLabel: 'Выписки B17 без лейбла',
   adsWithoutLabel: 'Реклама без лейбла',
   adOutsideBook: 'Реклама вне книги дохода',
+  catalogOutsideAccount: 'Продажи вне лейбла каталога',
+  tracksWithoutLabel: 'Треки без лейбла каталога',
+  releasesIncomplete: 'Релизы реестра с неполным составом',
+  releasesUnknown: 'Релизы вне реестра лейбла',
 } as const satisfies Record<Exclude<keyof typeof signalsSchema.shape, 'counts'>, string>;

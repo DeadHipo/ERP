@@ -7,13 +7,13 @@ import type { sourceFileSchema, statementSchema } from '@erp/shared/api-response
 import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { sourceQueries } from '../../../api/queries/sources';
-import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
 import { DataGrid } from '../../../components/grid/DataGrid';
 import { TextField } from '../../../components/fields/TextField';
+import { UploadForm } from '../../../components/fields/UploadForm';
 import { compareDecimal, formatCount } from '../../../lib/money';
 import { useOwnLabels } from '../../../components/LabelSwitch';
 import { detailParams } from '../../../components/toast';
@@ -27,11 +27,12 @@ type BelieveFile = z.output<typeof sourceFileSchema>;
 type Statement = z.output<typeof statementSchema>;
 
 /**
- * One upload form: a file input and a button; `POST` through the client (multipart, `X-Operator`) under the label of the
- * switch (D-169), closed under «Все»; a 409 is a toast with its code. With `register` (Believe) the answer
- * `account_unregistered` opens the dialog that registers the account of the file under the label and repeats the upload.
+ * The upload of a Believe report or a B17 statement on the shared `UploadForm`: `POST` through the client (multipart,
+ * `X-Operator`) under the label of the switch (D-169), closed under «Все»; a 409 is a toast with its code. With
+ * `register` (Believe) the answer `account_unregistered` opens the dialog that registers the account of the file under
+ * the label and repeats the upload.
  */
-function UploadForm(props: {
+function SourceUpload(props: {
   name: 'believe' | 'b17';
   label: string;
   accept: string;
@@ -40,8 +41,6 @@ function UploadForm(props: {
 }) {
   const { labelId, closed } = useWriteLabel();
   const own = useOwnLabels();
-  const [file, setFile] = useState<File | null>(null);
-  const [key, setKey] = useState(0);
   const [unregistered, setUnregistered] = useState<{ file: File; account: string } | null>(null);
   const run = useAction((f: File) => props.send(f, labelId), {
     invalidate: 'all',
@@ -55,32 +54,18 @@ function UploadForm(props: {
   });
   const label = { id: labelId, name: own.find((l) => l.id === labelId)?.name ?? '' };
   return (
-    <div className="flex flex-wrap items-center gap-3" data-testid={`upload-${props.name}`}>
-      {/* The native input is hidden (its browser text is English); the label is the Russian button and the chosen name. */}
-      <label className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
-        <span>{props.label}</span>
-        <span className="rounded-lg border border-border bg-default/40 px-3 py-1">{t.chooseFile}</span>
-        <span className="text-muted" data-testid={`upload-${props.name}-chosen`}>
-          {file ? file.name : t.noFileChosen}
-        </span>
-        <input
-          key={key}
-          type="file"
-          accept={props.accept}
-          className="sr-only"
-          data-testid={`field-upload-${props.name}`}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-      </label>
-      <ActionButton
-        name={`upload-${props.name}`} op={props.name === 'believe' ? 'POST /sources/believe' : 'POST /publishing/b17'}
+    <>
+      <UploadForm
+        testId={`upload-${props.name}`}
+        field={`upload-${props.name}`}
+        action={`upload-${props.name}`}
+        op={props.name === 'believe' ? 'POST /sources/believe' : 'POST /publishing/b17'}
+        label={props.label}
+        accept={props.accept}
         isPending={run.isPending}
-        isDisabled={file === null || closed}
-        reason={closed ? undefined : ru.actions.hints.fillFields}
-        onPress={() => file && run.mutate(file, { onSettled: () => { setFile(null); setKey((k) => k + 1); } })}
-      >
-        {t.upload}
-      </ActionButton>
+        closed={closed}
+        onSubmit={(file, reset) => run.mutate(file, { onSettled: reset })}
+      />
       {unregistered ? (
         <AddAccountDialog
           label={label}
@@ -89,7 +74,7 @@ function UploadForm(props: {
           onAdded={() => run.mutate(unregistered.file)}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -159,14 +144,14 @@ export function SourcesPage() {
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">{t.believe}</h2>
-          <UploadForm name="believe" label={t.uploadBelieve} accept=".csv,.zip" register send={(f, labelId) => api.sources.uploadBelieve(f, labelId).then((r) => ({ fileName: r.fileName }))} />
+          <SourceUpload name="believe" label={t.uploadBelieve} accept=".csv,.zip" register send={(f, labelId) => api.sources.uploadBelieve(f, labelId).then((r) => ({ fileName: r.fileName }))} />
           <QueryView query={query} isEmpty={(d) => d.believe.length === 0} emptyMessage={t.noBelieve}>
             {(d) => <DataGrid rowData={d.believe.filter((f) => needle === '' || [f.account, f.reportingMonth, f.fileName].some((x) => x.toLocaleLowerCase('ru').includes(needle)))} columnDefs={believeCols} getRowId={(f) => f.id} rowTestId={(f) => `source-file-${f.id}`} gridStateKey="believe" height="360px" />}
           </QueryView>
         </section>
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">{t.b17}</h2>
-          <UploadForm name="b17" label={t.uploadB17} accept=".xlsx" send={(f, labelId) => api.publishing.uploadB17(f, labelId).then((r) => ({ fileName: r.statement.fileName }))} />
+          <SourceUpload name="b17" label={t.uploadB17} accept=".xlsx" send={(f, labelId) => api.publishing.uploadB17(f, labelId).then((r) => ({ fileName: r.statement.fileName }))} />
           <QueryView query={query} isEmpty={(d) => d.b17.length === 0} emptyMessage={t.noB17}>
             {(d) => <DataGrid rowData={d.b17.filter((f) => needle === '' || [f.fileName, ...f.periods].some((x) => x.toLocaleLowerCase('ru').includes(needle)))} columnDefs={b17Cols} getRowId={(f) => f.id} rowTestId={(f) => `statement-${f.id}`} gridStateKey="b17" height="260px" />}
           </QueryView>

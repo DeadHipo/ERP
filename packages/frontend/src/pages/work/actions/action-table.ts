@@ -49,4 +49,8 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   statementsWithoutLabel: { information: true, note: 'loaded B17 statements without a label (D-169): marked by the script assign-label-books, nothing to fix here' },
   adsWithoutLabel: { action: 'EditAdByIdDialog' },
   adOutsideBook: { action: 'EditAdByIdDialog' },
+  catalogOutsideAccount: { information: true, note: 'units whose book is not the catalog label of their month (D-172): a tail on the old account, nothing to fix' },
+  tracksWithoutLabel: { action: 'TrackLabelsDialog' },
+  releasesIncomplete: { information: true, note: 'registry releases with fewer ISRCs in the units than # of track (D-172): information, nothing to fix here' },
+  releasesUnknown: { information: true, note: 'UPCs of the units missing from the release registry of their label (D-172): import a fresh Believe export on P7' },
 };

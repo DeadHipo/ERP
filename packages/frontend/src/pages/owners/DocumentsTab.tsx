@@ -11,9 +11,9 @@ import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
 import { ApproveDocumentDialog, CreateContractDialog } from '../work/actions/dialogs';
 import { Section, SimpleTable, Td } from './components/Fact';
+import { OWNER_DOCUMENT_KINDS } from '../../lib/document-kinds';
 
 const t = ru.money.documents;
-const ALL_KINDS = ['contract', 'appendix', 'buyout', 'advance_basis', 'adjustment_basis', 'payment_proof', 'return_proof', 'other'] as const;
 
 type Active = { action: 'create' | 'contract' } | { action: 'attach' | 'approve'; doc: DocumentView };
 
@@ -110,7 +110,7 @@ function CreateDocumentDialog(props: { detail: OwnerDetail; onClose: () => void 
   return (
     <FormDialog isOpen onOpenChange={(o) => (o ? null : props.onClose())} title={t.createTitle}>
       <DocumentStep
-        kinds={ALL_KINDS}
+        kinds={OWNER_DOCUMENT_KINDS}
         newOnly
         ownerId={props.detail.owner.id}
         defaultTitle={`Документ ${props.detail.owner.name}`}

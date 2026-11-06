@@ -10,6 +10,7 @@ const WITHOUT_OP = [
   'ads-apply',
   'ads-reset',
   'breakdown',
+  'catalog-current',
   'create-pick-next',
   'duplicate-same',
   'edit-note',
@@ -18,6 +19,7 @@ const WITHOUT_OP = [
   'files-newest',
   'files-none',
   'note-cancel',
+  'onboarding-collapse',
   'operations-apply',
   'operations-reset',
   'page-next',
@@ -29,6 +31,7 @@ const WITHOUT_OP = [
   'reset-lines',
   'show-lines',
   'split-add-row',
+  'split-import-template',
   'split-remove-row-${i}',
   'split-row-drop-document-${i}',
 ];

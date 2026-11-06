@@ -22,6 +22,7 @@ import { useOperator } from '../../../lib/operator';
 import { fmt, ru } from '../../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from './DocumentStep';
 import { useApproveLines } from './approve-lines';
+import { SPLIT_STEP_KINDS } from '../../../lib/document-kinds';
 
 // The dialogs of the queue and signal actions (16 §2.6, §2.7; 17 §6). Each is opened by the page for one row and
 // closed by `onClose` after its final write succeeded. Irreversible final steps go through `ConfirmDialog`. The owner
@@ -33,12 +34,12 @@ export { AssignOwnerDialog, CreateContractDialog, MergeOwnerDialog } from './own
 export { CloseRuleDialog } from './rule-dialogs';
 export { SetOperationLabelDialog } from './label-dialogs';
 export { EditAdByIdDialog } from '../../ads/AdDialogs';
+export { TrackLabelsDialog } from '../../catalog/track/TrackLabelsDialog';
 
 const a = ru.actions;
 const f = a.fields;
 type Base = z.output<typeof participationBase>;
 type Funded = z.output<typeof fundedFromSchema>;
-const SPLIT_DOC_KINDS = ['appendix', 'contract', 'other'] as const;
 
 /** `YYYY-MM` -> the first day of that month (the backend floors every rule date to it anyway, M52). */
 const monthStart = (month: string) => (month.length === 7 ? `${month}-01` : month);
@@ -86,7 +87,7 @@ export function ConfirmSplitDialog(props: { splitId: string; isrc: string; onClo
         <div className="text-sm">
           ISRC <b>{props.isrc}</b> · {rows} {split ? `· ${period(split.validFrom, split.validTo)}` : ''}
         </div>
-        <DocumentStep kinds={SPLIT_DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
+        <DocumentStep kinds={SPLIT_STEP_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
       </FormDialog>
       <ConfirmDialog
         isOpen={confirm}
@@ -208,7 +209,7 @@ export function ReplaceDocumentDialog(props: {
         </div>
         <DateField name="replace-from" label={f.from} value={month} onChange={setMonth} month isRequired />
         <DocumentStep
-          kinds={SPLIT_DOC_KINDS}
+          kinds={SPLIT_STEP_KINDS}
           defaultTitle={`Документ ${props.isrc ?? ''}`.trim()}
           ready={doc}
           onReady={setDoc}

@@ -23,10 +23,10 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 17 lists with their counts and links', async ({ page }) => {
+test('the index lists the 21 lists with their counts and links (D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown)', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(17);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(21);
   // D-169: every seed file is loaded under a label, so «Файлы Believe без лейбла» is empty
   await expect(page.getByTestId('signal-list-filesWithoutLabel').getByTestId('signal-count')).toHaveText('0');
   // D-169: the one B17 statement of the seed is loaded under 0to8, so «Выписки B17 без лейбла» is empty too

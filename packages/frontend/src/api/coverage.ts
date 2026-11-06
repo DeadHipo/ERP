@@ -1,6 +1,6 @@
 /**
  * Where every operation of `packages/backend/src/api/operations.ts` is used on a screen, or why it is not.
- * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P27`
+ * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P28`
  * (see `docs/agents/17_frontend_model.md` section 3) or `shell` (the global search and the pickers on every page), and its `route`
  * is a pattern of `src/routes/paths.ts`. A `refusal` says in words why no screen calls the operation.
  */
@@ -71,9 +71,13 @@ export const OPERATION_COVERAGE = {
     note: 'a month row shows its book (the label of its file, «Книга», month-book / data-book) and the label string → label of record → sublabel (data-label), D-169',
   },
   'GET /tracks/:isrc/breakdown/:month': { page: 'P6', route: '/tracks/:isrc', note: 'action-breakdown of a month row' },
+  'GET /tracks/:isrc/labels': { page: 'P6', route: '/tracks/:isrc', note: 'D-172: track-catalog-label in the header and TrackLabelsDialog (action-track-labels, rows track-label-<validFrom>); also P21 tracksWithoutLabel' },
+  'POST /tracks/:isrc/label': { page: 'P6', route: '/tracks/:isrc', note: 'D-172: action-set-track-label (field-track-label, field-track-label-from, field-track-label-to, action-set-track-label-submit) and action-replace-track-label-<validFrom> of an operator row' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
-  'GET /releases': { page: 'P7', route: '/releases' },
+  'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },
+  'GET /releases/registry': { page: 'P7', route: '/releases', note: 'D-172: the view «Реестр» (?view=registry, rows registry-<labelId>-<upc>, isrcsInUnits)' },
+  'POST /releases/import': { page: 'P7', route: '/releases', note: 'D-172: action-import-releases → ReleaseImportDialog on the shared UploadForm (field-releases-file, release-import-result)' },
   'GET /releases/:upc': { page: 'P8', route: '/releases/:upc' },
 
   'GET /documents': { page: 'P13', route: '/documents', note: 'label= of the switch: the documents of the label and those without one, the «Лейбл» column document-label («любой» for none, D-169); also the document titles of P21 assumptions and of the approve and recreate confirmations' },
@@ -89,6 +93,8 @@ export const OPERATION_COVERAGE = {
   'POST /splits/change': { page: 'P6', route: '/tracks/:isrc', note: 'rules tab' },
   'POST /splits/buyout': { page: 'P6', route: '/tracks/:isrc', note: 'rules tab; also P15' },
   'POST /splits/:id/confirm': { page: 'P14', route: '/documents/:id', note: 'action-confirm-split; also the queue and the rules tab of P6' },
+  'POST /splits/import': { page: 'P28', route: '/splits/import', note: 'D-172: dryRun=1 = action-split-import-preview (field-split-import-file on the shared UploadForm), dryRun=0 = action-split-import-apply (closed with import-blocked-reason while errors > 0); entered from P15 action-split-import only, no sidebar item (О11); the template is a Blob of SPLIT_IMPORT_COLUMNS (action-split-import-template), no operation' },
+  'POST /splits/assume': { page: 'P15', route: '/splits', note: 'D-172: action-assume-<splitId> → AssumeDialog (field-assume-label, field-assume-reason, action-assume-submit); also P6 action-assume-isrc (every split of the ISRC)' },
 
   'GET /participations': { page: 'P16', route: '/participations' },
   'POST /participations': { page: 'P16', route: '/participations', note: 'also the rules tab of P6' },
@@ -116,6 +122,8 @@ export const OPERATION_COVERAGE = {
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
   'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, statementsWithoutLabel, adsWithoutLabel, adOutsideBook, D-169) in pages/work/signals/label-signals.tsx' },
   'GET /overview': { page: 'P1', route: '/', note: 'also the queue summary of P2' },
+  'GET /onboarding': { page: 'P1', route: '/', note: 'D-172: the checklist of the label of the switch (onboarding-checklist, onboarding-step-<key>); not under «Все»' },
+  'GET /onboarding/organization': { page: 'P1', route: '/', note: 'D-172: the checklist of the organization under «Все» (org-checklist), for its administrator only' },
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 
   'GET /settlements/operations': { page: 'P20', route: '/operations', note: 'also the operations tab of P10' },

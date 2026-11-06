@@ -12,7 +12,7 @@ const TABLE = {
   documentStatus: entries(ru.status.documentStatus, { not_attached: 'warning', not_approved: 'warning', approved: 'success', missing: 'danger' }),
   documentKind: entries(ru.status.documentKind, {
     contract: 'default', appendix: 'default', buyout: 'default', advance_basis: 'default', adjustment_basis: 'default',
-    payment_proof: 'default', return_proof: 'default', other: 'default', assumption: 'warning',
+    payment_proof: 'default', return_proof: 'default', other: 'default', assumption: 'warning', label_decision: 'accent',
   }),
   ownerStatus: entries(ru.status.ownerStatus, { confirmed: 'success', waiting_documents: 'warning' }),
   artistStatus: entries(ru.status.artistStatus, { confirmed: 'success', unconfirmed: 'warning', no_owner: 'danger' }),

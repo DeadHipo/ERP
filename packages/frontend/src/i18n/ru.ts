@@ -16,6 +16,8 @@ import { status } from './ru/status';
 import { catalog } from './ru/catalog';
 import { money } from './ru/money';
 import { reference } from './ru/reference';
+import { splitImport } from './ru/splitImport';
+import { onboarding } from './ru/onboarding';
 import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
 /** The one Russian dictionary of the interface, split by domain. A "t" is just importing `ru`. */
@@ -39,6 +41,8 @@ export const ru = {
   catalog,
   money,
   reference,
+  splitImport,
+  onboarding,
   audit,
   ads,
   auth,

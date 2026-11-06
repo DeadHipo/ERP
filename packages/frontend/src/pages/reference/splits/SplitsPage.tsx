@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { SplitListItem } from '@erp/shared/api-responses';
@@ -18,11 +19,12 @@ import { useUrlParam } from '../../catalog/components/url';
 import { ConfirmSplitDialog } from '../../work/actions/dialogs';
 import { DocumentCell, period, toInt } from '../shared';
 import { CreateForIsrc, IsrcActionDialog, type IsrcAction } from './IsrcDialogs';
+import { AssumeDialog } from './AssumeDialog';
 
 const t = ru.reference.splits;
 const SIZES = ['50', '100', '500'];
 
-type Dialog = { kind: 'create' } | { kind: 'confirm'; split: SplitListItem } | { kind: 'isrc'; action: IsrcAction } | null;
+type Dialog = { kind: 'create' } | { kind: 'confirm'; split: SplitListItem } | { kind: 'assume'; split: SplitListItem } | { kind: 'isrc'; action: IsrcAction } | null;
 
 /** Server paging of a list page: `limit`/`offset` in the URL, the previous/next buttons and the range text. */
 export function usePaging() {
@@ -60,6 +62,7 @@ export function SplitsPage() {
   const [status, setStatus] = useUrlParam('status');
   const paging = usePaging();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const navigate = useNavigate();
   const query = useQuery(
     splitQueries.page({
       isrc: isrc.trim() || undefined,
@@ -96,7 +99,7 @@ export function SplitsPage() {
         headerName: t.cols.actions,
         sortable: false,
         filter: false,
-        minWidth: 360,
+        minWidth: 520,
         cellRenderer: (p: { data?: SplitListItem }) =>
           p.data ? (
             <span className="flex items-center gap-2">
@@ -108,6 +111,9 @@ export function SplitsPage() {
               </ActionButton>
               <ActionButton name="confirm-split" op="POST /splits/:id/confirm" variant="secondary" isDisabled={p.data.documentId !== null} reason={t.hasDocument} onPress={() => p.data && setDialog({ kind: 'confirm', split: p.data })}>
                 {t.confirm}
+              </ActionButton>
+              <ActionButton name={`assume-${p.data.id}`} op="POST /splits/assume" variant="secondary" isDisabled={p.data.documentId !== null} reason={t.hasDocument} onPress={() => p.data && setDialog({ kind: 'assume', split: p.data })}>
+                {t.assume}
               </ActionButton>
             </span>
           ) : null,
@@ -121,9 +127,15 @@ export function SplitsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-split" op="POST /splits" onPress={() => setDialog({ kind: 'create' })}>
-            {t.create}
-          </ActionButton>
+          <>
+            <ActionButton name="create-split" op="POST /splits" onPress={() => setDialog({ kind: 'create' })}>
+              {t.create}
+            </ActionButton>
+            {/* P28 (D-172): the import page is entered from here only (no sidebar item, О11) */}
+            <ActionButton name="split-import" op="POST /splits/import" write={false} variant="secondary" onPress={() => void navigate('/splits/import')}>
+              {t.import}
+            </ActionButton>
+          </>
         }
       />
       <div className="mb-3 flex flex-wrap items-end gap-3">
@@ -155,6 +167,9 @@ export function SplitsPage() {
       </QueryView>
       {dialog?.kind === 'create' ? <CreateForIsrc what="split" onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === 'confirm' ? <ConfirmSplitDialog splitId={dialog.split.id} isrc={dialog.split.isrc} onClose={() => setDialog(null)} /> : null}
+      {dialog?.kind === 'assume' ? (
+        <AssumeDialog group={{ splitIds: [dialog.split.id] }} candidates={1} title={`ISRC ${dialog.split.isrc}`} onClose={() => setDialog(null)} />
+      ) : null}
       {dialog?.kind === 'isrc' ? <IsrcActionDialog action={dialog.action} onClose={() => setDialog(null)} /> : null}
     </div>
   );

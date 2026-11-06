@@ -28,7 +28,11 @@ const m = ru.catalog.money;
 /** A row of P5: the track without money (the catalog) and, once asked, its money (a summary item). */
 type TrackRow = Omit<TrackCatalogItem, 'registered'> & { money?: TrackSummaryItem };
 
-const rowOfSummary = (i: TrackSummaryItem): TrackRow => ({
+type CatalogFields = Pick<TrackCatalogItem, 'catalogLabelId' | 'catalogLabelName' | 'catalogFrom'>;
+const NO_CATALOG: CatalogFields = { catalogLabelId: null, catalogLabelName: null, catalogFrom: null };
+
+/** A summary item as a row; its catalog label (D-172) comes from the catalog read of the same label view. */
+const rowOfSummary = (i: TrackSummaryItem, catalogOf: Map<string, CatalogFields>): TrackRow => ({
   isrc: i.isrc,
   upcs: i.upcs,
   title: i.title,
@@ -36,6 +40,7 @@ const rowOfSummary = (i: TrackSummaryItem): TrackRow => ({
   artists: i.artists,
   hasSplit: i.hasSplit,
   hasParticipations: i.hasParticipations,
+  ...(catalogOf.get(i.isrc) ?? NO_CATALOG),
   money: i,
 });
 
@@ -51,12 +56,20 @@ export function TracksPage() {
   const [all, setAll] = useUrlParam('all');
   const [hasSplit, setHasSplit] = useUrlParam('hasSplit');
   const [q, setQ] = useUrlParam('q');
+  // D-172: `catalog=current` = only the ISRCs whose open label-history interval is the label (any, under «Все»)
+  const [catalogParam, setCatalogParam] = useUrlParam('catalog');
+  const current = catalogParam === 'current';
   const [creating, setCreating] = useState(false);
   const full = account !== '' || month !== '' || all === '1';
   // the label view (D-168): the ISRCs of the label's units and their money alone
   const { labelId } = useLabel();
   const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined, labelId), enabled: full });
-  const catalog = useQuery({ ...trackQueries.catalog(labelId), enabled: !full });
+  // the catalog read (no money) also gives the catalog label of the rows of a full summary
+  const catalog = useQuery(trackQueries.catalog(labelId, current));
+  const catalogOf = useMemo(
+    () => new Map((catalog.data?.items ?? []).map((i): [string, CatalogFields] => [i.isrc, { catalogLabelId: i.catalogLabelId, catalogLabelName: i.catalogLabelName, catalogFrom: i.catalogFrom }])),
+    [catalog.data],
+  );
   // The ISRCs on the screen (page, sort, filter), settled for a moment before they are asked.
   const [visible, setVisible] = useState<readonly string[]>([]);
   const [asked, setAsked] = useState<readonly string[]>([]);
@@ -99,7 +112,16 @@ export function TracksPage() {
         [i.isrc, i.title, i.artistName, ...i.artists.map((a) => a.pseudonym), ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
     [scoped, hasSplit, needle],
   );
-  const fullRows = useMemo(() => (summary.data ? summary.data.items.map(rowOfSummary).filter(keep) : []), [summary.data, keep]);
+  const fullRows = useMemo(
+    () =>
+      summary.data
+        ? summary.data.items
+            .filter((i) => !current || catalogOf.has(i.isrc))
+            .map((i) => rowOfSummary(i, catalogOf))
+            .filter(keep)
+        : [],
+    [summary.data, keep, current, catalogOf],
+  );
   const pagedRows = useMemo(
     () =>
       catalog.data
@@ -180,6 +202,16 @@ export function TracksPage() {
         <div className="w-72">
           <TextField name="tracks-q" label={t.q} value={q} onChange={setQ} type="search" />
         </div>
+        <ActionButton
+          name="catalog-current"
+          write={false}
+          variant={current ? 'primary' : 'secondary'}
+          onPress={() => setCatalogParam(current ? '' : 'current')}
+        >
+          <span data-active={current ? 'true' : 'false'} title={t.catalogCurrentHint}>
+            {current ? t.catalogAll : t.catalogCurrent}
+          </span>
+        </ActionButton>
         <div className="w-72">
           <SelectField
             name="tracks-has-split"
@@ -244,6 +276,20 @@ function trackColumns(full: boolean): ColDef<TrackRow>[] {
       autoHeight: true,
       valueGetter: (p) => (p.data ? artistsText(p.data.artists, p.data.artistName) : ''),
       cellRenderer: (p: P) => (p.data ? <ArtistLinks artists={p.data.artists} reportName={p.data.artistName} /> : null),
+    },
+    // D-172: the label of the open label-history interval; not the book (the money of a row is by the files' label)
+    {
+      colId: 'catalogLabel',
+      headerName: ru.catalog.catalogLabel.col,
+      headerTooltip: ru.catalog.catalogLabel.hint,
+      minWidth: 140,
+      valueGetter: (p) => p.data?.catalogLabelName ?? '',
+      cellRenderer: (p: P) =>
+        p.data ? (
+          <span data-col="catalogLabel" data-label-id={p.data.catalogLabelId ?? ''} title={p.data.catalogFrom ? fmt(ru.catalog.catalogLabel.since, { from: p.data.catalogFrom }) : undefined}>
+            {p.data.catalogLabelName ?? ru.catalog.catalogLabel.none}
+          </span>
+        ) : null,
     },
     {
       colId: 'upcs',

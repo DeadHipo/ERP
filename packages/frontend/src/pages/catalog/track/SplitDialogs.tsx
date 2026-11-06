@@ -11,11 +11,10 @@ import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../../work/actions/DocumentStep';
 import { periodText, splitAt, type Split } from './types';
+import { BUYOUT_STEP_KINDS, SPLIT_STEP_KINDS } from '../../../lib/document-kinds';
 
 const r = ru.catalog.rules;
 const f = r.fields;
-const SPLIT_DOC_KINDS = ['appendix', 'contract', 'other'] as const;
-const BUYOUT_DOC_KINDS = ['buyout', 'contract', 'other'] as const;
 
 /** The stored date differs from the entered one: the backend floored it to the month start (M52). */
 export const roundedNote = (entered: string, stored: string) =>
@@ -164,7 +163,7 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
         <DateField name="split-from" label={change ? f.from : f.validFrom} value={from} onChange={setFrom} isRequired />
         <RowsEditor rows={rows} setRows={setRows} />
         <div className="text-sm font-medium">{change ? r.documentRequired : r.documentOptional}</div>
-        <DocumentStep kinds={SPLIT_DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
+        <DocumentStep kinds={SPLIT_STEP_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
         <TextField name="split-note" label={f.note} value={note} onChange={setNote} />
       </FormDialog>
       <ConfirmDialog
@@ -232,7 +231,7 @@ export function BuyoutDialog(props: { isrc: string; splits: readonly Split[]; on
           options={sellers.map(([id, name]) => ({ id, label: name }))}
         />
         <DateField name="buyout-from" label={f.effectiveFrom} value={from} onChange={setFrom} isRequired />
-        <DocumentStep kinds={BUYOUT_DOC_KINDS} defaultTitle={`Выкуп ${props.isrc}`} ready={doc} onReady={setDoc} />
+        <DocumentStep kinds={BUYOUT_STEP_KINDS} defaultTitle={`Выкуп ${props.isrc}`} ready={doc} onReady={setDoc} />
       </FormDialog>
       <ConfirmDialog
         isOpen={confirm}

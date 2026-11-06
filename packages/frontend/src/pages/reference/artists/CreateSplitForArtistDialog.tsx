@@ -8,9 +8,9 @@ import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { roundedNote } from '../../catalog/track/SplitDialogs';
 import { DocumentStep, type ReadyDocument } from '../../work/actions/DocumentStep';
+import { SPLIT_STEP_KINDS } from '../../../lib/document-kinds';
 
 const t = ru.reference.duplicates;
-const DOC_KINDS = ['appendix', 'contract', 'other'] as const;
 
 /**
  * «Создать сплит» for a candidate ISRC of a duplicate group, with the pseudonym preselected: a one-row split
@@ -56,7 +56,7 @@ export function CreateSplitForArtistDialog(props: { isrc: string; artistId: stri
       </div>
       <TextField name="split-percent-0" label={t.percent} value={percent} onChange={setPercent} isRequired />
       <DateField name="split-from" label={t.validFrom} value={from} onChange={setFrom} isRequired />
-      <DocumentStep kinds={DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
+      <DocumentStep kinds={SPLIT_STEP_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
     </FormDialog>
   );
 }

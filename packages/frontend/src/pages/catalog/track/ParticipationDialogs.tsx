@@ -14,6 +14,7 @@ import { fmt, ru } from '../../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../../work/actions/DocumentStep';
 import { roundedNote } from './SplitDialogs';
 import { periodText, type Participation, type Split } from './types';
+import { SPLIT_STEP_KINDS } from '../../../lib/document-kinds';
 
 const r = ru.catalog.rules;
 const f = r.fields;
@@ -21,7 +22,6 @@ type Base = z.output<typeof participationBase>;
 type Funded = z.output<typeof fundedFromSchema>;
 const BASES: readonly Base[] = ['net', 'bucket'];
 const FUNDED: readonly Funded[] = ['top', 'artist_pool', 'artist_share', 'label_share'];
-const DOC_KINDS = ['appendix', 'contract', 'other'] as const;
 
 /**
  * «Создать участие» (`POST /participations`): the backend accepts or refuses the combination (409
@@ -104,7 +104,7 @@ export function CreateParticipationDialog(props: { isrc: string; splits: readonl
       <DateField name="participation-from" label={f.validFrom} value={validFrom} onChange={setValidFrom} isRequired />
       <DateField name="participation-to" label={f.validTo} value={validTo} onChange={setValidTo} />
       <div className="text-sm font-medium">{r.documentOptional}</div>
-      <DocumentStep kinds={DOC_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
+      <DocumentStep kinds={SPLIT_STEP_KINDS} defaultTitle={`Приложение ${props.isrc}`} ready={doc} onReady={setDoc} />
     </FormDialog>
   );
 }

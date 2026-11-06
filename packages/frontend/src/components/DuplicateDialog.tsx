@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { z } from 'zod';
 import { possibleDuplicateDetailsSchema } from '@erp/shared/api-responses';
 import { ApiError } from '../api/client';
@@ -17,6 +18,37 @@ export function similarOf(error: unknown): Similar | null {
 
 const matchedByText = (values: readonly string[]) =>
   values.map((v) => (Object.hasOwn(ru.dialog.matchedBy, v) ? ru.dialog.matchedBy[v] : undefined) ?? v).join(', ');
+
+/**
+ * The list of similar records (`duplicate-<id>` with `duplicate-matched-by`): the body of `DuplicateDialog`, and read-only
+ * the candidates of a pseudonym of the split import (P28, D-172: the fix is `artist_id` in the file, so no button).
+ */
+export function DuplicateCandidates(props: {
+  testId: string;
+  similar: Similar;
+  matchedBy: string;
+  action?: (s: Similar[number]) => ReactNode;
+}) {
+  return (
+    <ul className="flex flex-col gap-2" data-testid={props.testId}>
+      {props.similar.map((s) => (
+        <li
+          key={s.id}
+          data-testid={`duplicate-${s.id}`}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-sm"
+        >
+          <span>
+            <b>{s.name}</b>{' '}
+            <span className="text-muted" data-testid="duplicate-matched-by">
+              ({props.matchedBy}: {matchedByText(s.matchedBy)})
+            </span>
+          </span>
+          {props.action ? props.action(s) : <code className="text-xs text-muted">{s.id}</code>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /**
  * The one duplicate dialog (17 §6): the similar records with «тот же» (`action-duplicate-same`, the caller opens or uses
@@ -49,25 +81,16 @@ export function DuplicateDialog(props: {
         </ActionButton>
       }
     >
-      <ul className="flex flex-col gap-2" data-testid="duplicate-dialog">
-        {props.similar.map((s) => (
-          <li
-            key={s.id}
-            data-testid={`duplicate-${s.id}`}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2 text-sm"
-          >
-            <span>
-              <b>{s.name}</b>{' '}
-              <span className="text-muted" data-testid="duplicate-matched-by">
-                ({props.matchedBy}: {matchedByText(s.matchedBy)})
-              </span>
-            </span>
-            <ActionButton name="duplicate-same" write={false} variant="secondary" onPress={() => props.onSame(s.id, s.name)}>
-              {props.same}
-            </ActionButton>
-          </li>
-        ))}
-      </ul>
+      <DuplicateCandidates
+        testId="duplicate-dialog"
+        similar={props.similar}
+        matchedBy={props.matchedBy}
+        action={(s) => (
+          <ActionButton name="duplicate-same" write={false} variant="secondary" onPress={() => props.onSame(s.id, s.name)}>
+            {props.same}
+          </ActionButton>
+        )}
+      />
     </FormDialog>
   );
 }

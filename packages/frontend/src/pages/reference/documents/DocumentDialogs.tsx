@@ -16,10 +16,12 @@ import { useOwnLabels } from '../../../components/LabelSwitch';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
+import { ALL_DOCUMENT_KINDS } from '../../../lib/document-kinds';
 
 const t = ru.reference.documents;
 type Kind = z.output<typeof documentKind>;
-export const KINDS: readonly Kind[] = ['contract', 'appendix', 'buyout', 'advance_basis', 'adjustment_basis', 'payment_proof', 'return_proof', 'other', 'assumption'];
+/** Every kind of `@erp/shared/document-kinds` (D-172: + `label_decision`). */
+export const KINDS: readonly Kind[] = ALL_DOCUMENT_KINDS;
 
 /**
  * «Создать документ» (`POST /documents`, no confirmation). The label of the document (D-169, `field-document-label`):

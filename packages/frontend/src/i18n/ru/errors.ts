@@ -77,6 +77,15 @@ export const errors: Record<string, string> = {
   network_error: 'Нет связи с сервером',
   http_error: 'Ошибка сервера',
   internal: 'Внутренняя ошибка, код {requestId}',
+  // D-172: the split import, the assumption, the label history, the release registry
+  import_header: 'Заголовок файла не подходит: нет обязательной колонки или есть неизвестная',
+  import_too_large: 'Файл слишком большой: не больше 5 000 строк и 10 МБ',
+  import_invalid: 'Импорт не применён: в файле есть ошибки, ничего не записано',
+  nothing_to_assume: 'Нечего принимать как допущение: у сплитов уже есть документ',
+  catalog_overlap: 'Интервал пересекает другую правку лейбла каталога этого ISRC',
+  catalog_same_label: 'Замена ничего не меняет',
+  release_import_header: 'Это не экспорт релизов Believe: нет нужной колонки',
+  release_import_invalid: 'Реестр не загружен: в файле есть неверные строки, ничего не записано',
 };
 
 /** The Russian text of an API error code, or `undefined` for a code the dictionary does not know. */

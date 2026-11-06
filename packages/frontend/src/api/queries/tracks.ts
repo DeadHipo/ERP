@@ -11,7 +11,8 @@ export const trackKeys = {
   summary: (account?: string, month?: string, labelId = '') => ['tracks', 'summary', account ?? null, month ?? null, labelId || null] as const,
   /** The money of a list of ISRCs (the visible rows of P5, D-162); the key is the sorted list, so a page seen before is cached. */
   summaryOf: (isrcs: readonly string[], labelId = '') => ['tracks', 'summary', 'isrcs', isrcs.join(','), labelId || null] as const,
-  catalog: (labelId = '') => ['tracks', 'catalog', labelId || null] as const,
+  catalog: (labelId = '', current = false) => ['tracks', 'catalog', labelId || null, current ? 'current' : 'all'] as const,
+  labels: (isrc: string) => ['tracks', 'labels', isrc] as const,
   money: (isrc: string) => ['tracks', 'money', isrc] as const,
   breakdown: (isrc: string, month: string) => ['tracks', 'breakdown', isrc, month] as const,
   audit: (entityId: string) => ['audit', 'list', entityId] as const,
@@ -37,7 +38,13 @@ export const trackQueries = {
       ...MONEY_QUERY,
     }),
   /** P5 (D-162): the rows without money (a reference list, no calculation); under a label the ISRCs of its units. */
-  catalog: (labelId = '') => queryOptions({ queryKey: trackKeys.catalog(labelId), queryFn: () => catalog.trackCatalog(labelQuery(labelId)) }),
+  catalog: (labelId = '', current = false) =>
+    queryOptions({
+      queryKey: trackKeys.catalog(labelId, current),
+      queryFn: () => catalog.trackCatalog({ ...labelQuery(labelId), ...(current ? { catalog: 'current' as const } : {}) }),
+    }),
+  /** The label history of the ISRC (D-172, P6): navigation, no money. */
+  labels: (isrc: string) => queryOptions({ queryKey: trackKeys.labels(isrc), queryFn: () => api.tracks.labels(isrc), staleTime: 0 }),
   /** P6: the one money call of the track card (N6). */
   money: (isrc: string) =>
     queryOptions({ queryKey: trackKeys.money(isrc), queryFn: () => catalog.trackMoney(isrc), ...MONEY_QUERY }),

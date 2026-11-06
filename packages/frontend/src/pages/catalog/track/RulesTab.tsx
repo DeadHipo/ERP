@@ -5,12 +5,13 @@ import { labelQueries } from '../../../api/queries/labels';
 import { ActionButton } from '../../../components/ActionButton';
 import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
-import { ru } from '../../../i18n/ru';
+import { fmt, ru } from '../../../i18n/ru';
 import { ConfirmSplitDialog } from '../../work/actions/dialogs';
 import { SimpleTable, Td } from '../components/MoneyTable';
 import { BuyoutDialog, SplitDialog } from './SplitDialogs';
 import { CloseParticipationDialog, CreateParticipationDialog } from './ParticipationDialogs';
 import { periodText, type Participation, type Split } from './types';
+import { AssumeDialog } from '../../reference/splits/AssumeDialog';
 
 const r = ru.catalog.rules;
 
@@ -21,6 +22,7 @@ type Open =
   | { kind: 'confirm-split'; split: Split }
   | { kind: 'create-participation' }
   | { kind: 'close-participation'; part: Participation }
+  | { kind: 'assume' }
   | null;
 
 /** Правила: split rows with periods, participations, the sublabel rule of each month; the rule actions of 17 §6. */
@@ -28,6 +30,7 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   const [open, setOpen] = useState<Open>(null);
   const close = () => setOpen(null);
   const splits = [...data.splits].sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
+  const undocumented = splits.filter((s) => s.documentId === null).length;
   return (
     <div className="flex flex-col gap-6" data-testid="rules-tab">
       <div className="flex flex-wrap gap-2">
@@ -47,6 +50,17 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
         </ActionButton>
         <ActionButton name="create-participation" op="POST /participations" onPress={() => setOpen({ kind: 'create-participation' })}>
           {r.createParticipation}
+        </ActionButton>
+        {/* D-172: every split of the ISRC without a document gets one assumption document (the backend picks them) */}
+        <ActionButton
+          name="assume-isrc"
+          op="POST /splits/assume"
+          variant="secondary"
+          isDisabled={undocumented === 0}
+          reason={ru.reference.splits.hasDocument}
+          onPress={() => setOpen({ kind: 'assume' })}
+        >
+          {ru.reference.splits.assume}
         </ActionButton>
       </div>
       <section>
@@ -139,6 +153,9 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
       {open?.kind === 'confirm-split' ? <ConfirmSplitDialog splitId={open.split.id} isrc={isrc} onClose={close} /> : null}
       {open?.kind === 'create-participation' ? <CreateParticipationDialog isrc={isrc} splits={splits} onClose={close} /> : null}
       {open?.kind === 'close-participation' ? <CloseParticipationDialog part={open.part} onClose={close} /> : null}
+      {open?.kind === 'assume' ? (
+        <AssumeDialog group={{ isrcs: [isrc] }} candidates={undocumented} title={fmt(ru.reference.splits.assumeIsrc, { isrc })} onClose={close} />
+      ) : null}
     </div>
   );
 }

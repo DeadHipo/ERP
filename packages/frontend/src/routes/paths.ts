@@ -19,6 +19,8 @@ export const ROUTE_PATHS = {
   owners: 'owners',
   owner: 'owners/:id',
   splits: 'splits',
+  /** P28 (D-172): entered from P15 only, no sidebar item (О11). */
+  splitImport: 'splits/import',
   participations: 'participations',
   labels: 'labels',
   label: 'labels/:id',

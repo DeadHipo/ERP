@@ -7,10 +7,12 @@ import { LabelsPage } from '../pages/reference/labels/LabelsPage';
 import { PublishingPage } from '../pages/reference/publishing/PublishingPage';
 import { ParticipationsPage } from '../pages/reference/splits/ParticipationsPage';
 import { SplitsPage } from '../pages/reference/splits/SplitsPage';
+import { SplitImportPage } from '../pages/reference/splits/import/SplitImportPage';
 
 /** Правила: splits, participations, labels, publishing, documents. */
 export const rulesRoutes = [
   <Route key="splits" path={ROUTE_PATHS.splits} element={<SplitsPage />} />,
+  <Route key="split-import" path={ROUTE_PATHS.splitImport} element={<SplitImportPage />} />,
   <Route key="participations" path={ROUTE_PATHS.participations} element={<ParticipationsPage />} />,
   <Route key="labels" path={ROUTE_PATHS.labels} element={<LabelsPage />} />,
   <Route key="label" path={ROUTE_PATHS.label} element={<LabelPage />} />,

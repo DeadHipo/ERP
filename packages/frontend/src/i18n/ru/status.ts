@@ -15,6 +15,7 @@ export const status = {
     return_proof: 'подтверждение возврата',
     other: 'другое',
     assumption: 'допущение',
+    label_decision: 'решение лейбла',
   },
   ownerStatus: {
     confirmed: 'подтверждён',

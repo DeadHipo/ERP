@@ -14,6 +14,11 @@ import { TextField } from '../../components/fields/TextField';
 import { formatDateTime } from '../../lib/datetime';
 import { fmt, plural, ru } from '../../i18n/ru';
 import { OverviewKpis } from './OverviewKpis';
+import { useMe } from '../../api/queries/auth';
+import { isAllowed } from '../../lib/abilities';
+import { useLabel } from '../../lib/label';
+import { OnboardingChecklist } from './onboarding/OnboardingChecklist';
+import { OrgChecklist } from './onboarding/OrgChecklist';
 
 type Overview = z.output<typeof overviewSchema>;
 type Row = Overview['reconciliation'][number];
@@ -95,6 +100,7 @@ export function OverviewPage() {
   return (
     <div data-testid="overview-page">
       <PageHeader title={t.title} subtitle={t.subtitle} toolbar={<PeriodFilter period={period} onApply={setPeriod} />} />
+      <Checklists />
       {query.isError && query.data === undefined ? null : (
         <div className="mb-4">
           <OverviewKpis data={query.data} loading={query.data === undefined} account={account} />
@@ -143,6 +149,17 @@ export function OverviewPage() {
       </QueryView>
     </div>
   );
+}
+
+/**
+ * The onboarding checklists (D-172) above the overview: the label of the switch has its checklist; under «Все» the
+ * organization's administrator sees the organization's (only when `me.abilities` holds its read).
+ */
+function Checklists() {
+  const { labelId } = useLabel();
+  const me = useMe().data;
+  if (labelId) return isAllowed(me, 'GET /onboarding') ? <OnboardingChecklist labelId={labelId} /> : null;
+  return me?.authMode === 'on' && isAllowed(me, 'GET /onboarding/organization') ? <OrgChecklist /> : null;
 }
 
 export function QueueStrip({ queue }: { queue: Overview['queue'] }) {

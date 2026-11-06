@@ -16,6 +16,7 @@ import { errorText } from '../../../i18n/ru/errors';
 import { formatMoney } from '../../../lib/money';
 import { fmt, ru } from '../../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from './DocumentStep';
+import { CONTRACT_STEP_KINDS } from '../../../lib/document-kinds';
 
 // The owner actions of 17 §6, one component each, used by the queue, the signals, the owner card (P10), the pseudonym
 // pages (P11) and the document card (P14): create a contract, merge into another owner, assign an owner to a pseudonym.
@@ -147,7 +148,7 @@ export function CreateContractDialog(props: {
           </div>
         ) : (
           <DocumentStep
-            kinds={['contract']}
+            kinds={CONTRACT_STEP_KINDS}
             newOnly={props.newDocumentOnly}
             ownerId={owner?.id ?? null}
             defaultTitle={`Договор ${ownerName}`.trim()}
