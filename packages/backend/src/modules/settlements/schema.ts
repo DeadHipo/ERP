@@ -41,6 +41,8 @@ export const operations = s.table('operations', {
   channel: text('channel'),
   /** The area of the book (D-173): `master` (the history) or `publishing`. */
   area: text('area', { enum: ['master', 'publishing'] }).notNull().default('master'),
+  /** A payout of the button (D-181): JSON `{ "<artistId>": cents, "": cents }`, what it took from which position ('' = the owner's own). */
+  allocation: text('allocation'),
 });
 
 /**

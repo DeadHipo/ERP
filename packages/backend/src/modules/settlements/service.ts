@@ -52,6 +52,8 @@ export interface OperationView {
   channel: string | null;
   /** The area of the book (D-173): the history is `master`. */
   area: 'master' | 'publishing';
+  /** A payout of the button (D-181): what it took from which position, cents by pseudonym id ('' = the owner's own); null for the history and every other kind. */
+  allocation: Record<string, number> | null;
 }
 
 export type Meaning = 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
@@ -174,6 +176,8 @@ export interface OperationInput {
   labelId?: string | null;
   labelSource?: LabelSource | null;
   channel?: string | null;
+  /** A payout of the button (D-181): what it takes from which position (cents by pseudonym id, '' = the owner's own); Σ = amountCents. */
+  allocation?: Record<string, number>;
   area?: 'master' | 'publishing';
 }
 
@@ -223,6 +227,7 @@ function view(o: OperationRow): OperationView {
     labelSource: o.labelSource,
     channel: o.channel,
     area: o.area,
+    allocation: o.allocation ? (JSON.parse(o.allocation) as Record<string, number>) : null,
   };
 }
 
@@ -462,6 +467,7 @@ export function createSettlementsService(db: Db, org: OrgScope) {
           labelSource: input.labelId ? labelSource : null,
           channel: input.channel ?? null,
           area,
+          allocation: input.allocation ? JSON.stringify(input.allocation) : null,
         });
         return view(await get(id));
       });
@@ -584,6 +590,8 @@ export function createSettlementsService(db: Db, org: OrgScope) {
       labelId?: string | null;
       /** The book area paid (D-173): master by default. */
       area?: 'master' | 'publishing';
+      /** What the payout takes from which position (D-181): cents by pseudonym id, '' = the owner's own; Σ = amountCents. */
+      allocation?: Record<string, number>;
       snapshot: unknown;
     }): Promise<OperationView> {
       return repo.transaction(async () => {
@@ -605,6 +613,7 @@ export function createSettlementsService(db: Db, org: OrgScope) {
           labelId: input.labelId ?? null,
           labelSource: 'operator',
           area: input.area ?? 'master',
+          ...(input.allocation ? { allocation: input.allocation } : {}),
         });
         await repo.insertSnapshot({
           operationId: op.id,

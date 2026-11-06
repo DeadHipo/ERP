@@ -68,8 +68,9 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
           <Fact testId="balance-credits" label={t.credits} value={b.total.credits} />
           <Fact testId="balance-writtenOff" label={k.writtenOff} value={b.total.writtenOff} />
           <Fact testId="balance-adjustments" label={k.adjustments} value={b.total.adjustments} />
-          <Fact testId="balance-payable" label={t.payable} value={b.total.payable} strong />
-          <Fact testId="balance-payableShown" label={t.payableShown} value={b.total.payableShown} />
+          <Fact testId="balance-payable" label={t.payable} value={b.total.payable} />
+          {b.total.ownerPosition !== undefined ? <Fact testId="balance-ownerPosition" label={t.ownerPosition} value={b.total.ownerPosition} /> : null}
+          <Fact testId="balance-payableShown" label={t.payableShown} value={b.total.payableShown} strong />
           {b.total.startMissing ? (
             <div data-testid="start-missing" className="rounded-lg border border-warning/40 bg-warning/5 p-2 text-sm">
               {ru.operations.start.balance.missing}
@@ -79,6 +80,14 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
             <div data-testid="payable-negative" className="rounded-lg border border-danger/40 bg-danger/5 p-2 text-sm text-danger">
               {t.negative}
               <Money value={b.total.payable} />
+              <div className="text-xs" data-testid="negative-positions">
+                {fmt(t.negativeOf, {
+                  list: [
+                    ...b.artists.filter((a) => a.positionNegative).map((a) => `${a.pseudonym} (${formatMoney(a.position ?? '0')})`),
+                    ...(b.total.ownerPosition !== undefined && b.total.ownerPosition.startsWith('-') ? [`${t.ownerNegative} (${formatMoney(b.total.ownerPosition)})`] : []),
+                  ].join(', '),
+                })}
+              </div>
             </div>
           ) : null}
           <Fact testId="balance-waiting" label={t.waiting} value={b.total.waiting} />
@@ -136,9 +145,9 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
       </div>
       {b.total.byArea ? <AreaBooks areas={b.total.byArea} /> : null}
       <Section title={t.artists} testId="balance-artists">
-        <SimpleTable head={[t.pseudonym, t.isrc, t.net, t.earned, t.waiting, ru.money.owners.cols.recouped, t.unrecouped]}>
+        <SimpleTable head={[t.pseudonym, t.isrc, t.net, t.earned, t.waiting, ru.money.owners.cols.recouped, t.unrecouped, t.position]}>
           {b.artists.flatMap((a) => [
-            <tr key={a.artistId} data-testid={`balance-artist-${a.artistId}`} className="font-medium">
+            <tr key={a.artistId} data-testid={`balance-artist-${a.artistId}`} data-position-negative={String(a.positionNegative ?? false)} className="font-medium">
               <Td>
                 <EntityLink kind="artist" id={a.artistId} label={a.pseudonym} />
               </Td>
@@ -156,6 +165,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
               <Td col="unrecouped">
                 <Money value={a.unrecouped} />
               </Td>
+              <Td col="position">{a.position !== undefined ? <Money value={a.position} /> : null}</Td>
             </tr>,
             ...a.tracks.map((tr) => (
               <tr key={`${a.artistId}-${tr.isrc}`} data-testid={`balance-track-${a.artistId}-${tr.isrc}`}>
@@ -172,6 +182,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
                 <Td col="waiting">
                   <Money value={tr.waiting} />
                 </Td>
+                <Td />
                 <Td />
                 <Td />
               </tr>
@@ -266,11 +277,11 @@ export function LabelBooks(props: { books: Balance['byLabel'] }) {
   const c = t.bookCols;
   return (
     <Section title={t.byLabel} testId="by-label">
-      <SimpleTable head={[c.label, k.start, c.earned, c.waiting, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable]}>
+      <SimpleTable head={[c.label, k.start, c.earned, c.waiting, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable, t.payableShown]}>
         {Object.entries(props.books).map(([label, v]) => (
           <tr key={label} data-testid={`by-label-${label}`} data-label-id={v.labelId ?? ''} data-start-missing={String(v.startMissing ?? false)}>
             <Td>{label === '?' ? t.unmappedLabel : label}</Td>
-            {(['start', 'earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const).map((f) => (
+            {(['start', 'earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable', 'payableShown'] as const).map((f) => (
               <Td key={f} col={f}>
                 <Money value={v[f]} />
               </Td>

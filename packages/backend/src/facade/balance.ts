@@ -28,6 +28,10 @@ export interface ArtistLabelBook {
   forgiven: Decimal;
   /** The opening balance of the pseudonym in the book (D-174): its start and the adjustments of it. */
   start: Decimal;
+  /** The position of the pseudonym in the book (D-181): start + earned − recouped − ads − paid + returns + credits + adjustments − writtenOff, plus the owner's operations shared to it. */
+  position: Decimal;
+  /** The position by area (D-181): Σ = `position`. */
+  positionByArea: Record<Area, Decimal>;
 }
 
 export interface ArtistBalance {
@@ -43,6 +47,14 @@ export interface ArtistBalance {
   forgiven: Decimal;
   /** The opening balance of the pseudonym (D-174). */
   start: Decimal;
+  /**
+   * The position of the pseudonym over its books (D-181, the owner's rule «ники не сальдируются»): what the label owes
+   * this pseudonym (or what it owes the label when negative). The owner is paid Σ of the positive positions of its
+   * pseudonyms; a negative one never offsets a positive one.
+   */
+  position: Decimal;
+  /** position < 0 (computed here: the client compares no money). */
+  positionNegative: boolean;
   tracks: { isrc: string; net: Decimal; amount: Decimal; waiting: Decimal }[];
   /** The row per book (by name, '?' = without a label); Σ over the books = the row (D-168, D-169). */
   byLabel: Record<string, ArtistLabelBook>;
@@ -96,7 +108,12 @@ export interface AreaBook {
   buyouts: Decimal;
   writtenOff: Decimal;
   adjustments: Decimal;
+  /** The formula of the area (the net of its positions). */
   payable: Decimal;
+  /** What the area pays (D-181): Σ of the positive positions of the pseudonyms in it, plus the owner's own if positive. */
+  payableShown: Decimal;
+  /** The position of the owner without a pseudonym in the area (D-181): its publishing, its operations without a pseudonym, less what was shared to the pseudonyms. */
+  ownerPosition: Decimal;
 }
 export type Area = 'master' | 'publishing';
 
@@ -127,9 +144,18 @@ export interface LabelBook {
   start: Decimal;
   /** A start row without an amount (the cabinet gave none, D-174): the payout of the book is closed. */
   startMissing: boolean;
+  /** The formula (D-050 … D-174): the net of every position of the book; negative when the owner owes the label. */
   payable: Decimal;
+  /**
+   * What the book pays (D-181, the owner's rule «ники не сальдируются»): Σ of the positive positions of the pseudonyms
+   * plus the owner's own position when positive; the gate and the button take this. Equals max(payable, 0) for an owner
+   * with one pseudonym and nothing of its own.
+   */
   payableShown: Decimal;
+  /** Some position of the book is negative (a pseudonym's or the owner's own): the screen names them. */
   payableNegative: boolean;
+  /** The position of the owner without a pseudonym (D-181): publishing of the owner, operations without a pseudonym, less what was shared. */
+  ownerPosition: Decimal;
   /** The two areas of the book (D-173 К10): Σ = the book, field by field. */
   byArea: Record<Area, AreaBook>;
 }
@@ -215,11 +241,14 @@ export interface OwnerBalance {
     /** The opening balance (D-174): Σ of the books; in payable. */
     start: Decimal;
     startMissing: boolean;
+    /** The formula: the net of every position (D-050 … D-174); kept as is when negative. */
     payable: Decimal;
-    /** Negative payable is kept as is; the owner sees 0. */
+    /** What is paid (D-181): Σ of the positive positions of the pseudonyms and of the owner's own; the gate's amount. */
     payableShown: Decimal;
-    /** True when payable < 0 (the screen shows `payableShown` and a note; the client does not compare money). */
+    /** Some position is negative (the screen names the pseudonyms; the client does not compare money). */
     payableNegative: boolean;
+    /** The position of the owner without a pseudonym (D-181). */
+    ownerPosition: Decimal;
     /** The two areas of the owner (D-173 К10): Σ = total, field by field. */
     byArea: Record<Area, AreaBook>;
   };
@@ -289,7 +318,7 @@ class ByKey<T> {
   }
 }
 
-type AreaAcc = Omit<AreaBook, 'payable'>;
+type AreaAcc = Omit<AreaBook, 'payable' | 'payableShown' | 'ownerPosition'>;
 const newArea = (): AreaAcc => ({
   start: ZERO,
   earned: ZERO,
@@ -349,7 +378,42 @@ const addArea = (b: BookAcc, area: Area, field: keyof AreaAcc, v: Decimal) => {
  */
 const payableOf = (b: Omit<AreaAcc, 'buyouts'>) =>
   b.earned.sub(b.recouped).sub(b.paid).sub(b.adsCharged).add(b.returns).add(b.credits).add(b.adjustments).sub(b.writtenOff).add(b.start);
-const areaBook = (a: AreaAcc): AreaBook => ({ ...a, payable: payableOf(a) });
+/**
+ * The position of a pseudonym (or of the owner without one) in a book and an area (D-181): the same formula as the book,
+ * plus `shared` = the owner's operations without a pseudonym shared to it (a payout without an allocation).
+ */
+interface PosAcc {
+  start: Decimal;
+  earned: Decimal;
+  recouped: Decimal;
+  adsCharged: Decimal;
+  paid: Decimal;
+  returns: Decimal;
+  credits: Decimal;
+  adjustments: Decimal;
+  writtenOff: Decimal;
+  shared: Decimal;
+}
+const newPos = (): PosAcc => ({ start: ZERO, earned: ZERO, recouped: ZERO, adsCharged: ZERO, paid: ZERO, returns: ZERO, credits: ZERO, adjustments: ZERO, writtenOff: ZERO, shared: ZERO });
+const positionOf = (p: PosAcc) => payableOf(p).add(p.shared);
+const newPosByArea = (): Record<Area, PosAcc> => ({ master: newPos(), publishing: newPos() });
+/** The key of the owner's own position among the pseudonyms (D-181): a payout allocation names it ''. */
+export const OWNER_POSITION = '';
+/** `total` cents split pro rata to `weights` (an allocation), floored, the residue to the largest weight (ties: the first key). */
+export function splitCents(total: number, weights: Record<string, number>): Record<string, number> {
+  const keys = Object.keys(weights).sort((x, y) => (weights[y] ?? 0) - (weights[x] ?? 0) || x.localeCompare(y));
+  const sum = keys.reduce((s, k) => s + (weights[k] ?? 0), 0);
+  const out: Record<string, number> = {};
+  if (keys.length === 0 || sum === 0) return { [OWNER_POSITION]: total };
+  let given = 0;
+  for (const k of keys) {
+    const c = new Decimal(total).mul(weights[k] ?? 0).div(sum).floor().toNumber();
+    out[k] = c;
+    given += c;
+  }
+  out[keys[0] as string] = (out[keys[0] as string] ?? 0) + (total - given);
+  return out;
+}
 
 interface PeriodAcc {
   received: Decimal;
@@ -388,6 +452,8 @@ interface ArtistAcc {
   forgiven: Decimal;
   start: Decimal;
   tracks: Map<string, TrackAcc>;
+  /** The position of the pseudonym by area (D-181): every all-time term, whatever the period. */
+  pos: Record<Area, PosAcc>;
 }
 const newArtistAcc = (): ArtistAcc => ({
   earned: ZERO,
@@ -398,6 +464,7 @@ const newArtistAcc = (): ArtistAcc => ({
   forgiven: ZERO,
   start: ZERO,
   tracks: new Map(),
+  pos: newPosByArea(),
 });
 
 /**
@@ -503,6 +570,14 @@ export function ownerBalance(
     if (!by) artistAcc.set(artistId, (by = new ByKey(newArtistAcc)));
     return by.of(key);
   };
+  /** The owner's own position per book (D-181): publishing, operations without a pseudonym. */
+  const pools = new ByKey(newPosByArea);
+  /** The position accumulator an operation's money goes to: its pseudonym's (the surviving id), else the owner's own. */
+  const posOf = (artistId: string | null | undefined, key: string, area: Area): PosAcc => {
+    const id = artistId ? (calc.artistIndex.get(artistId)?.id ?? artistId) : null;
+    const artist = id ? artistOf(id, key) : undefined;
+    return (artist ?? { pos: pools.of(key) }).pos[area];
+  };
   const trackOf = (a: ArtistAcc, isrc: string): TrackAcc => {
     let t = a.tracks.get(isrc);
     if (!t) a.tracks.set(isrc, (t = { isrc, net: ZERO, amount: ZERO, waiting: ZERO }));
@@ -559,6 +634,7 @@ export function ownerBalance(
           incomeById.set(id, item);
           income.push(item);
         }
+        if (artist) artist.pos.master.earned = artist.pos.master.earned.add(a.amount);
         if (inP) {
           itemInPeriod.add(id);
           period.notOurs = period.notOurs.add(a.amount);
@@ -596,6 +672,7 @@ export function ownerBalance(
     if (p.category === 'B') {
       book.earned = book.earned.add(p.authorAmount);
       addArea(book, 'publishing', 'earned', p.authorAmount);
+      pools.of(key).publishing.earned = pools.of(key).publishing.earned.add(p.authorAmount);
       const id = `p|${p.reportMonth}`;
       const prev = incomeById.get(id);
       if (prev) prev.amount = prev.amount.add(p.authorAmount);
@@ -669,6 +746,16 @@ export function ownerBalance(
       case 'payout':
         book.paid = book.paid.add(amount);
         addArea(book, o.area, 'paid', amount);
+        // the position it reduces (D-181): its pseudonym's, the ones of its allocation (the button), else the owner's own
+        if (o.allocation && !o.artistId)
+          for (const [who, c] of Object.entries(o.allocation)) {
+            const target = posOf(who === OWNER_POSITION ? null : who, key, o.area);
+            target.paid = target.paid.add(centsToDecimal(c));
+          }
+        else {
+          const target = posOf(o.artistId, key, o.area);
+          target.paid = target.paid.add(amount);
+        }
         if (opInPeriod(o)) periods.of(key).paid = periods.of(key).paid.add(amount);
         break;
       case 'advance':
@@ -685,26 +772,47 @@ export function ownerBalance(
           labelId: o.labelId,
         });
         break;
-      case 'return':
+      case 'return': {
         book.returns = book.returns.add(amount.neg());
         addArea(book, o.area, 'returns', amount.neg());
+        // the money comes back to the positions its payout took from (D-181): by the payout's allocation, pro rata
+        const ref = !o.artistId && o.operationRef ? ops.find((x) => x.id === o.operationRef) : undefined;
+        if (ref?.allocation)
+          for (const [who, c] of Object.entries(splitCents(-o.amountCents, ref.allocation))) {
+            const target = posOf(who === OWNER_POSITION ? null : who, key, o.area);
+            target.returns = target.returns.add(centsToDecimal(c));
+          }
+        else {
+          const target = posOf(o.artistId, key, o.area);
+          target.returns = target.returns.add(amount.neg());
+        }
         break;
-      case 'credit':
+      }
+      case 'credit': {
         book.credits = book.credits.add(amount.neg());
         addArea(book, o.area, 'credits', amount.neg());
+        const target = posOf(o.artistId, key, o.area);
+        target.credits = target.credits.add(amount.neg());
         break;
+      }
       case 'buyout':
         book.buyouts = book.buyouts.add(amount);
         addArea(book, o.area, 'buyouts', amount);
         break;
-      case 'writeoff':
+      case 'writeoff': {
         book.writtenOff = book.writtenOff.add(amount);
         addArea(book, o.area, 'writtenOff', amount);
+        const target = posOf(o.artistId, key, o.area);
+        target.writtenOff = target.writtenOff.add(amount);
         break;
-      case 'adjustment':
+      }
+      case 'adjustment': {
         book.adjustments = book.adjustments.add(amount.neg());
         addArea(book, o.area, 'adjustments', amount.neg());
+        const target = posOf(o.artistId, key, o.area);
+        target.adjustments = target.adjustments.add(amount.neg());
         break;
+      }
       case 'forgiveness': {
         const list = forgivenOf.get(o.operationRef as string) ?? [];
         list.push({ date: o.date, id: o.id, amount });
@@ -740,6 +848,8 @@ export function ownerBalance(
   for (const a of adsAfterCut) {
     books.of(keyOf(a.labelId)).adsCharged = books.of(keyOf(a.labelId)).adsCharged.add(a.amount);
     addArea(books.of(keyOf(a.labelId)), 'master', 'adsCharged', a.amount);
+    const target = posOf(a.artistId, keyOf(a.labelId), 'master');
+    target.adsCharged = target.adsCharged.add(a.amount);
   }
 
   // The opening balances themselves (D-174): the start and the adjustments of every pseudonym, in the book of the row,
@@ -756,7 +866,11 @@ export function ownerBalance(
     if (r.missing) book.startMissing = true;
     const artistId = cuts.canon(r.artistId);
     const artist = artistOf(artistId, key);
-    if (artist) artist.start = artist.start.add(master).add(pub);
+    if (artist) {
+      artist.start = artist.start.add(master).add(pub);
+      artist.pos.master.start = artist.pos.master.start.add(master);
+      artist.pos.publishing.start = artist.pos.publishing.start.add(pub);
+    }
     startRows.push({ ...r, artistId, pseudonym: calc.artistIndex.get(artistId)?.pseudonym ?? artistsOfOwner.get(artistId)?.pseudonym ?? '?' });
   }
 
@@ -780,6 +894,10 @@ export function ownerBalance(
       }
       const artist = artistOf(p.artistId, key);
       if (artist) artist.recouped = artist.recouped.add(c.amount);
+      // the position the recoup leaves (D-181) is the one holding the income consumed: the pseudonym of a master item
+      // (a position recoups only its own pseudonym's income), the owner's own for its publishing
+      const target = posOf(item.artistId, key, item.stream);
+      target.recouped = target.recouped.add(c.amount);
     }
     const holder = artistOf(p.artistId, keyOf(p.labelId));
     if (holder) holder.unrecouped = holder.unrecouped.add(r.remaining);
@@ -804,11 +922,45 @@ export function ownerBalance(
     });
   }
 
+  // The owner's own operations without a pseudonym that leave its own position negative (a payout without an
+  // allocation, a write-off above the owner's publishing) are shared to the pseudonyms with a positive position of the
+  // same book and area, the largest first (D-181: a payment to the payee «разносится по его участникам»); what no
+  // positive position can take stays on the owner's own position.
+  for (const [key, pool] of pools.map) {
+    for (const area of ['master', 'publishing'] as const) {
+      let deficit = positionOf(pool[area]).neg();
+      if (deficit.lte(0)) continue;
+      const takers = [...artistAcc.entries()]
+        .map(([id, by]) => ({ id, pos: by.map.get(key)?.pos[area] }))
+        .filter((x): x is { id: string; pos: PosAcc } => x.pos !== undefined && positionOf(x.pos).gt(0))
+        .sort((x, y) => positionOf(y.pos).cmp(positionOf(x.pos)) || x.id.localeCompare(y.id));
+      for (const t of takers) {
+        const take = Decimal.min(positionOf(t.pos), deficit);
+        if (take.lte(0)) break;
+        t.pos.shared = t.pos.shared.sub(take);
+        pool[area].shared = pool[area].shared.add(take);
+        deficit = deficit.sub(take);
+        if (deficit.lte(0)) break;
+      }
+    }
+  }
+  /** The positions of the book's pseudonyms (D-181) by area and in all; the owner's own one under `OWNER_POSITION`. */
+  const positionsOf = (key: string, area?: Area): { id: string; position: Decimal }[] => {
+    const of = (pos: Record<Area, PosAcc>) => (area ? positionOf(pos[area]) : positionOf(pos.master).add(positionOf(pos.publishing)));
+    const list = [...artistAcc.entries()].map(([id, by]) => ({ id, position: by.map.has(key) ? of(by.of(key).pos) : ZERO }));
+    list.push({ id: OWNER_POSITION, position: pools.map.has(key) ? of(pools.of(key)) : ZERO });
+    return list;
+  };
+  /** What a book or an area pays (D-181): Σ of the positive positions. */
+  const shownOf = (key: string, area?: Area) => positionsOf(key, area).reduce((s, x) => (x.position.gt(0) ? s.add(x.position) : s), ZERO);
+  const negativeIn = (key: string) => positionsOf(key).some((x) => x.position.lt(0));
+  const ownerPositionOf = (key: string, area?: Area) => positionsOf(key, area).find((x) => x.id === OWNER_POSITION)?.position ?? ZERO;
+
   // The answer: every book, or the one of the view.
   const named = namedKeys(calc, [...books.map.keys(), ...periods.map.keys(), ...(view ? [view.labelId] : [])]).filter((k) =>
     inView(k.key),
   );
-  const bookOf = (acc: BookAcc, labelId: string | null): LabelBook => {
+  const bookOf = (acc: BookAcc, labelId: string | null, key: string): LabelBook => {
     const payable = payableOf(acc);
     return {
       labelId,
@@ -826,11 +978,13 @@ export function ownerBalance(
       start: acc.start,
       startMissing: acc.startMissing,
       payable,
-      payableShown: Decimal.max(payable, 0),
-      payableNegative: payable.isNegative() && !payable.isZero(),
-      byArea: { master: areaBook(acc.area.master), publishing: areaBook(acc.area.publishing) },
+      payableShown: shownOf(key),
+      payableNegative: negativeIn(key),
+      ownerPosition: ownerPositionOf(key),
+      byArea: { master: areaBook(acc.area.master, key, 'master'), publishing: areaBook(acc.area.publishing, key, 'publishing') },
     };
   };
+  const areaBook = (a: AreaAcc, key: string, area: Area): AreaBook => ({ ...a, payable: payableOf(a), payableShown: shownOf(key, area), ownerPosition: ownerPositionOf(key, area) });
   const byLabel: OwnerBalance['byLabel'] = {};
   const selectedBooks: BookAcc[] = [];
   const selectedPeriods: PeriodAcc[] = [];
@@ -840,7 +994,7 @@ export function ownerBalance(
     ) && !b.startMissing;
   for (const { key, name } of named) {
     const acc = books.of(key);
-    const book = bookOf(acc, key === NONE ? null : key);
+    const book = bookOf(acc, key === NONE ? null : key, key);
     // a key touched by nothing that counts (a position recouped in full, a pending operation) is not a book
     if (isZero(book) && !(view && key === view.labelId)) continue;
     byLabel[name] = book;
@@ -852,10 +1006,16 @@ export function ownerBalance(
   const waitingBreakdown: Partial<Record<CReason, Decimal>> = {};
   for (const p of selectedPeriods) for (const [r, v] of Object.entries(p.waitingBreakdown)) addBreakdown(waitingBreakdown, r as CReason, v);
   const payable = tot(payableOf);
+  const selectedKeys = named.filter(({ name }) => byLabel[name] !== undefined).map(({ key }) => key);
   const totalArea = (area: Area): AreaBook => {
     const acc = newArea();
     for (const k of AREA_FIELDS) acc[k] = tot((b) => b.area[area][k]);
-    return areaBook(acc);
+    return {
+      ...acc,
+      payable: payableOf(acc),
+      payableShown: sumOver(selectedKeys, (k) => shownOf(k, area)),
+      ownerPosition: sumOver(selectedKeys, (k) => ownerPositionOf(k, area)),
+    };
   };
 
   const artists: ArtistBalance[] = [...artistsOfOwner.values()].map((a) => {
@@ -871,13 +1031,17 @@ export function ownerBalance(
       recoupedFromMaster: ZERO,
       forgiven: ZERO,
       start: ZERO,
+      position: ZERO,
+      positionNegative: false,
       tracks: [],
       byLabel: {},
     };
     const tracks = new Map<string, TrackAcc>();
     for (const { key, name } of keys) {
       const acc = (by as ByKey<ArtistAcc>).of(key);
-      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster, acc.forgiven, acc.start].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
+      const positionByArea = { master: positionOf(acc.pos.master), publishing: positionOf(acc.pos.publishing) };
+      const position = positionByArea.master.add(positionByArea.publishing);
+      if ([acc.earned, acc.waiting, acc.recouped, acc.unrecouped, acc.recoupedFromMaster, acc.forgiven, acc.start, position].every((x) => x.isZero()) && acc.tracks.size === 0 && !(view && key === view.labelId)) continue;
       row.byLabel[name] = {
         labelId: key === NONE ? null : key,
         earned: acc.earned,
@@ -887,7 +1051,10 @@ export function ownerBalance(
         recoupedFromMaster: acc.recoupedFromMaster,
         forgiven: acc.forgiven,
         start: acc.start,
+        position,
+        positionByArea,
       };
+      row.position = row.position.add(position);
       row.earned = row.earned.add(acc.earned);
       row.waiting = row.waiting.add(acc.waiting);
       row.recouped = row.recouped.add(acc.recouped);
@@ -906,6 +1073,7 @@ export function ownerBalance(
     row.tracks = [...tracks.values()]
       .filter((t) => !t.net.isZero() || !t.amount.isZero() || !t.waiting.isZero())
       .sort((x, y) => y.amount.add(y.waiting).cmp(x.amount.add(x.waiting)));
+    row.positionNegative = row.position.lt(0);
     return row;
   });
 
@@ -945,8 +1113,9 @@ export function ownerBalance(
       start: tot((b) => b.start),
       startMissing: selectedBooks.some((b) => b.startMissing),
       payable,
-      payableShown: Decimal.max(payable, 0),
-      payableNegative: payable.isNegative() && !payable.isZero(),
+      payableShown: sumOver(selectedKeys, (k) => shownOf(k)),
+      payableNegative: selectedKeys.some(negativeIn),
+      ownerPosition: sumOver(selectedKeys, (k) => ownerPositionOf(k)),
       byArea: { master: totalArea('master'), publishing: totalArea('publishing') },
     },
     byLabel,
@@ -1051,6 +1220,8 @@ export interface ArtistMoneyBook {
   paid: Decimal;
   /** The opening balance of the pseudonym in the book (D-174). */
   start: Decimal;
+  /** The position of the pseudonym in the book (D-181). */
+  position: Decimal;
 }
 
 /** What one pseudonym sees of its money (D-165): the artist row of `ownerBalance()` with the owner-level parts of it. */
@@ -1082,6 +1253,8 @@ export interface ArtistMoney {
     paid: Decimal;
     /** The opening balance of the pseudonym (D-174). */
     start: Decimal;
+    /** The position of the pseudonym (D-181): what the label owes it over its books; 0 without an owner. */
+    position: Decimal;
   };
   /** The book of every label of the pseudonym (by name, '?' = without a label); Σ books = total (D-168). */
   byLabel: Record<string, ArtistMoneyBook>;
@@ -1180,7 +1353,7 @@ export function artistBalance(
   const rowBooks = row?.byLabel ?? {};
   const rowKeyOf = new Map(Object.entries(rowBooks).map(([name, b]) => [keyOf(b.labelId), name]));
   const keys = namedKeys(calc, [...earnedBy.map.keys(), ...paidBy.map.keys(), ...adsBy.map.keys(), ...rowKeyOf.keys()]);
-  const total: ArtistMoney['total'] = { earned: ZERO, waiting: ZERO, recouped: ZERO, unrecouped: ZERO, recoupedFromMaster: ZERO, adsCharged: ZERO, paid: ZERO, start: ZERO };
+  const total: ArtistMoney['total'] = { earned: ZERO, waiting: ZERO, recouped: ZERO, unrecouped: ZERO, recoupedFromMaster: ZERO, adsCharged: ZERO, paid: ZERO, start: ZERO, position: ZERO };
   for (const { key, name } of keys) {
     const rb = rowBooks[rowKeyOf.get(key) ?? ''];
     const b: ArtistMoneyBook = {
@@ -1193,6 +1366,7 @@ export function artistBalance(
       adsCharged: adsBy.of(key).adsCharged,
       paid: paidBy.of(key).paid,
       start: rb?.start ?? ZERO,
+      position: rb?.position ?? ZERO,
     };
     byLabel[name] = b;
     total.earned = total.earned.add(b.earned);
@@ -1203,6 +1377,7 @@ export function artistBalance(
     total.adsCharged = total.adsCharged.add(b.adsCharged);
     total.paid = total.paid.add(b.paid);
     total.start = total.start.add(b.start);
+    total.position = total.position.add(b.position);
   }
   return {
     artistId: id,

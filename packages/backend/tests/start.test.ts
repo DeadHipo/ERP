@@ -142,7 +142,10 @@ describe('the opening balances (D-174): the cut and the start in the balance', (
     const { c, f, zero, owner, run } = await world();
     await run(undefined, false);
     const op = await f.createPayout(owner, { labelId: zero });
-    expect(op.amountCents).toBe(8850);
+    // D-181: the button pays Σ of the positive positions: S1 93.5 (start 82.5 + 35 − 12 − 2 − 5 … its own terms); the
+    // position of S2 (start −10 + its 2026-09 income 5 = −5) stays its own and is not netted
+    expect(op.amountCents).toBe(9350);
+    expect(op.allocation).toEqual({ [c.id('S1')]: 9350 });
     const snapshot = await f.operationSnapshot(op.id);
     expect(payoutSnapshotSchema.safeParse(snapshot).success).toBe(true);
     expect((snapshot as { total: { start: string } }).total.start).toBe('72.5');
@@ -153,7 +156,7 @@ describe('the opening balances (D-174): the cut and the start in the balance', (
     expect([off.active, off.deactivatedReason]).toEqual([false, 'wrong snapshot']);
     await expect(f.deactivateStart(s2Row?.id as string, 'again')).rejects.toMatchObject({ code: 'already_inactive' });
     const after = await f.ownerBalance(owner);
-    // start 82.5; earned 35; the payout of 88.5 is dated today (after the cut) and counts once its proof is approved: pending here
+    // start 82.5; earned 35; the payout of 93.5 is dated today (after the cut) and counts once its proof is approved: pending here
     expect([after.total.start, after.total.earned, after.total.payable].map((x) => x.toFixed())).toEqual(['82.5', '35', '98.5']);
     expect(after.start?.rows.map((r) => r.pseudonym)).toEqual(['S1', 'S1']);
     expect((await f.listStart({ labelId: zero })).totals.inactive).toBe(0);

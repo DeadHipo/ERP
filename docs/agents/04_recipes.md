@@ -520,3 +520,24 @@ an answer «pay» → ready. The checks «no payee» / «needs an answer» are o
 3. The tools are the GET operations without `auth`, `orgs`, `users`, named from `operationId` (`get-owners-by-id-balance`). Long lists answer 50 rows with `total`: pass `limit` (≤ 500) and `offset`.
 4. A new read field needs a `.describe()` (`tests/api-descriptions.test.ts`): a common name goes through `D` of `api-responses.ts`. A money answer Claude has to interpret gets `explain: true` in `operations.ts` (D-178).
 5. A new long list: add `...S.pageQuery.shape` to its query, `pagedList` / `pagedField` in the route, `...pageFields` or `R.listOrPage` in the response. The token never writes: a new write needs no check here, `RULES.reader` refuses it.
+
+## 19. The update of the pack of 2026-11-06 (the positions per pseudonym, the buyouts by the registry, the loaders, D-181)
+
+The owner's answers of 2026-11-06 (evening) are analysed in `docs/разбор_пакета_2026-11-06.md` §8. What they changed in
+the data of the live store, in order (every script is a dry run without `--apply`, idempotent; an `org_admin` session or
+`AUTH_MODE=off`):
+
+1. The nine label strings of September as aliases on P17 (or `POST /labels/:id/aliases`): six to 0to8, three to NoGhost (§8.2/3).
+2. The buyouts by the registry of 2026-11-03: `npx tsx packages/backend/scripts/stage3/apply-buyout-workbook.ts "<…>/Выкупленные записи — сплиты после выкупа.xlsx" "<…>/transition_buyouts.csv" --apply`.
+   The first month of the label per seller is «первый месяц лейбла» of the csv; a seller row ≥ the bought percent is
+   zeroed (`facade.buyout`), a larger row loses the bought part (`changeSplit`). Read `data/mvp-load/stage3/buyout_workbook_report.csv`
+   (`no_split_at_date`, `seller_not_in_split`, `pseudonym_ambiguous` wait for the owner). After the cut only LDRR
+   (from 2026-09) changes money.
+3. The payees of the old ERP's route: `npx tsx packages/backend/scripts/stage3/load-payout-checks.ts "<…>/payout_checks.json" --apply`
+   (`proposed` payees for the owners without a decision, the open questions as `question` holds; a decision of
+   `payee_decisions.json` wins). Then P9 under 0to8 with `asOf` shows who is still `no_payee` / `hold`.
+4. The ASCAP money outside the start: `npx tsx packages/backend/scripts/stage3/load-ascap-supplement.ts "<…>/ASCAP_доплата_артистам_2026-11-06.csv" --apply`
+   (group А «начислить» as `credit` operations dated 2026-11-06; `ascap_left.csv` lists what waits for the owner).
+5. The positions: P10 «Баланс» of an owner with pseudonyms of both signs shows the net («сальдо»), «К выплате: сумма
+   положительных позиций» and the negative ones; the payroll's pseudonym rows carry their position. `scripts/start/check-start.ts`
+   still holds (the start is per pseudonym).

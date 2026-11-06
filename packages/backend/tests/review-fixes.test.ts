@@ -498,8 +498,9 @@ describe('payout snapshot attribution', () => {
       payoutByArtist: { label: string; shareOfPayout: string }[];
     };
     expect([snap.labelId, snap.total.payable]).toEqual([f.testLabels['0to8'], '150']);
-    // master 100 − 0 and publishing 200 − 150: the advance reduced the publishing part only
-    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([['A1', '100'], ['Publishing (owner)', '50']]);
+    // master 100 − 0 and publishing 200 − 150: the advance reduced the publishing part only (D-181: the owner's own
+    // position holds the publishing; the payout takes 100 from A1 and 50 from it)
+    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([['A1', '100'], ['Owner (no pseudonym)', '50']]);
     // after it the 0to8 book is paid in full
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://p' });
     const after = await f.ownerBalance(a.owner.id);

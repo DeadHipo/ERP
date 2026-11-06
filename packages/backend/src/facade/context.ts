@@ -326,7 +326,8 @@ export function createFacadeContext(
     /** D-176: the admission of the owner (payee, holds, answers, the contract threshold); without it the old checks only. */
     admission?: Admission,
   ) {
-    const payable = area === undefined || area === 'all' ? b.total.payable : Decimal.min(b.total.byArea[area].payable, b.total.payable);
+    // D-181: what is paid is Σ of the positive positions (`payableShown`), never the net of the formula
+    const payable = area === undefined || area === 'all' ? b.total.payableShown : Decimal.min(b.total.byArea[area].payableShown, b.total.payableShown);
     return payoutGate({
       confirmed: b.confirmed,
       confirmedAny: b.confirmedAny,

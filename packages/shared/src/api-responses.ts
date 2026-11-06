@@ -73,8 +73,8 @@ const D = {
   adjustments: '−Σ counted adjustments, added to payable with their sign',
   forgiven: 'The effective forgiveness of advances: reduces what is unrecouped, not payable',
   payable: 'What can be paid today: start + earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff; may be negative',
-  payableShown: 'payable, 0 when negative: the number to show',
-  payableNegative: 'payable < 0 (computed by the backend)',
+  payableShown: 'What is paid (D-181): Σ of the positive positions of the pseudonyms and of the owner\'s own; max(payable, 0) for an owner with one pseudonym',
+  payableNegative: 'Some position is negative: a pseudonym\'s or the owner\'s own (computed by the backend)',
   A_received: 'A: the money received, net of the reports or payable of the statements',
   B_notOurs: 'B: confirmed money of owners',
   C_waiting: 'C: money that waits',
@@ -930,7 +930,13 @@ export const areaBookSchema = z.object({
   writtenOff: money.describe(D.writtenOff),
   adjustments: money.describe(D.adjustments),
   payable: money.describe(D.payable),
+  payableShown: money.optional().describe('What the area pays (D-181): Σ of the positive positions of the pseudonyms in it and of the owner\'s own; absent in older snapshots'),
+  ownerPosition: money.optional().describe('The position of the owner without a pseudonym in the area (D-181)'),
 });
+/** The position fields of D-181: optional, so that a payout snapshot recorded before it still passes. */
+const positionBookFields = {
+  ownerPosition: money.optional().describe('The position of the owner without a pseudonym (D-181): its publishing and its operations without a pseudonym, less what was shared to the pseudonyms'),
+};
 /** The book fields of D-173: optional, so that a payout snapshot recorded before it still passes (FIX-6). */
 const kindBookFields = {
   buyouts: money.optional().describe('Counted buyouts (D-173): neither paid nor in payable'),
@@ -956,6 +962,7 @@ export const labelBookSchema = z.object({
   returns: money.describe(D.returns),
   credits: money.describe(D.credits),
   ...kindBookFields,
+  ...positionBookFields,
   payable: money.describe(D.payable),
   payableShown: money.describe(D.payableShown),
   payableNegative: z.boolean().describe(D.payableNegative),
@@ -1151,9 +1158,10 @@ export const balanceSchema = z.object({
     returns: money.describe(D.returns),
     credits: money.describe(D.credits),
     ...kindBookFields,
-    payable: money.describe('start + earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-173, D-174)'),
+    ...positionBookFields,
+    payable: money.describe('start + earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff (D-173, D-174): the net of every position, kept as is when negative'),
     payableShown: money.describe(D.payableShown),
-    payableNegative: z.boolean().describe('payable < 0 (computed by the backend)'),
+    payableNegative: z.boolean().describe(D.payableNegative),
   }).describe('All-time sums of the owner: the period does not limit them, `asOf` cuts them'),
   byLabel: z
     .record(z.string(), labelBookSchema)
@@ -1169,6 +1177,8 @@ export const balanceSchema = z.object({
       recouped: money.describe(D.recouped),
       unrecouped: money.describe(D.unrecouped),
       start: money.optional().describe('The opening balance of the pseudonym (D-174)'),
+      position: money.optional().describe('The position of the pseudonym over its books (D-181): what the label owes it, negative when it owes the label; the owner is paid Σ of the positive ones, a negative one never offsets a positive one; absent in older snapshots'),
+      positionNegative: z.boolean().optional().describe('position < 0 (computed by the backend)'),
       tracks: z.array(z.object({ isrc: z.string().describe(D.isrc), net: money.describe(D.net), amount: money, waiting: money.describe(D.waiting) })),
       byLabel: z.record(
         z.string(),
@@ -1181,6 +1191,11 @@ export const balanceSchema = z.object({
           recoupedFromMaster: money.describe(D.recoupedFromMaster),
           forgiven: money.optional().describe('The effective forgiveness of the positions this pseudonym holds (D-173)'),
           start: money.optional().describe('The opening balance of the pseudonym in the book (D-174)'),
+          position: money.optional().describe('The position of the pseudonym in the book (D-181)'),
+          positionByArea: z
+            .object({ master: money.describe('The position of the pseudonym in the master area of the book (D-181)'), publishing: money.describe('The position of the pseudonym in the publishing area of the book (D-181)') })
+            .optional()
+            .describe('The position by area (D-181): Σ = position'),
         }),
       ),
     }),
@@ -1259,6 +1274,7 @@ export const artistBalanceSchema = z.object({
     adsCharged: money.describe('Advertising charged to this pseudonym, taken off the owner\'s payable at once (D-157)'),
     paid: money.describe('Payouts tied to this pseudonym (the button pays the owner: those carry no pseudonym)'),
     start: money.optional().describe('The opening balance of the pseudonym (D-174)'),
+    position: money.optional().describe('The position of the pseudonym (D-181): what the label owes it over its books'),
   }),
   byLabel: z
     .record(
@@ -1273,6 +1289,7 @@ export const artistBalanceSchema = z.object({
         adsCharged: money.describe(D.adsCharged),
         paid: money.describe(D.paid),
         start: money.optional().describe(D.start),
+        position: money.optional().describe('The position of the pseudonym in the book (D-181)'),
       }),
     )
     .describe("The book of every label of the pseudonym (by name, '?' = without a label): Σ books = total (D-168)"),
@@ -1417,6 +1434,7 @@ export const operationSchema = z.object({
     .describe('Who set the label (D-173): one, default, operator, payout; null = not marked yet'),
   channel: z.string().nullable().describe('The payment channel, free text (D-173)'),
   area: z.enum(['master', 'publishing']).describe('The area of the book (D-173); the history is master').describe(D.area),
+  allocation: z.record(z.string(), z.number().int()).nullable().optional().describe('A payout of the button (D-181): what it took from which position, cents by pseudonym id (\'\' = the owner\'s own); null for the history and every other kind'),
   fromLabelId: z
     .string()
     .nullable()
@@ -1667,6 +1685,7 @@ export const payoutSnapshotSchema = z.object({
   payableExact: money.describe(D.payableExact),
   total: balanceSchema.shape.total.extend({ adsCharged: money.optional().describe(D.adsCharged) }),
   payoutByArtist: z.array(z.object({ key: z.string(), label: z.string().describe(D.label), net: money.describe(D.net), shareOfPayout: money.describe(D.shareOfPayout) })),
+  allocation: z.record(z.string(), z.number().int()).optional().describe('What the payout took from which position (D-181): cents by pseudonym id, \'\' = the owner\'s own; absent in older snapshots'),
   perArtist: z.array(
     z.object({
       artistId: z.string().describe(D.artistId),

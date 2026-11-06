@@ -269,6 +269,12 @@ export class Case {
         // D-174: the start is added last; without one the formula is the one of D-173
         const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff).add(x.start);
         expect(x.payable.toFixed(), `payable of ${name} ${label}`).toBe(formula.toFixed());
+        // D-181: what is paid = Σ of the positive positions of the pseudonyms and of the owner's own; never below 0,
+        // never above the formula when nothing is negative, and equal to max(formula, 0) when no position is negative
+        expect(x.payableShown.gte(0), `payableShown ≥ 0 of ${name} ${label}`).toBe(true);
+        if (!x.payableNegative) expect(x.payableShown.toFixed(), `payableShown of ${name} ${label}`).toBe(Decimal.max(formula, 0).toFixed());
+        expect(x.byArea.master.payableShown.add(x.byArea.publishing.payableShown).gte(x.payableShown), `Σ areas shown ≥ shown of ${name} ${label}`).toBe(true);
+        expect(x.byArea.master.ownerPosition.add(x.byArea.publishing.ownerPosition).toFixed(), `Σ areas ownerPosition of ${name} ${label}`).toBe(x.ownerPosition.toFixed());
         for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'start', 'payable'] as const)
           expect(x.byArea.master[k].add(x.byArea.publishing[k]).toFixed(), `Σ areas ${k} of ${name} ${label}`).toBe(x[k].toFixed());
       }
@@ -278,8 +284,16 @@ export class Case {
       }
       for (const a of b.artists) {
         const rows = Object.values(a.byLabel);
-        for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster', 'forgiven'] as const)
+        for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster', 'forgiven', 'position'] as const)
           expect(sum(rows.map((x) => x[k])), `Σ books ${k} of ${a.pseudonym}`).toBe(a[k].toFixed());
+        for (const x of rows) expect(x.positionByArea.master.add(x.positionByArea.publishing).toFixed(), `Σ areas position of ${a.pseudonym}`).toBe(x.position.toFixed());
+      }
+      // D-181: the positions of the pseudonyms and the owner's own add up to the formula, book by book
+      for (const [label, x] of Object.entries(b.byLabel)) {
+        const positions = sum([...b.artists.map((a) => a.byLabel[label]?.position ?? ZERO), x.ownerPosition]);
+        expect(positions, `Σ positions of ${name} ${label}`).toBe(x.payable.toFixed());
+        const shown = [...b.artists.map((a) => a.byLabel[label]?.position ?? ZERO), x.ownerPosition].reduce((s, v) => (v.gt(0) ? s.add(v) : s), ZERO);
+        expect(x.payableShown.toFixed(), `payableShown = Σ positive positions of ${name} ${label}`).toBe(shown.toFixed());
       }
       expect(b.total.earned.toFixed(), `earned of ${name}`).toBe((earned.get(owner) ?? ZERO).toFixed());
       expect(b.total.waiting.toFixed(), `waiting of ${name}`).toBe((waiting.get(owner) ?? ZERO).toFixed());

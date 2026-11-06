@@ -39,7 +39,9 @@ export interface PayrollRow extends Money {
   pseudonym: string | null;
   contract: Contract | null;
   byDecision: boolean;
+  /** A pseudonym row: its position (D-181); the owner row: the owner's own position; the total row: the formula of the area. */
   payable: Decimal | null;
+  /** A pseudonym or owner row: max(0, position); the total row: Σ of them = what the owner is paid (D-181). */
   payableShown: Decimal | null;
   gate: { allowed: boolean; reason: string | null; amountCents: number | null; blockedByOtherLabel: boolean } | null;
   belowThreshold: boolean;
@@ -201,6 +203,9 @@ export function payrollApi(ctx: FacadeContext) {
           adjustments: pick('adjustments'),
         };
         const payable = area === 'all' ? t.payable : t.byArea[area].payable;
+        // D-181: what the owner is paid = Σ of the positive positions of its pseudonyms (and its own)
+        const payableShown = area === 'all' ? t.payableShown : t.byArea[area].payableShown;
+        const ownerPosition = area === 'all' ? t.ownerPosition : t.byArea[area].ownerPosition;
         // the pseudonym rows (master): its earned, recoupedFromMaster (by the artist of the income, FIX-10), the
         // unrecouped and forgiven of the positions it holds, its advertising
         const pseudonymRows: PayrollRow[] = [];
@@ -214,8 +219,10 @@ export function payrollApi(ctx: FacadeContext) {
             m.unrecouped = a.unrecouped;
             m.forgiven = a.forgiven;
             m.adsCharged = sum(b.ads.filter((x) => x.artistId === a.artistId).map((x) => x.amount));
-            if (MONEY.every((k) => m[k].isZero())) continue;
-            pseudonymRows.push({ rowKind: 'pseudonym', ...base, artistId: a.artistId, pseudonym: a.pseudonym, ...m, payable: null, payableShown: null, gate: null, belowThreshold: false });
+            // the position of the pseudonym in the area (D-181): its `payable`; what it adds to the owner's payout = max(0, position)
+            const position = area === 'all' ? a.position : sum(Object.values(a.byLabel).map((x) => x.positionByArea[area]));
+            if (MONEY.every((k) => m[k].isZero()) && position.isZero()) continue;
+            pseudonymRows.push({ rowKind: 'pseudonym', ...base, artistId: a.artistId, pseudonym: a.pseudonym, ...m, payable: position, payableShown: Decimal.max(position, 0), gate: null, belowThreshold: false });
           }
         // the owner row: the rest of the total (publishing earned and publishingRecouped, the operations), so that the
         // rows of the owner add up to its total exactly
@@ -229,7 +236,7 @@ export function payrollApi(ctx: FacadeContext) {
         const blockedByOtherLabel =
           gate.reason === 'payout_blocked' && b.blockingPayouts.every((id) => opById.get(id)?.labelId !== labelId);
         rows.push(...pseudonymRows);
-        rows.push({ rowKind: 'owner', ...base, artistId: null, pseudonym: null, ...ownerMoney, payable: null, payableShown: null, gate: null, belowThreshold: false });
+        rows.push({ rowKind: 'owner', ...base, artistId: null, pseudonym: null, ...ownerMoney, payable: ownerPosition, payableShown: Decimal.max(ownerPosition, 0), gate: null, belowThreshold: false });
         rows.push({
           rowKind: 'total',
           ...base,
@@ -237,7 +244,7 @@ export function payrollApi(ctx: FacadeContext) {
           pseudonym: null,
           ...total,
           payable,
-          payableShown: Decimal.max(payable, 0),
+          payableShown,
           gate: { allowed: gate.allowed, reason: gate.reason, amountCents: blockedByOtherLabel ? null : gate.amountCents, blockedByOtherLabel },
           belowThreshold: gate.reason === 'below_threshold',
         });

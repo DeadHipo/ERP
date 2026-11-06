@@ -15,6 +15,7 @@ import {
 /** The kinds that go to an owner (no pseudonym needed) and need a basis document (D-173 §1.1). */
 const OWNER_DOCUMENT_KINDS: readonly OperationKind[] = ['buyout', 'writeoff', 'adjustment'];
 import type { FacadeContext, PayoutArea } from './context';
+import { OWNER_POSITION } from './balance';
 import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
 
 export function payoutsApi(ctx: FacadeContext) {
@@ -240,27 +241,29 @@ export function payoutsApi(ctx: FacadeContext) {
               throw new RuleViolationError('Nothing to pay', 'nothing_to_pay');
           }
         }
-        // "Which artist this payout is for": the payout split pro rata over the positive per-artist net
-        // (earned minus recouped) and the owner's publishing net; the exact all-time figures are kept as well.
+        // "Which position this payout takes from" (D-181): the amount is split over the positive positions of the
+        // pseudonyms in the area (and the owner's own, key '') pro rata, floored to cents, the residue to the largest;
+        // the operation stores it (`allocation`), so that the balance reduces exactly those positions.
         const amount = centsToDecimal(cents);
-        // (the master area has no publishing row, the publishing area no pseudonym rows, D-173)
+        const positionIn = (a: (typeof balance.artists)[number]) =>
+          area === 'all' ? a.position : Object.values(a.byLabel).reduce((s, x) => s.add(x.positionByArea[area]), ZERO);
+        const ownerPosition = area === 'all' ? balance.total.ownerPosition : balance.total.byArea[area].ownerPosition;
         const parts = [
-          ...(area === 'publishing' ? [] : balance.artists).map((a) => ({
-            key: a.artistId,
-            label: a.pseudonym,
-            net: Decimal.max(a.earned.sub(a.recoupedFromMaster), 0),
-          })),
-          ...(area === 'master'
-            ? []
-            : [
-                {
-                  key: 'publishing',
-                  label: 'Publishing (owner)',
-                  net: Decimal.max(balance.period.earnedPublishing.sub(balance.publishingRecouped), 0),
-                },
-              ]),
-        ];
+          ...balance.artists.map((a) => ({ key: a.artistId, label: a.pseudonym, net: positionIn(a) })),
+          { key: OWNER_POSITION, label: 'Owner (no pseudonym)', net: ownerPosition },
+        ].filter((p) => p.net.gt(0));
         const totalNet = parts.reduce((s, p) => s.add(p.net), ZERO);
+        const allocation: Record<string, number> = {};
+        if (parts.length > 0) {
+          let given = 0;
+          for (const p of parts) {
+            const c = totalNet.isZero() ? 0 : amount.mul(p.net).div(totalNet).mul(100).floor().toNumber();
+            allocation[p.key] = c;
+            given += c;
+          }
+          const largest = [...parts].sort((x, y) => y.net.cmp(x.net) || x.key.localeCompare(y.key))[0] as (typeof parts)[number];
+          allocation[largest.key] = (allocation[largest.key] ?? 0) + (cents - given);
+        } else allocation[OWNER_POSITION] = cents;
         const snapshot = {
           computedAt: new Date().toISOString(),
           ownerId: id,
@@ -270,14 +273,9 @@ export function payoutsApi(ctx: FacadeContext) {
           area,
           payableExact: balance.total.payable.toFixed(),
           total: balance.total,
-          payoutByArtist: parts
-            .filter((p) => !p.net.isZero())
-            .map((p) => ({
-              key: p.key,
-              label: p.label,
-              net: p.net,
-              shareOfPayout: totalNet.isZero() ? ZERO : amount.mul(p.net).div(totalNet).toDecimalPlaces(2),
-            })),
+          // the positions the payout takes from (D-181): `net` = the position, `shareOfPayout` = the cents allocated
+          payoutByArtist: parts.map((p) => ({ key: p.key, label: p.label, net: p.net, shareOfPayout: centsToDecimal(allocation[p.key] ?? 0) })),
+          allocation,
           perArtist: balance.artists.map((a) => ({
             artistId: a.artistId,
             pseudonym: a.pseudonym,
@@ -307,6 +305,7 @@ export function payoutsApi(ctx: FacadeContext) {
           labelId: label.id,
           // the book area of the payout (D-173): `all` is recorded as master, as the history (О5)
           area: area === 'publishing' ? 'publishing' : 'master',
+          allocation,
           snapshot,
         });
         return { op, id, cents };
