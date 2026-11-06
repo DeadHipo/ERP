@@ -16,6 +16,8 @@ import { artistBalance, ownerBalance, startsOfOwner, type BalanceView } from './
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
+import { admissionOf, contractThresholds, type AdmissionRows } from './admission';
+import type { Admission } from './payout-gate';
 import { viewerScope, type Viewer } from './viewer';
 import { Decimal, floorToCents } from '../shared/money';
 
@@ -247,13 +249,21 @@ export function createFacadeContext(
     const calc = cutCalculation(full, opts.asOf);
     // the owner, its operations and the opening balances of its pseudonyms (D-174) in the same snapshot (inside a
     // payout: the same write transaction)
-    const { owner, operations, starts } = await timed(
-      'pg snapshot: owner + operations + starts',
+    const { owner, operations, starts, rows, active, thresholds } = await timed(
+      'pg snapshot: owner + operations + starts + admission',
       () =>
         db.snapshot(async () => ({
           owner: await owners.getOwner(id),
           operations: await settlements.listOperations({ ownerId: id }),
           starts: startsOfOwner(calc, id, await settlements.listOpeningBalances({ active: true })),
+          // the admission of the owner (D-176): its payee, holds and answers, the thresholds of the contracts
+          rows: {
+            payee: (await settlements.listPayees({ ownerId: id, active: true }))[0] ?? null,
+            holds: await settlements.listHolds({ ownerId: id, status: 'active' }),
+            answers: await settlements.listAnswers({ ownerId: id, active: true }),
+          } satisfies AdmissionRows,
+          active: (await settlements.listPayees({})).length > 0,
+          thresholds: contractThresholds(await owners.approvedContracts(), view?.labelId),
         })),
       (r) => `${r.operations.length} operations, ${r.starts.length} start rows`,
     );
@@ -261,7 +271,17 @@ export function createFacadeContext(
     const { confirmedAny, ...balance } = timedSync('ownerBalance (JS)', () =>
       ownerBalance(calc, id, cutOperations(operations, opts.asOf), cutFilter(f, opts.asOf), { starts }, view),
     );
-    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf({ ...balance, confirmedAny }, opts.area) } };
+    // the payouts the owner had are those of the cut (`asOf`): a payout after it does not count
+    const admission = admissionOf(rows, { active, thresholdCents: thresholds.get(id) ?? null, labelId: view?.labelId, operations: cutOperations(operations, opts.asOf) });
+    return {
+      files: calc.believeFiles,
+      balance: {
+        owner,
+        ...balance,
+        payout: gateOf({ ...balance, confirmedAny }, opts.area, admission),
+        admission: { ...rows, active: admission.active, thresholdCents: admission.thresholdCents, hadPayout: admission.hadPayout },
+      },
+    };
   }
 
   /**
@@ -303,6 +323,8 @@ export function createFacadeContext(
     b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'confirmedAny' | 'blockingPayouts' | 'total'>,
     /** D-173 К10: the area pays min(payable of the area, payable of the book); without it (or `all`) the book. */
     area?: PayoutArea,
+    /** D-176: the admission of the owner (payee, holds, answers, the contract threshold); without it the old checks only. */
+    admission?: Admission,
   ) {
     const payable = area === undefined || area === 'all' ? b.total.payable : Decimal.min(b.total.byArea[area].payable, b.total.payable);
     return payoutGate({
@@ -312,6 +334,7 @@ export function createFacadeContext(
       blocking: b.blockingPayouts,
       payableCents: floorToCents(payable),
       thresholdCents: config.payoutThresholdCents,
+      ...(admission ? { admission } : {}),
     });
   }
 

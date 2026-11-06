@@ -117,7 +117,12 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     }
   });
 
-  const OPERATOR = 'contract-test';
+  /** Cents as the dollars string the API takes (no money arithmetic: string slicing). */
+const centsText = (cents: number) => {
+  const s = String(cents).padStart(3, '0');
+  return `${s.slice(0, -2)}.${s.slice(-2)}`;
+};
+const OPERATOR = 'contract-test';
   let auditRows = 0;
   /** Every successful write leaves exactly one audit row, newest first, with the route template (R5, D-140). */
   async function expectOneAuditRow(
@@ -353,9 +358,21 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
       body: { fileRef: 'dummy://c.pdf' },
     });
     await call('post', '/documents/:id/approve', { params: { id: contractDoc.id }, body: {} });
-    await call('post', '/contracts', {
+    const contract = await call('post', '/contracts', {
       body: { ownerId: owner.id, documentId: contractDoc.id, artistIds: [a1.id] },
     });
+    // the admission (D-176): the threshold of the contract, a payee, a hold, an answer, the list, the rollbacks
+    expect((await call('patch', '/contracts/:id', { params: { id: contract.id }, body: { payoutThresholdCents: 100 } })).payoutThresholdCents).toBe(100);
+    // the rows of `other` (deactivated at once): the organization uses the admission from here on; the owner keeps an active payee
+    const payee = await call('post', '/settlements/payees', { body: { ownerId: other.id, channel: 'tipalti', payeeRef: '1', basis: 'contract', validFrom: '2026-01-01' } });
+    const hold = await call('post', '/settlements/holds', { body: { ownerId: owner.id, kind: 'question', reason: 'contract', since: '2026-01-01' } });
+    const answer = await call('post', '/settlements/answers', { body: { ownerId: other.id, due: '1.00', decision: 'pay', why: 'contract', answeredBy: 'contract' } });
+    const admission = await call('get', '/settlements/admission', { query: { ownerId: other.id, active: 'false' } });
+    expect([admission.active, admission.payees.length, admission.holds.length, admission.answers.length]).toEqual([true, 1, 0, 1]);
+    expect((await call('post', '/settlements/holds/:id/release', { params: { id: hold.id }, body: { reason: 'contract' } })).status).toBe('released');
+    expect((await call('post', '/settlements/answers/:id/deactivate', { params: { id: answer.id }, body: { reason: 'contract' } })).active).toBe(false);
+    expect((await call('post', '/settlements/payees/:id/deactivate', { params: { id: payee.id }, body: { reason: 'contract' } })).active).toBe(false);
+    await call('post', '/settlements/payees', { body: { ownerId: owner.id, channel: 'easystaff', basis: 'contract', validFrom: '2026-01-01' } });
     const appendix = await call('post', '/documents', {
       body: { kind: 'appendix', title: 'Appendix', fileRef: 'dummy://a.pdf', requiresApproval: false },
     });
@@ -638,7 +655,10 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     await call('get', '/releases/:upc', { params: { upc: UPC } });
     await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
-    // settlements
+    // settlements: the first payout of the owner needs an answer «pay» for its amount (D-176)
+    const beforePayout = await call('get', '/owners/:id/balance', { params: { id: owner.id }, query: { label: zero.id, area: 'all' } });
+    expect(beforePayout.payout.reason).toBe('needs_answer');
+    await call('post', '/settlements/answers', { body: { ownerId: owner.id, labelId: zero.id, due: centsText(beforePayout.payout.amountCents), decision: 'pay', why: 'contract', answeredBy: 'contract' } });
     const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id, area: 'all' }, labelId: zero.id });
     expect(payout.labelId).toBe(zero.id);
     await call('get', '/settlements/operations/:id/snapshot', { params: { id: payout.id } });
@@ -731,6 +751,7 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     expect([startPreview.applied, startPreview.totals.create, startPreview.totals.master]).toEqual([false, 1, '12.5']);
     const startImported = await call('post', '/settlements/start/import', { query: { ...startQuery, dryRun: '0' }, file: startUpload, labelId: zero.id });
     expect(startImported.result.ids).toHaveLength(1);
+    await call('get', '/settlements/admission', { query: { label: zero.id } });
     const startList = await call('get', '/settlements/start', { query: { label: zero.id } });
     expect(startList.totals.starts).toBe(1);
     await call('get', '/settlements/start', { query: { active: 'false' } });

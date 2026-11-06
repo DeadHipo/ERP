@@ -285,7 +285,7 @@ the 04 unit `-100`.
 | before | earned `15`, recouped `10`, position remaining `0`, payable `5` | allowed true, amountCents 500 | the advance |
 | Pay (dialog: payable `5`, formula fields, P 5, "снимок будет сохранён") | payable stays `5` (an unproved payout is not counted), pendingOperations [no payment proof yet], blockingPayouts [payout]; P4 blockingPayouts 1 | allowed false, payout_blocked | payout, amountCents 500, deferred true |
 | attach proof | paid `5`, payable `0`, blockingPayouts [] | allowed false, nothing_to_pay | proof, deferred false |
-| set deferred (P20) | paid `5` (still counted), blockingPayouts [payout] | allowed false, payout_blocked | deferred true |
+| set deferred (P20) | paid `5` (still counted), blockingPayouts [payout] | allowed false, nothing_to_pay (D-176: payable 0 is reported before the blocked payout; the payout stays listed as blocking) | deferred true |
 | unset deferred | blockingPayouts [] | allowed false, nothing_to_pay | deferred false |
 
 An unproved payout also blocks a new advance (`createOperation` out gate); the Операции tab says so. k2 read-only:
@@ -524,6 +524,16 @@ P10 of the owner: `balance-start` 12.5, earned 0, payable 12.5, `start-cut-0to8`
 `start-rows`, `by-label-0to8` `[data-col=start]` 12.5. The deactivation with the reason «e2e rollback»: the row leaves the
 active list, `field-start-show-inactive` shows it with `data-active` false; P10 payable 0 and no `balance-start`.
 
+**S56 (P10 admission, `46-admission`)** an owner of its own (`Owner S56 e2e`, the pseudonym `S56 Admit e2e`, an approved
+contract, a start of 12.5 under 0to8 by the API, no income). The tab «Допуск»: `admission-tab` `data-active` false,
+`admission-inactive`, the gate `data-reason` '' (allowed), `payee-none`, `holds-none`. The first payee of the
+organization (`PayeeDialog`: tipalti, ref `e2e-56`): `data-active` true, `payee-<id>` `data-channel` tipalti, the gate
+`needs_answer`; the answer dialog pre-fills `12.50`; after the answer the gate is ''. A hold (`HoldDialog`, decision):
+the gate `hold` on the tab and on the balance tab (`payout-gate` `data-reason`); released with a reason: `hold-<id>`
+`data-status` released, the gate ''. The threshold 2000 (`ThresholdDialog`): `admission-threshold-value` `data-cents`
+2000, the gate `below_threshold`; empty: ''. The payee deactivated with a reason: `payee-none`, the gate `no_payee`.
+The admission of the e2e organization stays on after this file (the seed's own payouts ran before it).
+
 **S54 (P19 B17 replacement, `44-b17-replace`)** the e2e seed has one statement and no xlsx writer reusable by the specs:
 the replacement itself (superseded + `replacedBy`, the lines kept, the quarters moved, `periods_differ`,
 `replace_label_differs`, `replace_not_loaded`) is covered by `packages/backend/tests/b17-replace.test.ts`. Here the seeded
@@ -622,6 +632,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 43 | `43-operation-import.spec.ts` | S53 (P29: classes, apply, replay) | acts (A: `Owner S53 e2e` with two migrated payouts) |
 | 44 | `44-b17-replace.spec.ts` | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
 | 45 | `45-start.spec.ts` | S55 (P30: the list, the preview classes, the apply, P10 with the start, the deactivation) | acts (A: `Owner S55 e2e` with one start row, deactivated at the end) |
+| 46 | `46-admission.spec.ts` | S56 (P10 «Допуск»: the payee turns the admission on, the answer, the hold, the threshold, no payee) | acts (A: `Owner S56 e2e`; the first payee row of the organization: the admission is on from here) |
 | – | `smoke.spec.ts` | the shell (the sidebar = `navFor` of `me.abilities`: an `org_admin` sees every section and «Организация»), the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders (also `/users`) | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks (`/auth/me` mocked as the login off, D-170) | no seed |
 

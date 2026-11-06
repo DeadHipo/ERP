@@ -72,6 +72,62 @@ export const openingBalances = s.table('opening_balances', {
   deactivatedReason: text('deactivated_reason'),
 });
 
+/** The payee of an owner (D-176): the channel and the reference in the cash register; one active per owner. */
+export const payees = s.table('payees', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  channel: text('channel', { enum: ['tipalti', 'easystaff', 'other'] }).notNull(),
+  payeeRef: text('payee_ref'),
+  status: text('status', { enum: ['confirmed', 'proposed'] }).notNull(),
+  basis: text('basis').notNull(),
+  validFrom: date('valid_from', { mode: 'string' }).notNull(),
+  source: text('source'),
+  createdAt: isoTimestamp('created_at').notNull(),
+  deactivatedAt: isoTimestamp('deactivated_at'),
+  deactivatedReason: text('deactivated_reason'),
+});
+
+/** A hold on the payouts of an owner (D-176): a decision, an artist's request, a question, a disputed history item. */
+export const holds = s.table('holds', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  /** The book the hold acts in; null = every book. */
+  labelId: text('label_id'),
+  kind: text('kind', { enum: ['decision', 'artist_request', 'question', 'dispute'] }).notNull(),
+  /** Closes the payout (a hold, a dispute that blocks the row) or informs only. */
+  blocks: boolean('blocks').notNull(),
+  reason: text('reason').notNull(),
+  releaseWhen: text('release_when'),
+  amountCents: bigint('amount_cents', { mode: 'number' }),
+  period: text('period'),
+  reviewOn: date('review_on', { mode: 'string' }),
+  since: date('since', { mode: 'string' }).notNull(),
+  source: text('source'),
+  status: text('status', { enum: ['active', 'released'] }).notNull(),
+  releasedAt: isoTimestamp('released_at'),
+  releasedReason: text('released_reason'),
+  createdAt: isoTimestamp('created_at').notNull(),
+});
+
+/** An answer «pay» to the check of a payout (D-176): valid for the same amount only. */
+export const payoutAnswers = s.table('payout_answers', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  labelId: text('label_id'),
+  dueCents: bigint('due_cents', { mode: 'number' }).notNull(),
+  decision: text('decision', { enum: ['pay', 'pay_task'] }).notNull(),
+  why: text('why').notNull(),
+  about: text('about').notNull(),
+  answeredBy: text('answered_by').notNull(),
+  source: text('source'),
+  createdAt: isoTimestamp('created_at').notNull(),
+  deactivatedAt: isoTimestamp('deactivated_at'),
+  deactivatedReason: text('deactivated_reason'),
+});
+
 export const payoutSnapshots = s.table('payout_snapshots', {
   orgId: text('org_id').notNull(),
   operationId: text('operation_id').primaryKey(),

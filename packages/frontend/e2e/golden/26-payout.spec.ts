@@ -114,7 +114,7 @@ test('S22/1 attach the proof: paid 5, payable 0, gate nothing_to_pay; the second
   expect(proof.status).toBe(400);
 });
 
-test('S22/1 deferred on P20: still counted but blocks; unset: nothing_to_pay; the same value twice is a no-op', async ({ page, request }) => {
+test('S22/1 deferred on P20: still counted and listed as blocking (the gate says nothing_to_pay first, D-176); unset: nothing_to_pay; the same value twice is a no-op', async ({ page, request }) => {
   const ownerId = sc(22, 1).owners.P ?? '';
   await openAs(page, `/operations?ownerId=${ownerId}`);
   await expect(page.getByTestId('operations-page')).toBeVisible();
@@ -125,7 +125,8 @@ test('S22/1 deferred on P20: still counted but blocks; unset: nothing_to_pay; th
   expect([same.status, (same.body as { deferred?: boolean } | undefined)?.deferred]).toEqual([200, true]);
   await openOwner(page, ownerId);
   await expectTotals(page, { paid: '5', payable: '0' });
-  await expect(gate(page, 'payout_blocked')).toBeVisible();
+  // D-176: «nothing to pay» comes before the blocked payout in the gate; the deferred payout is still listed as blocking
+  await expect(gate(page, 'nothing_to_pay')).toBeVisible();
   await expect(page.getByTestId(`blocking-${payoutId}`)).toBeVisible();
   await openAs(page, `/operations?ownerId=${ownerId}`);
   await page.getByTestId(`operation-${payoutId}`).getByTestId('action-deferred').click();

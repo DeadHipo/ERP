@@ -112,5 +112,21 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
     res.json(await facade.deactivateStart(param(req, 'id'), parse(S.deactivateStartBody, req.body).reason)),
   );
 
+  // the admission (D-176): the payee, the holds, the answers
+  r.get('/settlements/admission', async (req, res) => {
+    const q = parse(S.admissionQuery, req.query);
+    res.json(await facade.listAdmission({ ownerId: q.ownerId, labelId: q.label, active: q.active === undefined ? undefined : q.active === 'true' }, viewerOf(res)));
+  });
+  r.post('/settlements/payees', async (req, res) => res.status(201).json(await facade.setPayee(parse(S.setPayeeBody, req.body))));
+  r.post('/settlements/payees/:id/deactivate', async (req, res) =>
+    res.json(await facade.deactivatePayee(param(req, 'id'), parse(S.reasonBody, req.body).reason)),
+  );
+  r.post('/settlements/holds', async (req, res) => res.status(201).json(await facade.createHold(parse(S.createHoldBody, req.body))));
+  r.post('/settlements/holds/:id/release', async (req, res) => res.json(await facade.releaseHold(param(req, 'id'), parse(S.reasonBody, req.body).reason)));
+  r.post('/settlements/answers', async (req, res) => res.status(201).json(await facade.createAnswer(parse(S.createAnswerBody, req.body))));
+  r.post('/settlements/answers/:id/deactivate', async (req, res) =>
+    res.json(await facade.deactivateAnswer(param(req, 'id'), parse(S.reasonBody, req.body).reason)),
+  );
+
   return r;
 }

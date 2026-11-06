@@ -2,7 +2,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, assertMonth, monthStart, normalizeTimestamp, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
-import type { OpeningBalanceFilter, OpeningBalanceRow, OperationFilter, OperationRow } from './repository';
+import type { HoldRow, OpeningBalanceFilter, OpeningBalanceRow, OperationFilter, OperationRow, PayeeRow, PayoutAnswerRow } from './repository';
 export type { OpeningBalanceFilter, OperationFilter };
 import type { Db } from '../../shared/pg-db';
 import type { OrgScope } from '../../shared/org-scope';
@@ -77,6 +77,63 @@ export interface OpeningBalanceView {
   /** An advance before the cut kept alive after it. */
   operationRef: string | null;
   comment: string;
+  createdAt: string;
+  active: boolean;
+  deactivatedReason: string | null;
+}
+
+// ---- the admission (D-176) ----
+
+export type PayeeChannel = 'tipalti' | 'easystaff' | 'other';
+export type HoldKind = 'decision' | 'artist_request' | 'question' | 'dispute';
+export type AnswerDecision = 'pay' | 'pay_task';
+
+/** The payee of an owner: the channel and the reference in the cash register; one active per owner. */
+export interface PayeeView {
+  id: string;
+  ownerId: string;
+  channel: PayeeChannel;
+  payeeRef: string | null;
+  status: 'confirmed' | 'proposed';
+  basis: string;
+  validFrom: string;
+  source: string | null;
+  createdAt: string;
+  active: boolean;
+  deactivatedReason: string | null;
+}
+
+/** A hold on the payouts of an owner: blocks the payout or informs only (a disputed item without impact). */
+export interface HoldView {
+  id: string;
+  ownerId: string;
+  labelId: string | null;
+  kind: HoldKind;
+  blocks: boolean;
+  reason: string;
+  releaseWhen: string | null;
+  amountCents: number | null;
+  period: string | null;
+  reviewOn: string | null;
+  since: string;
+  source: string | null;
+  status: 'active' | 'released';
+  releasedAt: string | null;
+  releasedReason: string | null;
+  createdAt: string;
+}
+
+/** An answer «pay» to the check of a payout: valid for the same amount only. */
+export interface PayoutAnswerView {
+  id: string;
+  ownerId: string;
+  labelId: string | null;
+  dueCents: number;
+  decision: AnswerDecision;
+  why: string;
+  about: string;
+  answeredBy: string;
+  source: string | null;
   createdAt: string;
   active: boolean;
   deactivatedReason: string | null;
@@ -168,6 +225,52 @@ function view(o: OperationRow): OperationView {
     area: o.area,
   };
 }
+
+const payeeView = (r: PayeeRow): PayeeView => ({
+  id: r.id,
+  ownerId: r.ownerId,
+  channel: r.channel,
+  payeeRef: r.payeeRef,
+  status: r.status,
+  basis: r.basis,
+  validFrom: r.validFrom,
+  source: r.source,
+  createdAt: r.createdAt,
+  active: r.deactivatedAt === null,
+  deactivatedReason: r.deactivatedReason,
+});
+const holdView = (r: HoldRow): HoldView => ({
+  id: r.id,
+  ownerId: r.ownerId,
+  labelId: r.labelId,
+  kind: r.kind,
+  blocks: r.blocks,
+  reason: r.reason,
+  releaseWhen: r.releaseWhen,
+  amountCents: r.amountCents,
+  period: r.period,
+  reviewOn: r.reviewOn,
+  since: r.since,
+  source: r.source,
+  status: r.status,
+  releasedAt: r.releasedAt,
+  releasedReason: r.releasedReason,
+  createdAt: r.createdAt,
+});
+const answerView = (r: PayoutAnswerRow): PayoutAnswerView => ({
+  id: r.id,
+  ownerId: r.ownerId,
+  labelId: r.labelId,
+  dueCents: r.dueCents,
+  decision: r.decision,
+  why: r.why,
+  about: r.about,
+  answeredBy: r.answeredBy,
+  source: r.source,
+  createdAt: r.createdAt,
+  active: r.deactivatedAt === null,
+  deactivatedReason: r.deactivatedReason,
+});
 
 function openingView(r: OpeningBalanceRow): OpeningBalanceView {
   return {
@@ -582,6 +685,110 @@ export function createSettlementsService(db: Db, org: OrgScope) {
 
     async listOpeningBalances(filter: OpeningBalanceFilter = {}): Promise<OpeningBalanceView[]> {
       return (await repo.listOpeningBalances(filter)).map(openingView);
+    },
+
+    // ---- the admission (D-176): the module keeps the rows and their shape; the facade checks the owner and the label,
+    // the gate reads them ----
+
+    /** The payee of an owner: the previous active one is replaced (deactivated with the reason `replaced`). */
+    async setPayee(input: { ownerId: string; channel: PayeeChannel; payeeRef?: string | null; status?: 'confirmed' | 'proposed'; basis: string; validFrom: string; source?: string | null }): Promise<PayeeView> {
+      return repo.transaction(async () => {
+        if (!['tipalti', 'easystaff', 'other'].includes(input.channel)) throw new ValidationError(`Unknown channel ${String(input.channel)}`, undefined, 'channel_unknown');
+        const basis = input.basis.trim();
+        if (basis.length < 1 || basis.length > 2000) throw new ValidationError('A payee names its basis (1-2000 characters)', undefined, 'basis_required');
+        const validFrom = assertDate(input.validFrom);
+        const now = nowIso();
+        for (const prev of await repo.listPayees({ ownerId: input.ownerId, active: true })) await repo.setPayeeDeactivated(prev.id, now, 'replaced');
+        const id = newId();
+        await repo.insertPayee({ id, ownerId: input.ownerId, channel: input.channel, payeeRef: input.payeeRef?.trim() || null, status: input.status ?? 'confirmed', basis, validFrom, source: input.source ?? null, createdAt: now, deactivatedAt: null, deactivatedReason: null });
+        return payeeView((await repo.getPayee(id)) as PayeeRow);
+      });
+    },
+    async listPayees(f: { ownerId?: string; active?: boolean } = {}): Promise<PayeeView[]> {
+      return (await repo.listPayees(f)).map(payeeView);
+    },
+    async deactivatePayee(id: string, reason: string): Promise<PayeeView> {
+      return repo.transaction(async () => {
+        const r = await repo.getPayee(id);
+        if (!r) throw new NotFoundError('Payee', id);
+        if (r.deactivatedAt) throw new ConflictError('The payee is inactive already', 'already_inactive');
+        if (!reason.trim()) throw new ValidationError('A reason is required', undefined, 'reason_required');
+        await repo.setPayeeDeactivated(id, nowIso(), reason.trim());
+        return payeeView((await repo.getPayee(id)) as PayeeRow);
+      });
+    },
+
+    async createHold(input: { ownerId: string; labelId?: string | null; kind: HoldKind; blocks?: boolean; reason: string; releaseWhen?: string | null; amountCents?: number | null; period?: string | null; reviewOn?: string | null; since: string; source?: string | null }): Promise<HoldView> {
+      return repo.transaction(async () => {
+        if (!['decision', 'artist_request', 'question', 'dispute'].includes(input.kind)) throw new ValidationError(`Unknown hold kind ${String(input.kind)}`, undefined, 'kind_unknown');
+        const reason = input.reason.trim();
+        if (reason.length < 1 || reason.length > 4000) throw new ValidationError('A hold names its reason (1-4000 characters)', undefined, 'reason_required');
+        if (input.amountCents !== undefined && input.amountCents !== null && !Number.isInteger(input.amountCents)) throw new ValidationError('The amount of a hold is whole cents', undefined, 'amount_invalid');
+        const id = newId();
+        await repo.insertHold({
+          id,
+          ownerId: input.ownerId,
+          labelId: input.labelId ?? null,
+          kind: input.kind,
+          blocks: input.blocks ?? input.kind !== 'dispute',
+          reason,
+          releaseWhen: input.releaseWhen?.trim() || null,
+          amountCents: input.amountCents ?? null,
+          period: input.period?.trim() || null,
+          reviewOn: input.reviewOn ? assertDate(input.reviewOn) : null,
+          since: assertDate(input.since),
+          source: input.source ?? null,
+          status: 'active',
+          releasedAt: null,
+          releasedReason: null,
+          createdAt: nowIso(),
+        });
+        return holdView((await repo.getHold(id)) as HoldRow);
+      });
+    },
+    async listHolds(f: { ownerId?: string; status?: 'active' | 'released' } = {}): Promise<HoldView[]> {
+      return (await repo.listHolds(f)).map(holdView);
+    },
+    async getHold(id: string): Promise<HoldView> {
+      const r = await repo.getHold(id);
+      if (!r) throw new NotFoundError('Hold', id);
+      return holdView(r);
+    },
+    async releaseHold(id: string, reason: string): Promise<HoldView> {
+      return repo.transaction(async () => {
+        const r = await repo.getHold(id);
+        if (!r) throw new NotFoundError('Hold', id);
+        if (r.status === 'released') throw new ConflictError('The hold is released already', 'already_released');
+        if (!reason.trim()) throw new ValidationError('A reason is required', undefined, 'reason_required');
+        await repo.setHoldReleased(id, nowIso(), reason.trim());
+        return holdView((await repo.getHold(id)) as HoldRow);
+      });
+    },
+
+    async createAnswer(input: { ownerId: string; labelId?: string | null; dueCents: number; decision: AnswerDecision; why: string; about: string; answeredBy: string; source?: string | null }): Promise<PayoutAnswerView> {
+      return repo.transaction(async () => {
+        if (!['pay', 'pay_task'].includes(input.decision)) throw new ValidationError(`Unknown decision ${String(input.decision)}`, undefined, 'decision_unknown');
+        if (!Number.isInteger(input.dueCents) || input.dueCents <= 0) throw new ValidationError('The amount of an answer is a positive number of cents', undefined, 'amount_invalid');
+        const why = input.why.trim();
+        if (why.length < 1 || why.length > 4000) throw new ValidationError('An answer names its reason (1-4000 characters)', undefined, 'reason_required');
+        if (!input.answeredBy.trim()) throw new ValidationError('An answer names who gave it', undefined, 'answered_by_required');
+        const id = newId();
+        await repo.insertAnswer({ id, ownerId: input.ownerId, labelId: input.labelId ?? null, dueCents: input.dueCents, decision: input.decision, why, about: input.about.trim(), answeredBy: input.answeredBy.trim(), source: input.source ?? null, createdAt: nowIso(), deactivatedAt: null, deactivatedReason: null });
+        return answerView((await repo.getAnswer(id)) as PayoutAnswerRow);
+      });
+    },
+    async listAnswers(f: { ownerId?: string; active?: boolean } = {}): Promise<PayoutAnswerView[]> {
+      return (await repo.listAnswers(f)).map(answerView);
+    },
+    async deactivateAnswer(id: string, reason: string): Promise<PayoutAnswerView> {
+      return repo.transaction(async () => {
+        const r = await repo.getAnswer(id);
+        if (!r) throw new NotFoundError('Payout answer', id);
+        if (r.deactivatedAt) throw new ConflictError('The answer is inactive already', 'already_inactive');
+        if (!reason.trim()) throw new ValidationError('A reason is required', undefined, 'reason_required');
+        await repo.setAnswerDeactivated(id, nowIso(), reason.trim());
+        return answerView((await repo.getAnswer(id)) as PayoutAnswerRow);
+      });
     },
 
     /** Soft rollback of an opening balance row (never a delete): the balance no longer reads it. */

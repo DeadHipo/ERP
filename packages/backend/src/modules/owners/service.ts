@@ -825,13 +825,18 @@ export function createOwnersService(db: Db, org: OrgScope) {
       documentId: string;
       number?: string | null;
       artistIds: string[];
+      /** D-176: the payout threshold of the contract in cents; null = the organization's default. */
+      payoutThresholdCents?: number | null;
     }): Promise<{
       id: string;
       ownerId: string;
       documentId: string;
       number: string | null;
       artistIds: string[];
+      payoutThresholdCents: number | null;
     }> {
+      if (input.payoutThresholdCents !== undefined && input.payoutThresholdCents !== null && (!Number.isInteger(input.payoutThresholdCents) || input.payoutThresholdCents < 0))
+        throw new ValidationError('The payout threshold is a whole non-negative number of cents', undefined, 'threshold_invalid');
       return repo.transaction(async () => {
         await requireLiveOwner(input.ownerId);
         const doc = await this.getDocument(input.documentId);
@@ -852,6 +857,7 @@ export function createOwnersService(db: Db, org: OrgScope) {
           documentId: input.documentId,
           number: input.number ?? null,
           createdAt: nowIso(),
+          payoutThresholdCents: input.payoutThresholdCents ?? null,
         });
         if (new Set(input.artistIds).size !== input.artistIds.length)
           throw new ValidationError('An artist is listed twice');
@@ -875,6 +881,7 @@ export function createOwnersService(db: Db, org: OrgScope) {
           documentId: input.documentId,
           number: input.number ?? null,
           artistIds: input.artistIds,
+          payoutThresholdCents: input.payoutThresholdCents ?? null,
         };
       });
     },
@@ -892,8 +899,21 @@ export function createOwnersService(db: Db, org: OrgScope) {
      * Every confirming contract with its document (D-173, the contract column of the payroll): the contracts whose
      * document is approved, with the document's kind, title, label (null = any) and approval.
      */
+    /** D-176: sets the payout threshold of a contract (cents; null = the organization's default). */
+    async setContractThreshold(id: string, payoutThresholdCents: number | null): Promise<{ id: string; ownerId: string; payoutThresholdCents: number | null }> {
+      if (payoutThresholdCents !== null && (!Number.isInteger(payoutThresholdCents) || payoutThresholdCents < 0))
+        throw new ValidationError('The payout threshold is a whole non-negative number of cents', undefined, 'threshold_invalid');
+      return repo.transaction(async () => {
+        const c = await repo.getContract(id);
+        if (!c) throw new NotFoundError('Contract', id);
+        await repo.setContractThreshold(id, payoutThresholdCents);
+        return { id, ownerId: c.ownerId, payoutThresholdCents };
+      });
+    },
+
     async approvedContracts(): Promise<
       {
+        id: string;
         ownerId: string;
         number: string | null;
         documentId: string;
@@ -902,6 +922,7 @@ export function createOwnersService(db: Db, org: OrgScope) {
         labelId: string | null;
         approvedAt: string | null;
         approvedBy: string | null;
+        payoutThresholdCents: number | null;
       }[]
     > {
       const [contracts, documents] = await db.snapshot(() => Promise.all([repo.allContracts(), repo.allDocuments()]));
@@ -911,6 +932,7 @@ export function createOwnersService(db: Db, org: OrgScope) {
         if (approvedContractLabel(c, docs) === undefined || !d) return [];
         return [
           {
+            id: c.id,
             ownerId: c.ownerId,
             number: c.number,
             documentId: d.id,
@@ -919,6 +941,7 @@ export function createOwnersService(db: Db, org: OrgScope) {
             labelId: d.labelId,
             approvedAt: d.approvedAt,
             approvedBy: d.approvedBy,
+            payoutThresholdCents: c.payoutThresholdCents,
           },
         ];
       });

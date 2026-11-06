@@ -13,6 +13,7 @@ import { fmt, ru } from '../../i18n/ru';
 import { useLabel } from '../../lib/label';
 import { usePeriod } from '../work/OverviewPage';
 import { BalanceTab } from './BalanceTab';
+import { AdmissionTab } from './AdmissionTab';
 import { DocumentsTab } from './DocumentsTab';
 import { MergeOwnerDialog } from '../work/actions/dialogs';
 import { AsOfField, asOfQuery, useAsOf } from './components/AsOfField';
@@ -113,6 +114,7 @@ export function OwnerPage() {
                   { id: 'documents', label: t.tabs.documents, content: <DocumentsTab detail={d} /> },
                   { id: 'publishing', label: t.tabs.publishing, content: <PublishingTab detail={d} balance={balance.data} /> },
                   { id: 'operations', label: t.tabs.operations, content: <OperationsTab detail={d} balance={balance.data} labelId={labelId} /> },
+                  { id: 'admission', label: t.tabs.admission, content: <AdmissionTab detail={d} balance={balance.data} labelId={labelId} /> },
                   { id: 'history', label: t.tabs.history, content: <HistoryTab ownerId={d.owner.id} /> },
                 ]}
               />

@@ -736,10 +736,10 @@ export type Overview = z.infer<typeof overviewSchema>;
 export const payoutGateSchema = z.object({
   allowed: z.boolean(),
   reason: z
-    .enum(['owner_not_confirmed', 'no_contract_for_label', 'start_missing', 'payout_blocked', 'nothing_to_pay', 'below_threshold'])
+    .enum(['owner_not_confirmed', 'no_contract_for_label', 'start_missing', 'nothing_to_pay', 'below_threshold', 'hold', 'payout_blocked', 'no_payee', 'needs_answer'])
     .nullable()
     .describe(
-      'owner_not_confirmed: no approved contract at all; no_contract_for_label: none whose document has the label of the view or no label (D-169); start_missing: a start row of a pseudonym without an amount (the cabinet gave none, D-174)',
+      'In the order of the checks (D-176, the owner\'s module 17): owner_not_confirmed: no approved contract at all; no_contract_for_label: none whose document has the label of the view or no label (D-169); start_missing: a start row of a pseudonym without an amount (D-174); nothing_to_pay; below_threshold (the contract\'s threshold, else the default); hold: an active hold that blocks; payout_blocked: a payout without a proof; no_payee: no active payee (once the organization entered its first payee); needs_answer: the first payout of the owner without an answer «pay» for this amount',
     ),
   amountCents: z
     .number()
@@ -871,10 +871,91 @@ export const startViewSchema = z.object({
     .describe('What the start replaced: the inputs the cut removed (reference only, never in payable)'),
 });
 
+// ---- the admission (D-176): the payee, the holds, the answers ----
+
+export const PAYEE_CHANNELS = ['tipalti', 'easystaff', 'other'] as const;
+export const HOLD_KINDS = ['decision', 'artist_request', 'question', 'dispute'] as const;
+export const ANSWER_DECISIONS = ['pay', 'pay_task'] as const;
+
+export const payeeSchema = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  channel: z.enum(PAYEE_CHANNELS),
+  payeeRef: z.string().nullable().describe('The reference in the cash register (a Tipalti payee id, an EasyStaff e-mail); null = by the payment history'),
+  status: z.enum(['confirmed', 'proposed']),
+  basis: z.string(),
+  validFrom: date,
+  source: z.string().nullable(),
+  createdAt: timestamp,
+  active: z.boolean(),
+  deactivatedReason: z.string().nullable(),
+});
+export type Payee = z.infer<typeof payeeSchema>;
+
+export const holdSchema = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  labelId: z.string().nullable().describe('The book the hold acts in; null = every book'),
+  kind: z.enum(HOLD_KINDS),
+  blocks: z.boolean().describe('Closes the payout (a hold, a dispute that blocks the row) or informs only'),
+  reason: z.string(),
+  releaseWhen: z.string().nullable().describe('The condition of the release'),
+  amountCents: z.number().int().nullable(),
+  period: z.string().nullable(),
+  reviewOn: date.nullable(),
+  since: date,
+  source: z.string().nullable(),
+  status: z.enum(['active', 'released']),
+  releasedAt: timestamp.nullable(),
+  releasedReason: z.string().nullable(),
+  createdAt: timestamp,
+});
+export type Hold = z.infer<typeof holdSchema>;
+
+export const payoutAnswerSchema = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  labelId: z.string().nullable(),
+  dueCents: z.number().int().describe('The answer holds for exactly this payable amount'),
+  decision: z.enum(ANSWER_DECISIONS),
+  why: z.string(),
+  about: z.string().describe('The question answered (an irregular history, the first payout, the contract)'),
+  answeredBy: z.string(),
+  source: z.string().nullable(),
+  createdAt: timestamp,
+  active: z.boolean(),
+  deactivatedReason: z.string().nullable(),
+});
+export type PayoutAnswer = z.infer<typeof payoutAnswerSchema>;
+
+const ownerName = { ownerName: z.string().nullable() };
+
+/** `GET /settlements/admission`: the rows of a book, of one owner, or of every owner. */
+export const admissionListSchema = z.object({
+  active: z.boolean().describe('The organization uses the admission: at least one payee row exists (D-176)'),
+  payees: z.array(payeeSchema.extend(ownerName)),
+  holds: z.array(holdSchema.extend(ownerName)),
+  answers: z.array(payoutAnswerSchema.extend(ownerName)),
+});
+export type AdmissionList = z.infer<typeof admissionListSchema>;
+
+/** The admission of the owner in a balance (D-176): what the gate read. */
+export const admissionOfOwnerSchema = z.object({
+  active: z.boolean(),
+  thresholdCents: z.number().int().nullable().describe('The threshold of the contract under the label; null = the default'),
+  hadPayout: z.boolean().describe('The owner had a payout in the book: the first payout needs an answer'),
+  payee: payeeSchema.nullable(),
+  holds: z.array(holdSchema),
+  answers: z.array(payoutAnswerSchema),
+});
+
+export const contractThresholdSchema = z.object({ id: z.string(), ownerId: z.string(), payoutThresholdCents: z.number().int().nullable() });
+
 export const balanceSchema = z.object({
   owner: ownerSchema,
   confirmed: z.boolean(),
   payout: payoutGateSchema,
+  admission: admissionOfOwnerSchema.optional().describe('The admission of the owner (D-176); absent in older snapshots'),
   label: labelRef.nullable().describe('The label the balance is restricted to (D-168); null = the whole owner'),
   period: z.object({
     from: z.string().nullable(),

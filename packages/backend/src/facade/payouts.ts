@@ -219,6 +219,12 @@ export function payoutsApi(ctx: FacadeContext) {
                 'start_missing',
                 { labelId },
               );
+            case 'hold':
+              throw new RuleViolationError('A hold closes the payouts of the owner', 'hold', { labelId });
+            case 'no_payee':
+              throw new RuleViolationError('The owner has no payee (a channel and its reference): set one first', 'no_payee', { labelId });
+            case 'needs_answer':
+              throw new RuleViolationError('The first payout of the owner needs an answer «pay» for exactly this amount', 'needs_answer', { labelId, amountCents: cents });
             case 'payout_blocked':
               throw new RuleViolationError(
                 'A previous payout has no payment proof yet: new payouts are blocked',

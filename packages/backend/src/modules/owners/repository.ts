@@ -245,6 +245,10 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
       await orm().update(documents).set({ ownerId: into }).where(orgWhere(org, documents, eq(documents.ownerId, from)));
     },
 
+    setContractThreshold: async (id: string, payoutThresholdCents: number | null) => {
+      await orm().update(contracts).set({ payoutThresholdCents }).where(orgWhere(org, contracts, eq(contracts.id, id)));
+    },
+    getContract: async (id: string) => (await orm().select(C.contracts).from(contracts).where(orgWhere(org, contracts, eq(contracts.id, id))))[0],
     insertContract: async (row: OrgFree<typeof contracts.$inferInsert>) => {
       await orm().insert(contracts).values(orgRow(org, row));
     },

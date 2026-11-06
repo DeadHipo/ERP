@@ -55,7 +55,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(29); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174)
+    expect(tables.length).toBe(32); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -250,6 +250,11 @@ describe('two organizations behind the login: the API (D-170)', () => {
     statement: string;
     /** D-174: an opening balance row */
     start: string;
+    /** D-176: a contract, a payee, a hold, an answer */
+    contract: string;
+    payee: string;
+    hold: string;
+    answer: string;
   };
   type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown; file?: { path: string; fileName: string } };
 
@@ -314,7 +319,11 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const ab2 = await ok('b', 'post', '/artists', { pseudonym: 'B Second Secret', ownerId: ob.id });
     const contract = await ok('b', 'post', '/documents', { kind: 'contract', title: 'B contract', fileRef: 'dummy://c.pdf', ownerId: ob.id, requiresApproval: true });
     await ok('b', 'post', `/documents/${contract.id}/approve`, {});
-    await ok('b', 'post', '/contracts', { ownerId: ob.id, documentId: contract.id, artistIds: [ab.id] });
+    const cb = await ok('b', 'post', '/contracts', { ownerId: ob.id, documentId: contract.id, artistIds: [ab.id] });
+    // D-176: the admission rows of B
+    const payeeB = await ok('b', 'post', '/settlements/payees', { ownerId: ob.id, channel: 'easystaff', basis: 'scope', validFrom: '2026-01-01' });
+    const holdB = await ok('b', 'post', '/settlements/holds', { ownerId: ob.id, kind: 'decision', reason: 'scope', since: '2026-01-01' });
+    const answerB = await ok('b', 'post', '/settlements/answers', { ownerId: ob.id, due: '1.00', decision: 'pay', why: 'scope', answeredBy: 'scope' });
     const db_ = await ok('b', 'post', '/documents', { kind: 'appendix', title: 'B appendix', fileRef: 'dummy://b.pdf', requiresApproval: false });
     const tb = await ok('b', 'post', '/tracks', { title: 'B Track Secret', isrc: ISRC_B, upc: UPC_B });
     const spb = await ok('b', 'post', '/splits', { isrc: ISRC_B, validFrom: '2026-01-01', shares: [{ artistId: ab.id, percent: '50' }], documentId: db_.id });
@@ -340,6 +349,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, start: stb.body.result.ids[0] as string,
+      contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
       grant: (await ok('b', 'post', '/support', { login: users.sys })).id,
@@ -352,7 +362,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), start: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
     };
   };
 
@@ -449,6 +459,15 @@ describe('two organizations behind the login: the API (D-170)', () => {
     // the opening balances (D-174): B's label is unknown, B's row is unknown
     'GET /settlements/start': (x) => ({ query: { label: x.label } }),
     'POST /settlements/start/:id/deactivate': (x) => ({ params: { id: x.start }, body: { reason: 'r' } }),
+    // the admission (D-176): B's owner, label and rows are unknown in A
+    'GET /settlements/admission': (x) => ({ query: { label: x.label } }),
+    'POST /settlements/payees': (x) => ({ body: { ownerId: x.owner, channel: 'tipalti', basis: 'b', validFrom: '2026-01-01' } }),
+    'POST /settlements/payees/:id/deactivate': (x) => ({ params: { id: x.payee }, body: { reason: 'r' } }),
+    'POST /settlements/holds': (x) => ({ body: { ownerId: x.owner, kind: 'decision', reason: 'r', since: '2026-01-01' } }),
+    'POST /settlements/holds/:id/release': (x) => ({ params: { id: x.hold }, body: { reason: 'r' } }),
+    'POST /settlements/answers': (x) => ({ body: { ownerId: x.owner, due: '1.00', decision: 'pay', why: 'w', answeredBy: 'a' } }),
+    'POST /settlements/answers/:id/deactivate': (x) => ({ params: { id: x.answer }, body: { reason: 'r' } }),
+    'PATCH /contracts/:id': (x) => ({ params: { id: x.contract }, body: { payoutThresholdCents: 1 } }),
     // the forgiveness (D-173): B's operation forgiven under a with a's document answers as an unknown advance
     'POST /settlements/operations/:id/forgive': (x) => ({ params: { id: x.operation }, body: { amount: '1.00', date: '2026-08-15', documentId: A.document, comment: 'c' } }),
   };

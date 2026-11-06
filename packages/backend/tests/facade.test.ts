@@ -201,8 +201,13 @@ describe('facade: owner balance, period filter, payouts (07, 09)', () => {
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     await f.modules.settlements.setDeferred(p.id, true);
+    // D-176: «nothing to pay» comes before the blocked payout, so a new month gives something to pay first
+    await f.ingestBelieve(writeBelieve('2026-08', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     await expect(f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/blocked/);
     await f.modules.settlements.setDeferred(p.id, false);
+    expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('50');
+    const p2 = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
+    await f.attachPaymentProof(p2.id, { fileRef: 'dummy://proof-2.pdf' });
     expect((await f.ownerBalance(a.owner.id)).total.payable.toFixed()).toBe('0');
     const ret = await f.returnPayout(p.id, {
       fileRef: 'dummy://bounce.pdf',

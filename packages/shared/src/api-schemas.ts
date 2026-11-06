@@ -93,6 +93,8 @@ export const createContractBody = z.object({
   documentId: z.string(),
   number: z.string().nullish(),
   artistIds: z.array(z.string()),
+  /** D-176: the payout threshold of the contract in cents; empty = the organization's default. */
+  payoutThresholdCents: z.number().int().min(0).nullish(),
 });
 
 export const shareSpec = z
@@ -565,6 +567,48 @@ export const operationImportQuery = z.object({
     .optional()
     .describe('The basis document of the rows without a `document` cell whose kind takes one (advance, deduction, credit, buyout, writeoff, adjustment)'),
 });
+
+// ---- the admission (D-176) ----
+
+export const admissionQuery = z.object({
+  ownerId: z.string().optional(),
+  label: z.string().optional().describe('Id of an own label: the owners of the book and the holds / answers of it (or of every book); a manager must name one'),
+  active: z.enum(['true', 'false']).optional().describe('true (default): only the active rows; false: every row'),
+});
+export const setPayeeBody = z.object({
+  ownerId: z.string(),
+  channel: z.enum(['tipalti', 'easystaff', 'other']),
+  payeeRef: z.string().trim().max(200).nullish(),
+  status: z.enum(['confirmed', 'proposed']).optional(),
+  basis: z.string().trim().min(1).max(2000),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD'),
+  source: z.string().max(200).nullish(),
+});
+export const createHoldBody = z.object({
+  ownerId: z.string(),
+  labelId: z.string().nullish().describe('The book the hold acts in; empty = every book'),
+  kind: z.enum(['decision', 'artist_request', 'question', 'dispute']),
+  blocks: z.boolean().optional().describe('Default: true, a dispute false'),
+  reason: z.string().trim().min(1).max(4000),
+  releaseWhen: z.string().trim().max(2000).nullish(),
+  amount: usd.nullish(),
+  period: z.string().trim().max(100).nullish(),
+  reviewOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').nullish(),
+  since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional(),
+  source: z.string().max(200).nullish(),
+});
+export const createAnswerBody = z.object({
+  ownerId: z.string(),
+  labelId: z.string().nullish(),
+  due: usd.describe('The payable amount the answer holds for'),
+  decision: z.enum(['pay', 'pay_task']),
+  why: z.string().trim().min(1).max(4000),
+  about: z.string().trim().max(2000).default(''),
+  answeredBy: z.string().trim().min(1).max(200),
+  source: z.string().max(200).nullish(),
+});
+export const reasonBody = z.object({ reason: z.string().trim().min(1).max(2000) });
+export const contractThresholdBody = z.object({ payoutThresholdCents: z.number().int().min(0).nullable() });
 
 // ---- the opening balances (D-174): the start of 15.10.2026 ----
 

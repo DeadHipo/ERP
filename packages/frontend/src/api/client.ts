@@ -409,6 +409,19 @@ export const settlements = {
     }),
   deactivateStart: (rowId: string, body: z.input<typeof S.deactivateStartBody>) =>
     call('POST', `/settlements/start/${id(rowId)}/deactivate`, { body, schema: R.openingBalanceSchema }),
+  /** The admission (D-176): the payee, the holds and the answers of a book or of one owner. */
+  admission: (query: z.input<typeof S.admissionQuery> = {}) => call('GET', '/settlements/admission', { query, schema: R.admissionListSchema }),
+  setPayee: (body: z.input<typeof S.setPayeeBody>) => call('POST', '/settlements/payees', { body, schema: R.payeeSchema }),
+  deactivatePayee: (payeeId: string, body: z.input<typeof S.reasonBody>) =>
+    call('POST', `/settlements/payees/${id(payeeId)}/deactivate`, { body, schema: R.payeeSchema }),
+  createHold: (body: z.input<typeof S.createHoldBody>) => call('POST', '/settlements/holds', { body, schema: R.holdSchema }),
+  releaseHold: (holdId: string, body: z.input<typeof S.reasonBody>) => call('POST', `/settlements/holds/${id(holdId)}/release`, { body, schema: R.holdSchema }),
+  createAnswer: (body: z.input<typeof S.createAnswerBody>) => call('POST', '/settlements/answers', { body, schema: R.payoutAnswerSchema }),
+  deactivateAnswer: (answerId: string, body: z.input<typeof S.reasonBody>) =>
+    call('POST', `/settlements/answers/${id(answerId)}/deactivate`, { body, schema: R.payoutAnswerSchema }),
+  /** The payout threshold of a contract (D-176). */
+  setContractThreshold: (contractId: string, body: z.input<typeof S.contractThresholdBody>) =>
+    call('PATCH', `/contracts/${id(contractId)}`, { body, schema: R.contractThresholdSchema }),
 };
 
 /** `GET /search`. Optional `kinds` restricts the result to one or more kinds (EntityPicker). */

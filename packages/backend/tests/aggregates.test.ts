@@ -38,11 +38,12 @@ async function g27(threshold = 0) {
 
 describe('payoutGate (N19): the order of the checks', () => {
   const ok = { confirmed: true, blocking: [] as string[], payableCents: 500, thresholdCents: 0 };
-  it('is owner_not_confirmed, payout_blocked, nothing_to_pay, below_threshold, then allowed', () => {
+  it('is owner_not_confirmed, nothing_to_pay, below_threshold, payout_blocked, then allowed (D-176: «вне ведомости» before the blockers)', () => {
     expect(payoutGate({ ...ok, confirmed: false, blocking: ['x'], payableCents: 0 }).reason).toBe(
       'owner_not_confirmed',
     );
-    expect(payoutGate({ ...ok, blocking: ['x'], payableCents: 0 }).reason).toBe('payout_blocked');
+    expect(payoutGate({ ...ok, blocking: ['x'], payableCents: 0 }).reason).toBe('nothing_to_pay');
+    expect(payoutGate({ ...ok, blocking: ['x'] }).reason).toBe('payout_blocked');
     expect(payoutGate({ ...ok, payableCents: 0, thresholdCents: 10000 }).reason).toBe('nothing_to_pay');
     expect(payoutGate({ ...ok, payableCents: -700 })).toEqual({
       allowed: false,

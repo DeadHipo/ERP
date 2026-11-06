@@ -28,6 +28,8 @@ forgiveness `payout`), `channel` (text), `area` (`master` | `publishing`, defaul
 computes nothing: the forgiveness capacity is in `facade/layers/recoup.ts` (`Position.forgiven`,
 `RecoupResult.forgiven` in `recoup-types.ts`), the book fields and the import are the facade's.
 
+**The admission (D-176, migration `0021_admission.sql`).** `settlements.payees` (one active per owner: `channel` tipalti | easystaff | other, `payee_ref` or null = by the payment history, `status`, `basis`, `valid_from`, `source`; `setPayee` replaces the active one with the reason «replaced», `deactivatePayee`), `settlements.holds` (`kind` decision | artist_request | question | dispute, `blocks`, `reason`, `release_when`, `amount_cents`, `period`, `review_on`, `since`, `label_id` or null = every book, `status` active | released; `createHold`, `releaseHold` with a reason), `settlements.payout_answers` (`due_cents` > 0, `decision` pay | pay_task, `why`, `about`, `answered_by`, `label_id`; `createAnswer`, `deactivateAnswer`). The module keeps the rows; the owner, the label and what they do to the gate are the facade's (`facade/admission.ts`, `payout-gate.ts`).
+
 **Opening balances (D-174, `settlements.opening_balances`, migration `0020_opening_balances.sql`).** A row per pseudonym
 and book: `kind` `start` (the cabinet snapshot of the cut: `master_cents`, `publishing_cents`, or `missing` = no
 amount, not a zero) or `adjustment` (an approved correction with its `basis`, optionally `document_id` and

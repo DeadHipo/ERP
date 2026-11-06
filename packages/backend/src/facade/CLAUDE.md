@@ -175,6 +175,7 @@
   nothing, `422 import_invalid { line, cause }`), every row `migration: true` with `label_source = 'operator'`;
   `external_id` required for payout / buyout, a matching content key = `unchanged`. The B17 replacement is
   `sources.ts` `replaceStatement` over the publishing module.
+- **The admission (D-176, `admission.ts`, `payout-gate.ts`).** The payee and channel of an owner, its holds (a decision, an artist's request, a question, a disputed item that blocks or informs) and the answers «pay» for an amount are rows of the settlements module; `balanceWithFiles` reads the owner's rows in the snapshot of the operations and the starts, the lists read every owner's rows once (`admissionIndex`); `admissionOf` turns them into the gate's `Admission` (held in the book, has a payee, had a payout in the book, the answered amounts, the contract threshold by `contractThresholds` = the payroll's contract choice). `payoutGate` order: contract → start → nothing to pay → threshold → hold → blocked payout → no payee → needs an answer; the last two only while `Admission.active` (a payee row exists in the organization). `createPayout` throws `hold`, `no_payee`, `needs_answer`; `balance.admission` carries what the gate read.
 - **The opening balances (D-174, `start.ts`, `balance.ts`).** The cabinet position of 15.10.2026 is a row of
   `settlements.opening_balances` per pseudonym and book (`start` with master / publishing cents or `missing`;
   `adjustment` with a basis, optionally reopening an advance by `operation_ref`). `ownerBalance(…, { starts })` takes the

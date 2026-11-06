@@ -27,6 +27,7 @@ import { onboardingApi } from './onboarding';
 import { payrollApi } from './payroll';
 import { operationImportApi } from './operation-import';
 import { startApi } from './start';
+import { admissionApi } from './admission';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -91,6 +92,7 @@ export function openFacade(config: FacadeConfig) {
     ...payrollApi(ctx),
     ...operationImportApi(ctx, payoutsPart),
     ...startApi(ctx),
+    ...admissionApi(ctx),
   };
 }
 

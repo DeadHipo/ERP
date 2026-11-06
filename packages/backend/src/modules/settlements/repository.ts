@@ -2,10 +2,13 @@ import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { LabelSource, OperationKind } from '@erp/shared/operation-kinds';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { openingBalances, operations, payoutSnapshots } from './schema';
+import { holds, openingBalances, operations, payees, payoutAnswers, payoutSnapshots } from './schema';
 
 export type OperationRow = OrgFree<typeof operations.$inferSelect>;
 export type OpeningBalanceRow = OrgFree<typeof openingBalances.$inferSelect>;
+export type PayeeRow = OrgFree<typeof payees.$inferSelect>;
+export type HoldRow = OrgFree<typeof holds.$inferSelect>;
+export type PayoutAnswerRow = OrgFree<typeof payoutAnswers.$inferSelect>;
 
 export interface OpeningBalanceFilter {
   labelId?: string;
@@ -35,8 +38,57 @@ export interface OperationFilter {
 /** All SQL of the settlements module lives here (schema `settlements`); every statement is of the organization `org` (D-170). */
 export function createSettlementsRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
-  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots), openingBalances: orgFree(openingBalances) };
+  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots), openingBalances: orgFree(openingBalances), payees: orgFree(payees), holds: orgFree(holds), payoutAnswers: orgFree(payoutAnswers) };
   return {
+    // ---- the admission (D-176): payees, holds, answers ----
+    insertPayee: async (row: OrgFree<typeof payees.$inferInsert>) => {
+      await orm().insert(payees).values(orgRow(org, row));
+    },
+    getPayee: async (id: string): Promise<PayeeRow | undefined> => (await orm().select(C.payees).from(payees).where(orgWhere(org, payees, eq(payees.id, id))))[0],
+    listPayees: (f: { ownerId?: string; active?: boolean } = {}) =>
+      orm()
+        .select(C.payees)
+        .from(payees)
+        .where(orgWhere(org, payees, f.ownerId ? eq(payees.ownerId, f.ownerId) : undefined, f.active === undefined ? undefined : f.active ? isNull(payees.deactivatedAt) : sql`${payees.deactivatedAt} is not null`))
+        .orderBy(payees.createdAt, payees.id),
+    setPayeeDeactivated: async (id: string, at: string, reason: string) => {
+      await orm().update(payees).set({ deactivatedAt: at, deactivatedReason: reason }).where(orgWhere(org, payees, eq(payees.id, id)));
+    },
+    insertHold: async (row: OrgFree<typeof holds.$inferInsert>) => {
+      await orm().insert(holds).values(orgRow(org, row));
+    },
+    getHold: async (id: string): Promise<HoldRow | undefined> => (await orm().select(C.holds).from(holds).where(orgWhere(org, holds, eq(holds.id, id))))[0],
+    listHolds: (f: { ownerId?: string; status?: 'active' | 'released' } = {}) =>
+      orm()
+        .select(C.holds)
+        .from(holds)
+        .where(orgWhere(org, holds, f.ownerId ? eq(holds.ownerId, f.ownerId) : undefined, f.status ? eq(holds.status, f.status) : undefined))
+        .orderBy(holds.since, holds.createdAt, holds.id),
+    setHoldReleased: async (id: string, at: string, reason: string) => {
+      await orm().update(holds).set({ status: 'released', releasedAt: at, releasedReason: reason }).where(orgWhere(org, holds, eq(holds.id, id)));
+    },
+    insertAnswer: async (row: OrgFree<typeof payoutAnswers.$inferInsert>) => {
+      await orm().insert(payoutAnswers).values(orgRow(org, row));
+    },
+    getAnswer: async (id: string): Promise<PayoutAnswerRow | undefined> =>
+      (await orm().select(C.payoutAnswers).from(payoutAnswers).where(orgWhere(org, payoutAnswers, eq(payoutAnswers.id, id))))[0],
+    listAnswers: (f: { ownerId?: string; active?: boolean } = {}) =>
+      orm()
+        .select(C.payoutAnswers)
+        .from(payoutAnswers)
+        .where(
+          orgWhere(
+            org,
+            payoutAnswers,
+            f.ownerId ? eq(payoutAnswers.ownerId, f.ownerId) : undefined,
+            f.active === undefined ? undefined : f.active ? isNull(payoutAnswers.deactivatedAt) : sql`${payoutAnswers.deactivatedAt} is not null`,
+          ),
+        )
+        .orderBy(payoutAnswers.createdAt, payoutAnswers.id),
+    setAnswerDeactivated: async (id: string, at: string, reason: string) => {
+      await orm().update(payoutAnswers).set({ deactivatedAt: at, deactivatedReason: reason }).where(orgWhere(org, payoutAnswers, eq(payoutAnswers.id, id)));
+    },
+
     // ---- the opening balances (D-174) ----
     insertOpeningBalance: async (row: OrgFree<typeof openingBalances.$inferInsert>) => {
       await orm().insert(openingBalances).values(orgRow(org, row));

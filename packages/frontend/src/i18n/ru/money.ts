@@ -62,6 +62,7 @@ export const money = {
       documents: 'Документы и договоры',
       publishing: 'Паблишинг',
       operations: 'Операции',
+      admission: 'Допуск',
       history: 'История',
     },
   },

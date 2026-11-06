@@ -71,6 +71,13 @@ export const audit = {
     'POST /settlements/operations/import': 'импорт операций из файла',
     'POST /settlements/start/import': 'импорт стартовых позиций из файла',
     'POST /settlements/start/:id/deactivate': 'отключена строка старта',
+    'POST /settlements/payees': 'задан получатель владельца',
+    'POST /settlements/payees/:id/deactivate': 'отключён получатель владельца',
+    'POST /settlements/holds': 'поставлен холд на выплаты',
+    'POST /settlements/holds/:id/release': 'снят холд',
+    'POST /settlements/answers': 'записан ответ «платить»',
+    'POST /settlements/answers/:id/deactivate': 'отключён ответ «платить»',
+    'PATCH /contracts/:id': 'задан порог выплаты договора',
   } as Record<string, string>,
   fields: {
     amount: 'сумма',

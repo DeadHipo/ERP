@@ -491,3 +491,23 @@ second apply answers `unchanged`). An `org_admin` session or `AUTH_MODE=off` on 
    with the C reasons, the payroll at `asOf` with the gates, the largest payables) and `scripts/start/check-start.ts`
    (the start still equals the cabinet). Then P9 / P10 under 0to8 with `asOf` = the month, and the csv of
    `GET /owners/payroll?label=&asOf=&area=master`.
+
+## 18. The admission to the payout (payees, holds, answers, the contract threshold, D-176)
+
+The gate of the payout (the button, P9, P10, the payroll) follows the owner's module 17: contract → start → nothing to
+pay → the threshold (the contract's, else $50) → a hold → a payout without a proof → no payee → the first payout without
+an answer «pay» → ready. The checks «no payee» / «needs an answer» are on from the first payee row of the organization.
+
+1. The owner's decisions (folder 6 of the pack): `npx tsx packages/backend/scripts/stage3/load-admission.ts <folder 6>
+   --apply` (a dry run without `--apply`; idempotent by `source`): the payees (`payee_decisions.json`), the holds
+   (`holds.json`), the open disputed items (`history_exceptions.json`: blocks only with `impact: block_row`), the answers
+   (`payout_answers.json`).
+2. By hand on P10 «Допуск»: set or replace the payee (the channel, the reference in the cash register, the basis),
+   put a hold (a decision, an artist's request, a question, a disputed item with an amount and a period; in the book of
+   the switch or in every book) and release it with a reason, record an answer «pay» for exactly the gate's amount
+   (the dialog pre-fills it), set the threshold of a contract in cents (empty = the default). Every row keeps its reason;
+   nothing is deleted.
+3. Read: the gate of the owner (`GET /owners/:id/balance?label=` → `payout.reason`, `admission`), the payroll
+   (`GET /owners/payroll?label=&asOf=` → `gate.reason` per owner), `scripts/stage2/payroll-summary.ts` (the owners per
+   reason). A payee «by the payment history» (the owner's empty `payee`) needs the cash registers of stage 4; until then
+   such owners are `no_payee`.

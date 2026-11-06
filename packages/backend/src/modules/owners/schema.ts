@@ -1,4 +1,4 @@
-import { boolean, date, integer, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
+import { bigint, boolean, date, integer, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Module 1: owners, artists (pseudonyms), tracks, documents and contracts.
@@ -85,6 +85,8 @@ export const contracts = s.table('contracts', {
   documentId: text('document_id').notNull(),
   number: text('number'),
   createdAt: isoTimestamp('created_at').notNull(),
+  /** The payout threshold of the contract in cents (D-176); null = the default of the organization. */
+  payoutThresholdCents: bigint('payout_threshold_cents', { mode: 'number' }),
 });
 
 export const contractArtists = s.table(

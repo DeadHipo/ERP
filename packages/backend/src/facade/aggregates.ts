@@ -26,6 +26,7 @@ export function parseIsrcList(raw: string): string[] {
   return [...new Set(list.map(assertIsrc))].sort();
 }
 import { ownerBalance, ownerIndex, startsByOwner } from './balance';
+import { admissionIndex, admissionOf, contractThresholds } from './admission';
 import { cItems } from './queue';
 import type { FacadeContext, PayoutArea } from './context';
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
@@ -137,10 +138,12 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const only = f.ids === undefined ? undefined : parseIdList(f.ids);
       const lc = await labelContext(f.label);
       const view = lc ? { labelId: lc.book.id } : undefined;
-      const { list, ops, startRows } = await db.snapshot(async () => ({
+      const { list, ops, startRows, admission } = await db.snapshot(async () => ({
         list: (await owners.listOwners()).filter((o) => (only === undefined || only.has(o.id)) && (!lc || lc.visible.ownerIds.has(o.id))),
         ops: await settlements.listOperations({}),
         startRows: await settlements.listOpeningBalances({ active: true }),
+        // the admission (D-176): the payee, holds and answers of every owner, the contract thresholds under the label
+        admission: await admissionIndex(settlements, contractThresholds(await owners.approvedContracts(), view?.labelId)),
       }));
       const calc = cutCalculation(
         only ? await calcScoped({ isrcs: (await ownersReach(modules, list.map((o) => o.id))).isrcs }) : await calcWithOps(),
@@ -177,7 +180,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           payable: b.total.payable,
           payableShown: b.total.payableShown,
           payableNegative: b.total.payableNegative,
-          payout: gateOf(b, area),
+          payout: gateOf(b, area, admissionOf(admission.byOwner.get(o.id), { active: admission.active, thresholdCents: admission.thresholdOf(o.id), labelId: view?.labelId, operations: opsOf.get(o.id) ?? [] })),
           blockingPayouts: b.blockingPayouts.length,
           pendingOperations: b.pendingOperations.length,
           lastPayoutDate: payouts.reduce<string | null>((m, x) => (m === null || x.date > m ? x.date : m), null),

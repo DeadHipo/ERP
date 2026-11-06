@@ -122,6 +122,10 @@ export function ownersRouter(facade: Facade) {
   r.post('/contracts', async (req, res) =>
     res.status(201).json(await facade.createContract(parse(S.createContractBody, req.body), viewerOf(res))),
   );
+  // the payout threshold of a contract (D-176)
+  r.patch('/contracts/:id', async (req, res) =>
+    res.json(await facade.setContractThreshold(param(req, 'id'), parse(S.contractThresholdBody, req.body).payoutThresholdCents)),
+  );
 
   return r;
 }

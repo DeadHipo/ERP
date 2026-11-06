@@ -6,6 +6,7 @@ import { classifyOperation, ownerBalance, ownerIndex, startsByOwner } from './ba
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
 import type { FacadeContext, PayoutArea } from './context';
 import { ALL_VIEWER, assertViewerHolds, type Viewer } from './viewer';
+import { admissionIndex, admissionOf, contractThresholds } from './admission';
 
 // The payroll of one label (D-173 §1.4, `GET /owners/payroll`): ONE full calculation, the cut `asOf` on the inputs of
 // `ownerBalance()` (`as-of.ts`), the view `{ labelId }`; a row per owner × pseudonym, the owner row, the total row with
@@ -131,13 +132,18 @@ export function payrollApi(ctx: FacadeContext) {
       const asOf = opts.asOf;
       const lc = await labelContext(labelId);
       const visible = lc?.visible.ownerIds ?? new Set<string>();
-      const { list, ops, contracts, relabelled, startRows } = await db.snapshot(async () => ({
-        list: (await owners.listOwners()).filter((o) => visible.has(o.id)),
-        ops: await settlements.listOperations({}),
-        contracts: await owners.approvedContracts(),
-        relabelled: await audit.relabelledOperations(),
-        startRows: await settlements.listOpeningBalances({ active: true }),
-      }));
+      const { list, ops, contracts, relabelled, startRows, admission } = await db.snapshot(async () => {
+        const contracts = await owners.approvedContracts();
+        return {
+          list: (await owners.listOwners()).filter((o) => visible.has(o.id)),
+          ops: await settlements.listOperations({}),
+          contracts,
+          relabelled: await audit.relabelledOperations(),
+          startRows: await settlements.listOpeningBalances({ active: true }),
+          // the admission (D-176): the payee, holds and answers of every owner, the contract thresholds under the label
+          admission: await admissionIndex(settlements, contractThresholds(contracts, labelId)),
+        };
+      });
       const full = await calculate(modules, await opDocIds());
       const calc = cutCalculation(full, asOf);
       const startsOf = startsByOwner(calc, startRows);
@@ -219,7 +225,7 @@ export function payrollApi(ctx: FacadeContext) {
         for (const [reason, amount] of Object.entries(b.period.waitingBreakdown) as [CReason, Decimal][])
           if (!amount.isZero()) waiting.push({ ownerId: o.id, ownerName: o.name, reason, amount, paidAlready: t.paid });
         if (MONEY.every((k) => total[k].isZero()) && payable.isZero()) continue;
-        const gate = gateOf(b, area);
+        const gate = gateOf(b, area, admissionOf(admission.byOwner.get(o.id), { active: admission.active, thresholdCents: admission.thresholdOf(o.id), labelId, operations: ops.filter((x) => x.ownerId === o.id) }));
         const blockedByOtherLabel =
           gate.reason === 'payout_blocked' && b.blockingPayouts.every((id) => opById.get(id)?.labelId !== labelId);
         rows.push(...pseudonymRows);
