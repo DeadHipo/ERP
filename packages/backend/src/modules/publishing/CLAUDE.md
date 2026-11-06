@@ -19,3 +19,13 @@ computes the author share: that moved to the facade layers.
   statement without a label (`already_done` otherwise) and refreshes the view; `refreshLinesByKey()` on its own. The books,
   the reads under a label (`underLabel`) and the payout are the facade's (`facade/CLAUDE.md`).
 - Organization (D-170): the module is opened under one (`openPublishingModule(db, org, dir)`, every statement through `shared/org-scope.ts`), files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load of the same statement deletes its stored copy only when `repo.statementBySha(sha256)?.storedPath !== storedPath` (it never removes the winner's original; `tests/concurrency.test.ts`).
+- **Replacing a statement (D-173):** `replaceStatement(oldId, input, labelId)` runs through the same `load()` (a second
+  argument `{ oldId }`; the refusals are checked before the body and again in the transaction, `replaceable()`; the writers are registered and the answer `writers` given exactly as on a load) inside `serial()` and one
+  module transaction: the old statement must be `loaded` (`409 replace_not_loaded`) and of the same label
+  (`409 replace_label_differs`), the quarters of the new file (from its lines) must equal the old ones as sets
+  (`409 periods_differ`); the old one becomes `superseded` with `pub_statements.replaced_by` (text, no foreign key;
+  migration 0019) and keeps its lines, stored file and sha (payout snapshots cite the sha); its `pub_statement_periods`
+  rows are deleted and the new statement's inserted; `refreshLinesByKey()` (the view reads only `loaded`). The
+  file-name pre-check skips the replaced statement's quarters. This closes D-041 by a mechanism; the Q2 2026 «Updated»
+  run waits for the owner. The route is `POST /publishing/statements/:id/replace?label=` (facade `sources.ts` `replaceB17`, answer
+  `{ superseded, statement, writers }`); `StatementView` has `replacedBy` and `status` `loaded | superseded | failed`.

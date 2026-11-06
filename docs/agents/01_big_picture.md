@@ -44,7 +44,10 @@ A payout freezes a snapshot of that calculation.
    with ours also split per own label (ourShareByLabel); ours comes from the layer state, not from A − B − C,
    so a layer that loses money shows as a non-zero discrepancy.
  Owner balance:  payable = earned (B) − recouped − payouts with proof + returns + credits (earned/waiting also per label)
- Payout button:  pays the whole payable, floored to cents, stores a snapshot (per artist, file hashes)
+   per book since D-173:  payable_L = earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff
+                          (buyouts and forgiven are outside payable; byArea master / publishing; asOf cuts the inputs)
+ Payout button:  pays the whole payable of a book and area (default master: min(payable_area, payable_L)),
+                 floored to cents, stores a snapshot (per artist, file hashes, the area)
 ```
 
 Code: `packages/backend/src/facade/calculation.ts` (`calculate`, `reconcile`; builds the context and runs
@@ -73,11 +76,11 @@ Three consequences that surprise newcomers:
 | `labels` | our labels (0to8, Echo8), imprint aliases, sublabel rules (percent of the label share to a pseudonym), the Believe accounts of a label (the book of a file, D-169) | PostgreSQL schema `labels` | 10 §1 | D-123, D-125, D-130 |
 | `splits` | artist rows per ISRC with validity periods (each row may have its own document), participations (percent of a base, funded from top / artist pool / artist share / label share), buyouts | PostgreSQL schema `splits` | 04, ADR-003, 10 | D-025…D-030, D-126 |
 | `sources` | Believe file registry and report lines | PostgreSQL `source_files` + ClickHouse `believe.rows` | 03, 06 | D-031…D-038, D-102…D-114 |
-| `publishing` | B17 statements, writers, terms by owner, period and operation type; computes no money | PostgreSQL schema `publishing` | 08 | D-039…D-046, D-083, D-087, D-128 |
-| `settlements` | operations in/out, payouts, scope shape; the recoup algorithm moved to the facade | PostgreSQL schema `settlements` | 07 | D-047…D-056, D-072, D-094, D-127 |
+| `publishing` | B17 statements (a statement may be replaced by its «Updated» version: `superseded`, D-173), writers, terms by owner, period and operation type; computes no money | PostgreSQL schema `publishing` | 08 | D-039…D-046, D-083, D-087, D-128, D-173 |
+| `settlements` | operations in/out with a stored kind (payout, advance, deduction, credit, return, buyout, forgiveness, writeoff, adjustment; D-173), their label source, channel and area, payouts, scope shape; the recoup algorithm moved to the facade | PostgreSQL schema `settlements` | 07 | D-047…D-056, D-072, D-094, D-127, D-173 |
 | `audit` | the trace of every API write (operator from `X-Operator`, route template, entity ids, a summary without free text); decides nothing | PostgreSQL schema `audit` | 17 §7 N16 | D-140, D-150 |
 | `ads` | advertising expenses: ISRC (or an allocated pseudonym), month, amount, recovery percent 0–100, scope; computes no money (the allocation is `facade/ads.ts`) | PostgreSQL schema `ads` | `docs/реклама_тз.md` | D-155, D-156 |
-| `facade` | nothing stored; composes all modules, runs the layers, recoup, balance, pays; the split import, the assumption, the catalog derivation and the onboarding checklists (D-172) | — | 09, 10 | D-012, D-057…D-061, D-127, D-172 |
+| `facade` | nothing stored; composes all modules, runs the layers, recoup (with the forgiveness of an advance, D-173), balance, pays; the split import, the assumption, the catalog derivation and the onboarding checklists (D-172); `asOf`, the payroll export and the import of operations (D-173) | — | 09, 10 | D-012, D-057…D-061, D-127, D-172, D-173 |
 
 Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never imports another module, the facade
 or the API; the API never opens a module; only `src/facade/` calls several modules.
@@ -144,7 +147,7 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   L or without a label: `no_contract_for_label`) and the audit row records the label. The history was marked by
   `scripts/assign-label-books.ts` (files by account, the six statements and the advertising history → 0to8, the seven
   Echo8 operations → 0to8); `scripts/compare-reference.ts` and recipe 11 prove that only the books moved. Next stages
-  (organisation as tenant, operations for the payroll, onboarding, users and roles) are in the brief; the log numbers them differently (D-170 the organization, D-171 roles, D-172 onboarding; the payroll stage is still to come).
+  (organisation as tenant, operations for the payroll, onboarding, users and roles) are in the brief; the log numbers them differently (D-170 the organization, D-171 roles, D-172 onboarding, D-173 the payroll stage).
 - **Stage 2 «Граница арендатора» (D-170, 2026-11-06):** the organization is the isolation boundary (variant A, the
   owner's decision of 2026-11-05): one database, `org_id NOT NULL` on every module table (migration 0016; the live `erp`
   is organization №1 with a fixed id), every module opened under an organization through one helper, one facade per
@@ -169,10 +172,21 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   (`owners.releases`), four information signals, and the onboarding checklists (`GET /onboarding?label=`, the
   organization's for its administrator). The catalog is navigation: no money moves (`tests/catalog.test.ts`). Starting
   balances are out (a later «company accounts» entity). Frontend: P28 import, AssumeDialog, TrackLabelsDialog, the catalog column, the releases registry, the P1 checklist, UploadForm shared.
+- **Stage 5 «Ведомость» (D-173, the brief's «D-170», 2026-11-06; committed 2026-11-06 as the backend, the frontend and the docs commits):**
+  every operation has a stored kind (`payout`, `advance`, `deduction`, `credit`, `return` as before, plus `buyout` —
+  the payment for a buyout, outside `paid` / `payable`, never blocking —, `forgiveness` of an advance, `writeoff` of
+  publishing and `adjustment` with a signed amount; migration 0019, the history has no buyouts so no balance moved);
+  where the label of an operation came from (`label_source`, 1 315 `default` of D-168) and a reason for every label
+  change; the one layer change: the forgiveness in `layers/recoup.ts`; the book fields `buyouts`, `forgiven`,
+  `writtenOff`, `adjustments` and the areas master / publishing (the button pays `master` by default); `asOf` (the
+  books as of a month, nothing stored); the payroll export per label (`GET /owners/payroll`, json / csv: payroll,
+  waiting, buyouts, control); the import of operations from our template (recipe 14); the replacement of a B17
+  statement (recipe 15; the Q2 2026 «Updated» run waits for the owner). Starting balances as an entity («company
+  accounts»), `legal_name` and `currency` are later.
 - **Out of scope until asked:** ASCAP, a password policy and fine-grained rights of managers (D-171), a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,
-  D-041, D-043, D-045, D-049 ("largest"), D-068, D-083 (writer merge), D-087 (equal parts), D-096. D-067 (sub-label)
+  D-041 (only the Q2 «Updated» run, the mechanism is D-173), D-043, D-045, D-049 ("largest"), D-068, D-083 (writer merge), D-087 (equal parts), D-096. D-067 (sub-label)
   is closed by D-123/D-127.
 
 ## 6. Where to go next

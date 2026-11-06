@@ -79,6 +79,11 @@ sublabel) → categorise.
 | G54 | row A 50 on I(1); unit 100 with the string `Echo8` in the file of the Echo8 account (2026-03); an ad 10 of 2026-03 on I(1), recovery 100 %, paid by 0to8 | books: 0to8 earned 0, adsCharged 10, payable −10; Echo8 earned 50, adsCharged 0, payable 50; total payable 40; `adOutsideBook` 1 (payer 0to8, book Echo8); `createAds` without `labelId` → `label_required` | 50 | 0 | 50 | D-169 |
 | G55 | row A 50 on I(1) (unit 100 in the 0to8 account, 2026-03); A's only contract is marked 0to8 and is the document of A's publishing terms 50 %; a B17 statement Q2 2026 loaded under Echo8 with one line of A, payable 60 | books: 0to8 earned 50, payable 50; Echo8 earned 30 (the publishing), payable 30; total 80; under Echo8 `confirmed` false, `payout.reason` `no_contract_for_label`, the publishing line 2026-Q2 30 B; under 0to8 no B17 line, payable 50; the B17 reconciliation row has the one book Echo8; `statementsWithoutLabel` 0 | 80 | 0 | 80 | D-169 |
 | G56 | rows A 50 on I(1) (unit 100 in the 0to8 account) and on I(2) (unit 60 in the Echo8 account), 2026-03; A's contract document first without a label, then marked 0to8 | without a label: confirmed and payable under both (0to8 50, Echo8 30, total 80); marked 0to8: under Echo8 `confirmed` false, `payout.reason` `no_contract_for_label`, the button and an Echo8 advance refused 422 `no_contract_for_label`; under 0to8 and in total unchanged; no approved contract at all stays `owner_not_confirmed`; the payout under 0to8 pays 50.00 | 80 | 0 | 80 | D-169 |
+| G57 | row A 50 on I(1), unit 100 (2026-03, 0to8); a `buyout` 1 000 under 0to8 of 2026-04 with a `buyout` document; first without its proof, then with it (D-173) | without the proof: not counted, blocking 0, the button may pay 50.00; with it: earned 50, paid 0, buyouts 1 000 (book 0to8, area master), payable 50; the button pays 50.00; control: the same 1 000 as a migrated payout gives paid 1 000, payable −950 | | | | D-173 §3.4 |
+| G58 | row A 50 on I(1); unit 2026-02 100; an advance 100 under 0to8 of 2026-01-01 (scope `any`, with proof). Step 2: a forgiveness 30 dated 2026-04-10. Step 3: unit 2026-04 100 (D-173) | step 1: recouped 50, remaining 50, payable 0; step 2: recouped 50, forgiven 30, remaining 20, payable 0 (unchanged); refusals: 21 → `forgiveness_exceeds` {unrecouped 20}, dated 2025-12-31 → `forgiveness_before_advance`, a payout as the ref → `operation_ref_not_advance`, deactivating the advance → `has_forgiveness`; step 3: recouped 70, forgiven 30, remaining 0, payable 30 | | | | D-173 §3.1 |
+| G58b | G58 after step 3, then the unit 2026-03 100 arrives | recouped 100 (2026-02 and 2026-03), forgiven 0, remaining 0, payable 50; signal `forgivenessReduced` [the advance, recorded 30, effective 0] | | | | D-173 К2 |
+| G59 | row A 50 on I(1) (unit 100, 0to8); a B17 statement 2026-Q2 under 0to8, one line of A payable 60, terms 50 %; a `writeoff` 20 (adjustment basis) (D-173) | before it 31 → `writeoff_exceeds` {available 30}, area master → `writeoff_area`; after it: earned 80 (master 50, publishing 30), writtenOff 20, payable 60; byArea master payable 50, publishing 10; then 11 → `writeoff_exceeds` {available 10} | | | | D-173 К6 |
+| G60 | row A 50 on I(1) (unit 100, 2026-03, 0to8); an `adjustment` −170.55 dated 2026-10-15, then +20.55 (D-173) | adjustments 170.55, payable 220.55; then adjustments 150, payable 200, the button 200.00; no Echo8 book appears; without a document → `document_required` | | | | D-173 К5 |
 | G61 | rows A 30, B 20 on I(1), participation P 10 `(net, top)`; B's owner is confirmed by a contract whose document is of kind `label_decision`; B's row and P's participation cite an approved `label_decision` | P 10; net 90: A 27, B 18, all B; before the contract document is approved B 18 C `owner_unconfirmed` (row B 37, C 18, ours 45); the same scenario with kind `contract` gives the same allocations, reconciliation row and balance of B (earned 18) | 55 | 0 | 45 | D-172 |
 
 ## Publishing cases
@@ -176,3 +181,18 @@ sublabel) → categorise.
   the status and label of the contract document, not its kind) and a split row or participation exactly like an
   appendix (`categorise` looks at the kind only for `assumption`): P 100 × 10 % = 10 off the top, net 90, A 90 × 30 % =
   27, B 90 × 20 % = 18, ours 45. No layer changes; the case is the same numbers with kind `contract`.
+- G57 (D-173): a buyout is an `out` operation outside the balance (README §5, D-027): `buyouts_L` = Σ counted buyouts,
+  in neither `paid` nor `payable` (50 − 0 = 50), and it never blocks (`BLOCKING_KINDS` = payout, advance). It counts
+  with an approved proof and its approved `buyout` document. The control: as a payout it would be 50 − 1 000 = −950.
+- G58 (D-173 §3.1): the advance month is 2026-01, so the 2026-02 income 50 is recouped (remaining 50). The forgiveness
+  of 2026-04 takes effect before the first income of a month ≥ 2026-04: effective = min(30, 100 − 50 − 0) = 30, the
+  capacity from 2026-04 is 100 − 50 − 30 = 20. Step 2 has no such income: the forgiveness takes effect at the end,
+  remaining 100 − 50 − 30 = 20, payable 50 − 50 = 0 (unchanged). Step 3: the 2026-04 income 50 gives 20 to the
+  advance, recouped 70, payable 100 − 70 = 30. G58b: the 2026-03 income (before the date) is recouped first: 50 + 50 =
+  100 before 2026-04, the effective forgiveness min(30, 100 − 100 − 0) = 0, payable 150 − 100 = 50; recorded 30 >
+  effective 0 is the signal `forgivenessReduced`. amount = recouped + forgiven + remaining holds at every step.
+- G59 (D-173 К6): publishing 60 × 50 % = 30 in the 0to8 book; available = 30 − 0 (recouped from publishing) − 0
+  (earlier write-offs) = 30. payable = 80 − 20 = 60; by area: master 50, publishing 30 − 20 = 10. After the write-off
+  available = 30 − 0 − 20 = 10.
+- G60 (D-173 К5): an adjustment is `in` with a signed amount, `adjustments_L` = −Σ amount: −(−170.55) = 170.55,
+  payable 50 + 170.55 = 220.55; + 20.55 → adjustments 150, payable 200.

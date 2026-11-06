@@ -70,3 +70,15 @@
   or nothing, the audit from the response, the 5 000-row timing with one `artistIndex` read), `assume.test.ts`,
   `releases.test.ts` (synthetic export csv only), `onboarding.test.ts`; G61 in `golden.test.ts` (`label_decision` =
   `contract` in money). A new organization operation still needs its line in `helpers/manager-answers.ts`.
+- **Payroll stage (D-173):** the forgiveness is tested in a new `describe` of `recoup.test.ts` (the file is not under
+  `tests/layers/`); the existing recoup cases, `layers/exactness.test.ts` and the golden cases before G57 are never
+  edited to make it pass (without a forgiveness the result must be byte for byte the old one). G57–G60 (buyout,
+  forgiveness incl. G58b late income, write-off, adjustment) and `Case.verify()` check Σ books of `buyouts`,
+  `forgiven`, `writtenOff`, `adjustments`, the `payable` identity per book, `amount = recouped + forgiven + remaining`
+  per position and Σ `byArea` = book. `operation-kinds.test.ts` (kind derivation = `meaningOf`, each kind's refusals in
+  order, raw-INSERT CHECK refusals, three blocking places equal), `payroll.test.ts` (json = csv, Σ rows = total, `bookB
+  = reconciliationB`, manager 200 / 403 / 400), `operation-import.test.ts` (classes, all or nothing, a repeat =
+  `unchanged`, `external_ref_required`, no audit row on the preview), `b17-replace.test.ts` (a payout snapshot before the
+  replacement byte for byte, an old snapshot still parses). `scope.test.ts` pins the balance at `asOf` = the full
+  balance of a world without later files and operations. Tests where the button pays publishing pass `area: 'all'`.
+  `rules-coverage.test.ts` now says «the kind is stored and fits its fields (D-173)». (after the stage: 61 files / 648 tests)

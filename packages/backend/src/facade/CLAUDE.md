@@ -87,6 +87,15 @@
   snapshot of the very calculation it used, D-053) before calling `payment-service.ts` (a stub, D-013).
 - Recoupment itself is in `layers/recoup.ts` (moved from the settlements module, D-127; the shapes `Scope`, `IncomeItem`,
   `Position` stay in `modules/settlements`); `balance.ts` feeds it income items and positions.
+  **The forgiveness (D-173) is the one change of a layer this stage allows:** `Position.forgiven` (the counted
+  forgivenesses of an advance by month, ascending; one month in (date, id) order) caps the capacity of the position
+  from the month of each date: `effective = min(forgiven, max(0, amount − recouped_before_date − forgiven_so_far))`,
+  `left = min(left, max(0, amount − consumed − forgivenEff))`; leftover forgivenesses after the income loop by the same
+  rule; `RecoupResult.forgiven` is the effective sum, `amount = recouped + forgiven + remaining`. The D-094 netting
+  runs only when a trial pass (on a copy of the capacities) shows the position takes something, so D-101 holds with
+  forgiveness. No new multiplication, order and `eligible` unchanged; without forgivenesses byte for byte the old
+  result. Income before the date arriving later shrinks the effective forgiveness (signal `forgivenessReduced`).
+  (as landed: `settle()` per position, the forgivenesses applied in month order, the trial copy kept only when the position takes something; reviewed)
 - `audit.ts`: `recordAction(input)`, `auditOf(entityId, limit, labelId?)`, `recentActions(limit, labelId?)` over the `audit` module (D-140; the label of a write, D-169, is chosen by the hook: `labelOfWrite`). The API hook `api/audit.ts` calls `recordAction` after every successful write (needs `X-Operator`); a facade method never records by itself.
 - **The organization** (D-170): a facade is opened per organization. `openFacade({ db, orgId, sources, dataDir, … })`
   calls `openModules(db, orgScope(orgId), { publishingDir })` (`modules.ts`: the seven PostgreSQL modules, every
@@ -142,3 +151,26 @@
   calculates (the file must not import `./calculation`: `boundaries.test.ts`); the backend decides each step's state.
   `organizationChecklist({ members, admins })` gets the member counts from its route (`api/routes/onboarding-org.ts` in
   the org-admin router): the facade never imports `src/auth`.
+- **The payroll stage (D-173).** Operations carry a stored `kind` (`modules/settlements/CLAUDE.md`); `balance.ts`
+  branches on `o.kind`. Book fields (`LabelBook`, `total`, `byLabel`, artist rows): `buyouts` (outside `paid` and
+  `payable`), `forgiven` (lowers `unrecouped` only), `writtenOff` (minus), `adjustments` (= −Σ amount, plus);
+  `payable_L = earned − recouped − paid − adsCharged + returns + credits + adjustments − writtenOff`; `byArea { master,
+  publishing }` per book (earned / recouped by income stream, ads master, operations by `operations.area`), Σ areas =
+  the book. `payoutGate` gets `floor(min(payable_{L,area}, payable_L))` for `area ≠ all`; reads without `area` are
+  `all`; `createPayout({ labelId, area = 'master' })` stores the area in the snapshot (the new snapshot fields are
+  optional in `payoutSnapshotSchema`, old snapshots still parse). `createOperation` checks the kinds in a fixed order
+  (`label_required` → `kind_*` → `use_*_button/action` → `*_required` → `scope_*` / `writeoff_area` → document →
+  gate → `writeoff_exceeds`); `forgiveAdvance` (`payouts.ts`) takes `remaining` from `balanceWithFiles(owner)`
+  (`forgiveness_exceeds`, `forgiveness_before_advance`, `operation_ref_not_advance`).
+  **`asOf`** (`YYYY-MM`) is a cut of the inputs of `ownerBalance` made from one full calculation (units by reporting
+  month, publishing lines by report month through a filtered `ownerIndex`, operations / positions / forgivenesses by
+  date, ads through `index.ads`), `PeriodFilter.to = min(to, asOf)`, `reconcile(calc, { to: asOf })`; `calculate()`
+  never sees it; document statuses are those of now.
+  **`payroll.ts`** (`GET /owners/payroll`): one `calcWithOps()`, the cut, the view `{ labelId }`; sheets `payroll`
+  (pseudonym rows with `recoupedFromMaster`, the owner row with `publishingRecouped`, the `total` row with the gate and
+  `belowThreshold`; the contract column and `byDecision` for `label_decision`), `waiting`, `buyouts`, `control`; json
+  and csv from the same rows. **`operation-import.ts`** (`importOperations`): the csv (`OPERATION_IMPORT_COLUMNS`),
+  the preview in a `db.snapshot()`, the apply in one `db.transaction()` through `createOperation` row by row (all or
+  nothing, `422 import_invalid { line, cause }`), every row `migration: true` with `label_source = 'operator'`;
+  `external_id` required for payout / buyout, a matching content key = `unchanged`. The B17 replacement is
+  `sources.ts` `replaceStatement` over the publishing module.

@@ -251,7 +251,7 @@ needs a grant and can never `approve`, `pay` or `admin`), and a `label_manager` 
    the stores named by the environment, then by `.env` — `DB_DATABASE`, `CLICKHOUSE_DATABASE`, … — and writes
    `<MVP_LOAD_DIR>/ads/main_ads_mapping.json`, recipe 9), then
    `load.ts ads --apply` (2 686 records; the 33 without an ISRC are created with the payer label 0to8).
-5. `scripts/assign-operation-labels.ts data/real --apply` (D-168) and the two accounts: `POST /labels/:id/accounts`
+5. `scripts/assign-operation-labels.ts data/real --apply` (D-168), then (D-173, after migration 0019) `scripts/assign-operation-labels.ts data/real --mark-source` (dry run: 1 315 `default` = D-168, the 7 Echo8 operations on their own line as `operator`; another count stops the step unless `--force`) and `--mark-source --apply` (a second dry run changes nothing; it must run after step 7 `operations-echo8`, or rerun it then), and the two accounts: `POST /labels/:id/accounts`
    1052428 → 0to8, 1055956 → Echo8 (if not registered already for step 1; an operator header is needed on every write).
 6. The seven manual API writes of 2026-11-03 (operator `13`: an approved `advance_basis` document, an operation out
    40.00 with its payment proof, an approved `appendix` document confirming the split of ISRC FRX202537544): replayed
@@ -272,7 +272,12 @@ needs a grant and can never `approve`, `pay` or `admin`), and a `label_manager` 
    D-169); since D-169 (the 33 ISRC-less ads already carry the payer 0to8, then step 7) run without `--strict`: the invariants (totals, the 54 reconciliation rows, owners'
    `total.*`, tracks, queue, labels, signal counters) print `0 differing`, Σ Δ recouped = Σ Δ payable = 0, and the books
    move as D-169 records (the «Echo8» string of 1052428, 222 129,81, from Echo8 to 0to8; ads and B17 from `'?'` to 0to8).
-   Then `scripts/check-owner-scope.ts data/real --org <id>` (0 differing).
+   Then `scripts/check-owner-scope.ts data/real --org <id>` (0 differing). Since D-173 the default mode also prints the
+   section «kinds» (operations by kind: buyout, forgiveness, writeoff, adjustment 0 on the rebuilt stack; per owner
+   Δpaid = 0 and Δpayable = Δadjustments − ΔwrittenOff + Δreleased by forgiveness, all 0) and the owners with
+   publishing whose button amount at the default area `master` differs from `all` (`byArea.publishing.payable`).
+   Before `npm run migrate:pg` applies 0019 on the live `erp`, the plan's read-only SQL check of the history against
+   `operations_kind_rules` must give 0 violations.
 
 Counts after the rebuild (= the snapshot README): owners 1 151, artists 2 134, tracks 26 305, documents 1 400,
 contracts 803, splits 24 107 / shares 42 070, participations 283, operations 2 663, statements 6 (lines 1 162 586),
@@ -303,7 +308,8 @@ D-170. The stack starts without organizations and users; the first of each is ma
    from the server). The system administrator's session in the browser (P24) does the same.
 6. `ERP_DEFAULT_ORG=<id>` in `.env` for the scripts (or `--org <id>` / `ERP_ORG` per run).
 7. Recipe 11, steps 1–8, with `--org <id>` (incl. `scripts/derive-track-labels.ts --org <id> --apply` after the
-   reports are loaded under their labels, D-172; re-run it after every later batch of reports) (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
+   reports are loaded under their labels, D-172; re-run it after every later batch of reports; and
+   `assign-operation-labels.ts --mark-source --apply` after the operations, D-173) (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
    or, with `AUTH_MODE=on`, under the session of the `org_admin` of step 8; not with `X-System-Key` + `X-Org`, which
    is `403 support_required` since D-171).
 8. The users of the organization (D-171): the administrator `ERP_NEW_PASSWORD=… npx tsx
@@ -370,3 +376,48 @@ approve, or assume (7).
 8. **Publishing** (if any): B17 statements under the label (`POST /publishing/b17?label=<id>`); the step is `info`.
 9. The checklist green: every step but `publishing` is `done`; `GET /api/v1/reconciliation` discrepancy 0;
    `scripts/check-label-books.ts` (D-169) as after any load.
+
+## 14. Import a cash file (operations from a file, D-173)
+
+For the payouts made outside the ERP (the cash after 30.10 of the payment channels, owner's answer 3), a starting
+balance or a correction to the cabinet (`adjustment` with a document `adjustment_basis`), buyout payments (`buyout`
+with a document of kind `buyout`) and publishing write-offs (`writeoff`). An `org_admin` session (`pay`; a label
+manager and support are refused) or `AUTH_MODE=off` on the dev stand.
+
+1. Download the template on P29 «Импорт операций» (from P20, `action-operation-import-template`): the columns
+   `OPERATION_IMPORT_COLUMNS` = `owner, pseudonym, date, amount, kind, channel, confirmation, document, external_id,
+   scope, comment` (owner or pseudonym = an id or the exact name, at least one; amount in dollars with a dot, signed for
+   `adjustment`; `document` = an id or the exact title, else one `?documentId=` for the file; `confirmation` = the
+   reference of the payment document, a `payment_proof` is created). Convert the channel's own file to it (no
+   converter in the repo yet, Open О8). **`external_id` is required on every `payout` and `buyout` row** (the channel's
+   transaction id): a repeated file must not double `paid`.
+2. Preview: P29 upload, or `curl -F file=@cash.csv "…/api/v1/settlements/operations/import?label=<id>&dryRun=1"
+   -H 'X-Operator: …'`: every row is `create`, `unchanged` (an active operation with the same kind, owner, pseudonym,
+   date, amount, channel and `external_ref` already exists) or `error` with its classes (`owner_not_found`,
+   `external_ref_required`, `duplicate_external_ref`, `kind_not_importable` for return / forgiveness, `document_kind`,
+   `writeoff_exceeds`, …). Fix the file until no `error` row is left; warnings (`no_external_ref` on other kinds,
+   `no_contract_for_label`) do not block. The preview writes nothing and leaves no audit row.
+3. Apply (`dryRun=0`): one transaction, all or nothing (`422 import_invalid { line, cause }`). Every row is
+   `migration: true` (counted at once without a payment document, never blocking), under `?label=`, `label_source =
+   'operator'`. The audit row carries the summary of the response.
+4. Check: P10 / `GET /owners/:id/balance` (the new rows `paid`, `buyouts`, `writtenOff`, `adjustments`), the payroll
+   `GET /owners/payroll?label=<id>&asOf=<YYYY-MM>` and its `control` sheet (discrepancy 0). A second apply of the same
+   file must answer all rows `unchanged`. A wrong row is undone by deactivating its operation (P20), never by deleting.
+
+## 15. Replace a B17 statement by its «Updated» version (D-173)
+
+The mechanism closes D-041; **the run on Q2 2026 «Updated» waits for the owner's confirmation** (decision 6): do not
+replace a real statement without it.
+
+1. Snapshot the stores (recipe 10). Note `GET /api/v1/reconciliation` (b17 rows) and the payables of the label.
+2. On P19 the `loaded` statement → «Заменить» (`ReplaceStatementDialog`), or `curl -F file=@updated.xlsx
+   "…/api/v1/publishing/statements/<oldId>/replace?label=<id>" -H 'X-Operator: …'` (approve: an `org_admin`). The new
+   file must cover exactly the same quarters (`409 periods_differ { old, new }`), the old statement must be `loaded`
+   (`409 replace_not_loaded`) and of the same label (`409 replace_label_differs`); an identical file is
+   `duplicate_file`.
+3. Result: the old statement is `superseded` with `replacedBy` (P19 shows the link; `GET /sources/files`), its lines,
+   stored file and sha stay; the new statement's lines feed the calculation. Payout snapshots made before are byte for
+   byte the same (`GET /settlements/operations/:id/snapshot`).
+4. Check: the b17 reconciliation rows of the quarters (discrepancy 0), the writers of the new file mapped (signals
+   `writer_unmapped`), `scripts/check-label-books.ts`, and the owners whose publishing moved (`compare-reference`
+   without `--strict`, recipe 11 step 8, prints them).
