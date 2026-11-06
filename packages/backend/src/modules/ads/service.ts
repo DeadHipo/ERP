@@ -3,6 +3,7 @@ import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertMonth, monthStart, nowIso } from '../../shared/dates';
 import { Decimal, decimalToCents, parseUsd } from '../../shared/money';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import { createAdsRepository, type ExpenseFilter, type ExpenseRow } from './repository';
 
 /** Where the recovered part of an expense is recouped from: the whole balance, publishing, or this ISRC (D-155). */
@@ -107,8 +108,8 @@ const toRepoFilter = (f: AdExpenseFilter): ExpenseFilter => ({
  * The ads module records advertising expenses and checks their shape. It computes no money: who bears an expense
  * and what it recoups is decided in the facade (facade/ads.ts), recalculated from scratch.
  */
-export function createAdsService(db: Db) {
-  const repo = createAdsRepository(db);
+export function createAdsService(db: Db, org: OrgScope) {
+  const repo = createAdsRepository(db, org);
 
   function validate(input: AdExpenseInput, createdAt: string) {
     const isrc = input.isrc ? assertIsrc(input.isrc) : null;

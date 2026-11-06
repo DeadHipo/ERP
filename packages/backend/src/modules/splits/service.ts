@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import type { ParticipationRow, ShareRow, SplitRow } from './repository';
 import { createSplitsRepository } from './repository';
 
@@ -118,8 +119,8 @@ const overlaps = (
   b: { validFrom: string; validTo: string | null },
 ) => a.validFrom < (b.validTo ?? '9999-12-31') && b.validFrom < (a.validTo ?? '9999-12-31');
 
-export function createSplitsService(db: Db) {
-  const repo = createSplitsRepository(db);
+export function createSplitsService(db: Db, org: OrgScope) {
+  const repo = createSplitsRepository(db, org);
 
   function view(s: SplitRow, shares: ShareRow[]): SplitView {
     const own = shares.filter((x) => x.splitId === s.id);

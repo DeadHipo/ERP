@@ -147,6 +147,8 @@ export function createSourcesService(deps: SourcesDeps) {
   }
 
   const service = {
+    /** The organization of the registry this service reads (D-170); the facade checks it is its own. */
+    orgId: registry.orgId,
     /**
      * Loads one Believe report (CSV or zipped CSV) by streaming it: the file is never held in memory.
      * A second file for an already loaded (account, reporting month) is rejected; so is the same file (sha256) again.

@@ -1,21 +1,25 @@
-import { and, arrayContains, desc, eq } from 'drizzle-orm';
+import { arrayContains, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
+import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import { actions } from './schema';
 
-export type ActionRow = typeof actions.$inferSelect;
+export type ActionRow = OrgFree<typeof actions.$inferSelect>;
 
-/** All SQL of the audit module lives here (schema `audit`). */
-export function createAuditRepository(db: Db) {
+/** All SQL of the audit module lives here (schema `audit`); every statement is of the organization `org` (D-170). */
+export function createAuditRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
+  const C = orgFree(actions);
   return {
-    insert: async (row: typeof actions.$inferInsert): Promise<ActionRow> =>
-      (await orm().insert(actions).values(row).returning())[0] as ActionRow,
+    insert: async (row: OrgFree<typeof actions.$inferInsert>): Promise<ActionRow> =>
+      (await orm().insert(actions).values(orgRow(org, row)).returning(C))[0] as ActionRow,
     byEntity: (entityId: string, limit: number, labelId?: string): Promise<ActionRow[]> =>
       orm()
-        .select()
+        .select(C)
         .from(actions)
         .where(
-          and(
+          orgWhere(
+            org,
+            actions,
             arrayContains(actions.entityIds, [entityId]),
             labelId === undefined ? undefined : eq(actions.labelId, labelId),
           ),
@@ -24,9 +28,9 @@ export function createAuditRepository(db: Db) {
         .limit(limit),
     recent: (limit: number, labelId?: string): Promise<ActionRow[]> =>
       orm()
-        .select()
+        .select(C)
         .from(actions)
-        .where(labelId === undefined ? undefined : eq(actions.labelId, labelId))
+        .where(orgWhere(org, actions, labelId === undefined ? undefined : eq(actions.labelId, labelId)))
         .orderBy(desc(actions.at), desc(actions.id))
         .limit(limit),
   };

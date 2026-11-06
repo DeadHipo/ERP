@@ -22,10 +22,13 @@ import { join, resolve } from 'node:path';
 import ExcelJS from 'exceljs';
 import Decimal from 'decimal.js';
 import { openFacade } from '../src/facade';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { BELIEVE_COLUMNS } from '../src/modules/sources';
 import { normalizeIsrc, normalizeName } from '../src/shared/identifiers';
 import { loadImroWriterNames, MAIN_DB_DEFAULT } from './legacy-writers';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const ERP_DB = resolve(root, 'context_data', 'data', 'erp', 'data', 'erp.db');
@@ -45,9 +48,9 @@ const ISRC_RE = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 
 // The sources module is not used here (the reports are only written to files and loaded through the API), but the
 // facade needs it: it connects to PostgreSQL and ClickHouse (docker compose up -d).
-const stack = connectSources(join(dataDir, 'files', 'sources'));
+const stack = await connectOrg({ dataDir: dataDir, org: ORG });
 const { db } = stack;
-const f = openFacade({ db, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
+const f = openFacade({ db, orgId: stack.orgId, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
 const { owners, splits, publishing } = f.modules;
 
 // The old script recreated the module files; a PostgreSQL database is never wiped here: it must be empty.

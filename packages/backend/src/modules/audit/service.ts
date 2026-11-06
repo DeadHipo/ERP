@@ -1,6 +1,7 @@
 import { ValidationError } from '../../shared/errors';
 import { newId } from '../../shared/identifiers';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import { createAuditRepository, type ActionRow } from './repository';
 
 export interface AuditAction {
@@ -40,8 +41,8 @@ const view = (r: ActionRow): AuditAction => ({
 
 const clampLimit = (limit: number) => Math.min(Math.max(limit || 50, 1), 500);
 
-export function createAuditService(db: Db) {
-  const repo = createAuditRepository(db);
+export function createAuditService(db: Db, org: OrgScope) {
+  const repo = createAuditRepository(db, org);
   return {
     async record(input: RecordActionInput): Promise<AuditAction> {
       const operator = input.operator.trim();

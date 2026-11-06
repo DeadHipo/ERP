@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 import { openFacade } from './facade';
 import { createApp } from './api/app';
-import { connectSources } from './connect-sources';
+import { connectStores, resolveOrg, sourcesFor } from './connect-sources';
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 // Data directory: first CLI argument, ERP_DATA_DIR, or <repo>/data.
@@ -11,16 +11,27 @@ const threshold = Number(process.env.PAYOUT_THRESHOLD_CENTS ?? 10000);
 
 // The modules in PostgreSQL; the Believe sources: file registry in PostgreSQL, report lines in ClickHouse
 // (settings from <repo>/.env). The data directory keeps only the original files and temporary uploads (D-121).
-const { db, sources, close: closeSources } = connectSources(join(dataDir, 'files', 'sources'));
+const stores = connectStores();
+const closeSources = () => stores.close();
 
-const facade = openFacade({ db, dataDir, payoutThresholdCents: threshold, sources });
+// Every request works in one organization until the login (D-170): ERP_DEFAULT_ORG, which must exist.
+const found = await resolveOrg(stores, [process.env.ERP_DEFAULT_ORG]);
+if (!found.ok) {
+  console.error(`ERP_DEFAULT_ORG is required. ${found.message}`);
+  await closeSources();
+  process.exit(1);
+}
+const orgId = found.org.id;
+const sources = sourcesFor(stores, orgId, dataDir);
+
+const facade = openFacade({ db: stores.db, orgId, dataDir, payoutThresholdCents: threshold, sources });
 const app = createApp(facade, {
   tmpDir: join(dataDir, 'tmp'),
   clientDist: join(root, 'packages', 'frontend', 'dist'),
 });
 
 const server = app.listen(port, () =>
-  console.log(`ERP API on http://localhost:${port}/api/v1 (data: ${dataDir})`),
+  console.log(`ERP API on http://localhost:${port}/api/v1 (data: ${dataDir}, organization: ${found.org.name})`),
 );
 
 // server.close() alone waits for keep-alive sockets (Vite proxy, browser) and in-flight requests, so tsx watch had to

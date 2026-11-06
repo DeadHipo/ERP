@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 import { Decimal } from '../../shared/money';
+import { orgQuery, type OrgScope } from '../../shared/org-scope';
 
 /** One row of source_files (migrations/postgres/0001_source_files.sql). Months are 'YYYY-MM', money is exact text. */
 export interface SourceFileRecord {
@@ -83,33 +84,40 @@ const record = (r: Row): SourceFileRecord => ({
 
 /**
  * All SQL of the file registry in PostgreSQL. Only `loading` and `loaded` files are "active": the unique indexes of
- * the migration apply to them, so a failed or replaced file never blocks a new upload.
+ * the migration apply to them, so a failed or replaced file never blocks a new upload. Every statement is of the
+ * organization `org` (`$1`, D-170): its keys (`source_files_scope`, `source_files_sha`) are per organization (0016),
+ * and `loaded()` gives only its files, so every ClickHouse read of the organization starts from them.
  */
-export function createSourceFilesRegistry(pool: pg.Pool) {
+export function createSourceFilesRegistry(pool: pg.Pool, org: OrgScope) {
+  const q = orgQuery({ query: (text, values) => pool.query(text, values) }, org);
   const one = async (sql: string, params: unknown[]): Promise<SourceFileRecord | null> => {
-    const { rows } = await pool.query<Row>(sql, params);
+    const { rows } = await q<Row>(sql, params);
     return rows[0] ? record(rows[0]) : null;
   };
 
   return {
+    /** The organization of this registry (opaque here, D-170). */
+    orgId: org.id,
     activeByScope: (source: string, account: string, reportingMonth: string) =>
       one(
         `SELECT ${COLUMNS} FROM source_files
-         WHERE source = $1 AND account = $2 AND reporting_month = ($3 || '-01')::date AND status IN ('loading', 'loaded')`,
+         WHERE org_id = $1 AND source = $2 AND account = $3 AND reporting_month = ($4 || '-01')::date
+           AND status IN ('loading', 'loaded')`,
         [source, account, reportingMonth],
       ),
 
     activeBySha: (sha256: string) =>
-      one(`SELECT ${COLUMNS} FROM source_files WHERE sha256 = $1 AND status IN ('loading', 'loaded')`, [
-        sha256,
-      ]),
+      one(
+        `SELECT ${COLUMNS} FROM source_files WHERE org_id = $1 AND sha256 = $2 AND status IN ('loading', 'loaded')`,
+        [sha256],
+      ),
 
     /** Creates the `loading` row. A race with another upload ends on the unique indexes and becomes a 409. */
     async insertLoading(f: NewSourceFile): Promise<SourceFileRecord> {
       try {
-        const { rows } = await pool.query<Row>(
-          `INSERT INTO source_files (id, source, account, reporting_month, report_id, file_name, stored_path, sha256, uploaded_by, label_id)
-           VALUES ($1, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8, $9, $10) RETURNING ${COLUMNS}`,
+        const { rows } = await q<Row>(
+          `INSERT INTO source_files (org_id, id, source, account, reporting_month, report_id, file_name, stored_path, sha256, uploaded_by, label_id)
+           VALUES ($1, $2, $3, $4, ($5 || '-01')::date, $6, $7, $8, $9, $10, $11) RETURNING ${COLUMNS}`,
           [
             f.id,
             f.source,
@@ -142,8 +150,8 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
       totals: { lineCount: number; netTotal: string; grossTotal: string },
     ): Promise<SourceFileRecord> {
       const r = await one(
-        `UPDATE source_files SET status = 'loaded', line_count = $2, net_total = $3, gross_total = $4
-         WHERE id = $1 AND status = 'loading' RETURNING ${COLUMNS}`,
+        `UPDATE source_files SET status = 'loaded', line_count = $3, net_total = $4, gross_total = $5
+         WHERE org_id = $1 AND id = $2 AND status = 'loading' RETURNING ${COLUMNS}`,
         [id, totals.lineCount, totals.netTotal, totals.grossTotal],
       );
       if (!r) throw new NotFoundError('Loading source file', id);
@@ -151,24 +159,25 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
     },
 
     async markFailed(id: string): Promise<void> {
-      await pool.query(
+      await q(
         `UPDATE source_files SET status = 'failed', line_count = NULL, net_total = NULL, gross_total = NULL
-         WHERE id = $1 AND status = 'loading'`,
+         WHERE org_id = $1 AND id = $2 AND status = 'loading'`,
         [id],
       );
     },
 
-    get: (id: string) => one(`SELECT ${COLUMNS} FROM source_files WHERE id = $1`, [id]),
+    get: (id: string) => one(`SELECT ${COLUMNS} FROM source_files WHERE org_id = $1 AND id = $2`, [id]),
 
     /** Every file, newest month first; with `labelId` only the files loaded under that label (D-169). */
     async list(filter: { labelId?: string } = {}): Promise<SourceFileRecord[]> {
       const { rows } =
         filter.labelId === undefined
-          ? await pool.query<Row>(
-              `SELECT ${COLUMNS} FROM source_files ORDER BY reporting_month DESC, account, created_at DESC`,
+          ? await q<Row>(
+              `SELECT ${COLUMNS} FROM source_files WHERE org_id = $1
+               ORDER BY reporting_month DESC, account, created_at DESC`,
             )
-          : await pool.query<Row>(
-              `SELECT ${COLUMNS} FROM source_files WHERE label_id = $1
+          : await q<Row>(
+              `SELECT ${COLUMNS} FROM source_files WHERE org_id = $1 AND label_id = $2
                ORDER BY reporting_month DESC, account, created_at DESC`,
               [filter.labelId],
             );
@@ -177,9 +186,9 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
 
     /** The files of an account that are being loaded or loaded (D-169: an account with files is not removed). */
     async activeOfAccount(source: string, account: string): Promise<SourceFileRecord[]> {
-      const { rows } = await pool.query<Row>(
+      const { rows } = await q<Row>(
         `SELECT ${COLUMNS} FROM source_files
-         WHERE source = $1 AND account = $2 AND status IN ('loading', 'loaded')
+         WHERE org_id = $1 AND source = $2 AND account = $3 AND status IN ('loading', 'loaded')
          ORDER BY reporting_month, created_at`,
         [source, account],
       );
@@ -188,14 +197,17 @@ export function createSourceFilesRegistry(pool: pg.Pool) {
 
     /** Sets the label of a file that has none (D-169, a migration script only); true when the row changed. */
     async assignLabel(id: string, labelId: string): Promise<boolean> {
-      const r = await pool.query(`UPDATE source_files SET label_id = $2 WHERE id = $1 AND label_id IS NULL`, [id, labelId]);
+      const r = await q(`UPDATE source_files SET label_id = $3 WHERE org_id = $1 AND id = $2 AND label_id IS NULL`, [
+        id,
+        labelId,
+      ]);
       return (r.rowCount ?? 0) > 0;
     },
 
     /** The files a calculation may read: exactly the `loaded` ones. */
     async loaded(): Promise<SourceFileRecord[]> {
-      const { rows } = await pool.query<Row>(
-        `SELECT ${COLUMNS} FROM source_files WHERE status = 'loaded' ORDER BY reporting_month, account`,
+      const { rows } = await q<Row>(
+        `SELECT ${COLUMNS} FROM source_files WHERE org_id = $1 AND status = 'loaded' ORDER BY reporting_month, account`,
       );
       return rows.map(record);
     },

@@ -7,6 +7,7 @@ import { assertDate, normalizeTimestamp, nowIso } from '../../shared/dates';
 import { Decimal, picoToString } from '../../shared/money';
 import { sha256File } from '../../shared/files';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import { createPublishingRepository } from './repository';
 import type { AggregatedLine, StatementRow, TermsRow, WriterInsert, WriterRow } from './repository';
 import { parseSongwriters, quartersFromFileName, readB17Statement, type B17Line } from './b17-format';
@@ -48,8 +49,8 @@ const view = (s: StatementRow): StatementView => ({
 const isUniqueViolation = (e: unknown) =>
   (e as { code?: string }).code === '23505' || /UNIQUE/.test((e as Error).message);
 
-export function createPublishingService(db: Db, storageDir: string) {
-  const repo = createPublishingRepository(db);
+export function createPublishingService(db: Db, org: OrgScope, storageDir: string) {
+  const repo = createPublishingRepository(db, org);
   const tx = <T>(fn: () => Promise<T>): Promise<T> => repo.transaction(fn);
 
   const periodTaken = repo.periodTaken;

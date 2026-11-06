@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { clickHouseDatabaseNames, connectSources } from '../src/connect-sources';
+import { clickHouseDatabaseNames, connectStores } from '../src/connect-sources';
 import { createBelieveColumnar } from '../src/modules/sources';
-import { TMP } from './helpers/tmp-root';
 
 // N20 (D-140): the ClickHouse database named by CLICKHOUSE_DATABASE reaches the columnar, so an API started on private
 // stores reads and writes them.
@@ -16,11 +15,11 @@ describe('ClickHouse database names', () => {
     expect(() => clickHouseDatabaseNames({ CLICKHOUSE_DATABASE: 'bad name; DROP' })).toThrow();
   });
 
-  it('connectSources builds its columnar on the named databases', async () => {
-    // connectSources loads <repo>/.env without overriding variables that are already set
+  it('connectStores builds its columnar on the named databases', async () => {
+    // connectStores loads <repo>/.env without overriding variables that are already set
     const saved = process.env.CLICKHOUSE_DATABASE;
     process.env.CLICKHOUSE_DATABASE = 'believe_x';
-    const s = connectSources(TMP);
+    const s = connectStores();
     try {
       expect(s.clickhouseDatabase).toEqual({ database: 'believe_x', stageDatabase: 'believe_x_stage' });
     } finally {

@@ -1,18 +1,38 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { splitStatements } from './clickhouse-sql';
 import { clickHouseConfigFromEnv, createClickHouse } from './clickhouse';
 import { createPostgres, postgresConfigFromEnv } from './postgres';
 import { createDb } from './pg-db';
+import { createOrgsService } from '../orgs/service';
 
 const MIGRATIONS = join(import.meta.dirname, '..', '..', 'migrations');
-const sql = (dir: string) =>
+const files = (dir: string) =>
   readdirSync(join(MIGRATIONS, dir))
     .filter((f) => f.endsWith('.sql'))
     .sort()
-    .map((f) => readFileSync(join(MIGRATIONS, dir, f), 'utf8'));
+    .map((f) => ({ file: f, text: readFileSync(join(MIGRATIONS, dir, f), 'utf8') }));
+const sql = (dir: string) => files(dir).map((f) => f.text);
 
-/** Schemas whose tables `resetModules()` empties (every PostgreSQL module). */
+/** The PostgreSQL migrations in order: version, name and the checksum `migrate-postgres.sh` records (sha256 without `\r`). */
+export function postgresMigrations() {
+  return files('postgres').map(({ file, text }) => {
+    const m = /^(\d{4})_([a-z0-9_]+)\.sql$/.exec(file);
+    if (!m) throw new Error(`${file} does not match NNNN_name.sql`);
+    return {
+      version: Number.parseInt(m[1] as string, 10),
+      name: m[2] as string,
+      checksum: createHash('sha256').update(text.replace(/\r/g, '')).digest('hex'),
+      text,
+    };
+  });
+}
+
+/**
+ * Schemas whose tables `resetModules()` empties (every PostgreSQL module). Not `orgs` and `auth` (D-170): the test
+ * organization and its users outlive a reset.
+ */
 const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'audit', 'ads'];
 
 /**
@@ -40,13 +60,25 @@ export async function createPrivateStores(name: string, opts: { dropFirst?: bool
   if (opts.dropFirst) await dropDatabases();
   await admin.pool.query(`CREATE DATABASE ${pgName}`);
   const pg = createPostgres({ ...pgConfig, database: pgName, max: 4 });
-  for (const migration of sql('postgres')) await pg.pool.query(migration);
+  // as scripts/migrate-postgres.sh: every migration and its schema_migrations row
+  await pg.pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
+  for (const m of postgresMigrations()) {
+    await pg.pool.query(m.text);
+    await pg.pool.query('INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)', [
+      m.version,
+      m.name,
+      m.checksum,
+    ]);
+  }
   for (const migration of sql('clickhouse')) {
     const renamed = migration.replace(/\bbelieve_stage\b/g, stageDatabase).replace(/\bbelieve\b/g, database);
     for (const statement of splitStatements(renamed)) await ch.command({ query: statement });
   }
 
   const db = createDb(pg.pool);
+  // the organization of the private stores (D-170): the id comes from the service, as for every organization
+  const org = await createOrgsService(db).createOrganization({ name: `Test organization ${name}`, createdBy: 'tests' });
   const moduleTables = (
     await pg.pool.query<{ t: string }>(
       `SELECT format('%I.%I', schemaname, tablename) AS t FROM pg_tables WHERE schemaname = ANY($1)`,
@@ -68,6 +100,8 @@ export async function createPrivateStores(name: string, opts: { dropFirst?: bool
     ch,
     db,
     names: { pg: pgName, ch: database, chStage: stageDatabase },
+    /** The organization created with the stores; `resetModules()` keeps it. */
+    orgId: org.id,
     /** Empties the sources: no files, no rows, no stage tables. */
     async reset() {
       await ch.command({ query: `TRUNCATE TABLE ${database}.rows` });

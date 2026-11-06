@@ -23,10 +23,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { calculate, reconcile } from '../src/facade/calculation';
 import { ownerBalance, ownerIndex } from '../src/facade/balance';
 import { Decimal, ZERO } from '../src/shared/money';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const argv = process.argv.slice(2);
@@ -42,8 +45,8 @@ const askedOwner = flag('--owner');
 const askedArtist = flag('--artist');
 const dumpTo = flag('--dump');
 const compareWith = flag('--compare');
-const stack = connectSources(join(dataDir, 'files', 'sources'));
-const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
+const stack = await connectOrg({ dataDir: dataDir, org: ORG });
+const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
 
 const text = (x: unknown) => JSON.stringify(x, (k, v: unknown) => (k === 'calculatedAt' ? undefined : v));
 const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.add(x), ZERO).toFixed();

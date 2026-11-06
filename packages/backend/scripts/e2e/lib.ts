@@ -320,7 +320,7 @@ export class Sc {
       await this.f.db.query('UPDATE owners.artists SET pseudonym = $1, pseudonym_norm = $2 WHERE id = $3', [pn, norm(pn), m.artist]);
       await this.f.db.query('UPDATE owners.owners SET name = $1, name_norm = $2 WHERE id = $3', [on, norm(on), m.owner]);
       await this.f.db.query('DELETE FROM owners.owner_aliases WHERE owner_id = $1', [m.owner]);
-      await this.f.db.query('INSERT INTO owners.owner_aliases (owner_id, alias, alias_norm) VALUES ($1, $2, $3)', [m.owner, on, norm(on)]);
+      await this.f.db.query('INSERT INTO owners.owner_aliases (org_id, owner_id, alias, alias_norm) VALUES ($1, $2, $3, $4)', [this.f.orgId, m.owner, on, norm(on)]);
       this.register(l, pn, m.artist, m.owner);
     }
   }

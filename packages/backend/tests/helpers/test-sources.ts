@@ -6,6 +6,8 @@ import type { SourcesService } from '../../src/modules/sources';
 
 type Stack = Awaited<ReturnType<typeof import('./sources-stack').createIsolatedSources>>;
 let stackPromise: Promise<Stack> | undefined;
+/** The organization of the stack, known once it is created (`testSources().orgId`, checked by `openFacade`). */
+let stackOrgId: string | undefined;
 
 async function stack(): Promise<Stack> {
   stackPromise ??= (async () => {
@@ -15,7 +17,9 @@ async function stack(): Promise<Stack> {
       throw new Error(
         'PostgreSQL and ClickHouse are required for this test: run `docker compose up -d` in the repo root',
       );
-    return createIsolatedSources();
+    const s = await createIsolatedSources();
+    stackOrgId = s.orgId;
+    return s;
   })();
   return stackPromise;
 }
@@ -25,10 +29,14 @@ export async function closeTestSources(): Promise<void> {
   if (!stackPromise) return;
   const s = await stackPromise.catch(() => undefined);
   stackPromise = undefined;
+  stackOrgId = undefined;
   await s?.close();
 }
 
-/** The sources service of the test stack; the sources are emptied before its first use. */
+/**
+ * The sources service of the test stack; the sources are emptied before its first use. `orgId` is the organization of
+ * the stack (await `testStack()` first, as `newFacade` does).
+ */
 export function testSources(): SourcesService {
   let ready: Promise<SourcesService> | undefined;
   const service = () =>
@@ -38,10 +46,11 @@ export function testSources(): SourcesService {
       return s.service;
     })());
   return new Proxy({} as SourcesService, {
-    get:
-      (_t, name: string) =>
-      async (...args: unknown[]) =>
-        ((await service()) as unknown as Record<string, (...a: unknown[]) => unknown>)[name]?.(...args),
+    get: (_t, name: string) =>
+      name === 'orgId'
+        ? stackOrgId
+        : async (...args: unknown[]) =>
+            ((await service()) as unknown as Record<string, (...a: unknown[]) => unknown>)[name]?.(...args),
   });
 }
 

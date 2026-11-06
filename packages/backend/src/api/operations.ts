@@ -412,6 +412,7 @@ const operations: ApiOperation[] = [
     body: S.createLabelBody,
     status: 201,
     response: R.labelSchema,
+    errors: ['409 label_name_taken: a label with this name exists in the organization'],
   },
   {
     method: 'post',

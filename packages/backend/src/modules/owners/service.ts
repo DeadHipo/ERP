@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId, normalizeIsrc, normalizeName, normalizeUpc } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import type {
   AliasRow,
   ArtistRow,
@@ -230,8 +231,8 @@ function artistStatus(ownerId: string | null, id: string, confirmed: Set<string>
  * Module 1 on PostgreSQL (schema `owners`). Every method that reads the database is async; reads of several tables
  * run in one snapshot, and check-then-write methods run in one write transaction (they join an outer one).
  */
-export function createOwnersService(db: Db) {
-  const repo = createOwnersRepository(db);
+export function createOwnersService(db: Db, org: OrgScope) {
+  const repo = createOwnersRepository(db, org);
 
   async function requireOwner(id: string): Promise<OwnerRow> {
     const o = await repo.getOwner(id);

@@ -51,6 +51,8 @@ export interface SeedKeys {
   /** Shared entities: label ids, the owner / artist of NG, QQ and the brand 0to8. */
   shared: Record<string, string>;
   stores: { pg: string; ch: string; chStage: string };
+  /** The organization the seed is made in (D-170): the API of the run opens it (`ERP_DEFAULT_ORG`). */
+  orgId: string;
   dataDir: string;
   b17FileName: string;
 }

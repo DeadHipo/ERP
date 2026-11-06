@@ -8,6 +8,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 const s = pgSchema('splits');
 
 export const splits = s.table('splits', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   isrc: text('isrc').notNull(),
   validFrom: date('valid_from', { mode: 'string' }).notNull(),
@@ -21,6 +22,7 @@ export const splits = s.table('splits', {
 export const splitShares = s.table(
   'split_shares',
   {
+    orgId: text('org_id').notNull(),
     splitId: text('split_id').notNull(),
     artistId: text('artist_id').notNull(),
     percent: numeric('percent', { precision: 9, scale: 6 }).notNull(),
@@ -31,6 +33,7 @@ export const splitShares = s.table(
 
 // A percent of a base paid to a recipient pseudonym from one bucket (D-126). DDL: migrations/postgres/0008_participations.sql.
 export const participations = s.table('participations', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   isrc: text('isrc').notNull(),
   artistId: text('artist_id').notNull(),

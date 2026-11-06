@@ -13,7 +13,7 @@ import { Decimal } from '../../src/shared/money';
 import { assertDate, monthOf, monthStart } from '../../src/shared/dates';
 import { normalizeName } from '../../src/shared/identifiers';
 import { openFacade, type Facade } from '../../src/facade';
-import { connectSources } from '../../src/connect-sources';
+import type { connectOrg } from '../../src/connect-sources';
 import type { DocumentKind } from '../../src/modules/owners';
 
 export const ROOT = resolve(import.meta.dirname, '..', '..', '..', '..');
@@ -172,7 +172,7 @@ interface ArtistInfo {
 export class Ctx {
   readonly apply: boolean;
   readonly f: Facade;
-  readonly stack: ReturnType<typeof connectSources>;
+  readonly stack: Awaited<ReturnType<typeof connectOrg>>;
   readonly model = new SplitModel();
   private fake = 0;
   // caches (filled by load())
@@ -205,11 +205,13 @@ export class Ctx {
   loaded = false;
   log!: Log;
 
-  constructor(apply: boolean) {
+  /** `stack` = `await connectOrg({ dataDir: LOAD_DIR })`: the stores and the sources of the organization (D-170). */
+  constructor(apply: boolean, stack: Awaited<ReturnType<typeof connectOrg>>) {
     this.apply = apply;
-    this.stack = connectSources(join(ROOT, 'data', 'mvp-load', 'files', 'sources'));
+    this.stack = stack;
     this.f = openFacade({
       db: this.stack.db,
+      orgId: this.stack.orgId,
       dataDir: join(ROOT, 'data', 'mvp-load'),
       payoutThresholdCents: 0,
       sources: this.stack.sources,

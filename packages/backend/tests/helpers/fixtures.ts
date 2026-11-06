@@ -156,6 +156,7 @@ export async function newFacade(threshold = 0, opts: { paymentService?: PaymentS
   mkdirSync(dataDir, { recursive: true });
   const facade = openFacade({
     db: stack.db,
+    orgId: stack.orgId,
     dataDir,
     payoutThresholdCents: threshold,
     sources: testSources(),

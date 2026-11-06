@@ -5,12 +5,16 @@
 // The SQLite files are only read. Every module is copied in one transaction and checked afterwards: row counts per
 // table and control sums (money, percents) must be equal, otherwise the transaction is rolled back.
 // A module whose PostgreSQL tables are not empty is refused, unless --replace is given (then they are emptied first).
+// Every row is stamped with the organization (D-170): --org <id>, else ERP_ORG / ERP_DEFAULT_ORG; emptiness, --replace
+// and the checks are about the rows of that organization only.
 //
-// Usage: npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts <dataDir> [--replace] [--only owners,splits,...]
+// Usage: npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts <dataDir> [--org <id>] [--replace] [--only owners,splits,...]
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createPostgres, postgresConfigFromEnv } from '../src/shared/postgres';
+import { createDb } from '../src/shared/pg-db';
+import { resolveOrg, takeOrgArgument } from '../src/connect-sources';
 
 try {
   process.loadEnvFile(join(import.meta.dirname, '..', '..', '..', '.env'));
@@ -18,6 +22,7 @@ try {
   // no .env: the variables may come from the environment
 }
 
+const ORG = takeOrgArgument();
 const args = process.argv.slice(2);
 const dir = args.find((a) => !a.startsWith('--'));
 if (!dir) {
@@ -72,6 +77,13 @@ const MODULES: { module: string; tables: string[]; sums: { table: string; expr: 
 const MAX_PARAMS = 30_000;
 
 const pg = createPostgres({ ...postgresConfigFromEnv(), max: 2 });
+const found = await resolveOrg({ db: createDb(pg.pool) }, [ORG, process.env.ERP_ORG, process.env.ERP_DEFAULT_ORG]);
+if (!found.ok) {
+  console.error(found.message);
+  await pg.close();
+  process.exit(1);
+}
+const orgId = found.org.id;
 
 /** A SQLite value as PostgreSQL text input: exact integers (bigint) as text, 0/1 booleans as PostgreSQL accepts them. */
 const toPg = (v: unknown): unknown => (typeof v === 'bigint' ? v.toString() : v);
@@ -89,13 +101,16 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
     // the same lock as every write of the application (src/shared/pg-db.ts)
     await client.query('SELECT pg_advisory_xact_lock(72011301)');
     for (const t of m.tables) {
-      const n = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${m.module}.${t}`))
-        .rows[0]?.n;
+      const n = (
+        await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${m.module}.${t} WHERE org_id = $1`, [orgId])
+      ).rows[0]?.n;
       if (n !== '0') {
         if (!replace) throw new Error(`${m.module}.${t} is not empty (${n} rows): use --replace`);
       }
     }
-    if (replace) await client.query(`TRUNCATE ${m.tables.map((t) => `${m.module}.${t}`).join(', ')}`);
+    if (replace)
+      for (const t of [...m.tables].reverse())
+        await client.query(`DELETE FROM ${m.module}.${t} WHERE org_id = $1`, [orgId]);
 
     for (const t of m.tables) {
       const pgColumns = (
@@ -111,7 +126,8 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
       );
       // A column added by a later migration is left to its default when it can be empty (the data format before D-121).
       const missing = pgColumns.filter(
-        (c) => !liteColumns.has(c.column_name) && c.is_nullable === 'NO' && c.column_default === null,
+        (c) =>
+          c.column_name !== 'org_id' && !liteColumns.has(c.column_name) && c.is_nullable === 'NO' && c.column_default === null,
       );
       if (missing.length > 0) {
         throw new Error(`${t}: SQLite has no column(s) ${missing.map((c) => c.column_name).join(', ')}`);
@@ -127,16 +143,16 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
       let copied = 0;
       const flush = async () => {
         if (batch.length === 0) return;
-        const values: unknown[] = [];
+        const values: unknown[] = [orgId];
         const rows = batch.map((row) => {
           const ph = row.map((v) => {
             values.push(toPg(v));
             return `$${values.length}`;
           });
-          return `(${ph.join(', ')})`;
+          return `($1, ${ph.join(', ')})`;
         });
         await client.query(
-          `INSERT INTO ${m.module}.${t} (${columns.map((c) => `"${c}"`).join(', ')}) VALUES ${rows.join(', ')}`,
+          `INSERT INTO ${m.module}.${t} (org_id, ${columns.map((c) => `"${c}"`).join(', ')}) VALUES ${rows.join(', ')}`,
           values,
         );
         copied += batch.length;
@@ -149,8 +165,9 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
       await flush();
 
       const liteCount = (lite.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n;
-      const pgCount = (await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${m.module}.${t}`))
-        .rows[0]?.n;
+      const pgCount = (
+        await client.query<{ n: string }>(`SELECT count(*)::text AS n FROM ${m.module}.${t} WHERE org_id = $1`, [orgId])
+      ).rows[0]?.n;
       if (String(liteCount) !== pgCount || copied !== liteCount)
         throw new Error(`${t}: ${liteCount} rows in SQLite, ${pgCount} in PostgreSQL`);
       console.log(`${m.module}.${t}: ${pgCount} rows`);
@@ -164,8 +181,8 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
       const pv = (
         await client.query<{ v: string; eq: boolean }>(
           `SELECT COALESCE(SUM(${s.expr}), 0)::text AS v, COALESCE(SUM(${s.expr}), 0) = $1::numeric AS eq
-           FROM ${m.module}.${s.table}`,
-          [lv],
+           FROM ${m.module}.${s.table} WHERE org_id = $2`,
+          [lv, orgId],
         )
       ).rows[0];
       if (!pv?.eq) throw new Error(`${s.table}.${s.expr}: sum ${lv} in SQLite, ${pv?.v} in PostgreSQL`);
@@ -182,7 +199,7 @@ async function copyModule(m: (typeof MODULES)[number]): Promise<void> {
 }
 
 try {
-  console.log(`source: ${dataDir}`);
+  console.log(`source: ${dataDir}, organization: ${found.org.name}`);
   for (const m of MODULES) {
     if (only && !only.has(m.module)) continue;
     const started = Date.now();

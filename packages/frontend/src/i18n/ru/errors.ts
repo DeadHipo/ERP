@@ -28,6 +28,7 @@ export const errors: Record<string, string> = {
   alias_taken: 'Эта строка лейбла уже привязана к другому лейблу',
   label_required: 'Выберите лейбл: запись делается под лейблом',
   label_not_own: 'Это сублейбл: выберите свой лейбл',
+  label_name_taken: 'Лейбл с таким названием уже есть',
   account_unregistered:
     'Счёт {account} не зарегистрирован ни за одним лейблом: зарегистрируйте его на странице лейбла и повторите',
   account_of_other_label: 'Счёт {account} принадлежит лейблу {labelName}',

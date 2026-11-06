@@ -10,7 +10,8 @@
  *   labels, tracks, normalise-dates, splits, participations, exclusions, echo8, main, terms.
  * The database is the one of <repo>/.env (DB_DATABASE). Logs: data/mvp-load/log/<step>-<timestamp>.md.
  */
-import { Ctx, Log, errText } from './lib';
+import { Ctx, LOAD_DIR, Log, errText } from './lib';
+import { connectOrg, takeOrgArgument } from '../../src/connect-sources';
 import {
   stepExclusions,
   stepLabels,
@@ -56,6 +57,8 @@ const STEPS: Record<string, (ctx: Ctx) => Promise<void>> = {
 };
 const ALL = ['labels', 'tracks', 'normalise-dates', 'splits', 'participations', 'exclusions', 'echo8', 'main', 'terms', 'contracts', 'pairs', 'label-fixes', 'lunar', 'b17-holders', 'carves', 'settlement-prestart', 'assumption-rows', 'hygiene', 'ads'];
 
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const step = args.find((a) => !a.startsWith('--'));
@@ -64,7 +67,7 @@ if (!step || (step !== 'all' && !STEPS[step])) {
   process.exit(2);
 }
 
-const ctx = new Ctx(apply);
+const ctx = new Ctx(apply, await connectOrg({ dataDir: LOAD_DIR, org: ORG }));
 let failed = false;
 try {
   await ctx.load();

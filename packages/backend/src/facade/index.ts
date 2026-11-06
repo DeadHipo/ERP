@@ -1,12 +1,14 @@
 import { join } from 'node:path';
-import { openOwnersModule, type OwnersService } from '../modules/owners';
-import { openLabelsModule, type LabelsService } from '../modules/labels';
-import { openSplitsModule, type SplitsService } from '../modules/splits';
+import type { OwnersService } from '../modules/owners';
+import type { LabelsService } from '../modules/labels';
+import type { SplitsService } from '../modules/splits';
 import type { SourcesService } from '../modules/sources';
-import { openSettlementsModule, type SettlementsService } from '../modules/settlements';
-import { openPublishingModule, type PublishingService } from '../modules/publishing';
-import { openAuditModule, type AuditService } from '../modules/audit';
-import { openAdsModule, type AdsService } from '../modules/ads';
+import type { SettlementsService } from '../modules/settlements';
+import type { PublishingService } from '../modules/publishing';
+import type { AuditService } from '../modules/audit';
+import type { AdsService } from '../modules/ads';
+import { orgScope } from '../shared/org-scope';
+import { openModules } from './modules';
 import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
@@ -23,23 +25,28 @@ export type { FacadeConfig, ShareSpec } from './context';
 
 /**
  * The facade: the only place that composes modules. It recalculates everything from scratch for every request.
- * Modules do not know about it. All modules live in one PostgreSQL database (config.db, a schema per module); the
+ * Modules do not know about it. Every module is opened under one organization (`config.orgId`, D-170). All modules live in one PostgreSQL database (config.db, a schema per module); the
  * facade wraps writes that span modules in one transaction and reads that span them in one snapshot (D-121). The methods are grouped by topic in the sibling files; this file only opens the
  * modules and puts the groups together.
  */
 export function openFacade(config: FacadeConfig) {
   const { db } = config;
-  const owners: OwnersService = openOwnersModule(db).service;
-  const splits: SplitsService = openSplitsModule(db).service;
-  const labels: LabelsService = openLabelsModule(db).service;
+  const org = orgScope(config.orgId);
+  // the sources service must be of the same organization: its registry gives the loaded files every read starts from
+  if (config.sources.orgId !== config.orgId)
+    throw new Error('The sources service is opened under another organization than the facade');
+  const opened = openModules(db, org, {
+    // the original statements of the organization (D-170): two organizations may load the same file
+    publishingDir: join(config.dataDir, 'orgs', config.orgId, 'files', 'publishing'),
+  });
+  const owners: OwnersService = opened.owners;
+  const splits: SplitsService = opened.splits;
+  const labels: LabelsService = opened.labels;
   const sources: SourcesService = config.sources;
-  const settlements: SettlementsService = openSettlementsModule(db).service;
-  const publishing: PublishingService = openPublishingModule(
-    db,
-    join(config.dataDir, 'files', 'publishing'),
-  ).service;
-  const audit: AuditService = openAuditModule(db).service;
-  const ads: AdsService = openAdsModule(db).service;
+  const settlements: SettlementsService = opened.settlements;
+  const publishing: PublishingService = opened.publishing;
+  const audit: AuditService = opened.audit;
+  const ads: AdsService = opened.ads;
   const ctx = createFacadeContext(config, {
     db,
     owners,
@@ -55,6 +62,8 @@ export function openFacade(config: FacadeConfig) {
   const splitsPart = splitsApi(ctx);
   return {
     db,
+    /** The organization every module of this facade is opened under (D-170). */
+    orgId: config.orgId,
     modules: { owners, splits, labels, sources, settlements, publishing, audit, ads },
 
     ...splitsPart,

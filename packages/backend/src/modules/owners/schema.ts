@@ -8,6 +8,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 const s = pgSchema('owners');
 
 export const owners = s.table('owners', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   nameNorm: text('name_norm').notNull(),
@@ -21,6 +22,7 @@ export const owners = s.table('owners', {
 export const ownerAliases = s.table(
   'owner_aliases',
   {
+    orgId: text('org_id').notNull(),
     ownerId: text('owner_id').notNull(),
     alias: text('alias').notNull(),
     aliasNorm: text('alias_norm').notNull(),
@@ -29,6 +31,7 @@ export const ownerAliases = s.table(
 );
 
 export const artists = s.table('artists', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   pseudonym: text('pseudonym').notNull(),
   pseudonymNorm: text('pseudonym_norm').notNull(),
@@ -39,6 +42,7 @@ export const artists = s.table('artists', {
 });
 
 export const tracks = s.table('tracks', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   isrc: text('isrc'),
   upc: text('upc'),
@@ -50,6 +54,7 @@ export const tracks = s.table('tracks', {
 export const artistTracks = s.table(
   'artist_tracks',
   {
+    orgId: text('org_id').notNull(),
     artistId: text('artist_id').notNull(),
     trackId: text('track_id').notNull(),
   },
@@ -57,6 +62,7 @@ export const artistTracks = s.table(
 );
 
 export const documents = s.table('documents', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   kind: text('kind').notNull(),
   title: text('title').notNull(),
@@ -73,6 +79,7 @@ export const documents = s.table('documents', {
 });
 
 export const contracts = s.table('contracts', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   ownerId: text('owner_id').notNull(),
   documentId: text('document_id').notNull(),
@@ -83,6 +90,7 @@ export const contracts = s.table('contracts', {
 export const contractArtists = s.table(
   'contract_artists',
   {
+    orgId: text('org_id').notNull(),
     contractId: text('contract_id').notNull(),
     artistId: text('artist_id').notNull(),
   },
@@ -90,6 +98,7 @@ export const contractArtists = s.table(
 );
 
 export const merges = s.table('merges', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   entity: text('entity', { enum: ['owner', 'artist'] }).notNull(),
   fromId: text('from_id').notNull(),

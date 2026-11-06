@@ -5,6 +5,7 @@ import { createSettlementsRepository } from './repository';
 import type { OperationFilter, OperationRow } from './repository';
 export type { OperationFilter };
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import type { Scope, ScopeKind } from './recoup-types';
 
 export interface OperationView {
@@ -95,8 +96,8 @@ function validateScope(scope: Scope): Scope {
   return { kind: scope.kind, ...(isrcs ? { isrcs } : {}), ...(excludeIsrcs ? { excludeIsrcs } : {}) };
 }
 
-export function createSettlementsService(db: Db) {
-  const repo = createSettlementsRepository(db);
+export function createSettlementsService(db: Db, org: OrgScope) {
+  const repo = createSettlementsRepository(db, org);
 
   async function get(id: string): Promise<OperationRow> {
     const o = await repo.getOperation(id);

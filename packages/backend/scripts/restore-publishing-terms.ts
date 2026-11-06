@@ -10,19 +10,23 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { join, resolve } from 'node:path';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, orgFilesDir, takeOrgArgument } from '../src/connect-sources';
+import { orgScope } from '../src/shared/org-scope';
 import { openOwnersModule } from '../src/modules/owners';
 import { openPublishingModule } from '../src/modules/publishing';
 
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(process.argv[2] ?? join(root, 'data', 'real'));
 const erp = new DatabaseSync(resolve(root, 'context_data', 'data', 'erp', 'data', 'erp.db'), {
   readOnly: true,
 });
-const stack = connectSources(join(dataDir, 'files', 'sources'));
+const stack = await connectOrg({ dataDir, org: ORG });
 const { db } = stack;
-const owners = openOwnersModule(db);
-const publishing = openPublishingModule(db, join(dataDir, 'files', 'publishing'));
+const org = orgScope(stack.orgId);
+const owners = openOwnersModule(db, org);
+const publishing = openPublishingModule(db, org, orgFilesDir(dataDir, stack.orgId, 'publishing'));
 
 const pubParties = new Set(
   (

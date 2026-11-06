@@ -9,6 +9,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 const s = pgSchema('settlements');
 
 export const operations = s.table('operations', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   direction: text('direction', { enum: ['in', 'out'] }).notNull(),
   amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
@@ -33,6 +34,7 @@ export const operations = s.table('operations', {
 });
 
 export const payoutSnapshots = s.table('payout_snapshots', {
+  orgId: text('org_id').notNull(),
   operationId: text('operation_id').primaryKey(),
   createdAt: isoTimestamp('created_at').notNull(),
   /** The snapshot JSON exactly as written (text, not jsonb, so it is kept byte for byte). */

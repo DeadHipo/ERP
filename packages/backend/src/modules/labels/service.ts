@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
+import type { OrgScope } from '../../shared/org-scope';
 import type { AccountRow, AliasRow, LabelRow, RuleRow } from './repository';
 import { createLabelsRepository } from './repository';
 
@@ -72,8 +73,8 @@ const ruleView = (r: RuleRow): RuleView => ({
   note: r.note,
 });
 
-export function createLabelsService(db: Db) {
-  const repo = createLabelsRepository(db);
+export function createLabelsService(db: Db, org: OrgScope) {
+  const repo = createLabelsRepository(db, org);
 
   const view = (l: LabelRow, aliases: AliasRow[], rules: RuleRow[], accounts: AccountRow[]): LabelView => ({
     id: l.id,
@@ -108,6 +109,9 @@ export function createLabelsService(db: Db) {
         } else if (input.ownLabelId) {
           throw new ValidationError('An own label has no own label id');
         }
+        // one name per organization (labels_org_name, D-170); writes are serialized, so the check holds at insert
+        if (await repo.labelByName(name))
+          throw new ConflictError(`A label named "${name}" already exists`, 'label_name_taken');
         const id = newId();
         await repo.insertLabel({ id, name, kind: input.kind, ownLabelId, createdAt: nowIso() });
         return service.getLabel(id);

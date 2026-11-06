@@ -27,6 +27,8 @@ fi
 npm run build -w @erp/frontend
 
 mkdir -p data/test-tmp/e2e-data
-exec env DB_DATABASE=erp_e2e CLICKHOUSE_DATABASE=believe_e2e PAYOUT_THRESHOLD_CENTS=0 PORT=3100 \
+# the API opens the organization the seed created (D-170): its id is in the keys file
+ERP_DEFAULT_ORG=$(node -p "require('./data/test-tmp/e2e-keys.json').orgId")
+exec env DB_DATABASE=erp_e2e CLICKHOUSE_DATABASE=believe_e2e PAYOUT_THRESHOLD_CENTS=0 PORT=3100 ERP_DEFAULT_ORG="$ERP_DEFAULT_ORG" \
   ERP_DATA_DIR=data/test-tmp/e2e-data \
   npx tsx packages/backend/src/main.ts data/test-tmp/e2e-data

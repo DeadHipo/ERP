@@ -10,17 +10,20 @@
  */
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { calculate } from '../src/facade/calculation';
 import { ownerBalance } from '../src/facade/balance';
 import { ownerReach } from '../src/facade/owner-scope';
 import { scoped } from '../src/facade/scope';
 
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
+
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(process.argv[2] ?? join(root, 'data'));
 const limit = Number(process.argv[3] ?? 0);
-const stack = connectSources(join(dataDir, 'files', 'sources'));
-const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
+const stack = await connectOrg({ dataDir: dataDir, org: ORG });
+const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
 
 const text = (x: unknown) => JSON.stringify(x, (k, v: unknown) => (k === 'calculatedAt' ? undefined : v));
 

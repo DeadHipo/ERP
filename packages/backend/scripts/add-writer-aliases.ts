@@ -9,19 +9,22 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { join, resolve } from 'node:path';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
+import { orgScope } from '../src/shared/org-scope';
 import { openOwnersModule } from '../src/modules/owners';
 import { normalizeName } from '../src/shared/identifiers';
 import { loadImroWriterNames, MAIN_DB_DEFAULT } from './legacy-writers';
 
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(process.argv[2] ?? join(root, 'data', 'real'));
 const erp = new DatabaseSync(resolve(root, 'context_data', 'data', 'erp', 'data', 'erp.db'), {
   readOnly: true,
 });
 const imro = loadImroWriterNames(resolve(root, 'context_data', MAIN_DB_DEFAULT));
-const stack = connectSources(join(dataDir, 'files', 'sources'));
-const owners = openOwnersModule(stack.db);
+const stack = await connectOrg({ dataDir, org: ORG });
+const owners = openOwnersModule(stack.db, orgScope(stack.orgId));
 
 let added = 0;
 let ownersWithNames = 0;

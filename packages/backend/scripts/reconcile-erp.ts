@@ -13,9 +13,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import Decimal from 'decimal.js';
 import { openFacade } from '../src/facade';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { calculate } from '../src/facade/calculation';
 import { normalizeIsrc } from '../src/shared/identifiers';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(process.argv[2] ?? join(root, 'data', 'demo'));
@@ -30,9 +33,9 @@ const ACCOUNT = process.env.ACCOUNT ?? '1052428';
 const inScope = (u: { reportingMonth: string; account: string }) =>
   u.reportingMonth === MONTH && u.account === ACCOUNT;
 
-const stack = connectSources(join(dataDir, 'files', 'sources')); // PostgreSQL + ClickHouse (docker compose up -d)
+const stack = await connectOrg({ dataDir, org: ORG }); // PostgreSQL + ClickHouse (docker compose up -d)
 const { db } = stack;
-const f = openFacade({ db, dataDir, payoutThresholdCents: 0, sources: stack.sources });
+const f = openFacade({ db, orgId: stack.orgId, dataDir, payoutThresholdCents: 0, sources: stack.sources });
 const { owners, splits, labels, sources, publishing, ads } = f.modules;
 const calc = await calculate({ db, owners, splits, labels, sources, publishing, ads });
 

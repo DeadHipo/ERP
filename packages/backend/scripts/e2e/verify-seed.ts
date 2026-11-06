@@ -7,9 +7,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openFacade } from '../../src/facade';
-import { connectSources } from '../../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../../src/connect-sources';
 import { ZERO } from '../../src/shared/money';
 import type { SeedKeys } from './keys';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 const name = process.argv[2];
 if (!name || !/^[a-z0-9_]+$/.test(name)) {
@@ -28,8 +31,8 @@ try {
 }
 process.env.DB_DATABASE = keys.stores.pg;
 process.env.CLICKHOUSE_DATABASE = keys.stores.ch;
-const { db, sources, close } = connectSources(join(keys.dataDir, 'files', 'sources'));
-const f = openFacade({ db, dataDir: keys.dataDir, payoutThresholdCents: 0, sources });
+const { db, sources, close, orgId } = await connectOrg({ dataDir: keys.dataDir, org: ORG ?? keys.orgId });
+const f = openFacade({ db, orgId, dataDir: keys.dataDir, payoutThresholdCents: 0, sources });
 
 let fails = 0;
 let passes = 0;

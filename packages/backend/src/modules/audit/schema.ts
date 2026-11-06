@@ -7,6 +7,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 const s = pgSchema('audit');
 
 export const actions = s.table('actions', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   at: isoTimestamp('at').notNull().default(sql`now()`),
   operator: text('operator').notNull(),

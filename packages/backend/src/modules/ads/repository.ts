@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
+import { orgFree, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import { expenses } from './schema';
 
-export type ExpenseRow = typeof expenses.$inferSelect;
+export type ExpenseRow = OrgFree<typeof expenses.$inferSelect>;
 
 export interface ExpenseFilter {
   isrc?: string;
@@ -15,16 +16,17 @@ export interface ExpenseFilter {
   labelId?: string | null;
 }
 
-/** All SQL of the ads module lives here (schema `ads`). */
-export function createAdsRepository(db: Db) {
+/** All SQL of the ads module lives here (schema `ads`); every statement is of the organization `org` (D-170). */
+export function createAdsRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
+  const C = orgFree(expenses);
   return {
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
-    insert: async (rows: (typeof expenses.$inferInsert)[]) => {
-      if (rows.length > 0) await orm().insert(expenses).values(rows);
+    insert: async (rows: OrgFree<typeof expenses.$inferInsert>[]) => {
+      if (rows.length > 0) await orm().insert(expenses).values(orgRows(org, rows));
     },
     get: async (id: string): Promise<ExpenseRow | undefined> =>
-      (await orm().select().from(expenses).where(eq(expenses.id, id)))[0],
+      (await orm().select(C).from(expenses).where(orgWhere(org, expenses, eq(expenses.id, id))))[0],
     /** External refs that already exist among the given ones. */
     existingRefs: async (refs: string[]): Promise<Set<string>> => {
       if (refs.length === 0) return new Set();
@@ -33,7 +35,7 @@ export function createAdsRepository(db: Db) {
         const rows = await orm()
           .select({ r: expenses.externalRef })
           .from(expenses)
-          .where(inArray(expenses.externalRef, refs.slice(i, i + 5000)));
+          .where(orgWhere(org, expenses, inArray(expenses.externalRef, refs.slice(i, i + 5000))));
         for (const r of rows) if (r.r) out.add(r.r);
       }
       return out;
@@ -41,10 +43,12 @@ export function createAdsRepository(db: Db) {
     /** Newest month first. */
     list: (f: ExpenseFilter = {}) =>
       orm()
-        .select()
+        .select(C)
         .from(expenses)
         .where(
-          and(
+          orgWhere(
+            org,
+            expenses,
             f.isrc ? eq(expenses.isrc, f.isrc) : undefined,
             f.artistIds ? inArray(expenses.artistId, f.artistIds.length ? f.artistIds : ['']) : undefined,
             f.from ? gte(expenses.month, f.from) : undefined,
@@ -58,12 +62,12 @@ export function createAdsRepository(db: Db) {
           ),
         )
         .orderBy(desc(expenses.month), desc(expenses.createdAt), expenses.id),
-    all: () => orm().select().from(expenses),
+    all: () => orm().select(C).from(expenses).where(orgWhere(org, expenses)),
     update: async (
       id: string,
       set: Partial<Pick<ExpenseRow, 'recoveryPercent' | 'scope' | 'deactivatedAt' | 'deactivatedReason' | 'labelId'>>,
     ) => {
-      await orm().update(expenses).set(set).where(eq(expenses.id, id));
+      await orm().update(expenses).set(set).where(orgWhere(org, expenses, eq(expenses.id, id)));
     },
     /** Sets the label of a record that has none (a migration script, D-169); false when it already has one. */
     assignLabel: async (id: string, labelId: string): Promise<boolean> =>
@@ -71,7 +75,7 @@ export function createAdsRepository(db: Db) {
         await orm()
           .update(expenses)
           .set({ labelId })
-          .where(and(eq(expenses.id, id), isNull(expenses.labelId)))
+          .where(orgWhere(org, expenses, eq(expenses.id, id), isNull(expenses.labelId)))
           .returning({ id: expenses.id })
       ).length > 0,
   };

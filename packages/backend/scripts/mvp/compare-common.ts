@@ -5,9 +5,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { openFacade } from '../../src/facade';
-import { connectSources } from '../../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../../src/connect-sources';
 import { calculate, type Calculation } from '../../src/facade/calculation';
 import { Decimal, ZERO } from '../../src/shared/money';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 export { Decimal, ZERO };
 export const ROOT = resolve(import.meta.dirname, '..', '..', '..', '..');
@@ -29,8 +32,8 @@ export const flag = (name: string) => process.argv.includes(`--${name}`);
 
 export async function bootstrap() {
   const dataDir = resolve(process.env.DATA_DIR ?? join(ROOT, 'data', 'real'));
-  const stack = connectSources(join(dataDir, 'files', 'sources'));
-  const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 0, sources: stack.sources });
+  const stack = await connectOrg({ dataDir, org: ORG });
+  const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir, payoutThresholdCents: 0, sources: stack.sources });
   const { owners, splits, labels, sources, settlements, publishing, ads } = f.modules;
   const modules = { db: stack.db, owners, splits, labels, sources, publishing, ads };
   return { stack, f, modules, settlements, owners, close: () => stack.close() };

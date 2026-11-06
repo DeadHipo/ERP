@@ -3,6 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createBelieveColumnar, createSourcesService, createSourceFilesRegistry } from '../../src/modules/sources';
 import { createPrivateStores } from '../../src/shared/private-stores';
+import { orgScope } from '../../src/shared/org-scope';
 import { TMP } from './tmp-root';
 import './stack';
 
@@ -19,7 +20,7 @@ export async function createIsolatedSources() {
   const storageDir = join(TMP, `sources-${id}`);
   mkdirSync(storageDir, { recursive: true });
 
-  const registry = createSourceFilesRegistry(pg.pool);
+  const registry = createSourceFilesRegistry(pg.pool, orgScope(stores.orgId));
   const columnar = createBelieveColumnar(ch, { database, stageDatabase });
   const service = createSourcesService({ registry, columnar, storageDir });
 
@@ -27,6 +28,8 @@ export async function createIsolatedSources() {
     pg,
     ch,
     db,
+    /** The organization of the private stores (D-170): every facade and the registry here are opened under it. */
+    orgId: stores.orgId,
     registry,
     columnar,
     service,

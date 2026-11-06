@@ -8,6 +8,7 @@ import { isoTimestamp } from '../../shared/pg-db';
 const s = pgSchema('ads');
 
 export const expenses = s.table('expenses', {
+  orgId: text('org_id').notNull(),
   id: text('id').primaryKey(),
   isrc: text('isrc'),
   /** First day of the month of the expense. */

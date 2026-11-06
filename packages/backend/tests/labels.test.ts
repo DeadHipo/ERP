@@ -21,6 +21,20 @@ describe('labels module (D-125)', () => {
     });
   });
 
+  it('a second label with the same name in the organization is refused (label_name_taken, D-170)', async () => {
+    const f = await newFacade();
+    const l = f.modules.labels;
+    const echo = (await l.listLabels()).find((x) => x.name === 'Echo8')!;
+    await expect(l.createLabel({ name: '0to8', kind: 'own' })).rejects.toMatchObject({
+      code: 'label_name_taken',
+      statusCode: 409,
+    });
+    await expect(l.createLabel({ name: ' Echo8 ', kind: 'sublabel', ownLabelId: echo.id })).rejects.toMatchObject({
+      code: 'label_name_taken',
+    });
+    expect((await l.listLabels()).length).toBe(2);
+  });
+
   it('normalises aliases and keeps them unique', async () => {
     const f = await newFacade();
     const l = f.modules.labels;

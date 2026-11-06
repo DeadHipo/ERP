@@ -24,9 +24,11 @@ export interface FacadeConfig {
    * The caller owns the pool and closes it.
    */
   db: Db;
-  /** Directory of the kept original files (files/publishing/...). */
+  /** The organization the modules are opened under (D-170); `sources.orgId` must be the same. */
+  orgId: string;
+  /** Directory of the kept original files (orgs/<orgId>/files/publishing/...). */
   dataDir: string;
-  /** The sources module: Believe files in PostgreSQL + ClickHouse. The caller owns the connections and closes them. */
+  /** The sources module of the same organization: Believe files in PostgreSQL + ClickHouse. The caller owns the connections and closes them. */
   sources: SourcesService;
   /** Payout threshold: not part of the calculation, below it the payout button is unavailable. */
   payoutThresholdCents: number;

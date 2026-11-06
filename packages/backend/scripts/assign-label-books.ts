@@ -25,9 +25,12 @@
  */
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
-import { connectSources } from '../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { calculate } from '../src/facade/calculation';
 import { centsToDecimal, ZERO, type Decimal } from '../src/shared/money';
+
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
@@ -36,8 +39,8 @@ const stepAt = args.indexOf('--step');
 const only = stepAt >= 0 ? args[stepAt + 1] : undefined;
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const dataDir = resolve(args.find((a, i) => !a.startsWith('--') && (stepAt < 0 || i !== stepAt + 1)) ?? join(root, 'data'));
-const stack = connectSources(join(dataDir, 'files', 'sources'));
-const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
+const stack = await connectOrg({ dataDir: dataDir, org: ORG });
+const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
 
 type Facade = typeof f;
 /** A step returns false when it stopped on a problem the operator must fix first. */

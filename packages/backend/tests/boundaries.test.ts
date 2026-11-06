@@ -31,6 +31,17 @@ describe('module boundaries (README 4)', () => {
     }
   });
 
+  it('modules and the facade import neither src/orgs nor src/auth; the organization reaches them only as the shared OrgScope (D-170)', () => {
+    const files = [...MODULES.flatMap((m) => filesOf(join(SRC, 'modules', m))), ...filesOf(join(SRC, 'facade'))];
+    for (const file of files) {
+      const imports = [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)].map((x) => x[1] as string);
+      for (const imp of imports) expect(imp, `${file} imports ${imp}`).not.toMatch(/(^|\/)(orgs|auth)(\/|$)/);
+    }
+    // the modules know the organization only through the helper in shared/, which knows no module
+    const helper = readFileSync(join(SRC, 'shared', 'org-scope.ts'), 'utf8');
+    expect(helper).not.toMatch(/from '\.\.\/(modules|facade|orgs|auth|api)/);
+  });
+
   it('the layers import only the shared helpers, each other and the fixed shapes of four modules (D-169: the book is no layer input)', () => {
     const allowed = new Set([
       '../../modules/labels',

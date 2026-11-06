@@ -1,5 +1,6 @@
-import { and, eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
+import { orgFree, orgQuery, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import {
   artistTracks,
   artists,
@@ -12,13 +13,15 @@ import {
   tracks,
 } from './schema';
 
-export type OwnerRow = typeof owners.$inferSelect;
-export type AliasRow = typeof ownerAliases.$inferSelect;
-export type ArtistRow = typeof artists.$inferSelect;
-export type TrackRow = typeof tracks.$inferSelect;
-export type DocumentRow = typeof documents.$inferSelect;
-export type ContractRow = typeof contracts.$inferSelect;
-export type ContractArtistRow = typeof contractArtists.$inferSelect;
+export type OwnerRow = OrgFree<typeof owners.$inferSelect>;
+export type AliasRow = OrgFree<typeof ownerAliases.$inferSelect>;
+export type ArtistRow = OrgFree<typeof artists.$inferSelect>;
+export type TrackRow = OrgFree<typeof tracks.$inferSelect>;
+export type DocumentRow = OrgFree<typeof documents.$inferSelect>;
+export type ContractRow = OrgFree<typeof contracts.$inferSelect>;
+export type ContractArtistRow = OrgFree<typeof contractArtists.$inferSelect>;
+export type ArtistTrackRow = OrgFree<typeof artistTracks.$inferSelect>;
+export type MergeRow = OrgFree<typeof merges.$inferSelect>;
 
 /** `col = ANY($1)` with the whole list as one array parameter (no parameter-count limit for long lists). */
 const anyOf = (col: AnyColumn, ids: string[]): SQL => sql`${col} = any(${sql.param(ids)}::text[])`;
@@ -30,147 +33,172 @@ const byBytes = (col: AnyColumn): SQL => sql`${col} collate "C"`;
 const containsText = (col: AnyColumn, q: string): SQL =>
   sql`lower(${col}) like ${`%${q.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`} escape '\\'`;
 
-/** All SQL of module 1 lives here (schema `owners`). */
-export function createOwnersRepository(db: Db) {
+/** All SQL of module 1 lives here (schema `owners`); every statement is of the organization `org` (D-170). */
+export function createOwnersRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
+  const q = orgQuery(db, org);
+  const C = {
+    owners: orgFree(owners),
+    ownerAliases: orgFree(ownerAliases),
+    artists: orgFree(artists),
+    tracks: orgFree(tracks),
+    artistTracks: orgFree(artistTracks),
+    documents: orgFree(documents),
+    contracts: orgFree(contracts),
+    contractArtists: orgFree(contractArtists),
+    merges: orgFree(merges),
+  };
   return {
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
 
-    insertOwner: async (row: typeof owners.$inferInsert) => {
-      await orm().insert(owners).values(row);
+    insertOwner: async (row: OrgFree<typeof owners.$inferInsert>) => {
+      await orm().insert(owners).values(orgRow(org, row));
     },
     getOwner: async (id: string): Promise<OwnerRow | undefined> =>
-      (await orm().select().from(owners).where(eq(owners.id, id)))[0],
+      (await orm().select(C.owners).from(owners).where(orgWhere(org, owners, eq(owners.id, id))))[0],
     listOwners: () =>
-      orm().select().from(owners).where(isNull(owners.mergedInto)).orderBy(byBytes(owners.name)),
-    allOwners: () => orm().select().from(owners),
+      orm()
+        .select(C.owners)
+        .from(owners)
+        .where(orgWhere(org, owners, isNull(owners.mergedInto)))
+        .orderBy(byBytes(owners.name)),
+    allOwners: () => orm().select(C.owners).from(owners).where(orgWhere(org, owners)),
     setOwnerMergedInto: async (id: string, into: string) => {
-      await orm().update(owners).set({ mergedInto: into }).where(eq(owners.id, id));
+      await orm().update(owners).set({ mergedInto: into }).where(orgWhere(org, owners, eq(owners.id, id)));
     },
     ownersByNameNorm: (norm: string) =>
       orm()
-        .select()
+        .select(C.owners)
         .from(owners)
-        .where(and(eq(owners.nameNorm, norm), isNull(owners.mergedInto))),
+        .where(orgWhere(org, owners, eq(owners.nameNorm, norm), isNull(owners.mergedInto))),
 
-    insertAlias: async (row: typeof ownerAliases.$inferInsert) => {
-      await orm().insert(ownerAliases).values(row).onConflictDoNothing();
+    insertAlias: async (row: OrgFree<typeof ownerAliases.$inferInsert>) => {
+      await orm().insert(ownerAliases).values(orgRow(org, row)).onConflictDoNothing();
     },
     aliasesOf: (ownerId: string) =>
-      orm().select().from(ownerAliases).where(eq(ownerAliases.ownerId, ownerId)),
-    allAliases: () => orm().select().from(ownerAliases),
+      orm()
+        .select(C.ownerAliases)
+        .from(ownerAliases)
+        .where(orgWhere(org, ownerAliases, eq(ownerAliases.ownerId, ownerId))),
+    allAliases: () => orm().select(C.ownerAliases).from(ownerAliases).where(orgWhere(org, ownerAliases)),
     ownerIdsByAlias: async (norm: string) =>
       (
         await orm()
           .select({ ownerId: ownerAliases.ownerId })
           .from(ownerAliases)
-          .where(eq(ownerAliases.aliasNorm, norm))
+          .where(orgWhere(org, ownerAliases, eq(ownerAliases.aliasNorm, norm)))
       ).map((r) => r.ownerId),
     /** Aliases of `from` go to `into`; an alias `into` already has keeps its own spelling. */
     moveAliases: async (from: string, into: string) => {
-      await db.query(
-        `INSERT INTO owners.owner_aliases (owner_id, alias, alias_norm)
-         SELECT $2, alias, alias_norm FROM owners.owner_aliases WHERE owner_id = $1
+      await q(
+        `INSERT INTO owners.owner_aliases (org_id, owner_id, alias, alias_norm)
+         SELECT org_id, $3, alias, alias_norm FROM owners.owner_aliases WHERE org_id = $1 AND owner_id = $2
          ON CONFLICT DO NOTHING`,
         [from, into],
       );
-      await orm().delete(ownerAliases).where(eq(ownerAliases.ownerId, from));
+      await orm().delete(ownerAliases).where(orgWhere(org, ownerAliases, eq(ownerAliases.ownerId, from)));
     },
 
-    insertArtist: async (row: typeof artists.$inferInsert) => {
-      await orm().insert(artists).values(row);
+    insertArtist: async (row: OrgFree<typeof artists.$inferInsert>) => {
+      await orm().insert(artists).values(orgRow(org, row));
     },
     getArtist: async (id: string): Promise<ArtistRow | undefined> =>
-      (await orm().select().from(artists).where(eq(artists.id, id)))[0],
-    allArtists: () => orm().select().from(artists),
+      (await orm().select(C.artists).from(artists).where(orgWhere(org, artists, eq(artists.id, id))))[0],
+    allArtists: () => orm().select(C.artists).from(artists).where(orgWhere(org, artists)),
     artistsOfOwner: (ownerId: string) =>
       orm()
-        .select()
+        .select(C.artists)
         .from(artists)
-        .where(and(eq(artists.ownerId, ownerId), isNull(artists.mergedInto)))
+        .where(orgWhere(org, artists, eq(artists.ownerId, ownerId), isNull(artists.mergedInto)))
         .orderBy(byBytes(artists.pseudonym)),
     artistsByPseudonymNorm: (norm: string) =>
       orm()
-        .select()
+        .select(C.artists)
         .from(artists)
-        .where(and(eq(artists.pseudonymNorm, norm), isNull(artists.mergedInto))),
+        .where(orgWhere(org, artists, eq(artists.pseudonymNorm, norm), isNull(artists.mergedInto))),
     setArtistOwner: async (id: string, ownerId: string) => {
-      await orm().update(artists).set({ ownerId }).where(eq(artists.id, id));
+      await orm().update(artists).set({ ownerId }).where(orgWhere(org, artists, eq(artists.id, id)));
     },
     moveArtistsToOwner: async (from: string, into: string) => {
-      await orm().update(artists).set({ ownerId: into }).where(eq(artists.ownerId, from));
+      await orm().update(artists).set({ ownerId: into }).where(orgWhere(org, artists, eq(artists.ownerId, from)));
     },
     setArtistMergedInto: async (id: string, into: string) => {
-      await orm().update(artists).set({ mergedInto: into }).where(eq(artists.id, id));
+      await orm().update(artists).set({ mergedInto: into }).where(orgWhere(org, artists, eq(artists.id, id)));
     },
 
-    insertTrack: async (row: typeof tracks.$inferInsert) => {
-      await orm().insert(tracks).values(row);
+    insertTrack: async (row: OrgFree<typeof tracks.$inferInsert>) => {
+      await orm().insert(tracks).values(orgRow(org, row));
     },
     getTrack: async (id: string): Promise<TrackRow | undefined> =>
-      (await orm().select().from(tracks).where(eq(tracks.id, id)))[0],
+      (await orm().select(C.tracks).from(tracks).where(orgWhere(org, tracks, eq(tracks.id, id))))[0],
     trackByPair: async (isrc: string, upc: string): Promise<TrackRow | undefined> =>
       (
         await orm()
-          .select()
+          .select(C.tracks)
           .from(tracks)
-          .where(and(eq(tracks.isrc, isrc), eq(tracks.upc, upc)))
+          .where(orgWhere(org, tracks, eq(tracks.isrc, isrc), eq(tracks.upc, upc)))
       )[0],
-    tracksByIsrc: (isrc: string) => orm().select().from(tracks).where(eq(tracks.isrc, isrc)),
+    tracksByIsrc: (isrc: string) =>
+      orm().select(C.tracks).from(tracks).where(orgWhere(org, tracks, eq(tracks.isrc, isrc))),
     /** Every track, or (the unit scope of the facade, D-162) only those registered under the given ISRCs. */
     allTracks: (isrcs?: string[]) =>
       isrcs && isrcs.length === 0
-        ? Promise.resolve([] as (typeof tracks.$inferSelect)[])
+        ? Promise.resolve([] as TrackRow[])
         : orm()
-            .select()
+            .select(C.tracks)
             .from(tracks)
-            .where(isrcs ? inArray(tracks.isrc, isrcs) : undefined),
+            .where(orgWhere(org, tracks, isrcs ? inArray(tracks.isrc, isrcs) : undefined)),
     setTrackIds: async (id: string, isrc: string | null, upc: string | null) => {
-      await orm().update(tracks).set({ isrc, upc }).where(eq(tracks.id, id));
+      await orm().update(tracks).set({ isrc, upc }).where(orgWhere(org, tracks, eq(tracks.id, id)));
     },
 
     setTrackNote: async (id: string, note: string | null) => {
-      await orm().update(tracks).set({ note }).where(eq(tracks.id, id));
+      await orm().update(tracks).set({ note }).where(orgWhere(org, tracks, eq(tracks.id, id)));
     },
     linkArtistTrack: async (artistId: string, trackId: string) => {
-      await orm().insert(artistTracks).values({ artistId, trackId }).onConflictDoNothing();
+      await orm().insert(artistTracks).values(orgRow(org, { artistId, trackId })).onConflictDoNothing();
     },
     tracksOfArtists: async (artistIds: string[]) =>
       artistIds.length === 0
         ? []
         : orm()
-            .select({ artistId: artistTracks.artistId, track: tracks })
+            .select({ artistId: artistTracks.artistId, track: C.tracks })
             .from(artistTracks)
-            .innerJoin(tracks, eq(tracks.id, artistTracks.trackId))
-            .where(anyOf(artistTracks.artistId, artistIds)),
+            .innerJoin(tracks, orgWhere(org, tracks, eq(tracks.id, artistTracks.trackId)))
+            .where(orgWhere(org, artistTracks, anyOf(artistTracks.artistId, artistIds))),
     artistLinksOfTrack: (trackId: string) =>
-      orm().select().from(artistTracks).where(eq(artistTracks.trackId, trackId)),
+      orm()
+        .select(C.artistTracks)
+        .from(artistTracks)
+        .where(orgWhere(org, artistTracks, eq(artistTracks.trackId, trackId))),
     /** Every artist → track link, or (the unit scope of the facade, D-166) only those of the given tracks. */
     artistLinksOfTracks: (trackIds?: string[]) =>
       trackIds && trackIds.length === 0
-        ? Promise.resolve([] as (typeof artistTracks.$inferSelect)[])
+        ? Promise.resolve([] as ArtistTrackRow[])
         : orm()
-            .select()
+            .select(C.artistTracks)
             .from(artistTracks)
-            .where(trackIds ? anyOf(artistTracks.trackId, trackIds) : undefined),
+            .where(orgWhere(org, artistTracks, trackIds ? anyOf(artistTracks.trackId, trackIds) : undefined)),
     moveArtistTracks: async (from: string, into: string) => {
-      await db.query(
-        `INSERT INTO owners.artist_tracks (artist_id, track_id)
-         SELECT $2, track_id FROM owners.artist_tracks WHERE artist_id = $1
+      await q(
+        `INSERT INTO owners.artist_tracks (org_id, artist_id, track_id)
+         SELECT org_id, $3, track_id FROM owners.artist_tracks WHERE org_id = $1 AND artist_id = $2
          ON CONFLICT DO NOTHING`,
         [from, into],
       );
-      await orm().delete(artistTracks).where(eq(artistTracks.artistId, from));
+      await orm().delete(artistTracks).where(orgWhere(org, artistTracks, eq(artistTracks.artistId, from)));
     },
 
-    insertDocument: async (row: typeof documents.$inferInsert) => {
-      await orm().insert(documents).values(row);
+    insertDocument: async (row: OrgFree<typeof documents.$inferInsert>) => {
+      await orm().insert(documents).values(orgRow(org, row));
     },
     getDocument: async (id: string): Promise<DocumentRow | undefined> =>
-      (await orm().select().from(documents).where(eq(documents.id, id)))[0],
+      (await orm().select(C.documents).from(documents).where(orgWhere(org, documents, eq(documents.id, id))))[0],
     documentsByIds: async (ids: string[]) =>
-      ids.length === 0 ? [] : orm().select().from(documents).where(anyOf(documents.id, ids)),
-    allDocuments: () => orm().select().from(documents),
+      ids.length === 0
+        ? []
+        : orm().select(C.documents).from(documents).where(orgWhere(org, documents, anyOf(documents.id, ids))),
+    allDocuments: () => orm().select(C.documents).from(documents).where(orgWhere(org, documents)),
     listDocuments: (
       f: {
         ownerId?: string;
@@ -197,93 +225,105 @@ export function createOwnersRepository(db: Db) {
               ? sql`(not ${noFile} and not ${waiting})`
               : undefined,
       ];
-      const q = orm()
-        .select()
+      const query = orm()
+        .select(C.documents)
         .from(documents)
-        .where(and(...conds))
+        .where(orgWhere(org, documents, ...conds))
         .orderBy(documents.createdAt, documents.id);
-      return f.limit === undefined ? q : q.limit(f.limit);
+      return f.limit === undefined ? query : query.limit(f.limit);
     },
-    updateDocument: async (id: string, patch: Partial<typeof documents.$inferInsert>) => {
-      await orm().update(documents).set(patch).where(eq(documents.id, id));
+    updateDocument: async (id: string, patch: Partial<OrgFree<typeof documents.$inferInsert>>) => {
+      await orm().update(documents).set(patch).where(orgWhere(org, documents, eq(documents.id, id)));
     },
     moveDocuments: async (from: string, into: string) => {
-      await orm().update(documents).set({ ownerId: into }).where(eq(documents.ownerId, from));
+      await orm().update(documents).set({ ownerId: into }).where(orgWhere(org, documents, eq(documents.ownerId, from)));
     },
 
-    insertContract: async (row: typeof contracts.$inferInsert) => {
-      await orm().insert(contracts).values(row);
+    insertContract: async (row: OrgFree<typeof contracts.$inferInsert>) => {
+      await orm().insert(contracts).values(orgRow(org, row));
     },
     contractsOfOwner: (ownerId: string) =>
-      orm().select().from(contracts).where(eq(contracts.ownerId, ownerId)),
-    allContracts: () => orm().select().from(contracts),
+      orm().select(C.contracts).from(contracts).where(orgWhere(org, contracts, eq(contracts.ownerId, ownerId))),
+    allContracts: () => orm().select(C.contracts).from(contracts).where(orgWhere(org, contracts)),
     moveContracts: async (from: string, into: string) => {
-      await orm().update(contracts).set({ ownerId: into }).where(eq(contracts.ownerId, from));
+      await orm().update(contracts).set({ ownerId: into }).where(orgWhere(org, contracts, eq(contracts.ownerId, from)));
     },
     linkContractArtist: async (contractId: string, artistId: string) => {
-      await orm().insert(contractArtists).values({ contractId, artistId }).onConflictDoNothing();
+      await orm().insert(contractArtists).values(orgRow(org, { contractId, artistId })).onConflictDoNothing();
     },
     contractArtistsOf: async (contractIds: string[]) =>
       contractIds.length === 0
         ? []
-        : orm().select().from(contractArtists).where(anyOf(contractArtists.contractId, contractIds)),
-    allContractArtists: () => orm().select().from(contractArtists),
+        : orm()
+            .select(C.contractArtists)
+            .from(contractArtists)
+            .where(orgWhere(org, contractArtists, anyOf(contractArtists.contractId, contractIds))),
+    allContractArtists: () =>
+      orm().select(C.contractArtists).from(contractArtists).where(orgWhere(org, contractArtists)),
     moveContractArtists: async (from: string, into: string) => {
-      await db.query(
-        `INSERT INTO owners.contract_artists (contract_id, artist_id)
-         SELECT contract_id, $2 FROM owners.contract_artists WHERE artist_id = $1
+      await q(
+        `INSERT INTO owners.contract_artists (org_id, contract_id, artist_id)
+         SELECT org_id, contract_id, $3 FROM owners.contract_artists WHERE org_id = $1 AND artist_id = $2
          ON CONFLICT DO NOTHING`,
         [from, into],
       );
-      await orm().delete(contractArtists).where(eq(contractArtists.artistId, from));
+      await orm().delete(contractArtists).where(orgWhere(org, contractArtists, eq(contractArtists.artistId, from)));
     },
 
-    insertMerge: async (row: typeof merges.$inferInsert) => {
-      await orm().insert(merges).values(row);
+    insertMerge: async (row: OrgFree<typeof merges.$inferInsert>) => {
+      await orm().insert(merges).values(orgRow(org, row));
     },
-    listMerges: () => orm().select().from(merges),
+    listMerges: (): Promise<MergeRow[]> => orm().select(C.merges).from(merges).where(orgWhere(org, merges)),
 
     /** Fast bulk lookup used by the facade: every (isrc, upc) pair known in module 1. */
     /** Substring search for the global search (N10); live owners and artists only, at most `limit` rows per kind. */
-    searchOwners: (q: string, limit: number) =>
+    searchOwners: (text: string, limit: number) =>
       orm()
-        .select()
+        .select(C.owners)
         .from(owners)
         .where(
-          and(
+          orgWhere(
+            org,
+            owners,
             isNull(owners.mergedInto),
             or(
-              containsText(owners.name, q),
-              sql`${owners.id} in (select ${ownerAliases.ownerId} from ${ownerAliases} where ${containsText(ownerAliases.alias, q)})`,
+              containsText(owners.name, text),
+              sql`${owners.id} in (select ${ownerAliases.ownerId} from ${ownerAliases} where ${orgWhere(org, ownerAliases, containsText(ownerAliases.alias, text))})`,
             ),
           ),
         )
         .orderBy(byBytes(owners.name))
         .limit(limit),
-    searchArtists: (q: string, limit: number) =>
+    searchArtists: (text: string, limit: number) =>
       orm()
-        .select()
+        .select(C.artists)
         .from(artists)
-        .where(and(isNull(artists.mergedInto), containsText(artists.pseudonym, q)))
+        .where(orgWhere(org, artists, isNull(artists.mergedInto), containsText(artists.pseudonym, text)))
         .orderBy(byBytes(artists.pseudonym))
         .limit(limit),
     /** An exact ISRC / UPC match comes first. */
-    searchTracks: (q: string, exactIsrc: string, exactUpc: string, limit: number) =>
+    searchTracks: (text: string, exactIsrc: string, exactUpc: string, limit: number) =>
       orm()
-        .select()
+        .select(C.tracks)
         .from(tracks)
-        .where(or(containsText(tracks.isrc, q), containsText(tracks.upc, q), containsText(tracks.title, q)))
+        .where(
+          orgWhere(
+            org,
+            tracks,
+            or(containsText(tracks.isrc, text), containsText(tracks.upc, text), containsText(tracks.title, text)),
+          ),
+        )
         .orderBy(
           sql`(${tracks.isrc} = ${exactIsrc} or (${exactUpc} <> '' and ${tracks.upc} = ${exactUpc})) desc`,
           byBytes(tracks.title),
           tracks.id,
         )
         .limit(limit),
-    searchDocuments: (q: string, limit: number) =>
+    searchDocuments: (text: string, limit: number) =>
       orm()
-        .select()
+        .select(C.documents)
         .from(documents)
-        .where(containsText(documents.title, q))
+        .where(orgWhere(org, documents, containsText(documents.title, text)))
         .orderBy(documents.createdAt)
         .limit(limit),
 
@@ -293,7 +333,9 @@ export function createOwnersRepository(db: Db) {
         : orm()
             .select({ isrc: tracks.isrc, upc: tracks.upc })
             .from(tracks)
-            .where(and(isNotNull(tracks.isrc), isNotNull(tracks.upc), isrcs ? inArray(tracks.isrc, isrcs) : undefined)),
+            .where(
+              orgWhere(org, tracks, isNotNull(tracks.isrc), isNotNull(tracks.upc), isrcs ? inArray(tracks.isrc, isrcs) : undefined),
+            ),
   };
 }
 

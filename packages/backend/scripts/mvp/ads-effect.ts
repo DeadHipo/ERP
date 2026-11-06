@@ -6,12 +6,15 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Decimal } from '../../src/shared/money';
-import { connectSources } from '../../src/connect-sources';
+import { connectOrg, takeOrgArgument } from '../../src/connect-sources';
 import { openFacade } from '../../src/facade';
 import { ROOT } from './lib';
 
-const stack = connectSources(join(ROOT, 'data', 'mvp-load', 'files', 'sources'));
-const f = openFacade({ db: stack.db, dataDir: join(ROOT, 'data', 'mvp-load'), payoutThresholdCents: 0, sources: stack.sources });
+// the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
+const ORG = takeOrgArgument();
+
+const stack = await connectOrg({ dataDir: join(ROOT, 'data', 'mvp-load'), org: ORG });
+const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir: join(ROOT, 'data', 'mvp-load'), payoutThresholdCents: 0, sources: stack.sources });
 try {
   const p = await f.ownerPayables();
   const items = p.items as unknown as { ownerId: string; payable: Decimal; payableShown: Decimal }[];
