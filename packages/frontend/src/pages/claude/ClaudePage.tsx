@@ -55,7 +55,7 @@ export function ClaudePage() {
   const { origin, protocol, hostname } = window.location;
   const insecure = protocol !== 'https:' && hostname !== 'localhost' && hostname !== '127.0.0.1';
   return (
-    <div className="flex max-w-4xl flex-col gap-4">
+    <div data-testid="claude-page" className="flex max-w-4xl flex-col gap-4">
       <PageHeader title={t.title} subtitle={t.subtitle} />
       {insecure ? (
         <p data-testid="claude-insecure" className="rounded-md border border-warning p-3 text-sm">
