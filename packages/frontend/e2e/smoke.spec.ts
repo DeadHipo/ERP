@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { ALL_ITEMS, NAV } from '../src/nav';
-import { setOperator, trackErrors } from './helpers';
+import { ME_OFF, OPERATOR, json, seedKeys, setOperator, trackErrors } from './helpers';
 
-// S-smoke: the shell renders, search opens, the operator is saved, a write control is gated, every route renders.
+// S-smoke: the shell renders, search opens, the user menu names the session (the operator = the login, D-170), a write
+// control is gated (login off), every route renders.
 
 test('the shell renders with every sidebar item of nav.ts', async ({ page }) => {
   const errors = trackErrors(page);
@@ -40,22 +41,31 @@ test('Ctrl+K opens the global search modal', async ({ page }) => {
   await expect(page.getByTestId('global-search-dialog')).toBeVisible();
 });
 
-test('the operator field saves to localStorage, shows a hint while empty and survives a reload', async ({ page }) => {
+test('the user menu names the login and the organization; the operator of writes is the login', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('operator-hint')).toHaveText('укажите оператора');
-  await setOperator(page, 'e2e-operator');
-  await expect(page.getByTestId('operator-hint')).toBeHidden();
-  expect(await page.evaluate(() => localStorage.getItem('erp.operator'))).toBe('e2e-operator');
-  await page.reload();
-  await expect(page.getByTestId('operator-field')).toHaveValue('e2e-operator');
+  const menu = page.getByTestId('user-menu');
+  await expect(menu).toHaveAttribute('data-login', OPERATOR);
+  await expect(page.getByTestId('user-login')).toHaveText(OPERATOR);
+  await expect(page.getByTestId('user-org')).toHaveAttribute('data-org-id', seedKeys().orgId);
+  await expect(page.getByTestId('action-logout')).toBeVisible();
+  await expect(page.getByTestId('operator-field')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('erp.operator'))).toBe(OPERATOR);
+  // the system section is the system administrator's only
+  await expect(page.getByTestId('nav-system-orgs')).toHaveCount(0);
 });
 
-test('an action button is disabled while the operator is empty', async ({ page }) => {
+test('with the login off the operator field is back, saves to localStorage and gates an action button', async ({ page }) => {
+  await page.route('**/api/v1/auth/me', (route) => json(route, 200, ME_OFF));
+  await page.addInitScript(() => localStorage.setItem('erp.operator', ''));
   await page.goto('/dev/states?case=action');
+  await expect(page.getByTestId('user-menu')).toHaveCount(0);
+  await expect(page.getByTestId('operator-hint')).toHaveText('укажите оператора');
   const button = page.getByTestId('action-demo');
   await expect(button).toBeDisabled();
   await setOperator(page, 'e2e-operator');
+  await expect(page.getByTestId('operator-hint')).toBeHidden();
   await expect(button).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('erp.operator'))).toBe('e2e-operator');
   await page.getByTestId('operator-field').fill('');
   await expect(button).toBeDisabled();
 });

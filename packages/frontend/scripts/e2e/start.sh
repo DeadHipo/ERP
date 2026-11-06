@@ -27,8 +27,13 @@ fi
 npm run build -w @erp/frontend
 
 mkdir -p data/test-tmp/e2e-data
-# the API opens the organization the seed created (D-170): its id is in the keys file
+# the login is on (D-170): the specs sign in with the users of the seed (passwords in the keys file, e2e/global-setup.ts).
+# The secret of the session and the system key are random per run and live only in the environment of this process.
+AUTH_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))")
+SYSTEM_ADMIN_KEY=$(node -e "process.stdout.write(require('node:crypto').randomBytes(24).toString('hex'))")
+# the organization of the seed stays the default one (only AUTH_MODE=off would use it)
 ERP_DEFAULT_ORG=$(node -p "require('./data/test-tmp/e2e-keys.json').orgId")
 exec env DB_DATABASE=erp_e2e CLICKHOUSE_DATABASE=believe_e2e PAYOUT_THRESHOLD_CENTS=0 PORT=3100 ERP_DEFAULT_ORG="$ERP_DEFAULT_ORG" \
+  AUTH_MODE=on AUTH_SECRET="$AUTH_SECRET" SYSTEM_ADMIN_KEY="$SYSTEM_ADMIN_KEY" AUTH_COOKIE_SECURE= \
   ERP_DATA_DIR=data/test-tmp/e2e-data \
   npx tsx packages/backend/src/main.ts data/test-tmp/e2e-data

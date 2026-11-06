@@ -4,6 +4,7 @@ import {
   BanknotesIcon,
   BellAlertIcon,
   BuildingLibraryIcon,
+  BuildingOffice2Icon,
   ChartPieIcon,
   ClockIcon,
   DocumentTextIcon,
@@ -83,6 +84,25 @@ export const NAV: readonly NavSection[] = [
   },
 ];
 
+/**
+ * The system administrator's section (D-170, P24/P25): shown only to a system administrator (`Sidebar`), alone while
+ * they work in no organization. Not part of `NAV` / `ALL_ITEMS` (the operator's sidebar), but of the breadcrumbs.
+ */
+export const SYSTEM_NAV: NavSection = {
+  id: 'system',
+  label: ru.nav.sections.system,
+  items: [{ id: 'system-orgs', label: items.systemOrgs, icon: BuildingOffice2Icon, path: '/system/orgs' }],
+};
+
+/** The sections of the sidebar for the session: the operator's, plus the system section for a system administrator. */
+export function navFor(session: { isSystemAdmin: boolean; inOrg: boolean }): readonly NavSection[] {
+  if (!session.isSystemAdmin) return NAV;
+  return session.inOrg ? [...NAV, SYSTEM_NAV] : [SYSTEM_NAV];
+}
+
+const BREADCRUMB_SECTIONS: readonly NavSection[] = [...NAV, SYSTEM_NAV];
+const BREADCRUMB_ITEMS: readonly NavItem[] = BREADCRUMB_SECTIONS.flatMap((s) => s.items);
+
 /** Sub-pages that are not sidebar items but have a fixed breadcrumb label. */
 export const SUBPAGES: Readonly<Record<string, string>> = {
   '/sources/lines': ru.nav.subpages.sourceLines,
@@ -115,7 +135,7 @@ export function isItemActive(item: NavItem, pathname: string, search: string): b
 }
 
 export function activeItem(pathname: string, search: string): NavItem | undefined {
-  return ALL_ITEMS.find((i) => isItemActive(i, pathname, search));
+  return BREADCRUMB_ITEMS.find((i) => isItemActive(i, pathname, search));
 }
 
 export interface Crumb {
@@ -129,7 +149,7 @@ export interface Crumb {
 export function crumbsFor(pathname: string, search: string): Crumb[] {
   const item = activeItem(pathname, search);
   if (!item) return [];
-  const section = NAV.find((s) => s.items.some((i) => i.id === item.id));
+  const section = BREADCRUMB_SECTIONS.find((s) => s.items.some((i) => i.id === item.id));
   const crumbs: Crumb[] = [];
   if (section) crumbs.push({ label: section.label });
   const base = splitPath(item.path).pathname;

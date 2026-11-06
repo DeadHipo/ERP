@@ -521,13 +521,19 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
 | 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=`; D-169 P9 payouts view S18 W2 under 0to8, not under Echo8 | acts |
-| – | `smoke.spec.ts` | the shell, every route renders | reads |
-| – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
+| 36 | `36-orgs.spec.ts` | D-170 «Граница арендатора», no scenario of its own: the seed's users (`e2e-operator`, `e2e-sysadmin`, `e2e-b`) and organization B («Org B e2e»: own label `Label B e2e`, owner `Owner B e2e`). Own contexts without the session: `/` → `/login`, `invalid_credentials` sentence, `?next=` back; the system administrator on P24 (A users 1; B labels 1, files 0, statements 0, owners 1, users 1), creates `Org C e2e` and user `e2e-c` on P25 (both writes in C's audit under `e2e-sysadmin`), «Работать в организации» → the shell names C, `/labels` empty, «Выйти из организации»; `e2e-c` sees the empty P1; `e2e-b`: the switch offers «Все» and `Label B e2e` only, B's owner opens, A's `owner:0to8` → `not_found`, `/system/orgs` → `forbidden`, a write's audit operator is the login (not `X-Operator`), «Выйти» | acts (B: owner `Owner B2 e2e`; C) |
+| – | `smoke.spec.ts` | the shell, the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders | reads |
+| – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks (`/auth/me` mocked as the login off, D-170) | no seed |
 
 The dependencies the numbers encode: 12, 13, 14, 15 before 20 (the before states of S12, S13, S16, S19, S32); 20 before
 21 (S20 is asserted before in the queue and acted on in the signals page); 21 before 22 (the S30 candidate is in
 `isrcsWithoutSplit` until 22 creates the split); 20 before 28 (S13 after); 23 before 24 (the S36 owner is confirmed in
-24); 24 before 33 (24 reads the before state of S24/2, which 33 changes with an advertising expense). Adding a spec: pick a number between the files it must follow and precede, and say so here.
+24); 24 before 33 (24 reads the before state of S24/2, which 33 changes with an advertising expense); 36 touches only
+organizations B and C, so it may run anywhere after the seed. The login (D-170): `scripts/e2e/start.sh` serves with
+`AUTH_MODE=on` (a random `AUTH_SECRET` and `SYSTEM_ADMIN_KEY` per run, environment only); `e2e/global-setup.ts` signs in
+once as `e2e-operator` (the password from the keys file, `users`) and writes `data/test-tmp/e2e-state.json`, the
+`use.storageState` of every spec, so `page` and the `request` fixture (`apiPost`) carry the session and the golden specs
+are unchanged. Adding a spec: pick a number between the files it must follow and precede, and say so here.
 
 Request counts (17 R2): `openAs` restarts a per-page count of the money endpoints (overview, reconciliation, signals,
 queue, balance, owners/payables, tracks/summary, tracks/:isrc/money, releases/:upc, documents/:id/uses);

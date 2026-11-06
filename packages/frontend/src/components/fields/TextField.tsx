@@ -6,7 +6,8 @@ export function TextField(props: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: 'text' | 'date' | 'month' | 'number' | 'search';
+  type?: 'text' | 'date' | 'month' | 'number' | 'search' | 'password';
+  autoComplete?: string;
   placeholder?: string;
   error?: string;
   isRequired?: boolean;
@@ -27,6 +28,7 @@ export function TextField(props: {
       <Input
         data-testid={`field-${props.name}`}
         placeholder={props.placeholder}
+        autoComplete={props.autoComplete}
         {...(props.type === 'date' || props.type === 'month' || props.type === 'number' ? { type: props.type } : {})}
       />
       <FieldError>{props.error}</FieldError>

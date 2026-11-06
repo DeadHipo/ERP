@@ -46,7 +46,11 @@ export function detailParams(details: unknown): Record<string, string | number> 
 export function notifyError(error: ApiError | Error): void {
   const code = 'code' in error && typeof error.code === 'string' ? error.code : 'error';
   const template = errorText(code);
-  const russian = template === undefined ? undefined : fmt(template, detailParams('details' in error ? error.details : undefined));
+  const params = detailParams('details' in error ? error.details : undefined);
+  // a 500 names its request (D-170): `{requestId}` of the sentence «Внутренняя ошибка, код …»
+  const requestId = 'requestId' in error && typeof error.requestId === 'string' ? error.requestId : '';
+  params.requestId = requestId || '—';
+  const russian = template === undefined ? undefined : fmt(template, params);
   const detail = `${code}: ${error.message}`;
   toast.danger(
     <span data-testid="toast" data-code={code} title={detail} className="flex flex-col gap-0.5">

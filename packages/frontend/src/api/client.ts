@@ -2,6 +2,7 @@ import { z } from 'zod';
 import * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
 import { getOperator } from '../lib/operator';
+import { loginPath, orgHeader } from '../lib/session';
 
 // The one typed client (R6). Every request body type comes from `@erp/shared/api-schemas`, every response is parsed
 // with its zod schema from `@erp/shared/api-responses`; there is no hand-written response type in `src/api/`
@@ -13,6 +14,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly details?: unknown,
+    /** The id of the request of a 500 (`X-Request-Id`, D-170): the toast names it. */
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -41,19 +44,31 @@ export function setAuditFailedHandler(fn: () => void): void {
   onAuditFailed = fn;
 }
 
-/** Every call of the app goes through here: fetch, the operator header on writes, error mapping, schema parse. */
+/** A 401 `unauthenticated` (no session, or it ended): the login page, then back here (D-170). */
+function toLogin(): void {
+  if (typeof window === 'undefined' || window.location.pathname === '/login') return;
+  window.location.assign(loginPath(`${window.location.pathname}${window.location.search}`));
+}
+
+/**
+ * Every call of the app goes through here: fetch (with the session cookie), the operator header on writes, `X-Org` of a
+ * system administrator working in an organization, error mapping, schema parse. `anonymous` = a public write (the login
+ * and the logout, D-170): no operator yet.
+ */
 export async function call<Schema extends z.ZodType>(
   method: 'GET' | 'POST' | 'PATCH',
   url: string,
-  options: { query?: QueryParams; body?: unknown; schema: Schema },
+  options: { query?: QueryParams; body?: unknown; schema: Schema; anonymous?: boolean },
 ): Promise<z.output<Schema>> {
   const headers: Record<string, string> = {};
-  if (method !== 'GET') {
+  if (method !== 'GET' && !options.anonymous) {
     const operator = getOperator();
     if (!operator) throw new ApiError('Укажите оператора', 0, 'operator_required');
     headers['X-Operator'] = encodeURIComponent(operator);
   }
-  const init: RequestInit = { method, headers };
+  const org = orgHeader();
+  if (org) headers['X-Org'] = org;
+  const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (options.body instanceof FormData) init.body = options.body;
   else if (options.body !== undefined) {
     init.body = JSON.stringify(options.body);
@@ -71,8 +86,9 @@ export async function call<Schema extends z.ZodType>(
   if (!res.ok) {
     const parsed = R.errorBody.safeParse(json);
     if (parsed.success) {
-      const { code, message, details } = parsed.data.error;
-      throw new ApiError(message, res.status, code, details);
+      const { code, message, details, requestId } = parsed.data.error;
+      if (res.status === 401 && code === 'unauthenticated') toLogin();
+      throw new ApiError(message, res.status, code, details, requestId ?? res.headers.get('X-Request-Id') ?? undefined);
     }
     throw new ApiError(res.statusText || 'Request failed', res.status, 'http_error');
   }
@@ -85,6 +101,23 @@ const id = encodeURIComponent;
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
 // ---- one function per operation of packages/backend/src/api/operations.ts, named by topic ----
+
+/** The minimal login (D-170): the session cookie `erp_session` is set and cleared by the server. */
+export const auth = {
+  login: (body: z.input<typeof S.loginBody>) => call('POST', '/auth/login', { body, schema: R.meSchema, anonymous: true }),
+  logout: () => call('POST', '/auth/logout', { schema: R.okSchema, anonymous: true }),
+  me: () => call('GET', '/auth/me', { schema: R.meSchema }),
+};
+
+/** The organizations, for the system administrator only (P24, P25; no money). */
+export const orgs = {
+  list: () => call('GET', '/orgs', { schema: list(R.orgSummarySchema) }),
+  create: (body: z.input<typeof S.createOrgBody>) => call('POST', '/orgs', { body, schema: R.orgSchema }),
+  get: (orgId: string) => call('GET', `/orgs/${id(orgId)}`, { schema: R.orgSummarySchema }),
+  users: (orgId: string) => call('GET', `/orgs/${id(orgId)}/users`, { schema: list(R.orgUserSchema) }),
+  createUser: (orgId: string, body: z.input<typeof S.createOrgUserBody>) =>
+    call('POST', `/orgs/${id(orgId)}/users`, { body, schema: R.orgUserSchema }),
+};
 
 export const owners = {
   /** Under a label (D-168): the owners visible under it. */

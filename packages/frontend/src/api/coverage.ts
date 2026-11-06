@@ -1,6 +1,6 @@
 /**
  * Where every operation of `packages/backend/src/api/operations.ts` is used on a screen, or why it is not.
- * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P22`
+ * Plain data, checked by `tests/coverage.test.ts`: every operation key is here (and nothing else), a `page` is `P1`..`P25`
  * (see `docs/agents/17_frontend_model.md` section 3) or `shell` (the global search and the pickers on every page), and its `route`
  * is a pattern of `src/routes/paths.ts`. A `refusal` says in words why no screen calls the operation.
  */
@@ -10,6 +10,16 @@ export const OPERATION_COVERAGE: Record<
 > = {
   'GET /health': { refusal: 'not a screen: a liveness probe for deployment' },
   'GET /search': { page: 'shell', route: '/', note: 'Cmd/Ctrl+K and every EntityPicker' },
+
+  // the login and the organizations (D-170)
+  'POST /auth/login': { page: 'P23', route: '/login', note: 'field-login, field-password, action-login; invalid_credentials as a sentence (login-error); then ?next= or /' },
+  'POST /auth/logout': { page: 'shell', route: '/', note: 'action-logout of UserMenu (AUTH_MODE=on)' },
+  'GET /auth/me': { page: 'shell', route: '/', note: 'useMe(): once per load, before any page; UserMenu (login, organization), the operator of writes = the login, X-Org only for a system administrator' },
+  'GET /orgs': { page: 'P24', route: '/system/orgs', note: 'the organizations with their counts (no money), system administrator only' },
+  'POST /orgs': { page: 'P24', route: '/system/orgs', note: 'action-create-org: field-org-name, action-create-org-submit' },
+  'GET /orgs/:id': { page: 'P25', route: '/system/orgs/:id', note: 'the header and counts; also the organization name of UserMenu while a system administrator works in it (erp.org)' },
+  'GET /orgs/:id/users': { page: 'P25', route: '/system/orgs/:id', note: 'rows org-user-<login>' },
+  'POST /orgs/:id/users': { page: 'P25', route: '/system/orgs/:id', note: 'action-create-user: field-user-login, field-user-password, action-create-user-submit' },
 
   'GET /owners': {
     page: 'P11',

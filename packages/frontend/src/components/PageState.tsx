@@ -51,6 +51,11 @@ export function PageState(props:
       <p className="text-sm" data-testid="error-message">
         {code === 'contract_mismatch' ? ru.pageState.contractMismatch : props.error.message}
       </p>
+      {props.error instanceof ApiError && props.error.requestId ? (
+        <p className="text-xs text-muted" data-testid="error-request-id">
+          requestId: {props.error.requestId}
+        </p>
+      ) : null}
       {props.onRetry ? (
         <Button size="sm" variant="secondary" data-testid="action-retry" onPress={props.onRetry}>
           {ru.pageState.retry}

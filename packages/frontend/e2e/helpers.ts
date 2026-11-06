@@ -35,16 +35,41 @@ export function trackErrors(page: Page): string[] {
 
 export { account, isrc, upc, pseudonym, ownerName } from '../../backend/scripts/e2e/keys';
 
+/** The login of the session every spec runs under (D-170: the operator of a write is the login). */
 export const OPERATOR = 'e2e-operator';
 
-let cached: SeedKeys | undefined;
+/** Where `global-setup.ts` keeps the session of `e2e-operator` (playwright.config.ts `use.storageState`). */
+export const STORAGE_STATE = join(import.meta.dirname, '..', '..', '..', 'data', 'test-tmp', 'e2e-state.json');
+
+/** The login part of the keys file, written by `seed.ts` (its `SeedAuthKeys`, D-170). */
+type LoginKeys = {
+  users: Record<'operator' | 'sysadmin' | 'b', { login: string; password: string }>;
+  orgB: { id: string; name: string; labelId: string; labelName: string; ownerId: string; ownerName: string };
+};
+
+let cached: (SeedKeys & LoginKeys) | undefined;
 /** The ids of the seed (written by `seed.ts` in `scripts/e2e/start.sh`); `E2E_KEYS` points to another keys file. */
-export function seedKeys(): SeedKeys {
+export function seedKeys(): SeedKeys & LoginKeys {
   cached ??= JSON.parse(
     readFileSync(process.env.E2E_KEYS ?? join(import.meta.dirname, '.seed-keys.json'), 'utf8'),
-  ) as SeedKeys;
+  ) as SeedKeys & LoginKeys;
   return cached;
 }
+/** The users of the seed with their synthetic passwords (D-170). */
+export const seedUsers = () => seedKeys().users;
+
+/** Signs in through the login page (P23) in a page of its own context. */
+export async function loginAs(page: Page, user: 'operator' | 'sysadmin' | 'b', next = '/'): Promise<void> {
+  const { login, password } = seedUsers()[user];
+  await page.goto(next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`);
+  await page.getByTestId('field-login').fill(login);
+  await page.getByTestId('field-password').fill(password);
+  await page.getByTestId('action-login').click();
+  await expect(page.getByTestId('user-menu')).toHaveAttribute('data-login', login);
+}
+
+/** The session as `GET /auth/me` would answer with the login off: the states fixture keeps the operator field. */
+export const ME_OFF = { authMode: 'off', user: null, org: { id: 'org-e2e', name: 'Test organization e2e' } };
 /** The id of a shared own label (`0to8`, `Echo8`), D-168: the payouts and operations of the specs are made under 0to8. */
 export const labelOf = (name: '0to8' | 'Echo8'): string => seedKeys().shared[`label:${name}`] ?? '';
 /** Keys of scenario `nn`, case `k`. */

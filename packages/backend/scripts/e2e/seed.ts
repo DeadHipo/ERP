@@ -5,7 +5,18 @@
  * are written under the API data directory (`data/test-tmp/e2e-data` for the name `e2e`, `e2e-data-<name>` otherwise),
  * the ids per scenario to `data/test-tmp/e2e-keys[-<name>].json` and, for `e2e`, to `packages/frontend/e2e/.seed-keys.json`.
  * Prints the store names and a summary table. Synthetic data only.
+ *
+ * The login (D-170): the seed also creates the user `e2e-operator` of that organization, the system administrator
+ * `e2e-sysadmin`, and organization B («Org B e2e») with one own label, one owner and its user `e2e-b`. The passwords are
+ * random per run and written to the keys files only (`users`), with the ids of B (`orgB`); the e2e `globalSetup` signs in
+ * with them. Nothing of B touches the numbers of A (`verify-seed.ts` is unchanged).
  */
+/** The login part of the keys file (D-170); `packages/frontend/e2e/helpers.ts` reads it. */
+export interface SeedAuthKeys {
+  users: Record<'operator' | 'sysadmin' | 'b', { login: string; password: string }>;
+  orgB: { id: string; name: string; labelId: string; labelName: string; ownerId: string; ownerName: string };
+}
+import { randomBytes } from 'node:crypto';
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openFacade } from '../../src/facade';
@@ -13,6 +24,8 @@ import { createBelieveColumnar, createSourceFilesRegistry, createSourcesService 
 import { createPrivateStores } from '../../src/shared/private-stores';
 import { orgScope } from '../../src/shared/org-scope';
 import { orgFilesDir } from '../../src/connect-sources';
+import { createAuthService } from '../../src/auth/service';
+import { createOrgsService } from '../../src/orgs/service';
 import { B17_FILE_NAME, type SeedKeys } from './keys';
 import { Seed } from './lib';
 import { scenarios } from './scenarios';
@@ -60,7 +73,39 @@ try {
   console.log('loading the B17 statement');
   const b17 = await seed.loadB17();
 
-  const keys: SeedKeys = {
+  // the login (D-170): the users and the second organization B with its own label and owner
+  console.log('creating the users and organization B');
+  const password = () => `e2e-${randomBytes(12).toString('hex')}`;
+  const users: SeedAuthKeys['users'] = {
+    operator: { login: 'e2e-operator', password: password() },
+    sysadmin: { login: 'e2e-sysadmin', password: password() },
+    b: { login: 'e2e-b', password: password() },
+  };
+  const auth = createAuthService(stores.db);
+  await auth.createUser({ ...users.operator, orgId: stores.orgId, createdBy: 'e2e seed' });
+  await auth.createUser({ ...users.sysadmin, system: true, createdBy: 'e2e seed' });
+  const orgB = await createOrgsService(stores.db).createOrganization({ name: 'Org B e2e', createdBy: 'e2e seed' });
+  await auth.createUser({ ...users.b, orgId: orgB.id, createdBy: 'e2e seed' });
+  const facadeB = openFacade({
+    db: stores.db,
+    orgId: orgB.id,
+    dataDir,
+    payoutThresholdCents: 0,
+    sources: createSourcesService({
+      registry: createSourceFilesRegistry(stores.pg.pool, orgScope(orgB.id)),
+      columnar: createBelieveColumnar(stores.ch, { database: stores.names.ch, stageDatabase: stores.names.chStage }),
+      storageDir: orgFilesDir(dataDir, orgB.id, 'sources'),
+    }),
+  });
+  const labelB = await facadeB.modules.labels.createLabel({ name: 'Label B e2e', kind: 'own' });
+  const ownerB = await facadeB.modules.owners.createOwner({ name: 'Owner B e2e', kind: 'person' });
+  const authKeys: SeedAuthKeys = {
+    users,
+    orgB: { id: orgB.id, name: orgB.name, labelId: labelB.id, labelName: labelB.name, ownerId: ownerB.id, ownerName: ownerB.name },
+  };
+
+  const keys: SeedKeys & SeedAuthKeys = {
+    ...authKeys,
     scenarios: seed.keys,
     shared: seed.shared,
     stores: stores.names,

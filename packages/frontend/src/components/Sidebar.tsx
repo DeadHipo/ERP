@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Bars3Icon } from '@heroicons/react/24/outline';
-import { NAV, isItemActive } from '../nav';
+import { isItemActive, navFor } from '../nav';
 import { readStorage, writeStorage } from '../lib/storage';
 import { ru } from '../i18n/ru';
 
 const KEY = 'erp.sidebar';
 
-/** The sidebar from nav.ts; collapsible, the state is kept in sessionStorage. */
-export function Sidebar() {
+/**
+ * The sidebar from nav.ts; collapsible, the state is kept in sessionStorage. A system administrator also sees the
+ * system section (D-170), alone while they work in no organization.
+ */
+export function Sidebar(props: { isSystemAdmin?: boolean; inOrg?: boolean }) {
+  const sections = navFor({ isSystemAdmin: props.isSystemAdmin === true, inOrg: props.inOrg !== false });
   const { pathname, search } = useLocation();
   const [collapsed, setCollapsed] = useState(() => readStorage('session', KEY) === 'collapsed');
   const toggle = () => {
@@ -36,7 +40,7 @@ export function Sidebar() {
         {collapsed ? null : <span className="font-semibold">{ru.common.appName}</span>}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
-        {NAV.map((section) => (
+        {sections.map((section) => (
           <div key={section.id} className="mb-3">
             {collapsed ? null : (
               <div className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted">{section.label}</div>

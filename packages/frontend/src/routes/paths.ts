@@ -31,6 +31,11 @@ export const ROUTE_PATHS = {
   ads: 'ads',
   ad: 'ads/:id',
   devStates: 'dev/states',
+  /** P23, outside the shell (D-170). */
+  login: 'login',
+  /** P24, P25: the system administrator's pages (D-170). */
+  systemOrgs: 'system/orgs',
+  systemOrg: 'system/orgs/:id',
 } as const;
 
 /** Every route as an absolute pattern; the overview is the index route `/`. */
