@@ -1,14 +1,16 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
-import { orgFree, orgQuery, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { songwriterOwner } from './schema';
+import { orgFree, orgQuery, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
+import { songIsrc, songwriterOwner } from './schema';
 
 export type SongwriterOwnerRow = OrgFree<typeof songwriterOwner.$inferSelect>;
+export type SongIsrcRow = OrgFree<typeof songIsrc.$inferSelect>;
 
 /** All SQL of the links module lives here (schema `links`); every statement is of the organization `org` (D-170). */
 export function createLinksRepository(db: Db, org: OrgScope) {
   const q = orgQuery(db, org);
   return {
+    transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
     songwriterOwners: (): Promise<SongwriterOwnerRow[]> =>
       db.orm().select(orgFree(songwriterOwner)).from(songwriterOwner).where(orgWhere(org, songwriterOwner)),
     songwriterOwner: async (songwriterId: string): Promise<SongwriterOwnerRow | undefined> =>
@@ -19,6 +21,14 @@ export function createLinksRepository(db: Db, org: OrgScope) {
           .from(songwriterOwner)
           .where(orgWhere(org, songwriterOwner, eq(songwriterOwner.songwriterId, songwriterId)))
       )[0],
+    songIsrcs: (): Promise<SongIsrcRow[]> => db.orm().select(orgFree(songIsrc)).from(songIsrc).where(orgWhere(org, songIsrc)),
+    isrcsOfSong: (songId: string): Promise<SongIsrcRow[]> =>
+      db.orm().select(orgFree(songIsrc)).from(songIsrc).where(orgWhere(org, songIsrc, eq(songIsrc.songId, songId))),
+    /** The whole set of a song: the rows go and the given ones come. */
+    replaceSongIsrcs: async (songId: string, rows: SongIsrcRow[]) => {
+      await db.orm().delete(songIsrc).where(orgWhere(org, songIsrc, eq(songIsrc.songId, songId)));
+      if (rows.length > 0) await db.orm().insert(songIsrc).values(orgRows(org, rows));
+    },
     /** One link per songwriter: a new decision takes the place of the old one; the audit keeps the history. */
     setSongwriterOwner: async (r: SongwriterOwnerRow) => {
       await q(

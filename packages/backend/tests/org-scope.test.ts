@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(39); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
+    expect(tables.length).toBe(40); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -251,6 +251,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     statement: string;
     pubFile: string;
     songwriter: string;
+    song: string;
     /** D-174: an opening balance row */
     start: string;
     /** D-176: a contract, a payee, a hold, an answer */
@@ -349,6 +350,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const pubFile = await as('b', request(app).post('/api/v1/publishing-v2/files')).query({ label: lb.id }).attach('file', pubPath, 'scope_Q22026.xlsx');
     expect(pubFile.status, JSON.stringify(pubFile.body)).toBe(201);
     const pubWriters = (await ok('b', 'get', '/publishing-v2/songwriters')) as unknown as { id: string }[];
+    const pubSongs = (await ok('b', 'get', '/publishing-v2/songs')) as unknown as { songId: string }[];
     const writers = (await ok('b', 'get', '/publishing/writers')) as unknown as { writerNorm: string }[];
     replaceFile = await writeB17('Q22026', [{ writer: 'A WRITER', title: 'A Song', payable: 11 }], 'scope_replace_Q22026.xlsx');
     await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
@@ -362,7 +364,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
-      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, start: stb.body.result.ids[0] as string,
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string, start: stb.body.result.ids[0] as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
@@ -376,7 +378,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
     };
   };
 
@@ -441,6 +443,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /publishing/writers': () => ({}),
     'GET /publishing-v2/files': (x) => ({ query: { label: x.label } }),
     'GET /publishing-v2/songwriters': (x) => ({ query: { label: x.label } }),
+    'GET /publishing-v2/songs': (x) => ({ query: { label: x.label } }),
+    'GET /publishing-v2/songs/:id/candidates': (x) => ({ params: { id: x.song } }),
+    'POST /publishing-v2/songs/:id/isrcs': (x) => ({ params: { id: x.song }, body: { isrcs: [] } }),
     'GET /publishing-v2/links': (x) => ({ query: { label: x.label } }),
     'POST /publishing-v2/links': (x) => ({ body: { songwriterId: x.songwriter, ownerId: x.owner } }),
     'GET /publishing-v2/songwriters/:id': (x) => ({ params: { id: x.songwriter } }),

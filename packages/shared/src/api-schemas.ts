@@ -318,6 +318,9 @@ export const uploadLabelQuery = z.object({
 /** The operator's decision (D-183): this songwriter of publishing v2 is this owner. */
 export const pubV2LinkBody = z.object({ songwriterId: z.string().min(1), ownerId: z.string().min(1) });
 
+/** The operator's decision (D-184): the whole set of ISRCs of a song; an empty list clears it. */
+export const pubV2SongIsrcsBody = z.object({ isrcs: z.array(z.string().min(1)) });
+
 /** The upload of a report summary (D-182): `replace=1` takes the quarters over from the loaded files of the label. */
 export const pubV2UploadQuery = uploadLabelQuery.extend({
   replace: z

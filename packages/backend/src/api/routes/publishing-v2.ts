@@ -31,5 +31,13 @@ export function publishingV2Router(facade: Facade, opts: { tmpDir: string }) {
   r.post('/publishing-v2/links', async (req, res) =>
     res.json(await facade.linkSongwriter(parse(S.pubV2LinkBody, req.body), res.locals.operator as string)),
   );
+  r.get('/publishing-v2/songs', async (req, res) => res.json(await facade.pubV2Songs(parse(S.labelQuery, req.query).label)));
+  r.get('/publishing-v2/songs/:id/candidates', async (req, res) => {
+    parse(S.labelQuery, req.query);
+    res.json(await facade.pubV2SongCandidates(param(req, 'id')));
+  });
+  r.post('/publishing-v2/songs/:id/isrcs', async (req, res) =>
+    res.json(await facade.setPubV2SongIsrcs(param(req, 'id'), parse(S.pubV2SongIsrcsBody, req.body).isrcs, res.locals.operator as string)),
+  );
   return r;
 }

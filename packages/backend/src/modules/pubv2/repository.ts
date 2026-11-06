@@ -103,6 +103,27 @@ export function createPubV2Repository(db: Db, org: OrgScope) {
           [labelId ?? null],
         )
       ).rows,
+    /** The songs with their sums over the loaded files; `labelId` keeps the files of one label. */
+    songSums: async (labelId?: string) =>
+      (
+        await q<{ id: string; title: string; songwriter_id: string; songwriter: string; payable: string | null }>(
+          `SELECT s.id, s.title, s.songwriter_id, w.name AS songwriter, SUM(a.payable_pico) AS payable
+           FROM pubv2.songs s
+           JOIN pubv2.songwriters w ON w.id = s.songwriter_id AND w.org_id = s.org_id
+           LEFT JOIN (
+             SELECT x.* FROM pubv2.accruals x
+             JOIN pubv2.files f ON f.id = x.file_id AND f.org_id = x.org_id
+             WHERE x.org_id = $1 AND f.status = 'loaded' AND ($2::text IS NULL OR f.label_id = $2)
+           ) a ON a.song_id = s.id
+           WHERE s.org_id = $1
+           GROUP BY s.id, s.title, s.songwriter_id, w.name
+           HAVING $2::text IS NULL OR COUNT(a.id) > 0
+           ORDER BY COALESCE(SUM(a.payable_pico), 0) DESC, s.title`,
+          [labelId ?? null],
+        )
+      ).rows,
+    song: async (id: string) =>
+      (await orm().select(orgFree(songs)).from(songs).where(orgWhere(org, songs, eq(songs.id, id))))[0],
     songwriter: async (id: string) =>
       (await orm().select(orgFree(songwriters)).from(songwriters).where(orgWhere(org, songwriters, eq(songwriters.id, id))))[0],
     aliasesOf: async (ids?: string[]) =>

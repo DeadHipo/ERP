@@ -347,6 +347,11 @@ export const publishingV2 = {
     }),
   remove: (fileId: string) => call('POST', `/publishing-v2/files/${id(fileId)}/remove`, { schema: R.pubV2RemovedSchema }),
   links: (query: z.input<typeof S.labelQuery> = {}) => call('GET', '/publishing-v2/links', { query, schema: list(R.pubV2LinkSchema) }),
+  songs: (query: z.input<typeof S.labelQuery> = {}) => call('GET', '/publishing-v2/songs', { query, schema: list(R.pubV2SongSchema) }),
+  songCandidates: (songId: string) =>
+    call('GET', `/publishing-v2/songs/${id(songId)}/candidates`, { schema: R.pubV2SongCandidatesSchema }),
+  setSongIsrcs: (songId: string, isrcs: string[]) =>
+    call('POST', `/publishing-v2/songs/${id(songId)}/isrcs`, { body: { isrcs }, schema: R.pubV2SongIsrcsResultSchema }),
   link: (body: z.input<typeof S.pubV2LinkBody>) => call('POST', '/publishing-v2/links', { body, schema: R.pubV2LinkResultSchema }),
   songwriters: (query: z.input<typeof S.labelQuery> = {}) =>
     call('GET', '/publishing-v2/songwriters', { query, schema: list(R.pubV2SongwriterSchema) }),

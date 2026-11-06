@@ -12,6 +12,8 @@ export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['owners', 'balance'],
   ['publishingV2', 'files'],
   ['publishingV2', 'links'],
+  ['publishingV2', 'songs'],
+  ['publishingV2', 'songCandidates'],
   ['publishingV2', 'songwriters'],
   ['publishingV2', 'songwriter'],
   ['owners', 'payables'],

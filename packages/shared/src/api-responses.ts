@@ -697,6 +697,46 @@ export const pubV2LinkResultSchema = z.object({
   decidedAt: timestamp,
 });
 
+/** The links of the songs of publishing v2 to recordings (D-184). */
+export const pubV2SongSchema = z.object({
+  songId: z.string().describe('Id of the song of publishing v2'),
+  title: z.string(),
+  songwriterId: z.string().describe('Id of the songwriter of publishing v2'),
+  songwriter: z.string().describe('The name of the songwriter in the reports'),
+  ownerId: z.string().nullable().describe('The confirmed owner of the songwriter; null = no link yet'),
+  ownerName: z.string().nullable().describe('Name of that owner'),
+  payable: money.describe('Sum payable by the reports over the loaded files, USD: what came in, not what is owed'),
+  isrcs: z.array(z.string()).describe('The ISRCs the operator confirmed for the song'),
+  candidates: z.number().int().describe('Tracks of the catalog with this title'),
+  ownerCandidates: z.number().int().describe('Of them, tracks whose open split has a pseudonym of the linked owner'),
+});
+
+export const pubV2SongCandidatesSchema = z.object({
+  songId: z.string().describe('Id of the song of publishing v2'),
+  title: z.string(),
+  candidates: z
+    .array(
+      z.object({
+        isrc: z.string().describe(D.isrc),
+        title: z.string(),
+        artists: z.array(z.string()).describe('The pseudonyms of the open split of the track'),
+        reason: z.enum(['owner', 'title']).describe('owner = a pseudonym of the linked owner is in the split; title = only the title matches'),
+      }),
+    )
+    .describe('Tracks of the catalog with this title, those of the linked owner first; a suggestion only'),
+  isrcs: z
+    .array(
+      z.object({
+        isrc: z.string().describe(D.isrc),
+        title: z.string(),
+        source: z.enum(['recommended', 'manual']).describe('recommended = taken from the candidates; manual = entered by the operator'),
+      }),
+    )
+    .describe('The ISRCs the operator confirmed'),
+});
+
+export const pubV2SongIsrcsResultSchema = z.object({ songId: z.string(), isrcs: z.array(z.string()) });
+
 export const b17UploadSchema = z.object({ statement: statementSchema, writers: resolveWritersSchema });
 
 // ---- reports ----

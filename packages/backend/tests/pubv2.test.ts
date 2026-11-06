@@ -172,6 +172,57 @@ describe('the links of songwriters to owners (D-183)', () => {
   });
 });
 
+describe('the links of songs to ISRCs (D-184)', () => {
+  const isrcs = ['QZTST2600101', 'QZTST2600102', 'QZTST2600103'];
+  const world = async () => {
+    const f = await newFacade();
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const stranger = await f.modules.owners.createOwner({ name: 'Somebody Else', kind: 'person', origin: 'test' });
+    const artist = await f.modules.owners.createArtist({ pseudonym: 'SYNTH ONE', ownerId: owner.id });
+    const other = await f.modules.owners.createArtist({ pseudonym: 'SOMEBODY', ownerId: stranger.id });
+    await f.modules.owners.createTrack({ isrc: isrcs[0] as string, title: 'Song A (Slowed)' });
+    await f.modules.owners.createTrack({ isrc: isrcs[1] as string, title: 'Song A - SYNTH ONE' });
+    await f.modules.owners.createTrack({ isrc: isrcs[2] as string, title: 'Another' });
+    await f.createSplit({ isrc: isrcs[0] as string, validFrom: '2026-01-01', shares: [{ artistId: artist.id, percent: '50' }] });
+    await f.createSplit({ isrc: isrcs[1] as string, validFrom: '2026-01-01', shares: [{ artistId: other.id, percent: '50' }] });
+    await f.modules.pubv2.ingest({
+      path: await workbook('isrc.xlsx', {
+        'Songwriter Breakdown': [['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'], ['SONGWRITER: Writer Synth One', 1, 0, 1], ['  Song A', 1, 0, 1]],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    return { f, owner };
+  };
+
+  it('finds the tracks by the title without its version, those of the linked owner first, and sets nothing', async () => {
+    const { f, owner } = await world();
+    const before = (await f.pubV2Songs())[0];
+    expect([before?.ownerId, before?.candidates, before?.ownerCandidates]).toEqual([null, 2, 0]);
+    await f.linkSongwriter({ songwriterId: before?.songwriterId as string, ownerId: owner.id }, 'tester');
+    const song = (await f.pubV2Songs())[0];
+    expect([song?.ownerName, song?.candidates, song?.ownerCandidates, song?.isrcs]).toEqual(['Writer Synth One', 2, 1, []]);
+    const found = await f.pubV2SongCandidates(song?.songId as string);
+    expect(found.candidates.map((c) => [c.isrc, c.reason, c.artists])).toEqual([
+      [isrcs[0], 'owner', ['SYNTH ONE']],
+      [isrcs[1], 'title', ['SOMEBODY']],
+    ]);
+  });
+
+  it('the operator sets the whole set; a track out of the candidates is manual; an unknown ISRC is refused', async () => {
+    const { f } = await world();
+    const id = (await f.pubV2Songs())[0]?.songId as string;
+    expect((await f.setPubV2SongIsrcs(id, [isrcs[0] as string, isrcs[2] as string], 'tester')).isrcs).toEqual([isrcs[0], isrcs[2]]);
+    expect((await f.pubV2SongCandidates(id)).isrcs.map((x) => [x.isrc, x.source])).toEqual([[isrcs[0], 'recommended'], [isrcs[2], 'manual']]);
+    await f.setPubV2SongIsrcs(id, [isrcs[1] as string], 'tester');
+    expect((await f.pubV2Songs())[0]?.isrcs).toEqual([isrcs[1]]);
+    await expect(f.setPubV2SongIsrcs(id, ['QZTST2699999'], 'tester')).rejects.toMatchObject({ code: 'not_found' });
+    await expect(f.setPubV2SongIsrcs(id, ['nonsense'], 'tester')).rejects.toMatchObject({ code: 'validation_error' });
+    await expect(f.setPubV2SongIsrcs('missing', [], 'tester')).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
 describe('the boundary of publishing v2 (D-182)', () => {
   const files = (dir: string): string[] =>
     readdirSync(dir).flatMap((n) => {

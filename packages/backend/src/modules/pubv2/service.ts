@@ -174,6 +174,22 @@ export function createPubV2Service(db: Db, org: OrgScope, storageDir: string) {
       }));
     },
 
+    async listSongs(labelId?: string) {
+      return (await repo.songSums(labelId)).map((r) => ({
+        id: r.id,
+        title: r.title,
+        songwriterId: r.songwriter_id,
+        songwriter: r.songwriter,
+        payable: money(r.payable) ?? '0',
+      }));
+    },
+
+    async getSong(id: string) {
+      const s = await repo.song(id);
+      if (!s) throw new NotFoundError('Song', id);
+      return { id: s.id, title: s.title, songwriterId: s.songwriterId };
+    },
+
     async songwriter(id: string, labelId?: string) {
       const w = await repo.songwriter(id);
       if (!w) throw new NotFoundError('Songwriter', id);

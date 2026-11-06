@@ -1,10 +1,14 @@
-import { ConflictError } from '../shared/errors';
-import { normalizeName } from '../shared/identifiers';
+import { ConflictError, NotFoundError } from '../shared/errors';
+import { assertIsrc, normalizeName } from '../shared/identifiers';
 import type { LinksService } from '../modules/links';
 import type { PubV2Service } from '../modules/pubv2';
 import type { FacadeContext } from './context';
 
 export type RecommendationReason = 'old_map' | 'exact_name' | 'same_words';
+
+/** A title without its version: `Song (Slowed)`, `Song [Live]` and `Song - Artist` are one song. */
+export const baseTitle = (title: string): string =>
+  normalizeName(title.replace(/[([].*?[)\]]/g, ' ').replace(/\s-\s.*$/, ' '));
 
 /**
  * The links of publishing v2 to owners (D-183). The facade only suggests: the old map of `pub_writers`, then one
@@ -12,7 +16,7 @@ export type RecommendationReason = 'old_map' | 'exact_name' | 'same_words';
  * operator's confirmation; nothing here is set on its own.
  */
 export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; links: LinksService }) {
-  const { owners, publishing } = ctx;
+  const { owners, publishing, splits } = ctx;
   const { pubv2, links } = m;
 
   async function recommend(
@@ -43,7 +47,116 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     };
   };
 
+  /** The catalog once per read: the ISRCs of a base title and the pseudonyms of the open split of an ISRC. */
+  async function catalog() {
+    const [tracks, all, artists, resolveOwner] = await Promise.all([
+      owners.listTracks(),
+      splits.listSplits(),
+      owners.artistIndex(),
+      owners.ownerResolver(),
+    ]);
+    const byTitle = new Map<string, Map<string, string>>();
+    const titles = new Map<string, string>();
+    for (const t of tracks) {
+      if (!t.isrc) continue;
+      titles.set(t.isrc, t.title);
+      const key = baseTitle(t.title);
+      if (!key) continue;
+      const m = byTitle.get(key) ?? new Map<string, string>();
+      m.set(t.isrc, t.title);
+      byTitle.set(key, m);
+    }
+    const rows = new Map<string, Set<string>>();
+    for (const s of all) {
+      if (s.validTo !== null) continue;
+      const set = rows.get(s.isrc) ?? new Set<string>();
+      for (const share of s.shares) set.add(share.artistId);
+      rows.set(s.isrc, set);
+    }
+    const owner = new Map<string, string>();
+    for (const a of artists.values()) if (a.ownerId) owner.set(a.id, resolveOwner(a.ownerId));
+    const candidates = (title: string, ownerId: string | null) =>
+      [...(byTitle.get(baseTitle(title)) ?? new Map<string, string>()).entries()]
+        .map(([isrc, trackTitle]) => {
+          const ids = [...(rows.get(isrc) ?? [])];
+          const own = ownerId !== null && ids.some((id) => owner.get(id) === ownerId);
+          return {
+            isrc,
+            title: trackTitle,
+            artists: ids.map((id) => artists.get(id)?.pseudonym ?? '').filter(Boolean),
+            reason: own ? ('owner' as const) : ('title' as const),
+          };
+        })
+        .sort((a, b) => (a.reason === b.reason ? a.isrc.localeCompare(b.isrc) : a.reason === 'owner' ? -1 : 1));
+    return { titles, candidates };
+  }
+
+  const ownerOfSongwriters = async () => {
+    const out = new Map<string, string>();
+    for (const l of await links.songwriterOwners()) out.set(l.songwriterId, await owners.resolveOwnerId(l.ownerId));
+    return out;
+  };
+
   return {
+    /** The songs for the tab «Треки» (D-184): the ones without an ISRC first, largest first. */
+    async pubV2Songs(labelId?: string) {
+      const [{ candidates }, ownerOf, songs, decided, all] = await Promise.all([
+        catalog(),
+        ownerOfSongwriters(),
+        pubv2.listSongs(labelId),
+        links.songIsrcs(),
+        owners.listOwners(),
+      ]);
+      const names = new Map(all.map((o) => [o.id, o.name]));
+      const isrcs = new Map<string, string[]>();
+      for (const d of decided) isrcs.set(d.songId, [...(isrcs.get(d.songId) ?? []), d.isrc]);
+      const rows = songs.map((s) => {
+        const ownerId = ownerOf.get(s.songwriterId) ?? null;
+        const found = candidates(s.title, ownerId);
+        return {
+          songId: s.id,
+          title: s.title,
+          songwriterId: s.songwriterId,
+          songwriter: s.songwriter,
+          ownerId,
+          ownerName: ownerId ? (names.get(ownerId) ?? '') : null,
+          payable: s.payable,
+          isrcs: (isrcs.get(s.id) ?? []).sort(),
+          candidates: found.length,
+          ownerCandidates: found.filter((c) => c.reason === 'owner').length,
+        };
+      });
+      return [...rows.filter((r) => r.isrcs.length === 0), ...rows.filter((r) => r.isrcs.length > 0)];
+    },
+
+    /** The candidates of one song and its confirmed ISRCs, with the titles of the catalog. */
+    async pubV2SongCandidates(songId: string) {
+      const song = await pubv2.getSong(songId);
+      const [{ titles, candidates }, ownerOf, decided] = await Promise.all([catalog(), ownerOfSongwriters(), links.isrcsOfSong(songId)]);
+      return {
+        songId,
+        title: song.title,
+        candidates: candidates(song.title, ownerOf.get(song.songwriterId) ?? null),
+        isrcs: decided.map((d) => ({ isrc: d.isrc, title: titles.get(d.isrc) ?? '', source: d.source })),
+      };
+    },
+
+    /** The operator's decision: the whole set of ISRCs of a song. An ISRC outside the catalog is refused. */
+    async setPubV2SongIsrcs(songId: string, raw: string[], decidedBy: string) {
+      const song = await pubv2.getSong(songId);
+      const { titles, candidates } = await catalog();
+      const ownerOf = await ownerOfSongwriters();
+      const known = new Set(candidates(song.title, ownerOf.get(song.songwriterId) ?? null).map((c) => c.isrc));
+      const isrcs = [...new Set(raw.map(assertIsrc))];
+      for (const isrc of isrcs) if (!titles.has(isrc)) throw new NotFoundError('Track', isrc);
+      const rows = await links.setSongIsrcs(
+        songId,
+        isrcs.map((isrc) => ({ isrc, source: known.has(isrc) ? ('recommended' as const) : ('manual' as const) })),
+        decidedBy,
+      );
+      return { songId, isrcs: rows.map((r) => r.isrc).sort() };
+    },
+
     /** Every songwriter with its link and its recommendation: the ones without a link first, largest first. */
     async pubV2Links(labelId?: string) {
       const { byId, isPerson, oldMap } = await context();

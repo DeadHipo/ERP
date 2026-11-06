@@ -12,6 +12,8 @@ export const publishingQueries = {
 export const publishingV2Keys = {
   files: (label: string) => ['publishingV2', 'files', label] as const,
   links: (label: string) => ['publishingV2', 'links', label] as const,
+  songs: (label: string) => ['publishingV2', 'songs', label] as const,
+  songCandidates: (id: string) => ['publishingV2', 'songCandidates', id] as const,
   songwriters: (label: string) => ['publishingV2', 'songwriters', label] as const,
   songwriter: (id: string, label: string) => ['publishingV2', 'songwriter', id, label] as const,
 };
@@ -21,6 +23,10 @@ const labelFilter = (label: string) => (label ? { label } : {});
 export const publishingV2Queries = {
   files: (label: string) =>
     queryOptions({ queryKey: publishingV2Keys.files(label), queryFn: () => api.publishingV2.files(labelFilter(label)), ...MONEY_QUERY }),
+  songs: (label: string) =>
+    queryOptions({ queryKey: publishingV2Keys.songs(label), queryFn: () => api.publishingV2.songs(labelFilter(label)), ...MONEY_QUERY }),
+  songCandidates: (id: string) =>
+    queryOptions({ queryKey: publishingV2Keys.songCandidates(id), queryFn: () => api.publishingV2.songCandidates(id), ...MONEY_QUERY }),
   links: (label: string) =>
     queryOptions({ queryKey: publishingV2Keys.links(label), queryFn: () => api.publishingV2.links(labelFilter(label)), ...MONEY_QUERY }),
   songwriters: (label: string) =>

@@ -565,6 +565,10 @@ const OPERATOR = 'contract-test';
     const pubV2Owner = await call('post', '/owners', { body: { name: 'Writer Synthetic Owner', kind: 'person' } });
     await call('post', '/publishing-v2/links', { body: { songwriterId: pubV2Writers[0].id, ownerId: pubV2Owner.id } });
     expect((await call('get', '/publishing-v2/links')).find((l: { songwriterId: string }) => l.songwriterId === pubV2Writers[0].id).link.ownerId).toBe(pubV2Owner.id);
+    const pubV2Songs = await call('get', '/publishing-v2/songs');
+    const pubV2Song = pubV2Songs.find((x: { songwriterId: string }) => x.songwriterId === pubV2Writers[0].id);
+    expect((await call('get', '/publishing-v2/songs/:id/candidates', { params: { id: pubV2Song.songId } })).isrcs).toEqual([]);
+    expect((await call('post', '/publishing-v2/songs/:id/isrcs', { params: { id: pubV2Song.songId }, body: { isrcs: [] } })).isrcs).toEqual([]);
     await call('post', '/publishing-v2/files/:id/remove', { params: { id: pubV2File.id } });
     // the split import (D-172): a refusal, the preview (no audit row), the apply
     const importFile = tmpPath('contract-splits.csv');

@@ -19,6 +19,7 @@ import { fmt, ru } from '../../../i18n/ru';
 import { useLabel, useWriteLabel } from '../../../lib/label';
 import { compareDecimal, formatCount } from '../../../lib/money';
 import { LinksTab } from './LinksTab';
+import { TracksTab } from './TracksTab';
 
 const t = ru.reference.publishingV2;
 type Songwriter = z.output<typeof pubV2SongwriterSchema>;
@@ -161,6 +162,7 @@ export function PublishingV2Page() {
         tabs={[
           { id: 'songwriters', label: t.tabs.songwriters, content: <SongwritersTab /> },
           { id: 'links', label: t.tabs.links, content: <LinksTab /> },
+          { id: 'tracks', label: t.tabs.tracks, content: <TracksTab /> },
         ]}
       />
     </div>
