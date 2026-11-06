@@ -2,11 +2,31 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { TMP } from './helpers/tmp-root';
-import { listMigrations, planMigrations, splitStatements } from '../scripts/migrate-clickhouse';
+import { listMigrations, planMigrations, renameBelieveDatabases, splitStatements } from '../scripts/migrate-clickhouse';
 
 const dir = join(TMP, 'clickhouse-migrate');
 mkdirSync(dir, { recursive: true });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+describe('renameBelieveDatabases', () => {
+  const real = listMigrations(join(import.meta.dirname, '..', 'migrations', 'clickhouse'));
+  it('leaves the files byte-identical for the default database believe', () => {
+    for (const m of real) expect(renameBelieveDatabases(m.sql, 'believe')).toBe(m.sql);
+  });
+  it('retargets believe and believe_stage to <name> and <name>_stage, whole words only', () => {
+    const sql = 'CREATE TABLE believe.rows; INSERT INTO believe_stage.t SELECT * FROM believe.rows; SELECT believer, my_believe';
+    expect(renameBelieveDatabases(sql, 'believe_x')).toBe(
+      'CREATE TABLE believe_x.rows; INSERT INTO believe_x_stage.t SELECT * FROM believe_x.rows; SELECT believer, my_believe',
+    );
+  });
+  it('leaves no reference to the default pair in the real migrations', () => {
+    for (const m of real) {
+      const renamed = renameBelieveDatabases(m.sql, 'other');
+      expect(renamed).not.toMatch(/\bbelieve(_stage)?\b/);
+      if (/\bbelieve_stage\b/.test(m.sql)) expect(renamed).toMatch(/\bother_stage\b/);
+    }
+  });
+});
 
 describe('splitStatements', () => {
   it('splits on semicolons and drops empty statements', () => {

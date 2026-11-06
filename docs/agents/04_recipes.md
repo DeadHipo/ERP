@@ -152,7 +152,10 @@ bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-m
   (→ `main/{nicknames,cash_rows,carve_pairs,sch3b_check}.json`, `README.md`, `reconciliation.md`), `annex_nls.py`
   (the Annex NLS cache of `compare-annex.ts`), `dump_sch3b.py`; helpers `common.py`, `xl.py`, `readmain.py`. They
   only read: the workbooks in `context_data/`, ClickHouse over HTTP (`common.py`), `splits.db` / `erp.db` (sqlite,
-  `echo8.py`) and SELECTs on `owners.*` (`build_main.py`). Only Main has a rebuild command from the repo
+  `echo8.py`) and SELECTs on `owners.*` (`build_main.py`). The stores and the output directory come from `stores.py`:
+  the environment first, then `<repo>/.env`, then the defaults — `DB_DATABASE` (`erp`), `DB_USERNAME`,
+  `CLICKHOUSE_DATABASE` / `_HOST` / `_HTTP_PORT` / `_USERNAME` / `_PASSWORD`, `MVP_LOAD_DIR` (`data/mvp-load`, the
+  input and output directory of every extractor; `pg.sh` likewise). Only Main has a rebuild command from the repo
   (`python3 -I packages/backend/scripts/mvp/build_main.py`, then `report_main.py`). The annex and echo8 scripts read
   dumps made in the stage 4 session scratchpad (absolute paths in `common.py`, `echo8.py`, `duetti_schedule.py`), so
   `annex/*.json` and `echo8/*.json` cannot be rebuilt from the repository alone: the loaded database (or the data
@@ -164,7 +167,8 @@ bypasses: `normalise-dates` updates split dates by SQL (D-131), the two splits-m
   note, or by title/alias): after `--apply` the same step in dry run must report only `already_done`. Logs:
   `data/mvp-load/log/`.
 - B17: `npx tsx packages/backend/scripts/mvp/load-b17.ts <statement.xlsx> [generatedAt] --label 0to8` (the call of the
-  upload route under an own label, D-169 R8; without `--label` the statement is loaded without one, a warning is
+  upload route under an own label, D-169 R8; it stores its copy of the statement under `DATA_DIR`, default `data/real`,
+  in `<DATA_DIR>/orgs/<id>/files/publishing`, like the other `compare-common.ts` scripts; without `--label` the statement is loaded without one, a warning is
   printed and it waits for `assign-label-books --step statements`); `--reconcile` prints the b17 reconciliation rows.
 - Believe reports: `npx tsx packages/backend/scripts/load-believe.ts --storage <dir> --label <own label> <files>` goes
   through the facade like the upload route (D-169 R7). **Register the accounts before the reports**
@@ -219,20 +223,24 @@ or send `X-System-Key` + `X-Org`. Stored copies land in `<dataDir>/orgs/<id>/fil
 
 1. Believe: the 47 report files (34 of account 1052428 from `context_data/ERP_data/believe/raw`, 13 of 1055956 from
    `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --data data/real [--org <id>] <files>` (since D-170 `--data`; the copies go to `data/real/orgs/<id>/files/sources`)
-   (the July 2026 Echo8 file is stored there under a name with a trailing ` 2`: copy it under its proper name first,
-   the loader takes the account and month from the name). Expect 75 744 752 rows, Σ net 16 338 476,404666051188.
+   (the loader takes the account and month from the file name; the July 2026 Echo8 file is taken under its proper
+   name `data/real/stage/2154953_1055956_2026-07-01_2026-07-01.csv`). Expect 75 744 752 rows, Σ net 16 338 476,404666051188.
    Since D-169 the labels and the two accounts exist on a clean stack only after `load.ts labels` (step 3) and step 5,
    so the reports load here without `--label` (warning) and step 7 marks them by account. To load them under their
    labels instead: run step 2 and `load.ts labels --apply` and register the two accounts first, then
    `load-believe.ts --label 0to8 <the 34 files>` and `--label Echo8 <the 13 files>`.
-2. The base reference data: `npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts data/pub` (the four SQLite
-   files of the format before D-121; columns added by later migrations stay at their defaults).
+2. The base reference data: `npx tsx packages/backend/scripts/migrate-sqlite-to-pg.ts data/pub --org <id>` (the four
+   SQLite files of the format before D-121; columns added by later migrations stay at their defaults). It must run
+   **before** `load.ts labels` (step 3, or the label-first variant of step 1): that step creates 15 owners, and the
+   import refuses a non-empty `owners.owners` (without `--replace`).
 3. Stage 4 loader, one step at a time with `--apply`: `labels tracks normalise-dates splits participations exclusions
    echo8 main terms contracts`, then the two B17 statements (`scripts/mvp/load-b17.ts
    context_data/ERP_data/publishing/raw/0to8_Q22025_Statement.xlsx` and `…/0to8_Q42024_Q12025_Publishing_Breakdown.xlsx`,
    D-134; with `--label 0to8` since D-169, or marked by step 7), then `pairs label-fixes lunar b17-holders carves settlement-prestart assumption-rows hygiene`.
 4. Advertising: `python3 -I packages/backend/scripts/mvp/extract-main-ads.py` first (the mapping carries pseudonym
-   ids, which the loader generates anew on every rebuild; the extractor is deterministic in money and ISRC), then
+   ids, which the loader generates anew on every rebuild; the extractor is deterministic in money and ISRC; it reads
+   the stores named by the environment, then by `.env` — `DB_DATABASE`, `CLICKHOUSE_DATABASE`, … — and writes
+   `<MVP_LOAD_DIR>/ads/main_ads_mapping.json`, recipe 9), then
    `load.ts ads --apply` (2 686 records; the 33 without an ISRC are created with the payer label 0to8).
 5. `scripts/assign-operation-labels.ts data/real --apply` (D-168) and the two accounts: `POST /labels/:id/accounts`
    1052428 → 0to8, 1055956 → Echo8 (if not registered already for step 1; an operator header is needed on every write).
@@ -262,6 +270,15 @@ D-170. The stack starts without organizations and users; the first of each is ma
 
 1. `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`, then `npm run migrate:pg` (and
    `npm run migrate:ch`). Migration 0016 creates `orgs` and `auth` but no organization on an empty base.
+   The clean stack keeps the default names `erp` / `believe`: it is reached by `docker compose … down -v` (dropping the
+   volumes) and `up -d` again. A private database name is for tests only: `npm run migrate:pg` and any `docker compose
+   run` / `up` with another `DB_DATABASE` recreate the shared PostgreSQL container (`POSTGRES_DB` and its healthcheck
+   come from `${DB_DATABASE}`) and restart it, killing every session on it. For a private pair beside the live stores
+   do what `createPrivateStores` (`src/shared/private-stores.ts`) does, by hand: `CREATE DATABASE erp_<x>` in the
+   running container, `psql -1 -d erp_<x> -f` per file of `migrations/postgres/` in order (plus its
+   `schema_migrations` row), and `CLICKHOUSE_DATABASE=believe_<x> node --env-file=.env
+   packages/backend/scripts/migrate-clickhouse.ts` (it retargets `believe` / `believe_stage` to `believe_<x>` /
+   `believe_<x>_stage`); then point the scripts at the pair with `DB_DATABASE` / `CLICKHOUSE_DATABASE`.
 2. `.env` (see `.env.example`): `AUTH_MODE=on`, `AUTH_SECRET=$(openssl rand -hex 32)` (≥ 32 bytes, never
    `change_me…`), `SYSTEM_ADMIN_KEY=$(openssl rand -hex 24)`; `AUTH_COOKIE_SECURE=1` only behind https.
 3. The system administrator: `ERP_NEW_PASSWORD=… npx tsx packages/backend/scripts/create-user.ts admin --system`

@@ -6,6 +6,8 @@
  * afterwards is an error (add a new migration instead). ClickHouse DDL is not transactional, so a migration
  * that fails half way is not recorded and is applied again on the next run: write every statement idempotent
  * (IF NOT EXISTS, CREATE OR REPLACE VIEW).
+ * The files target `believe` / `believe_stage`; with CLICKHOUSE_DATABASE=<name> they are rewritten to `<name>` /
+ * `<name>_stage` as the private test stores do (renameBelieveDatabases); for `believe` nothing is rewritten.
  *
  * No dependencies: plain fetch against the HTTP interface. Needs Node 22.18+ (runs .ts directly).
  * Not safe to run in two processes at once: it is meant to be the one-shot `clickhouse-migrate` compose service.
@@ -20,9 +22,9 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { splitStatements } from '../src/shared/clickhouse-sql.ts';
+import { renameBelieveDatabases, splitStatements } from '../src/shared/clickhouse-sql.ts';
 
-export { splitStatements };
+export { renameBelieveDatabases, splitStatements };
 
 export interface Migration {
   version: number;
@@ -176,7 +178,9 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   for (const m of pending) {
-    const statements = splitStatements(m.sql);
+    // the files name `believe` / `believe_stage`; another CLICKHOUSE_DATABASE gets `<name>` / `<name>_stage`
+    // (the checksum stays that of the file, so the same files apply to any pair)
+    const statements = splitStatements(renameBelieveDatabases(m.sql, database));
     console.log(`clickhouse: applying ${m.file} (${statements.length} statements)`);
     for (const [i, st] of statements.entries()) {
       try {

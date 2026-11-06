@@ -1,27 +1,24 @@
 """Stage 4.5 data preparation: classify every cash row of 0to8 Main.xlsx (INCOME/EXPENSE).
 
-READ-ONLY on every source. Writes JSON + README + reconciliation under data/mvp-load/main/.
+READ-ONLY on every source. Writes JSON + README + reconciliation under <MVP_LOAD_DIR>/main/ (default data/mvp-load).
 Run:  python3 -I packages/backend/scripts/mvp/build_main.py
-Needs the ERP PostgreSQL container (royalty-erp-postgres-1) for owners.artists / owner_aliases (SELECT only).
+Needs the ERP PostgreSQL container (royalty-erp-postgres-1) for owners.artists / owner_aliases (SELECT only); the
+database is DB_DATABASE from the environment, then the repo .env, then erp (stores.py).
 """
 import sys, os, re, json, subprocess, collections, unicodedata
 from decimal import Decimal as D, ROUND_HALF_UP
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import readmain, xl
+from stores import psql, mvp_load_dir
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..', '..', '..'))
-OUT = os.path.join(ROOT, 'data', 'mvp-load', 'main')
+OUT = mvp_load_dir('main')
 os.makedirs(OUT, exist_ok=True)
 CENT = D('0.01')
 
 def q2(x): return x.quantize(CENT, ROUND_HALF_UP)
 def spec(s): return re.sub(r'\s+', ' ', s.strip().lower())
-
-def psql(sql):
-    out = subprocess.run(['docker', 'exec', 'royalty-erp-postgres-1', 'psql', '-U', 'erp', '-d', 'erp', '-At', '-F', '\t', '-c', sql],
-                         capture_output=True, text=True, check=True).stdout
-    return [l.split('\t') for l in out.splitlines()]
 
 # ---------------------------------------------------------------- reference data (read-only SELECT)
 artists = psql("select id, pseudonym, pseudonym_norm, owner_id from owners.artists")

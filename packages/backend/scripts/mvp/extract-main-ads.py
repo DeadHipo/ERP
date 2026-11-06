@@ -3,9 +3,13 @@
 READ-ONLY on every source:
   - context_data/ERP_data/main_sheet/main.db (SQLite export of the 0to8 Main sheet, opened read-only)
   - ERP PostgreSQL (docker exec royalty-erp-postgres-1 psql, SELECT only): owners.*, splits.*, labels.*, public.source_files
-  - ClickHouse believe.rows over HTTP (credentials from the repo .env), only files with status `loaded`
-Writes data/mvp-load/ads/main_ads_mapping.json (git-ignored). Re-runnable, deterministic.
+  - ClickHouse <CLICKHOUSE_DATABASE>.rows over HTTP, only files with status `loaded`
+  - <MVP_LOAD_DIR>/main/cash_rows.json (the Main loader's rows, optional)
+The stores are those of the environment, then of the repo .env (stores.py): DB_DATABASE (default erp), DB_USERNAME,
+CLICKHOUSE_DATABASE / _HOST / _HTTP_PORT / _USERNAME / _PASSWORD; MVP_LOAD_DIR (default data/mvp-load).
+Writes <MVP_LOAD_DIR>/ads/main_ads_mapping.json (git-ignored). Re-runnable, deterministic.
 Run:  python3 -I packages/backend/scripts/mvp/extract-main-ads.py
+      DB_DATABASE=erp_x CLICKHOUSE_DATABASE=believe_x MVP_LOAD_DIR=data/test-tmp/x python3 -I packages/backend/scripts/mvp/extract-main-ads.py
 
 Per Main row: gross = `fix_expense_posted_без_флажков` (ads without flags), charged = `expense_posted` (what the
 artist was charged), flag = `обнулить_ads_расход` (1 = not charged, i.e. non-recoupable). Month = fix_date_reports
@@ -18,13 +22,14 @@ titles), c (artist's ISRC with the highest Believe net in the spend month, else 
 all-time net), none. Candidate ISRCs = split rows and participations of the pseudonym valid in the report month
 (all of them if none is valid).
 """
-import os, re, json, sqlite3, subprocess, collections, unicodedata, urllib.request, base64
+import os, sys, re, json, sqlite3, collections, unicodedata
 from decimal import Decimal as D, ROUND_HALF_UP
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, '..', '..', '..', '..'))
+sys.path.insert(0, HERE)
+from stores import ROOT, psql, mvp_load_dir, ch as ch_raw
 MAIN_DB = os.path.join(ROOT, 'context_data', 'ERP_data', 'main_sheet', 'main.db')
-OUT = os.path.join(ROOT, 'data', 'mvp-load', 'ads')
+OUT = mvp_load_dir('ads')
 CENT = D('0.01')
 PROMO_TITLE_ERA_END = '2025-07'  # from 2025-08 PROMO rows are per-artist monthly totals (track = nickname)
 
@@ -40,19 +45,8 @@ def dec(x):
     except Exception: return D(0)
 
 
-def psql(sql):
-    out = subprocess.run(['docker', 'exec', 'royalty-erp-postgres-1', 'psql', '-U', 'erp', '-d', 'erp', '-At', '-F', '\t', '-c', sql],
-                         capture_output=True, text=True, check=True).stdout
-    return [l.split('\t') for l in out.splitlines()]
-
-
 def ch(sql):
-    env = dict(l.strip().split('=', 1) for l in open(os.path.join(ROOT, '.env')) if '=' in l and not l.startswith('#'))
-    req = urllib.request.Request('http://%s:%s/?database=%s' % (env['CLICKHOUSE_HOST'], env['CLICKHOUSE_HTTP_PORT'], env['CLICKHOUSE_DATABASE']),
-                                 data=(sql + ' FORMAT JSONEachRow').encode())
-    req.add_header('Authorization', 'Basic ' + base64.b64encode((env['CLICKHOUSE_USERNAME'] + ':' + env['CLICKHOUSE_PASSWORD']).encode()).decode())
-    out = urllib.request.urlopen(req, timeout=600).read().decode()
-    return [json.loads(l) for l in out.splitlines() if l.strip()]
+    return ch_raw(sql + ' FORMAT JSONEachRow', timeout=600)
 
 
 # ---------------------------------------------------------------- ERP reference data
@@ -213,7 +207,7 @@ for cm, aid in psql("select comment, coalesce(artist_id::text,'') from settlemen
     mt = re.match(r'mvp:main:(\d+)', cm)
     if mt: loader_rows[int(mt.group(1))].add(final(aid))
 loader_by_nick = collections.defaultdict(set)  # row numbers are those of the loader's xlsx (main/cash_rows.json), not of main.db
-CASH = os.path.join(ROOT, 'data', 'mvp-load', 'main', 'cash_rows.json')
+CASH = mvp_load_dir('main', 'cash_rows.json')
 for r in (json.load(open(CASH)) if os.path.exists(CASH) else []):
     for aid in loader_rows.get(r['rowNo'], ()): loader_by_nick[spec(r['nickname'])].add(aid)
 

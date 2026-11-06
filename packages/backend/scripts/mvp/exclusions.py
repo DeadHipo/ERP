@@ -25,7 +25,7 @@ def nets(isrcs, from_month=None):
     for i in range(0, len(isrcs), 400):
         part = isrcs[i:i + 400]
         w = " and reporting_month >= '%s'" % from_month if from_month else ''
-        for x in ch("select isrc, toString(sum(net_revenue)) net, toString(min(reporting_month)) mn, toString(max(reporting_month)) mx from believe.rows where file_id in (%s) and isrc in (%s)%s group by isrc format JSONEachRow" % (q(ids), q(part), w)):
+        for x in ch("select isrc, toString(sum(net_revenue)) net, toString(min(reporting_month)) mn, toString(max(reporting_month)) mx from rows where file_id in (%s) and isrc in (%s)%s group by isrc format JSONEachRow" % (q(ids), q(part), w)):
             out[x['isrc']] = x
     return out
 
@@ -90,7 +90,7 @@ dvt = str(sum(Decimal(d['believeNet'] or 0) for d in dv))
 ec = [r for r in S if r[4] == 'identified Echo8 repertoire']
 eis = {r[0] for r in ec}
 echo_list = [{'isrc': r[0], 'imprint': r[3], 'reason': r[5]} for r in ec]
-acc = ch("select isrc, toString(sum(net_revenue)) net from believe.rows where file_id in (%s) group by isrc format JSONEachRow" % q(ids_echo))
+acc = ch("select isrc, toString(sum(net_revenue)) net from rows where file_id in (%s) group by isrc format JSONEachRow" % q(ids_echo))
 acc_isrc = {x['isrc'] for x in acc if x['isrc']}
 not_in = sorted(i for i in acc_isrc if i not in eis and i not in cov)
 echo = {'count': len(echo_list), 'byImprint': dict(collections.Counter(e['imprint'] for e in echo_list)), 'isrc': echo_list,
@@ -98,7 +98,7 @@ echo = {'count': len(echo_list), 'byImprint': dict(collections.Counter(e['imprin
         'echo8AccountIsrcNotInSch1BNotInPerimeterNet': str(sum(Decimal(x['net']) for x in acc if x['isrc'] in set(not_in))),
         'echo8AccountIsrcInOurPerimeter': len([i for i in acc_isrc if i in cov]),
         'note': 'the filter for the stage-5 comparison with the Annex: drop these ISRC (and Duetti and withdrawn) from the ERP side before comparing to the 10,228 perimeter; the Echo8-account ISRC not in Sch1B and not in the perimeter are listed by count so the comparison can report them as "outside both"'}
-fam = ch("select isrc, toString(sum(net_revenue)) net from believe.rows where file_id in (%s) and label_name in ('Echo8','qaraqshy records','fate music','CATCORE','SF Records') and isrc != '' group by isrc format JSONEachRow" % q(ids))
+fam = ch("select isrc, toString(sum(net_revenue)) net from rows where file_id in (%s) and label_name in ('Echo8','qaraqshy records','fate music','CATCORE','SF Records') and isrc != '' group by isrc format JSONEachRow" % q(ids))
 echo['believeEchoFamilyIsrc'] = {'definition': 'distinct ISRC with at least one Believe line whose label_name is Echo8, qaraqshy records, fate music, CATCORE or SF Records, in either account (loaded files)',
     'count': len(fam), 'net': str(sum(Decimal(x['net']) for x in fam)), 'inSch1B': sum(1 for x in fam if x['isrc'] in eis), 'notInSch1B': sum(1 for x in fam if x['isrc'] not in eis),
     'inOurPerimeter': sum(1 for x in fam if x['isrc'] in cov), 'isrc': [{'isrc': x['isrc'], 'net': x['net'], 'inSch1B': x['isrc'] in eis, 'inOurPerimeter': x['isrc'] in cov} for x in fam]}

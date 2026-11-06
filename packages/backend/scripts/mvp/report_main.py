@@ -1,8 +1,11 @@
-"""Writes reconciliation.md and README.md of data/mvp-load/main from the JSON made by build_main.py."""
-import os, json, collections
+"""Writes reconciliation.md and README.md of <MVP_LOAD_DIR>/main (default data/mvp-load; environment, then the repo .env,
+stores.py) from the JSON made by build_main.py."""
+import os, sys, json, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stores import mvp_load_dir
 from decimal import Decimal as D, ROUND_HALF_UP
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..'))
-OUT = os.path.join(ROOT, 'data', 'mvp-load', 'main')
+OUT = mvp_load_dir('main')
 rows = json.load(open(os.path.join(OUT, 'cash_rows.json')))
 nicks = json.load(open(os.path.join(OUT, 'nicknames.json')))
 pairs = json.load(open(os.path.join(OUT, 'carve_pairs.json')))

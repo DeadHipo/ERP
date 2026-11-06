@@ -48,7 +48,7 @@ def erp_now(isrc):
 def title_of(isrc):
     return (cov[isrc][4] if isrc in cov else None) or (tracks[isrc][3] if isrc in tracks else None)
 def first_month(isrcs):
-    r = ch("select isrc, toString(min(reporting_month)) mn, toString(sum(net_revenue)) net from believe.rows where file_id in (%s) and isrc in (%s) group by isrc format JSONEachRow" % (q(ids), q(isrcs)))
+    r = ch("select isrc, toString(min(reporting_month)) mn, toString(sum(net_revenue)) net from rows where file_id in (%s) and isrc in (%s) group by isrc format JSONEachRow" % (q(ids), q(isrcs)))
     return {x['isrc']: x for x in r}
 def clean_isrc(s): return re.sub(r'[^A-Z0-9]', '', s.upper())
 def add_years(iso, n):

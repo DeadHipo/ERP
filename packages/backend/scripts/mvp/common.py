@@ -1,7 +1,13 @@
-import json, re, unicodedata, datetime
+"""Shared helpers of the stage-4 annex extractors (exclusions.py, participations.py, splits_diff.py, echo8.py).
+ClickHouse is read through stores.py: the environment first, then the repo .env (CLICKHOUSE_DATABASE / _HOST /
+_HTTP_PORT / _USERNAME / _PASSWORD); OUT is <MVP_LOAD_DIR>/annex (default data/mvp-load/annex). Read-only on the stores.
+"""
+import json, re, unicodedata, datetime, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stores
 SP = '/private/tmp/claude-501/-Users-nearlydeadhipo-Desktop-0to8-ERP/441975a6-0f8b-4dbd-b984-d2856fc5b0b0/scratchpad/s4'
-ROOT = '/Users/nearlydeadhipo/Desktop/0to8/ERP'
-OUT = ROOT + '/data/mvp-load/annex'
+ROOT = stores.ROOT
+OUT = stores.mvp_load_dir('annex')
 
 def nn(s):
     s = unicodedata.normalize('NFKC', str(s)).lower()
@@ -51,14 +57,9 @@ def seller_name(seller, instrument=''):
 def vested(v):
     return re.sub(r'^\w+ \u2192 FZ', 'person \u2192 FZ', str(v))
 
-import subprocess, urllib.request, base64
 def ch(sql):
-    """ClickHouse read-only over HTTP (credentials from the repo .env)."""
-    env = dict(l.strip().split('=', 1) for l in open(ROOT + '/.env') if '=' in l and not l.startswith('#'))
-    req = urllib.request.Request('http://%s:%s/?database=%s' % (env['CLICKHOUSE_HOST'], env['CLICKHOUSE_HTTP_PORT'], env['CLICKHOUSE_DATABASE']), data=sql.encode())
-    req.add_header('Authorization', 'Basic ' + base64.b64encode((env['CLICKHOUSE_USERNAME'] + ':' + env['CLICKHOUSE_PASSWORD']).encode()).decode())
-    out = urllib.request.urlopen(req, timeout=300).read().decode()
-    return [json.loads(l) for l in out.splitlines() if l.strip()]
+    """ClickHouse read-only over HTTP (the stores of the environment, then of the repo .env)."""
+    return stores.ch(sql, timeout=300)
 
 def loaded_ids(account=None):
     return [l.split('\t')[0] for l in open(SP + '/files.tsv') if account is None or l.split('\t')[1].strip() == account]

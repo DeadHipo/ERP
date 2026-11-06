@@ -35,3 +35,13 @@ export function splitStatements(sql: string): string[] {
   if (cur.trim()) out.push(cur.trim());
   return out;
 }
+
+/**
+ * Retargets ClickHouse migration SQL from the default pair `believe` / `believe_stage` to `<database>` /
+ * `<database>_stage` (whole words only; `believe_stage` first so it is not read as `believe` + `_stage`).
+ * For `believe` the SQL is returned unchanged. Used by the migrator (CLICKHOUSE_DATABASE) and the private test stores.
+ */
+export function renameBelieveDatabases(sql: string, database: string): string {
+  if (database === 'believe') return sql;
+  return sql.replace(/\bbelieve_stage\b/g, `${database}_stage`).replace(/\bbelieve\b/g, database);
+}

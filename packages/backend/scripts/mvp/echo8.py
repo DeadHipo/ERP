@@ -1,14 +1,16 @@
 #!/usr/bin/env python3 -I
 """Stage 4.4: Echo8 reference data (tracks, splits, coverage). Read-only on every source.
 Inputs are dumps in the session scratchpad (loaded-file list, ClickHouse pair/month nets, owners/splits tables of the ERP PostgreSQL),
-the Echo8 Backstage export, splits.db and erp.db (read-only). Output: data/mvp-load/echo8/{tracks,splits}.json, coverage.md."""
+the Echo8 Backstage export, splits.db and erp.db (read-only). Output: <MVP_LOAD_DIR>/echo8/{tracks,splits}.json, coverage.md (MVP_LOAD_DIR: environment, then
+the repo .env, then data/mvp-load; stores.py)."""
 import csv, json, sys, collections, sqlite3, os
 from decimal import Decimal
-sys.path.insert(0, '/Users/nearlydeadhipo/Desktop/0to8/ERP/packages/backend/scripts/mvp')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import nn
+import stores
 SP = '/private/tmp/claude-501/-Users-nearlydeadhipo-Desktop-0to8-ERP/441975a6-0f8b-4dbd-b984-d2856fc5b0b0/scratchpad/e8'
-ROOT = '/Users/nearlydeadhipo/Desktop/0to8/ERP'
-OUT = ROOT + '/data/mvp-load/echo8'
+ROOT = stores.ROOT
+OUT = stores.mvp_load_dir('echo8')
 CD = ROOT + '/context_data'
 D = Decimal
 def tsv(n): return [l.rstrip('\n').split('\t') for l in open(SP + '/' + n)]

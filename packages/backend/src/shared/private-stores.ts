@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { splitStatements } from './clickhouse-sql';
+import { renameBelieveDatabases, splitStatements } from './clickhouse-sql';
 import { clickHouseConfigFromEnv, createClickHouse } from './clickhouse';
 import { createPostgres, postgresConfigFromEnv } from './postgres';
 import { createDb } from './pg-db';
@@ -72,7 +72,7 @@ export async function createPrivateStores(name: string, opts: { dropFirst?: bool
     ]);
   }
   for (const migration of sql('clickhouse')) {
-    const renamed = migration.replace(/\bbelieve_stage\b/g, stageDatabase).replace(/\bbelieve\b/g, database);
+    const renamed = renameBelieveDatabases(migration, database);
     for (const statement of splitStatements(renamed)) await ch.command({ query: statement });
   }
 
