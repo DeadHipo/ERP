@@ -70,6 +70,7 @@ export const audit = {
     'POST /publishing/statements/:id/replace': 'выписка B17 заменена',
     'POST /publishing-v2/files': 'паблишинг v2: файл загружен',
     'POST /publishing-v2/files/:id/remove': 'паблишинг v2: файл удалён',
+    'POST /publishing-v2/links': 'паблишинг v2: автор связан с владельцем',
     'POST /settlements/operations/import': 'импорт операций из файла',
     'POST /settlements/start/import': 'импорт стартовых позиций из файла',
     'POST /settlements/start/:id/deactivate': 'отключена строка старта',

@@ -315,6 +315,9 @@ export const uploadLabelQuery = z.object({
     .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown, 400 label_not_own'),
 });
 
+/** The operator's decision (D-183): this songwriter of publishing v2 is this owner. */
+export const pubV2LinkBody = z.object({ songwriterId: z.string().min(1), ownerId: z.string().min(1) });
+
 /** The upload of a report summary (D-182): `replace=1` takes the quarters over from the loaded files of the label. */
 export const pubV2UploadQuery = uploadLabelQuery.extend({
   replace: z

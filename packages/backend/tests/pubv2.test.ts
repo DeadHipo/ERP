@@ -128,6 +128,50 @@ describe('the partition of a file (D-182)', () => {
   });
 });
 
+describe('the links of songwriters to owners (D-183)', () => {
+  const upload = async (f: Awaited<ReturnType<typeof newFacade>>, writer: string) => {
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    await f.modules.pubv2.ingest({
+      path: await workbook(`l-${writer.replace(/\W/g, '')}.xlsx`, {
+        'Songwriter Breakdown': [['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'], [`SONGWRITER: ${writer}`, 1, 0, 1], ['  Song', 1, 0, 1]],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+      replace: true,
+    });
+    return (await f.pubV2Links())[0] as Awaited<ReturnType<typeof f.pubV2Links>>[number];
+  };
+
+  it('suggests by the name, then by the same words, and sets nothing on its own', async () => {
+    const f = await newFacade();
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const exact = await upload(f, 'Writer Synth One');
+    expect([exact.link, exact.recommendation?.ownerId, exact.recommendation?.reason]).toEqual([null, owner.id, 'exact_name']);
+    const words = (await f.pubV2Links()).length;
+    expect(words).toBe(1);
+    const other = await newFacade();
+    const person = await other.modules.owners.createOwner({ name: 'Writer Synth Two', kind: 'person', origin: 'test' });
+    const swapped = await upload(other, 'Two Synth Writer');
+    expect([swapped.recommendation?.ownerId, swapped.recommendation?.reason]).toEqual([person.id, 'same_words']);
+    const none = await newFacade();
+    expect((await upload(none, 'Nobody Known')).recommendation).toBeNull();
+  });
+
+  it('the operator confirms or chooses another; a new decision replaces the old one; a label is refused', async () => {
+    const f = await newFacade();
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const other = await f.modules.owners.createOwner({ name: 'Somebody Else', kind: 'person', origin: 'test' });
+    const label = await f.modules.owners.createOwner({ name: 'A Company', kind: 'label', origin: 'test' });
+    const row = await upload(f, 'Writer Synth One');
+    const confirmed = await f.linkSongwriter({ songwriterId: row.songwriterId, ownerId: owner.id }, 'tester');
+    expect([confirmed.source, confirmed.decidedBy, confirmed.ownerName]).toEqual(['recommended', 'tester', 'Writer Synth One']);
+    await f.linkSongwriter({ songwriterId: row.songwriterId, ownerId: other.id }, 'tester');
+    expect((await f.pubV2Links())[0]?.link).toMatchObject({ ownerId: other.id, source: 'manual' });
+    await expect(f.linkSongwriter({ songwriterId: row.songwriterId, ownerId: label.id }, 'tester')).rejects.toMatchObject({ code: 'owner_is_label' });
+    await expect(f.linkSongwriter({ songwriterId: 'missing', ownerId: owner.id }, 'tester')).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
 describe('the boundary of publishing v2 (D-182)', () => {
   const files = (dir: string): string[] =>
     readdirSync(dir).flatMap((n) => {
@@ -140,6 +184,6 @@ describe('the boundary of publishing v2 (D-182)', () => {
     const money = [...files(join(src, 'facade', 'layers')), ...files(join(src, 'modules', 'publishing'))].concat(
       ['calculation.ts', 'balance.ts', 'context.ts', 'payouts.ts', 'payroll.ts', 'owner-scope.ts'].map((f) => join(src, 'facade', f)),
     );
-    for (const f of money) expect(readFileSync(f, 'utf8'), f).not.toMatch(/pubv2/i);
+    for (const f of money) expect(readFileSync(f, 'utf8'), f).not.toMatch(/pubv2|modules\/links/i);
   });
 });

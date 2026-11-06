@@ -9,6 +9,7 @@ import { useAction } from '../../../api/queries/core';
 import { publishingV2Queries } from '../../../api/queries/publishing';
 import { ActionButton } from '../../../components/ActionButton';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { CardTabs } from '../../../components/EntityCard';
 import { Money } from '../../../components/Money';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
@@ -17,6 +18,7 @@ import { UploadForm } from '../../../components/fields/UploadForm';
 import { fmt, ru } from '../../../i18n/ru';
 import { useLabel, useWriteLabel } from '../../../lib/label';
 import { compareDecimal, formatCount } from '../../../lib/money';
+import { LinksTab } from './LinksTab';
 
 const t = ru.reference.publishingV2;
 type Songwriter = z.output<typeof pubV2SongwriterSchema>;
@@ -77,8 +79,8 @@ function RemoveDialog(props: { file: PubFile; onClose: () => void }) {
   );
 }
 
-/** P32 (D-182): the songwriters and the files of the report summaries; no owner link, no effect on money. */
-export function PublishingV2Page() {
+/** The songwriters and the files of the report summaries. */
+function SongwritersTab() {
   const { labelId } = useLabel();
   const songwriters = useQuery(publishingV2Queries.songwriters(labelId));
   const files = useQuery(publishingV2Queries.files(labelId));
@@ -131,24 +133,36 @@ export function PublishingV2Page() {
     [],
   );
   return (
+    <div className="flex flex-col gap-6">
+      <section>
+        <h2 className="mb-2 text-sm font-medium">{t.songwriters}</h2>
+        <QueryView query={songwriters} isEmpty={(d) => d.length === 0} emptyMessage={t.noSongwriters}>
+          {(rows) => <DataGrid rowData={rows} columnDefs={writerColumns} getRowId={(w) => w.id} rowTestId={(w) => `songwriter-${w.id}`} />}
+        </QueryView>
+      </section>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium">{t.files}</h2>
+        <Upload />
+        <QueryView query={files} isEmpty={(d) => d.length === 0} emptyMessage={t.noFiles}>
+          {(rows) => <DataGrid rowData={rows} columnDefs={fileColumns} getRowId={(f) => f.id} rowTestId={(f) => `pub-file-${f.id}`} />}
+        </QueryView>
+      </section>
+      {removing ? <RemoveDialog file={removing} onClose={() => setRemoving(null)} /> : null}
+    </div>
+  );
+}
+
+/** P32 (D-182, D-183): the report summaries and their links to owners; no effect on money. */
+export function PublishingV2Page() {
+  return (
     <div data-testid="publishing-v2-page">
       <PageHeader title={t.title} subtitle={t.subtitle} />
-      <div className="flex flex-col gap-6">
-        <section>
-          <h2 className="mb-2 text-sm font-medium">{t.songwriters}</h2>
-          <QueryView query={songwriters} isEmpty={(d) => d.length === 0} emptyMessage={t.noSongwriters}>
-            {(rows) => <DataGrid rowData={rows} columnDefs={writerColumns} getRowId={(w) => w.id} rowTestId={(w) => `songwriter-${w.id}`} />}
-          </QueryView>
-        </section>
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium">{t.files}</h2>
-          <Upload />
-          <QueryView query={files} isEmpty={(d) => d.length === 0} emptyMessage={t.noFiles}>
-            {(rows) => <DataGrid rowData={rows} columnDefs={fileColumns} getRowId={(f) => f.id} rowTestId={(f) => `pub-file-${f.id}`} />}
-          </QueryView>
-        </section>
-      </div>
-      {removing ? <RemoveDialog file={removing} onClose={() => setRemoving(null)} /> : null}
+      <CardTabs
+        tabs={[
+          { id: 'songwriters', label: t.tabs.songwriters, content: <SongwritersTab /> },
+          { id: 'links', label: t.tabs.links, content: <LinksTab /> },
+        ]}
+      />
     </div>
   );
 }

@@ -119,6 +119,8 @@ export const OPERATION_COVERAGE = {
   'GET /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: the files section' },
   'POST /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: upload-publishing-v2 under the label of the switch; 409 period_loaded asks to replace' },
   'POST /publishing-v2/files/:id/remove': { page: 'P32', route: '/publishing-v2', note: 'D-182: action-remove-file' },
+  'GET /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: the tab links' },
+  'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },
   'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },
   'GET /publishing-v2/songwriters/:id': { page: 'P33', route: '/publishing-v2/:id' },
   'GET /publishing/writers': { page: 'P18', route: '/publishing' },

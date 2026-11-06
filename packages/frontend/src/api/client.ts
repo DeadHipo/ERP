@@ -346,6 +346,8 @@ export const publishingV2 = {
       schema: R.pubV2FileSchema,
     }),
   remove: (fileId: string) => call('POST', `/publishing-v2/files/${id(fileId)}/remove`, { schema: R.pubV2RemovedSchema }),
+  links: (query: z.input<typeof S.labelQuery> = {}) => call('GET', '/publishing-v2/links', { query, schema: list(R.pubV2LinkSchema) }),
+  link: (body: z.input<typeof S.pubV2LinkBody>) => call('POST', '/publishing-v2/links', { body, schema: R.pubV2LinkResultSchema }),
   songwriters: (query: z.input<typeof S.labelQuery> = {}) =>
     call('GET', '/publishing-v2/songwriters', { query, schema: list(R.pubV2SongwriterSchema) }),
   songwriter: (songwriterId: string, query: z.input<typeof S.labelQuery> = {}) =>

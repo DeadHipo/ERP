@@ -11,6 +11,7 @@ import { notifyError, notifySuccess } from '../../components/toast';
 export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['owners', 'balance'],
   ['publishingV2', 'files'],
+  ['publishingV2', 'links'],
   ['publishingV2', 'songwriters'],
   ['publishingV2', 'songwriter'],
   ['owners', 'payables'],

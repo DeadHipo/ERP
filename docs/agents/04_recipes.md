@@ -548,4 +548,4 @@ the data of the live store, in order (every script is a dry run without `--apply
 2. `npx tsx packages/backend/scripts/pubv2/load.ts context_data/ERP_data/publishing/raw --label 0to8` prints what each report gives; nothing is written.
 3. The same with `--apply`: the oldest quarter first, the `Updated` run last with its quarter replaced; a loaded file is skipped.
 4. Check on `/publishing-v2`: the column «Разница» of every file is near zero (the Cover of Q2 and Q3 2025 gives cents; Q4 2025 names no total). The old module and the money do not change.
-
+5. Links (D-183): the tab «Связи» of `/publishing-v2`. The recommendation is a hint: `из старого паблишинга` often means an owner made from the same B17 name, so check it before confirming.

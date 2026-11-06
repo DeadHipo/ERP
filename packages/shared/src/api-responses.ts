@@ -661,6 +661,42 @@ export const pubV2SongwriterDetailSchema = z.object({
     .describe('The songs of the songwriter, largest first'),
 });
 
+/** The links of publishing v2 to owners (D-183): the decision of the operator and a recommendation that decides nothing. */
+export const pubV2LinkSchema = z.object({
+  songwriterId: z.string().describe('Id of the songwriter of publishing v2'),
+  name: z.string(),
+  payable: money.describe('Sum payable by the reports over the loaded files, USD: what came in, not what is owed'),
+  link: z
+    .object({
+      ownerId: z.string().describe(D.ownerId),
+      ownerName: z.string().describe(D.ownerName),
+      source: z.enum(['recommended', 'manual']).describe('recommended = the operator confirmed the suggestion; manual = chose the owner'),
+      decidedBy: z.string().describe('The operator who decided'),
+      decidedAt: timestamp,
+    })
+    .nullable()
+    .describe('The confirmed link; null = none yet'),
+  recommendation: z
+    .object({
+      ownerId: z.string().describe(D.ownerId),
+      ownerName: z.string().describe(D.ownerName),
+      reason: z
+        .enum(['old_map', 'exact_name', 'same_words'])
+        .describe('old_map = the writer map of the old module; exact_name = one person-owner with this name or alias; same_words = one with the same words in another order'),
+    })
+    .nullable()
+    .describe('A suggestion only; null = none'),
+});
+
+export const pubV2LinkResultSchema = z.object({
+  songwriterId: z.string(),
+  ownerId: z.string(),
+  ownerName: z.string(),
+  source: z.enum(['recommended', 'manual']),
+  decidedBy: z.string(),
+  decidedAt: timestamp,
+});
+
 export const b17UploadSchema = z.object({ statement: statementSchema, writers: resolveWritersSchema });
 
 // ---- reports ----

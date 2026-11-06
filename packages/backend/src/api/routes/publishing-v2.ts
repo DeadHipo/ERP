@@ -27,5 +27,9 @@ export function publishingV2Router(facade: Facade, opts: { tmpDir: string }) {
   r.get('/publishing-v2/songwriters/:id', async (req, res) =>
     res.json(await pubv2.songwriter(param(req, 'id'), parse(S.labelQuery, req.query).label)),
   );
+  r.get('/publishing-v2/links', async (req, res) => res.json(await facade.pubV2Links(parse(S.labelQuery, req.query).label)));
+  r.post('/publishing-v2/links', async (req, res) =>
+    res.json(await facade.linkSongwriter(parse(S.pubV2LinkBody, req.body), res.locals.operator as string)),
+  );
   return r;
 }

@@ -6,6 +6,7 @@ import type { SourcesService } from '../modules/sources';
 import type { SettlementsService } from '../modules/settlements';
 import type { PublishingService } from '../modules/publishing';
 import type { PubV2Service } from '../modules/pubv2';
+import type { LinksService } from '../modules/links';
 import type { AuditService } from '../modules/audit';
 import type { AdsService } from '../modules/ads';
 import { orgScope } from '../shared/org-scope';
@@ -13,6 +14,7 @@ import { openModules } from './modules';
 import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
+import { pubV2LinksApi } from './pubv2-links';
 import { reportsApi } from './reports';
 import { ownerViewApi } from './owner-view';
 import { artistViewApi } from './artist-view';
@@ -55,6 +57,7 @@ export function openFacade(config: FacadeConfig) {
   const settlements: SettlementsService = opened.settlements;
   const publishing: PublishingService = opened.publishing;
   const pubv2: PubV2Service = opened.pubv2;
+  const links: LinksService = opened.links;
   const audit: AuditService = opened.audit;
   const ads: AdsService = opened.ads;
   const ctx = createFacadeContext(config, {
@@ -75,7 +78,7 @@ export function openFacade(config: FacadeConfig) {
     db,
     /** The organization every module of this facade is opened under (D-170). */
     orgId: config.orgId,
-    modules: { owners, splits, labels, sources, settlements, publishing, pubv2, audit, ads },
+    modules: { owners, splits, labels, sources, settlements, publishing, pubv2, links, audit, ads },
 
     ...splitsPart,
     ...aggregatesApi(ctx, splitsPart),
@@ -95,6 +98,7 @@ export function openFacade(config: FacadeConfig) {
     ...operationImportApi(ctx, payoutsPart),
     ...startApi(ctx),
     ...admissionApi(ctx),
+    ...pubV2LinksApi(ctx, { pubv2, links }),
   };
 }
 
