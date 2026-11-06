@@ -1,6 +1,8 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
-import { authenticateOrSystemKey, type AuthConfig } from '../auth/middleware';
+import { localPrincipal } from '../auth/abilities';
+import { createLoginLimiter } from '../auth/limits';
+import { authenticateOrSystemKey, noStore, originGuard, type AuthConfig } from '../auth/middleware';
 import { createAuthService } from '../auth/service';
 import type { Facade } from '../facade';
 import type { OrgFacades } from '../orgs/facades';
@@ -53,12 +55,24 @@ export function createApp(
 
   const app = express();
   app.use(requestId);
+  app.use('/api', noStore, originGuard(config));
   app.use(express.json({ limit: '1mb' }));
   app.use('/api', authenticateOrSystemKey(auth, config));
   app.use(
     '/api/v1',
-    createSystemRouter({ auth, config, orgs: opts.orgs?.service ?? createOrgsService(facade.db), facadeOf }),
+    createSystemRouter({
+      auth,
+      config,
+      orgs: opts.orgs?.service ?? createOrgsService(facade.db),
+      facadeOf,
+      limiter: createLoginLimiter({ perLogin: 0, perIp: 0 }),
+    }),
   );
+  // AUTH_MODE=off: every request of the organization is the `local` principal (acts as org_admin, D-171)
+  app.use('/api/v1', (_req, res, next) => {
+    res.locals.principal = localPrincipal(facade.orgId);
+    next();
+  });
   app.use('/api/v1', createOrgRouter(facade, { tmpDir: opts.tmpDir }));
   app.use('/api', unknownApiRoute);
   serveClient(app, opts.clientDist);

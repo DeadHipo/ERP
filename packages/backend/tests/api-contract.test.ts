@@ -6,11 +6,13 @@ import { mkdirSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/api/app';
 import { createServerApp } from '../src/api/server-app';
-import { API_OPERATIONS, needsOperator, operationKey, type ApiOperation } from '../src/api/operations';
+import { API_OPERATIONS, isOrgOperation, needsOperator, operationKey, RELABEL_OPERATIONS, type ApiOperation } from '../src/api/operations';
 import { buildOpenApiDocument } from '../src/api/openapi';
 import { createAuthService } from '../src/auth/service';
 import { createOrgFacades } from '../src/orgs/facades';
+import { createOrgsService } from '../src/orgs/service';
 import { newFacade, TMP, writeB17, writeBelieve } from './helpers/fixtures';
+import { MANAGER_ANSWER } from './helpers/manager-answers';
 import { testStack } from './helpers/test-sources';
 
 // The API contract (operations list, response schemas, OpenAPI document) must match the real routes and the real
@@ -103,7 +105,7 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     }
     await stack.reset(); // the facades of the server read the sources directly (not through the reset-on-use proxy)
     const auth = createAuthService(stack.db);
-    await auth.createUser({ login: ORG_LOGIN, password: PASSWORD, orgId, createdBy: 'tests' });
+    await auth.createUser({ login: ORG_LOGIN, password: PASSWORD, orgId, role: 'org_admin', createdBy: 'tests' });
     await auth.createUser({ login: SYS_LOGIN, password: PASSWORD, system: true, createdBy: 'tests' });
     app = createServerApp({
       orgs,
@@ -173,8 +175,9 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     ).toBeNull();
     covered.add(operationKey(op));
     // the writes of the organization leave a row in its audit; a system write in the audit of its target
-    // organization (here: the users of this one); login and logout none
-    if (needsOperator(op) && (op.access === 'org' || o.params?.id === orgId))
+    // organization (here: the users of this one); the own password of a member in the session's one (D-171); login
+    // and logout none
+    if (needsOperator(op) && (op.access === 'org' || o.params?.id === orgId || (op.access === 'user' && mode === 'on')))
       await expectOneAuditRow(method, template, o.params, o.labelId, operatorOf(op.access));
     return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
@@ -184,17 +187,60 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
 
     // the login and the organizations (D-170)
     const me = await call('get', '/auth/me');
-    if (mode === 'off') expect(me).toMatchObject({ authMode: 'off', user: null, org: { id: orgId } });
-    else expect(me).toMatchObject({ authMode: 'on', user: { login: ORG_LOGIN, isSystemAdmin: false, orgId }, org: { id: orgId } });
+    if (mode === 'off') expect(me).toMatchObject({ authMode: 'off', user: null, org: { id: orgId }, role: 'local', allLabels: true });
+    else
+      expect(me).toMatchObject({
+        authMode: 'on',
+        user: { login: ORG_LOGIN, isSystemAdmin: false },
+        org: { id: orgId },
+        role: 'org_admin',
+        allLabels: true,
+        memberships: [{ orgId, role: 'org_admin' }],
+      });
     const userLogin = `contract-u-${suffix}`;
     const createdUser = await call('post', '/orgs/:id/users', {
       params: { id: orgId },
-      body: { login: userLogin.toUpperCase(), password: PASSWORD },
+      body: { login: userLogin.toUpperCase(), password: PASSWORD, role: 'org_admin' },
     });
-    expect(createdUser).toMatchObject({ login: userLogin, orgId, isSystemAdmin: false, disabled: false });
+    expect(createdUser).toMatchObject({ login: userLogin, role: 'org_admin', labelIds: [], active: true, disabled: false });
     const signedIn = await call('post', '/auth/login', { body: { login: userLogin, password: PASSWORD } });
     expect(signedIn.user).toMatchObject({ id: createdUser.id, login: userLogin });
     await call('post', '/auth/logout');
+    // a manager needs own labels: none, a sublabel, a label of no organization are refused (D-171)
+    const refusedMember = (labelIds: string[]) =>
+      authed(request(app).post(`/api/v1/orgs/${orgId}/users`), 'system')
+        .set('X-Operator', OPERATOR)
+        .send({ login: `contract-x-${suffix}`, password: PASSWORD, role: 'label_manager', labelIds });
+    expect((await refusedMember([])).body.error?.code).toBe('validation_error');
+    expect((await refusedMember([randomUUID()])).body.error?.code).toBe('not_found');
+    if (mode === 'on') {
+      // several memberships: the login asks to choose (D-171)
+      const multi = `contract-m-${suffix}`;
+      const second = await createOrgsService((await testStack()).db).createOrganization({
+        name: `Contract Multi ${suffix}`,
+        createdBy: 'tests',
+      });
+      const svc = createAuthService((await testStack()).db);
+      await svc.createUser({ login: multi, password: PASSWORD, orgId, role: 'org_admin', createdBy: 'tests' });
+      await svc.addMembership({ login: multi, orgId: second.id, role: 'org_admin', labelIds: [], createdBy: 'tests' });
+      const choose = await request(app).post('/api/v1/auth/login').send({ login: multi, password: PASSWORD }).expect(409);
+      expect(choose.body.error).toMatchObject({ code: 'org_choice_required', details: { orgs: expect.any(Array) } });
+      expect((choose.body.error.details.orgs as unknown[]).length).toBe(2);
+      // the own password (the same one again: the scenario signs in with it later); the other sessions end
+      const otherSession = sessionCookieOf(
+        await request(app).post('/api/v1/auth/login').send({ login: ORG_LOGIN, password: PASSWORD }).expect(200),
+      );
+      await call('post', '/auth/password', { body: { current: PASSWORD, next: PASSWORD } });
+      await request(app).get('/api/v1/auth/me').set('Cookie', otherSession).expect(401);
+      await request(app).get('/api/v1/auth/me').set('Cookie', cookies.org as string).expect(200);
+    } else {
+      // AUTH_MODE=off has no user whose password could change: 401, the operation is covered by the `on` block
+      await authed(request(app).post('/api/v1/auth/password'), 'user')
+        .set('X-Operator', OPERATOR)
+        .send({ current: PASSWORD, next: PASSWORD })
+        .expect(401);
+      covered.add('POST /auth/password');
+    }
     const newOrg = await call('post', '/orgs', { body: { name: `Contract Org ${mode} ${suffix}` } });
     // a system write is recorded in the audit of its target organization, without the name
     const [orgRow] = await (await orgs.get(newOrg.id as string)).facade.recentActions(5);
@@ -203,7 +249,7 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     const orgList = await call('get', '/orgs');
     const mine = (orgList as unknown as { id: string; counts: { labels: number; users: number } }[]).find((o) => o.id === orgId);
     expect(mine?.counts.labels).toBeGreaterThanOrEqual(2);
-    expect(mine?.counts.users).toBeGreaterThanOrEqual(1);
+    expect(mine?.counts.users).toBeGreaterThanOrEqual(1); // the active members
     const fresh = await call('get', '/orgs/:id', { params: { id: newOrg.id } });
     expect(fresh.counts).toEqual({ labels: 0, files: 0, statements: 0, owners: 0, users: 0 });
     const users = await call('get', '/orgs/:id/users', { params: { id: orgId } });
@@ -629,6 +675,8 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
         { public: [], user: ['session'], system: ['session', 'systemKey'], org: ['session', 'systemKey'] }[op.access],
       );
       expect(Object.keys(p.responses).includes('401'), `${key} 401`).toBe(op.access !== 'public');
+      // D-171: the right of the operation
+      expect((p as { 'x-ability'?: unknown })['x-ability'], `${key} x-ability`).toEqual(op.ability);
     }
     expect(API_OPERATIONS.filter((o) => o.access === 'public').map(operationKey).sort()).toEqual([
       'GET /health',
@@ -637,6 +685,69 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
     ]);
     const ui = await request(app).get('/api/v1/docs/').expect(200);
     expect(ui.text).toContain('swagger');
+  });
+
+  it.runIf(mode === 'on')('a label manager: every operation answers as the frozen literal; another label 403, none 400 (D-171)', async () => {
+    const labels = (await R.get('/api/v1/labels').expect(200)).body as { id: string; name: string; kind: string }[];
+    const mine = labels.find((l) => l.name === '0to8')?.id as string; // A: the manager's label
+    const other = labels.find((l) => l.name === 'Echo8')?.id as string; // B: a label of the organization, not theirs
+    const login = `contract-mgr-${suffix}`;
+    await createAuthService((await testStack()).db).createUser({
+      login,
+      password: PASSWORD,
+      orgId,
+      role: 'label_manager',
+      labelIds: [mine],
+      createdBy: 'tests',
+    });
+    const cookie = sessionCookieOf(await request(app).post('/api/v1/auth/login').send({ login, password: PASSWORD }).expect(200));
+    const me = (await request(app).get('/api/v1/auth/me').set('Cookie', cookie).expect(200)).body as {
+      role: string;
+      allLabels: boolean;
+      labels: { id: string }[];
+      abilities: string[];
+    };
+    expect([me.role, me.allLabels, me.labels.map((l) => l.id)]).toEqual(['label_manager', false, [mine]]);
+    expect(me.abilities.filter((k) => MANAGER_ANSWER[k] !== undefined).sort()).toEqual(
+      Object.keys(MANAGER_ANSWER).filter((k) => MANAGER_ANSWER[k] !== 'x').sort(),
+    );
+
+    /** The operation as the manager, with the label `label` in the query and the body (or none). */
+    const asManager = (o: ApiOperation, label: string | undefined) => {
+      const url = '/api/v1' + o.path.replace(/:([A-Za-z]+)/g, 'contract-missing');
+      let t = request(app)[o.method](url).set('Cookie', cookie);
+      if (o.method !== 'get') t = t.set('X-Operator', OPERATOR);
+      if (label) t = t.query({ label });
+      if (o.method === 'get') return t;
+      return t.send(label ? { labelId: label, items: [{ labelId: label }] } : {});
+    };
+    const answer = (res: { status: number; body: { error?: { code?: string } } }) => `${res.status} ${res.body.error?.code ?? ''}`.trim();
+    for (const o of API_OPERATIONS.filter(isOrgOperation)) {
+      const key = operationKey(o);
+      const expected = MANAGER_ANSWER[key];
+      const withMine = answer(await asManager(o, mine));
+      const withNone = answer(await asManager(o, undefined));
+      const withOther = answer(await asManager(o, other));
+      if (expected === 'x') {
+        expect([withMine, withNone, withOther], key).toEqual(['403 forbidden', '403 forbidden', '403 forbidden']);
+        continue;
+      }
+      // allowed: whatever the route answers (a stub body, an unknown id), never a refusal of the right
+      expect(withMine, `${key} under the manager's label`).not.toMatch(/^403|label_required/);
+      if (expected === 'L') expect(withNone, `${key} without a label`).toBe('400 label_required');
+      else expect(withNone, `${key} without a label`).not.toMatch(/^403|label_required/);
+      expect(withOther, `${key} under another label`).toBe('403 label_forbidden');
+    }
+    // the path is matched as Express matches it: another case or a trailing slash is the same operation; none = 404
+    for (const path of ['/api/v1/Owners/merge', '/api/v1/owners/merge/', '/api/v1/OVERVIEW'])
+      expect(answer(await request(app)[path.endsWith('OVERVIEW') ? 'get' : 'post'](path).set('Cookie', cookie).set('X-Operator', OPERATOR).send({})), path).toBe(
+        '403 forbidden',
+      );
+    expect(answer(await request(app).get('/api/v1/no-such-route').set('Cookie', cookie))).toBe('404 not_found');
+    expect(answer(await request(app).delete('/api/v1/owners/x').set('Cookie', cookie).set('X-Operator', OPERATOR))).toBe('404 not_found');
+    // a refusal leaves no audit row
+    const rows = (await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as { operator: string }[];
+    expect(rows.filter((r) => r.operator === login)).toEqual([]);
   });
 
   it.runIf(mode === 'on')('access: public without a cookie, org and user without one 401, system under a user 403', async () => {
@@ -661,3 +772,55 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
 
 contractSuite('off');
 contractSuite('on');
+
+/** The keys of an object schema (through a pipe, an optional or a default); undefined when it is not one. */
+function shapeOf(t: unknown): Record<string, unknown> | undefined {
+  const z = t as { shape?: Record<string, unknown>; def?: { in?: unknown; innerType?: unknown } } | undefined;
+  if (z?.shape) return z.shape;
+  if (z?.def?.in) return shapeOf(z.def.in);
+  if (z?.def?.innerType) return shapeOf(z.def.innerType);
+  return undefined;
+}
+
+/** Does the request schema of an operation carry a label (`?label=`, `body.labelId`, `body.items[].labelId`)? */
+function namesLabel(o: ApiOperation): boolean {
+  if (o.query && 'label' in o.query.shape) return true;
+  const body = shapeOf(o.body);
+  if (!body) return false;
+  if ('labelId' in body) return true;
+  const items = body.items as { def?: { element?: unknown } } | undefined;
+  return !!shapeOf(items?.def?.element)?.labelId;
+}
+
+describe('API contract: the ability of every operation (D-171)', () => {
+  it('(a) every operation but the public ones has an ability; (c) system ⇔ action system; user ⇔ self; org has one scope', () => {
+    for (const o of API_OPERATIONS) {
+      const key = operationKey(o);
+      if (o.access === 'public') {
+        expect(o.ability, key).toBeUndefined();
+        continue;
+      }
+      expect(o.ability, key).toBeDefined();
+      expect(o.ability.action === 'system', `${key} system`).toBe(o.access === 'system');
+      expect(o.ability.action === 'self', `${key} self`).toBe(o.access === 'user');
+      expect(o.ability.scope !== undefined, `${key} scope`).toBe(o.access === 'org');
+    }
+  });
+
+  it('(b) a label scope names a label in its schema; any other operation naming one is a relabel', () => {
+    for (const o of API_OPERATIONS.filter(isOrgOperation)) {
+      const key = operationKey(o);
+      if (o.ability.scope === 'label') expect(namesLabel(o), `${key} label scope without a label`).toBe(true);
+      else if (namesLabel(o)) expect(RELABEL_OPERATIONS.has(key), `${key} names a label but is ${o.ability.scope}`).toBe(true);
+    }
+    for (const key of RELABEL_OPERATIONS) {
+      const o = API_OPERATIONS.find((x) => operationKey(x) === key);
+      expect([o?.ability?.scope, o && namesLabel(o)], key).toEqual([key === 'PATCH /ads/:id' ? 'record' : 'org', true]);
+    }
+  });
+
+  it('(d) a GET never writes, approves, pays or administers', () => {
+    for (const o of API_OPERATIONS.filter((x) => x.method === 'get' && x.ability))
+      expect(['read', 'read_money', 'self', 'system'], operationKey(o)).toContain(o.ability?.action);
+  });
+});

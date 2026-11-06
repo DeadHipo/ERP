@@ -15,6 +15,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /auth/login': { page: 'P23', route: '/login', note: 'field-login, field-password, action-login; invalid_credentials as a sentence (login-error); then ?next= or /' },
   'POST /auth/logout': { page: 'shell', route: '/', note: 'action-logout of UserMenu (AUTH_MODE=on)' },
   'GET /auth/me': { page: 'shell', route: '/', note: 'useMe(): once per load, before any page; UserMenu (login, organization), the operator of writes = the login, X-Org only for a system administrator' },
+  'POST /auth/password': { page: 'shell', route: '/', note: 'the own password (D-171); the dialog of UserMenu comes with the frontend commit of stage 3 (action-change-password)' },
   'GET /orgs': { page: 'P24', route: '/system/orgs', note: 'the organizations with their counts (no money), system administrator only' },
   'POST /orgs': { page: 'P24', route: '/system/orgs', note: 'action-create-org: field-org-name, action-create-org-submit' },
   'GET /orgs/:id': { page: 'P25', route: '/system/orgs/:id', note: 'the header and counts; also the organization name of UserMenu while a system administrator works in it (erp.org)' },

@@ -402,19 +402,35 @@ export const adsSummaryQuery = z.object({ from: month.optional(), to: month.opti
 
 // ---- the login and the organizations (stage 2, D-170) ----
 
-/** `POST /auth/login`: the login is compared in lower case. */
+/**
+ * `POST /auth/login`: the login is compared in lower case; `orgId` chooses the organization of a user with several
+ * memberships (D-171: without it `409 org_choice_required`).
+ */
 export const loginBody = z.object({
   login: z.string().trim().toLowerCase().min(1).max(64),
   password: z.string().min(1).max(200),
+  orgId: z.string().min(1).max(64).optional(),
 });
 /** `POST /orgs`: the name is unique without regard to case (409 org_name_taken); the id comes from the server. */
 export const createOrgBody = z.object({ name: z.string().trim().min(1).max(200) });
-/** `POST /orgs/:id/users`: a user of that organization (409 login_taken). */
-export const createOrgUserBody = z.object({
+/** `POST /auth/password` (D-171): the user's own password; the other sessions are revoked. */
+export const changeOwnPasswordBody = z.object({
+  current: z.string().min(1).max(200),
+  next: z.string().min(1).max(200),
+});
+/** The role of a member of an organization (D-171). */
+export const memberRole = z.enum(['org_admin', 'label_manager']);
+/**
+ * `POST /orgs/:id/users` (D-171): a new user as a member of that organization with a role; a `label_manager` needs at
+ * least one own label, an `org_admin` none (409 login_taken, 400 label_not_own, 404 not_found for a label).
+ */
+export const createMemberUserBody = z.object({
   login: z
     .string()
     .trim()
     .toLowerCase()
     .regex(/^[a-z0-9._-]{3,64}$/),
   password: z.string().min(1).max(200),
+  role: memberRole,
+  labelIds: z.array(z.string().min(1)).default([]),
 });

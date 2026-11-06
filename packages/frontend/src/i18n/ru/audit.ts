@@ -11,6 +11,7 @@ export const audit = {
   routes: {
     'POST /auth/login': 'вход',
     'POST /auth/logout': 'выход',
+    'POST /auth/password': 'сменён свой пароль',
     'POST /orgs': 'создана организация',
     'POST /orgs/:id/users': 'создан пользователь организации',
     'POST /owners': 'создан владелец',

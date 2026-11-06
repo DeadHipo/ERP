@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ALL_ITEMS, NAV } from '../src/nav';
-import { ME_OFF, OPERATOR, json, seedKeys, setOperator, trackErrors } from './helpers';
+import { meMock, OPERATOR, json, seedKeys, setOperator, trackErrors } from './helpers';
 
 // S-smoke: the shell renders, search opens, the user menu names the session (the operator = the login, D-170), a write
 // control is gated (login off), every route renders.
@@ -55,7 +55,7 @@ test('the user menu names the login and the organization; the operator of writes
 });
 
 test('with the login off the operator field is back, saves to localStorage and gates an action button', async ({ page }) => {
-  await page.route('**/api/v1/auth/me', (route) => json(route, 200, ME_OFF));
+  await page.route('**/api/v1/auth/me', (route) => json(route, 200, meMock()));
   await page.addInitScript(() => localStorage.setItem('erp.operator', ''));
   await page.goto('/dev/states?case=action');
   await expect(page.getByTestId('user-menu')).toHaveCount(0);

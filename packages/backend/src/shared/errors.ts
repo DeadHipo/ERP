@@ -43,9 +43,19 @@ export class UnauthenticatedError extends AppError {
   }
 }
 
-/** A session that may not do this (D-170): a system operation, `X-Org` from a user, a wrong system key. */
+/**
+ * A session that may not do this (D-170): a system operation, `X-Org` from a user, a wrong system key; D-171 codes:
+ * `no_membership`, `csrf`.
+ */
 export class ForbiddenError extends AppError {
-  constructor(message = 'Forbidden') {
-    super(message, 403, 'forbidden');
+  constructor(message = 'Forbidden', code = 'forbidden', details?: unknown) {
+    super(message, 403, code, details);
+  }
+}
+
+/** `429 too_many_attempts` (D-171): the login limit; the route sets `Retry-After`. */
+export class TooManyAttemptsError extends AppError {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Too many attempts: try again later', 429, 'too_many_attempts', { retryAfterSeconds });
   }
 }

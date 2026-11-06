@@ -32,6 +32,19 @@ export async function orgCounts(facade: Facade, users: number) {
 }
 
 /**
+ * The labels of a `label_manager` (D-171) must be own labels of the organization: an unknown id (or one of another
+ * organization) is `404 not_found`, a sublabel `400 label_not_own`. Checked through the organization's facade by the
+ * caller of the auth service (the route, `scripts/create-user.ts`).
+ */
+export async function assertOwnLabels(facade: Facade, labelIds: string[]): Promise<void> {
+  for (const id of new Set(labelIds)) {
+    const l = await facade.modules.labels.getLabel(id);
+    if (l.kind !== 'own')
+      throw new ValidationError(`Label "${l.name}" is a sublabel; a manager is given own labels`, { labelId: id }, 'label_not_own');
+  }
+}
+
+/**
  * The organizations (stage 2, D-170). The id is always generated here (a UUID), never taken from a client. The name
  * is unique without regard to case (`organizations_name_key`, `409 org_name_taken`).
  */

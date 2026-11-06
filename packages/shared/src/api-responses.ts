@@ -1291,13 +1291,26 @@ export type AdSummary = z.infer<typeof adSummarySchema>;
 
 // ---- the login and the organizations (stage 2, D-170) ----
 
-/** `GET /auth/me`, `POST /auth/login`: the session; with `AUTH_MODE=off` no user and the default organization. */
+const memberRole = z.enum(['org_admin', 'label_manager']);
+
+/**
+ * `GET /auth/me`, `POST /auth/login`: the session; with `AUTH_MODE=off` no user, the default organization and the role
+ * `local`. D-171: the role in the session's organization (`system` for a system administrator), the labels the user
+ * may choose (an `org_admin` and `local`: every own label, `allLabels`), the user's active memberships; `support`
+ * comes with the support grants (null until then).
+ */
 export const meSchema = z.object({
   authMode: z.enum(['on', 'off']),
-  user: z
-    .object({ id: z.string(), login: z.string(), isSystemAdmin: z.boolean(), orgId: z.string().nullable() })
-    .nullable(),
+  user: z.object({ id: z.string(), login: z.string(), isSystemAdmin: z.boolean() }).nullable(),
   org: z.object({ id: z.string(), name: z.string() }).nullable(),
+  role: z.enum(['org_admin', 'label_manager', 'support', 'system', 'local']).nullable(),
+  labels: z.array(z.object({ id: z.string(), name: z.string() })),
+  allLabels: z.boolean(),
+  memberships: z.array(z.object({ orgId: z.string(), orgName: z.string(), role: memberRole })),
+  support: z.object({ orgId: z.string(), expiresAt: timestamp, write: z.boolean() }).nullable(),
+  abilities: z
+    .array(z.string())
+    .describe('The keys `METHOD /path` of the operations the session may call, without the data (D-171): the UI closes the others'),
 });
 export type Me = z.infer<typeof meSchema>;
 export const orgSchema = z.object({ id: z.string(), name: z.string(), createdAt: timestamp, createdBy: z.string() });
@@ -1312,14 +1325,16 @@ export const orgSummarySchema = orgSchema.extend({
   }),
 });
 export type OrgSummary = z.infer<typeof orgSummarySchema>;
-export const orgUserSchema = z.object({
+/** A member of an organization (D-171): never a password hash; `active` = the membership, `disabled` = the user. */
+export const memberSchema = z.object({
   id: z.string(),
   login: z.string(),
-  orgId: z.string().nullable(),
-  isSystemAdmin: z.boolean(),
+  role: memberRole,
+  labelIds: z.array(z.string()),
+  active: z.boolean(),
+  disabled: z.boolean(),
   createdAt: timestamp,
   createdBy: z.string(),
-  disabled: z.boolean(),
 });
-export type OrgUser = z.infer<typeof orgUserSchema>;
+export type Member = z.infer<typeof memberSchema>;
 export const okSchema = z.object({ ok: z.literal(true) });

@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import * as S from '@erp/shared/api-schemas';
 import * as R from '@erp/shared/api-responses';
+import type { Ability } from '../auth/abilities';
 
 // The API contract as data: one entry per route of /api/v1. The OpenAPI document is built from it, and the tests
 // check that it matches the routes Express really has and that real responses fit the response schemas.
 
 export type HttpMethod = 'get' | 'post' | 'patch';
 
-export interface ApiOperation {
+interface OperationBase {
   method: HttpMethod;
   /** Express style (`/owners/:id`). */
   path: string;
@@ -31,6 +32,14 @@ export interface ApiOperation {
   /** Error codes worth knowing, as `status code: meaning`. */
   errors?: string[];
 }
+
+/**
+ * Every operation that is not public carries the right it needs (D-171, `auth/abilities.ts`): `action`, `subject`
+ * and, on the operations of an organization, one `scope` (`label` / `record` / `org`). `access` still decides the
+ * chain (who is authenticated, which router); `ability` decides the right.
+ */
+export type ApiOperation = OperationBase &
+  ({ access: 'public'; ability?: undefined } | { access: 'user' | 'system' | 'org'; ability: Ability });
 
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
@@ -64,32 +73,55 @@ const operations: ApiOperation[] = [
     path: '/auth/login',
     access: 'public',
     tag: 'auth',
-    summary: 'Sign in: sets the session cookie erp_session (HttpOnly, SameSite=Strict, 12 h)',
+    summary:
+      'Sign in (D-171): opens a session of one organization and sets the session cookie (erp_session; __Host-erp_session with AUTH_COOKIE_SECURE=1; HttpOnly, SameSite=Strict, 12 h). Several memberships: orgId chooses one',
     body: S.loginBody,
     response: R.meSchema,
-    errors: ['400 validation_error: also a malformed JSON body', '401 invalid_credentials: an unknown login, a wrong password or a disabled user'],
+    errors: [
+      '400 validation_error: also a malformed JSON body or a body that is not JSON',
+      '401 invalid_credentials: an unknown login, a wrong password or a disabled user',
+      '403 no_membership: the password is right, the user is a member of no organization',
+      '403 csrf: an Origin of another site',
+      '409 org_choice_required: several memberships and no orgId of them; details.orgs = [{ id, name, role }] (only after a right password)',
+      '429 too_many_attempts: too many failed attempts for the login or the address; Retry-After in seconds',
+    ],
   },
   {
     method: 'post',
     path: '/auth/logout',
     access: 'public',
     tag: 'auth',
-    summary: 'Sign out: clears the session cookie (idempotent, 200 without a session too)',
+    summary: 'Sign out: revokes the session of the cookie and clears it (idempotent, 200 without a session too)',
     response: R.okSchema,
   },
   {
     method: 'get',
     path: '/auth/me',
     access: 'user',
+    ability: { action: 'self', subject: 'session' },
     tag: 'auth',
-    summary: 'The session: the mode, the user and the organization (AUTH_MODE=off: no user, the default organization)',
+    summary:
+      'The session: the mode, the user, the organization, the role, the labels and the memberships (AUTH_MODE=off: no user, the default organization, role local)',
     response: R.meSchema,
-    errors: ['401 unauthenticated'],
+    errors: ['401 unauthenticated: also a revoked or expired session, a suspended membership'],
+  },
+  {
+    method: 'post',
+    path: '/auth/password',
+    access: 'user',
+    ability: { action: 'self', subject: 'session' },
+    tag: 'auth',
+    summary:
+      "Change the user's own password; every other session of the user is revoked, this one stays (a member's write is in the audit of the session's organization, without values)",
+    body: S.changeOwnPasswordBody,
+    response: R.okSchema,
+    errors: ['401 invalid_credentials: a wrong current password', '401 unauthenticated: no session (also AUTH_MODE=off)'],
   },
   {
     method: 'get',
     path: '/orgs',
     access: 'system',
+    ability: { action: 'system', subject: 'orgs' },
     tag: 'orgs',
     summary: 'The organizations with their counts (labels, loaded files, statements, owners, users; no money)',
     response: list(R.orgSummarySchema),
@@ -99,6 +131,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/orgs',
     access: 'system',
+    ability: { action: 'system', subject: 'orgs' },
     tag: 'orgs',
     summary: 'Create an organization (the id comes from the server)',
     body: S.createOrgBody,
@@ -110,6 +143,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/orgs/:id',
     access: 'system',
+    ability: { action: 'system', subject: 'orgs' },
     tag: 'orgs',
     summary: 'One organization with its counts',
     response: R.orgSummarySchema,
@@ -119,27 +153,37 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/orgs/:id/users',
     access: 'system',
+    ability: { action: 'system', subject: 'users' },
     tag: 'orgs',
-    summary: 'The users of an organization (never a password hash)',
-    response: list(R.orgUserSchema),
+    summary: 'The members of an organization with their role and labels (never a password hash; D-171)',
+    response: list(R.memberSchema),
     errors: ['404 org_not_found'],
   },
   {
     method: 'post',
     path: '/orgs/:id/users',
     access: 'system',
+    ability: { action: 'system', subject: 'users' },
     tag: 'orgs',
-    summary: 'Create a user of an organization (a system administrator is created only by scripts/create-user.ts)',
-    body: S.createOrgUserBody,
+    summary:
+      'Create a user as a member of an organization with a role (org_admin; label_manager with own labels; D-171). A system administrator is created only by scripts/create-user.ts',
+    body: S.createMemberUserBody,
     status: 201,
-    response: R.orgUserSchema,
-    errors: ['404 org_not_found', '409 login_taken: the login exists (any case)'],
+    response: R.memberSchema,
+    errors: [
+      '404 org_not_found',
+      '404 not_found: a label that is not of the organization',
+      '400 label_not_own: a sublabel',
+      '400 validation_error: a label_manager without labels, an org_admin with labels',
+      '409 login_taken: the login exists (any case)',
+    ],
   },
 
   {
     method: 'get',
     path: '/search',
     access: 'org',
+    ability: { action: 'read', subject: 'catalog', scope: 'record' },
     tag: 'system',
     summary:
       'Global search: owners (name, aliases), pseudonyms, tracks, documents, labels; at most 10 per kind (17 N10)',
@@ -153,6 +197,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners',
     access: 'org',
+    ability: { action: 'read', subject: 'owners', scope: 'label' },
     tag: 'owners',
     summary: 'Owners (merged ones are hidden); under a label (`label=`) those visible under it (D-168)',
     query: S.ownersQuery,
@@ -163,6 +208,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/owners',
     access: 'org',
+    ability: { action: 'write', subject: 'owners', scope: 'org' },
     tag: 'owners',
     summary: 'Create an owner',
     body: S.createOwnerBody,
@@ -174,6 +220,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/owners/merge',
     access: 'org',
+    ability: { action: 'approve', subject: 'owners', scope: 'org' },
     tag: 'owners',
     summary: 'Merge an unconfirmed owner into the confirmed one',
     body: S.mergeOwnersBody,
@@ -183,6 +230,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners/payables',
     access: 'org',
+    ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
     summary: 'Payables of every owner from one calculation: the balance fields, the payout gate, counts (17 N4), or for a list of owner ids (their reach only, D-163); under a label the book of that label of the owners visible under it (D-168)',
     query: S.payablesQuery,
@@ -192,6 +240,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners/:id',
     access: 'org',
+    ability: { action: 'read', subject: 'owners', scope: 'record' },
     tag: 'owners',
     summary: 'Owner with artists, tracks, documents, contracts and publishing terms',
     response: R.ownerDetailSchema,
@@ -200,6 +249,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/owners/:id/balance',
     access: 'org',
+    ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
     summary: 'Owner balance: earned, recouped, paid, payable, with the book of every label; under a label (`label=`) the book of that label alone (D-168)',
     query: S.labelPeriodQuery,
@@ -209,6 +259,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/owners/:id/payouts',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'label' },
     tag: 'owners',
     summary: 'Payout button: pays the payable of the label\'s book (labelId), with a snapshot (D-168)',
     body: S.createPayoutBody,
@@ -226,6 +277,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists',
     access: 'org',
+    ability: { action: 'read', subject: 'artists', scope: 'label' },
     tag: 'artists',
     summary:
       'Artists (merged ones are folded into the survivor), each with its owner, the ids merged into it, its tracks, open split rows and participations, contracts and open rows without a document (P11, D-167); no money; under a label those visible under it (D-168)',
@@ -236,6 +288,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists/balances',
     access: 'org',
+    ability: { action: 'read_money', subject: 'artists', scope: 'label' },
     tag: 'artists',
     summary:
       'The money of a list of pseudonyms (the visible rows of P11, D-167): one calculation over the union of their reaches, then the artist row of each; ids (at most 200) filters the answer, without it every pseudonym from the full calculation',
@@ -247,6 +300,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists/duplicates',
     access: 'org',
+    ability: { action: 'read', subject: 'artists', scope: 'record' },
     tag: 'artists',
     summary:
       'Groups of artists with the same normalised pseudonym, with usage and ISRCs without a split (17 N11)',
@@ -256,6 +310,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/artists',
     access: 'org',
+    ability: { action: 'write', subject: 'artists', scope: 'org' },
     tag: 'artists',
     summary: 'Create an artist',
     body: S.createArtistBody,
@@ -267,6 +322,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists/:id',
     access: 'org',
+    ability: { action: 'read', subject: 'artists', scope: 'record' },
     tag: 'artists',
     summary:
       'The card of a pseudonym (P12, D-165): owner, the ids merged into it, tracks, contracts, split rows and participations by every id, sublabel rules where it is the recipient, the documents they cite; a merged id answers for the survivor',
@@ -276,6 +332,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/artists/:id/balance',
     access: 'org',
+    ability: { action: 'read_money', subject: 'artists', scope: 'label' },
     tag: 'artists',
     summary:
       'The money of one pseudonym from the units of its reach (D-165): the artist row of the owner balance (earned, waiting by reason, recouped, unrecouped, tracks), its advertising, payouts and positions; the period shapes the per-period fields as in the owner balance; under a label its book (D-168)',
@@ -286,6 +343,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/artists/:id/owner',
     access: 'org',
+    ability: { action: 'approve', subject: 'artists', scope: 'org' },
     tag: 'artists',
     summary: 'Assign an owner to an artist',
     body: S.assignOwnerBody,
@@ -293,11 +351,12 @@ const operations: ApiOperation[] = [
   },
 
   // ---- tracks ----
-  { method: 'get', path: '/tracks', access: 'org', tag: 'tracks', summary: 'Tracks', response: list(R.trackSchema) },
+  { method: 'get', path: '/tracks', access: 'org', ability: { action: 'read', subject: 'tracks', scope: 'org' }, tag: 'tracks', summary: 'Tracks', response: list(R.trackSchema) },
   {
     method: 'post',
     path: '/tracks',
     access: 'org',
+    ability: { action: 'write', subject: 'tracks', scope: 'org' },
     tag: 'tracks',
     summary: 'Create a track',
     body: S.createTrackBody,
@@ -308,6 +367,7 @@ const operations: ApiOperation[] = [
     method: 'patch',
     path: '/tracks/:id',
     access: 'org',
+    ability: { action: 'write', subject: 'tracks', scope: 'record' },
     tag: 'tracks',
     summary: 'Set the ISRC and UPC of a track and/or its free note (null or empty clears the note)',
     body: S.updateTrackBody,
@@ -317,6 +377,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/summary',
     access: 'org',
+    ability: { action: 'read_money', subject: 'tracks', scope: 'label' },
     tag: 'tracks',
     summary:
       'Every track with B, C, ours and net from one calculation, optionally for one account and report month, or for a list of ISRCs (17 N5, D-162)',
@@ -327,6 +388,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/catalog',
     access: 'org',
+    ability: { action: 'read', subject: 'tracks', scope: 'label' },
     tag: 'tracks',
     summary: 'Every ISRC that earns or is registered, with UPCs, names, split and participation flags; no money, no calculation (D-162); under a label the ISRCs of its units (D-168)',
     query: S.trackCatalogQuery,
@@ -336,6 +398,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/:isrc/money',
     access: 'org',
+    ability: { action: 'read_money', subject: 'tracks', scope: 'org' },
     tag: 'tracks',
     summary: 'Whose money of one ISRC by month: allocations with labels, the state after every layer (17 N6)',
     response: R.trackMoneySchema,
@@ -344,6 +407,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/:isrc/breakdown/:month',
     access: 'org',
+    ability: { action: 'read_money', subject: 'tracks', scope: 'org' },
     tag: 'tracks',
     summary: 'Platform and country rows of one report month of an ISRC, loaded files only (17 N7)',
     response: R.trackBreakdownSchema,
@@ -352,6 +416,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/releases',
     access: 'org',
+    ability: { action: 'read_money', subject: 'releases', scope: 'label' },
     tag: 'releases',
     summary:
       'Releases (UPC) with track count and net of the loaded files; q filters UPC, title, artist (17 N8)',
@@ -362,6 +427,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/releases/:upc',
     access: 'org',
+    ability: { action: 'read_money', subject: 'releases', scope: 'label' },
     tag: 'releases',
     summary: 'One release: tracks and report months with B, C and ours (17 N9); under a label its units and tracks (D-168)',
     query: S.releaseQuery,
@@ -371,6 +437,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/documents/:id/uses',
     access: 'org',
+    ability: { action: 'read_money', subject: 'documents', scope: 'record' },
     tag: 'documents',
     summary: 'Where a document is used and the category C money that waits for it (17 N13)',
     response: R.documentUsesSchema,
@@ -379,6 +446,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/tracks/:isrc/explain',
     access: 'org',
+    ability: { action: 'read_money', subject: 'tracks', scope: 'org' },
     tag: 'tracks',
     summary: 'Explain the money of one ISRC: lines, split, participations, the state after every layer',
     response: R.explainSchema,
@@ -389,6 +457,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/documents',
     access: 'org',
+    ability: { action: 'read', subject: 'documents', scope: 'label' },
     tag: 'documents',
     summary:
       'Documents, filtered by owner, status, kind and a title substring (17 N12); under a label (`label=`) those of the label and those without a label (D-169)',
@@ -400,6 +469,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/documents',
     access: 'org',
+    ability: { action: 'write', subject: 'documents', scope: 'label' },
     tag: 'documents',
     summary: 'Create a document, optionally under an own label (D-169: a contract opens the label of its document; none = any label)',
     body: S.createDocumentBody,
@@ -411,6 +481,7 @@ const operations: ApiOperation[] = [
     method: 'patch',
     path: '/documents/:id',
     access: 'org',
+    ability: { action: 'approve', subject: 'documents', scope: 'org' },
     tag: 'documents',
     summary: 'Set or clear (null = any label) the own label of a document (D-169)',
     body: S.setDocumentLabelBody,
@@ -421,6 +492,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/documents/:id/attach',
     access: 'org',
+    ability: { action: 'write', subject: 'documents', scope: 'record' },
     tag: 'documents',
     summary: 'Attach the file of a document',
     body: S.attachFileBody,
@@ -430,6 +502,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/documents/:id/approve',
     access: 'org',
+    ability: { action: 'approve', subject: 'documents', scope: 'org' },
     tag: 'documents',
     summary: 'Approve a document',
     body: S.approveBody,
@@ -439,6 +512,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/contracts',
     access: 'org',
+    ability: { action: 'write', subject: 'documents', scope: 'record' },
     tag: 'documents',
     summary: 'Create a contract of an owner for artists',
     body: S.createContractBody,
@@ -451,6 +525,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/splits',
     access: 'org',
+    ability: { action: 'read', subject: 'splits', scope: 'record' },
     tag: 'splits',
     summary: 'Splits with artist names and document status',
     query: S.listQuery,
@@ -460,6 +535,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/splits',
     access: 'org',
+    ability: { action: 'write', subject: 'splits', scope: 'record' },
     tag: 'splits',
     summary: 'Create a split for a period',
     body: S.createSplitBody,
@@ -470,6 +546,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/splits/change',
     access: 'org',
+    ability: { action: 'approve', subject: 'splits', scope: 'org' },
     tag: 'splits',
     summary: 'Change a split from a date (the previous one is closed)',
     body: S.changeSplitBody,
@@ -480,6 +557,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/splits/buyout',
     access: 'org',
+    ability: { action: 'approve', subject: 'splits', scope: 'org' },
     tag: 'splits',
     summary: 'Buyout: the seller share becomes zero on the listed ISRCs',
     body: S.buyoutBody,
@@ -490,6 +568,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/splits/:id/confirm',
     access: 'org',
+    ability: { action: 'approve', subject: 'splits', scope: 'org' },
     tag: 'splits',
     summary: 'Confirm a split with a document',
     body: S.confirmSplitBody,
@@ -501,6 +580,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/participations',
     access: 'org',
+    ability: { action: 'read', subject: 'splits', scope: 'record' },
     tag: 'splits',
     summary: 'Participations (top, pool, artist share, label share) with pseudonyms and document status',
     query: S.listQuery,
@@ -510,6 +590,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/participations',
     access: 'org',
+    ability: { action: 'write', subject: 'splits', scope: 'record' },
     tag: 'splits',
     summary: 'Create a participation; its start is floored to the month start',
     body: S.createParticipationBody,
@@ -521,6 +602,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/participations/:id/close',
     access: 'org',
+    ability: { action: 'approve', subject: 'splits', scope: 'org' },
     tag: 'splits',
     summary: 'End a participation at a date (exclusive)',
     body: S.closeValidToBody,
@@ -532,6 +614,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/labels',
     access: 'org',
+    ability: { action: 'read', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Labels with aliases and rules (recipient pseudonym and document status included)',
     response: list(R.labelListItemSchema),
@@ -540,6 +623,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Create an own label or a sublabel of an own label',
     body: S.createLabelBody,
@@ -551,6 +635,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels/:id/accounts',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Register a Believe account under an own label (D-168): the units of the account that lead to another own label are the signal labelOutsideAccount',
     body: S.addAccountBody,
@@ -562,6 +647,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels/:id/accounts/:account/remove',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Remove a Believe account from an own label (D-169), only while no file of the account is loaded or being loaded',
     response: R.labelSchema,
@@ -574,6 +660,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels/:id/aliases',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Register a Believe label string as an alias of the label',
     body: S.addAliasBody,
@@ -585,6 +672,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels/:id/rules',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'Set a sublabel rule: percent of the label share goes to the recipient pseudonym',
     body: S.createLabelRuleBody,
@@ -596,6 +684,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/labels/rules/:id/close',
     access: 'org',
+    ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary: 'End a sublabel rule at a date (exclusive)',
     body: S.closeValidToBody,
@@ -607,6 +696,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/sources/files',
     access: 'org',
+    ability: { action: 'read', subject: 'sources', scope: 'label' },
     tag: 'sources',
     summary: 'Believe files and B17 statements, each with its label; under a label (`label=`) those loaded under it (D-169)',
     query: S.sourceFilesQuery,
@@ -617,6 +707,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/sources/lines',
     access: 'org',
+    ability: { action: 'read_money', subject: 'sources', scope: 'label' },
     tag: 'sources',
     summary: 'Lines of the Believe reports with filters, sorting and totals; under a label (`label=`) over its files only (D-169)',
     query: S.sourceLinesQuery,
@@ -627,6 +718,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/sources/lines/facets',
     access: 'org',
+    ability: { action: 'read', subject: 'sources', scope: 'label' },
     tag: 'sources',
     summary: 'Values for the filters of the lines page; under a label (`label=`) over its files only (D-169)',
     query: S.sourceFacetsQuery,
@@ -637,6 +729,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/sources/believe',
     access: 'org',
+    ability: { action: 'write', subject: 'sources', scope: 'label' },
     tag: 'sources',
     summary:
       'Upload a Believe report (csv or zip, streamed) under an own label (D-169): the account of the file name must be registered under that label. The label is checked before the body is received',
@@ -659,6 +752,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/publishing/b17',
     access: 'org',
+    ability: { action: 'write', subject: 'sources', scope: 'label' },
     tag: 'publishing',
     summary:
       'Upload a B17 statement (xlsx) under an own label (D-169); writers are resolved to owners. The label is checked before the body is received',
@@ -679,6 +773,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/publishing/writers',
     access: 'org',
+    ability: { action: 'read', subject: 'publishing', scope: 'org' },
     tag: 'publishing',
     summary: 'Writers found in the statements',
     response: list(R.publishingWriterSchema),
@@ -687,6 +782,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/publishing/writers/:norm/map',
     access: 'org',
+    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
     tag: 'publishing',
     summary: 'Link a writer to an owner (or create one)',
     body: S.mapWriterBody,
@@ -696,6 +792,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/publishing/writers/resolve',
     access: 'org',
+    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
     tag: 'publishing',
     summary: 'Retry matching of the writers without an owner',
     response: R.resolveWritersSchema,
@@ -704,6 +801,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/publishing/terms',
     access: 'org',
+    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
     tag: 'publishing',
     summary: 'Set the author percent of an owner from a date, for all operation types or one (operationType)',
     body: S.publishingTermsBody,
@@ -716,6 +814,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/reconciliation',
     access: 'org',
+    ability: { action: 'read_money', subject: 'reports', scope: 'org' },
     tag: 'reports',
     summary: 'Completeness check per source and month',
     query: S.periodQuery,
@@ -725,6 +824,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/signals',
     access: 'org',
+    ability: { action: 'read_money', subject: 'reports', scope: 'label' },
     tag: 'reports',
     summary: 'Money without a recipient, ISRCs without a split, ambiguous writers, operations without a label, label strings outside their account, ads without a label or outside their book (D-169); under a label (`label=`) the units of that label (D-168)',
     query: S.listQuery.extend(S.labelPeriodQuery.shape),
@@ -734,6 +834,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/overview',
     access: 'org',
+    ability: { action: 'read_money', subject: 'reports', scope: 'org' },
     tag: 'reports',
     summary: 'Overview in one calculation: reconciliation, its totals (all, per source, per account), C queue summary, signal counts, file counts',
     query: S.periodQuery,
@@ -743,6 +844,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/queue/:reason',
     access: 'org',
+    ability: { action: 'read_money', subject: 'reports', scope: 'label' },
     tag: 'reports',
     summary: 'One reason of the waiting money (category C) grouped by what to fix',
     query: S.queueQuery,
@@ -755,6 +857,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/settlements/operations',
     access: 'org',
+    ability: { action: 'read_money', subject: 'settlements', scope: 'label' },
     tag: 'settlements',
     summary: 'Operations with the owner name, pseudonym and label name, filtered (17 N14); under a label (`label=`) those of it (D-168)',
     query: S.operationsQuery,
@@ -764,6 +867,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/settlements/operations',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'label' },
     tag: 'settlements',
     summary: 'Record an adjustment, credit or recoupable payout under a label (labelId, D-168)',
     body: S.createOperationBody,
@@ -780,6 +884,7 @@ const operations: ApiOperation[] = [
     method: 'patch',
     path: '/settlements/operations/:id',
     access: 'org',
+    ability: { action: 'approve', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary: 'Set the label of an existing operation (the history before the split, D-168)',
     body: S.setOperationLabelBody,
@@ -790,6 +895,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/settlements/operations/:id/proof',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary: 'Attach the payment proof: the payout then counts',
     body: S.proofBody,
@@ -799,6 +905,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/settlements/operations/:id/deferred',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary: 'Mark a payout as deferred at the payment service',
     body: S.deferredBody,
@@ -808,6 +915,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/settlements/operations/:id/deactivate',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary: 'Soft rollback of an operation',
     body: S.deactivateBody,
@@ -818,6 +926,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/settlements/operations/:id/return',
     access: 'org',
+    ability: { action: 'pay', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary: 'Return of a payout that did not arrive',
     body: S.returnBody,
@@ -828,6 +937,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/settlements/operations/:id/snapshot',
     access: 'org',
+    ability: { action: 'read_money', subject: 'settlements', scope: 'record' },
     tag: 'settlements',
     summary: 'Snapshot stored with a payout (per-artist breakdown, file hashes)',
     response: R.payoutSnapshotSchema,
@@ -837,6 +947,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/audit',
     access: 'org',
+    ability: { action: 'read', subject: 'audit', scope: 'label' },
     tag: 'system',
     summary:
       'The trail of writes that touched an entity (newest first); without entityId the latest writes; `label=` only the writes recorded under that label (D-169)',
@@ -849,6 +960,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/ads',
     access: 'org',
+    ability: { action: 'read_money', subject: 'ads', scope: 'label' },
     tag: 'ads',
     summary: 'Advertising expenses with who bears them (split of the month, recovered and unrecovered parts), newest first; under a label (`label=`) those it pays (the record label, D-169)',
     query: S.adsQuery,
@@ -858,6 +970,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/ads',
     access: 'org',
+    ability: { action: 'write', subject: 'ads', scope: 'label' },
     tag: 'ads',
     summary: 'Record a batch of advertising expenses (every arrival is a new record; a known external ref is skipped)',
     body: S.createAdsBody,
@@ -869,6 +982,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/ads/summary',
     access: 'org',
+    ability: { action: 'read_money', subject: 'ads', scope: 'label' },
     tag: 'ads',
     summary: 'Advertising per month and payer: total, returned from artists, borne by sublabels, borne by us; under a label (`label=`) the records it pays (D-169)',
     query: S.adsSummaryQuery,
@@ -878,6 +992,7 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/ads/:id',
     access: 'org',
+    ability: { action: 'read_money', subject: 'ads', scope: 'record' },
     tag: 'ads',
     summary: 'One advertising expense with who bears it (allocation null when it is deactivated)',
     response: R.adViewSchema,
@@ -887,6 +1002,7 @@ const operations: ApiOperation[] = [
     method: 'patch',
     path: '/ads/:id',
     access: 'org',
+    ability: { action: 'write', subject: 'ads', scope: 'record' },
     tag: 'ads',
     summary: 'Change the recovery percent, the scope (at any time, D-155) and/or the payer label (D-169) of an expense',
     body: S.updateAdBody,
@@ -897,6 +1013,7 @@ const operations: ApiOperation[] = [
     method: 'post',
     path: '/ads/:id/deactivate',
     access: 'org',
+    ability: { action: 'write', subject: 'ads', scope: 'record' },
     tag: 'ads',
     summary: 'Deactivate an expense (it takes part in nothing)',
     body: S.deactivateAdBody,
@@ -922,3 +1039,66 @@ export const API_OPERATIONS: ApiOperation[] = operations.map((o) => {
 
 export const operationKey = (o: Pick<ApiOperation, 'method' | 'path'>) =>
   `${o.method.toUpperCase()} ${o.path}`;
+
+/**
+ * The operations whose `labelId` in the body is the target of a move between books, not the label the request acts
+ * under (D-171 plan §2 rule (b)): their scope is not `label`.
+ */
+export const RELABEL_OPERATIONS: ReadonlySet<string> = new Set([
+  'PATCH /documents/:id',
+  'PATCH /settlements/operations/:id',
+  'PATCH /ads/:id',
+]);
+
+interface Matcher {
+  op: ApiOperation;
+  method: string;
+  /** Static segments in lower case; null = a parameter. */
+  segments: (string | null)[];
+}
+
+const MATCHERS: Matcher[] = API_OPERATIONS.map((op) => ({
+  op,
+  method: op.method.toUpperCase(),
+  segments: op.path
+    .split('/')
+    .slice(1)
+    .map((s) => (s.startsWith(':') ? null : s.toLowerCase())),
+}));
+
+/** -1 when `a` is the more specific (a static segment where `b` has a parameter, first difference from the left). */
+function bySpecificity(a: Matcher, b: Matcher): number {
+  for (let i = 0; i < a.segments.length; i++) {
+    const sa = a.segments[i] !== null;
+    const sb = b.segments[i] !== null;
+    if (sa !== sb) return sa ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * The operation a request reaches (D-171), matched like the Express 5 router does (`caseSensitive: false`,
+ * `strict: false`): the method in upper case (HEAD = GET), one trailing `/` dropped, static segments compared in lower
+ * case, a parameter is one non-empty segment; a static segment beats a parameter (`/owners/payables` before
+ * `/owners/:id`, as the routes are registered). `path` is relative to /api/v1. Undefined = no operation.
+ */
+export function operationOf(method: string, path: string): ApiOperation | undefined {
+  const m = method.toUpperCase() === 'HEAD' ? 'GET' : method.toUpperCase();
+  const p = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+  if (!p.startsWith('/')) return undefined;
+  const segs = p.split('/').slice(1);
+  const found = MATCHERS.filter(
+    (x) =>
+      x.method === m &&
+      x.segments.length === segs.length &&
+      x.segments.every((s, i) => {
+        const seg = segs[i] as string;
+        return s === null ? seg !== '' : seg.toLowerCase() === s;
+      }),
+  ).sort(bySpecificity);
+  return found[0]?.op;
+}
+
+/** An operation of an organization (its `ability` has a scope). */
+export type OrgOperation = ApiOperation & { access: 'org'; ability: Ability };
+export const isOrgOperation = (o: ApiOperation): o is OrgOperation => o.access === 'org';

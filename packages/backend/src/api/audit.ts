@@ -154,7 +154,14 @@ interface TraceTarget {
  * where and what (after the handler: the route, the params and the response are known).
  */
 function traceWrites(
-  target: (req: Request, route: string, params: Record<string, string>, response: unknown) => Promise<TraceTarget>,
+  /** null = no row (a write outside any organization: the system administrator's own password, D-171). */
+  target: (
+    req: Request,
+    route: string,
+    params: Record<string, string>,
+    response: unknown,
+    res: Response,
+  ) => Promise<TraceTarget | null>,
 ): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!WRITES.has(req.method)) return next();
@@ -173,8 +180,8 @@ function traceWrites(
       const route = String((req.route as { path: unknown }).path);
       void (async () => {
         try {
-          const t = await target(req, route, params, body);
-          await t.facade.recordAction({
+          const t = await target(req, route, params, body, res);
+          if (t) await t.facade.recordAction({
             operator,
             method: req.method,
             route,
@@ -219,5 +226,18 @@ export function systemTrace(facadeOf: (orgId: string) => Promise<Pick<Facade, 'r
     const orgId = params.id ?? (typeof created.id === 'string' ? created.id : '');
     const ids = [orgId, ...(params.id && typeof created.id === 'string' ? [created.id] : [])].filter((x) => !!x);
     return { facade: await facadeOf(orgId), entityIds: [...new Set(ids)], summary: { params, body: {} }, labelId: null };
+  });
+}
+
+/**
+ * The user's own writes (`POST /auth/password`, D-171): a member's row goes into the audit of the session's
+ * organization, without any value (the operator = the login, no entity but the user); a system administrator has no
+ * organization, so no row.
+ */
+export function selfTrace(facadeOf: (orgId: string) => Promise<Pick<Facade, 'recordAction'>>): RequestHandler {
+  return traceWrites(async (_req, _route, params, _body, res) => {
+    const user = sessionUserOf(res);
+    if (!user?.orgId) return null;
+    return { facade: await facadeOf(user.orgId), entityIds: [user.id], summary: { params, body: {} }, labelId: null };
   });
 }

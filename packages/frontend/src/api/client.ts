@@ -52,13 +52,13 @@ function toLogin(): void {
 
 /**
  * Every call of the app goes through here: fetch (with the session cookie), the operator header on writes, `X-Org` of a
- * system administrator working in an organization, error mapping, schema parse. `anonymous` = a public write (the login
- * and the logout, D-170): no operator yet.
+ * system administrator working in an organization (or `org` of the call), error mapping, schema parse. `anonymous` =
+ * a public write (the login and the logout, D-170): no operator yet.
  */
 export async function call<Schema extends z.ZodType>(
   method: 'GET' | 'POST' | 'PATCH',
   url: string,
-  options: { query?: QueryParams; body?: unknown; schema: Schema; anonymous?: boolean },
+  options: { query?: QueryParams; body?: unknown; schema: Schema; anonymous?: boolean; org?: string },
 ): Promise<z.output<Schema>> {
   const headers: Record<string, string> = {};
   if (method !== 'GET' && !options.anonymous) {
@@ -66,7 +66,8 @@ export async function call<Schema extends z.ZodType>(
     if (!operator) throw new ApiError('Укажите оператора', 0, 'operator_required');
     headers['X-Operator'] = encodeURIComponent(operator);
   }
-  const org = orgHeader();
+  // `org`: a system administrator reading another organization than the one worked in (P25: its own labels)
+  const org = options.org ?? orgHeader();
   if (org) headers['X-Org'] = org;
   const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (options.body instanceof FormData) init.body = options.body;
@@ -107,6 +108,9 @@ export const auth = {
   login: (body: z.input<typeof S.loginBody>) => call('POST', '/auth/login', { body, schema: R.meSchema, anonymous: true }),
   logout: () => call('POST', '/auth/logout', { schema: R.okSchema, anonymous: true }),
   me: () => call('GET', '/auth/me', { schema: R.meSchema }),
+  /** The user's own password (D-171); the other sessions of the user end. */
+  changePassword: (body: z.input<typeof S.changeOwnPasswordBody>) =>
+    call('POST', '/auth/password', { body, schema: R.okSchema }),
 };
 
 /** The organizations, for the system administrator only (P24, P25; no money). */
@@ -114,9 +118,9 @@ export const orgs = {
   list: () => call('GET', '/orgs', { schema: list(R.orgSummarySchema) }),
   create: (body: z.input<typeof S.createOrgBody>) => call('POST', '/orgs', { body, schema: R.orgSchema }),
   get: (orgId: string) => call('GET', `/orgs/${id(orgId)}`, { schema: R.orgSummarySchema }),
-  users: (orgId: string) => call('GET', `/orgs/${id(orgId)}/users`, { schema: list(R.orgUserSchema) }),
-  createUser: (orgId: string, body: z.input<typeof S.createOrgUserBody>) =>
-    call('POST', `/orgs/${id(orgId)}/users`, { body, schema: R.orgUserSchema }),
+  users: (orgId: string) => call('GET', `/orgs/${id(orgId)}/users`, { schema: list(R.memberSchema) }),
+  createUser: (orgId: string, body: z.input<typeof S.createMemberUserBody>) =>
+    call('POST', `/orgs/${id(orgId)}/users`, { body, schema: R.memberSchema }),
 };
 
 export const owners = {
@@ -204,6 +208,8 @@ export const participations = {
 
 export const labels = {
   list: () => call('GET', '/labels', { schema: list(R.labelListItemSchema) }),
+  /** The labels of a given organization, for the system administrator (P25: the labels of a new label manager). */
+  listOf: (orgId: string) => call('GET', '/labels', { schema: list(R.labelListItemSchema), org: orgId }),
   create: (body: z.input<typeof S.createLabelBody>) =>
     call('POST', '/labels', { body, schema: R.labelSchema }),
   addAlias: (labelId: string, body: z.input<typeof S.addAliasBody>) =>

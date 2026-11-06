@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { expect, type APIRequestContext, type Locator } from '@playwright/test';
 import type { CaseKeys, SeedKeys } from '../../backend/scripts/e2e/keys';
 import type { Page, Route } from '@playwright/test';
+import type { Me } from '@erp/shared/api-responses';
 
 /** U+00A0 / U+202F (grouping) and U+2212 (minus) as plain characters, so money text compares with ordinary strings. */
 export const norm = (s: string | null): string =>
@@ -43,7 +44,7 @@ export const STORAGE_STATE = join(import.meta.dirname, '..', '..', '..', 'data',
 
 /** The login part of the keys file, written by `seed.ts` (its `SeedAuthKeys`, D-170). */
 type LoginKeys = {
-  users: Record<'operator' | 'sysadmin' | 'b', { login: string; password: string }>;
+  users: Record<'operator' | 'sysadmin' | 'b' | 'multi', { login: string; password: string }>;
   orgB: { id: string; name: string; labelId: string; labelName: string; ownerId: string; ownerName: string };
 };
 
@@ -68,8 +69,36 @@ export async function loginAs(page: Page, user: 'operator' | 'sysadmin' | 'b', n
   await expect(page.getByTestId('user-menu')).toHaveAttribute('data-login', login);
 }
 
-/** The session as `GET /auth/me` would answer with the login off: the states fixture keeps the operator field. */
-export const ME_OFF = { authMode: 'off', user: null, org: { id: 'org-e2e', name: 'Test organization e2e' } };
+/**
+ * A `GET /auth/me` answer for a `page.route` mock, in the shape of `meSchema` (D-171). The default is the login off
+ * (`authMode: 'off'`, role `local`, every own label): the states fixture keeps the operator field. With the login on the
+ * user is `login`, a member of the organization with `role` (a system administrator: role `system`, no membership).
+ */
+export function meMock(
+  o: {
+    authMode?: 'on' | 'off';
+    role?: Me['role'];
+    login?: string;
+    org?: { id: string; name: string } | null;
+    labels?: { id: string; name: string }[];
+  } = {},
+): Me {
+  const authMode = o.authMode ?? 'off';
+  const org = o.org === undefined ? { id: 'org-e2e', name: 'Test organization e2e' } : o.org;
+  const role = o.role ?? (authMode === 'off' ? 'local' : 'org_admin');
+  const member = org && (role === 'org_admin' || role === 'label_manager');
+  return {
+    authMode,
+    user: authMode === 'off' ? null : { id: 'user-e2e', login: o.login ?? OPERATOR, isSystemAdmin: role === 'system' },
+    org,
+    role,
+    labels: o.labels ?? [],
+    allLabels: role !== 'label_manager',
+    memberships: member ? [{ orgId: org.id, orgName: org.name, role }] : [],
+    support: null,
+    abilities: [],
+  };
+}
 /** The id of a shared own label (`0to8`, `Echo8`), D-168: the payouts and operations of the specs are made under 0to8. */
 export const labelOf = (name: '0to8' | 'Echo8'): string => seedKeys().shared[`label:${name}`] ?? '';
 /** Keys of scenario `nn`, case `k`. */
@@ -103,8 +132,14 @@ export function expectMoneyCalls(page: Page, n: number): void {
   expect(moneyCalls.get(page) ?? [], 'money requests since openAs').toHaveLength(n);
 }
 
-/** Every money page waits for the recalculation to finish (19 §5.5). */
+/**
+ * Every money page waits for the recalculation to finish (19 §5.5). The shell renders nothing before `GET /auth/me`
+ * answers (D-170), so the page (and its money request) must be there first: otherwise the indicator is «hidden» only
+ * because nothing is mounted yet. One frame more lets the page's queries start (their fetch begins in an effect).
+ */
 export async function settled(page: Page): Promise<void> {
+  await expect(page.getByTestId('page')).toBeVisible({ timeout: 20_000 });
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
   await expect(page.getByTestId('recalc-indicator')).toBeHidden({ timeout: 20_000 });
   await expect(page.getByTestId('stale-badge')).toHaveCount(0, { timeout: 20_000 });
 }

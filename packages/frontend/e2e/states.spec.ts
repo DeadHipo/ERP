@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { ME_OFF, apiError, json, norm, setOperator } from './helpers';
+import { meMock, apiError, json, norm, setOperator } from './helpers';
 
 // SS1..SS7 of docs/agents/19_golden_screens.md plus the action controls, against `page.route` mocks, on the states
 // fixture page /dev/states?case=<ss1..ss7|action> (the real pages arrive in steps 3.5..3.8).
 // `GET /auth/me` answers as with the login off (D-170): the header keeps the operator field these checks type into;
 // every other unmocked request goes to the server with the session of e2e-operator (storageState).
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/v1/auth/me', (route) => json(route, 200, ME_OFF));
+  await page.route('**/api/v1/auth/me', (route) => json(route, 200, meMock()));
 });
 
 const reconRow = (receivedA: string) => ({

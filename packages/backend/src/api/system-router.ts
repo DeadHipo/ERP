@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import swaggerUi from 'swagger-ui-express';
-import type { AuthConfig } from '../auth/middleware';
+import type { LoginLimiter } from '../auth/limits';
+import { sessionCookieName, type AuthConfig } from '../auth/middleware';
 import type { AuthService } from '../auth/service';
 import type { Facade } from '../facade';
 import type { OrgsService } from '../orgs/service';
@@ -14,6 +15,8 @@ export interface SystemDeps {
   orgs: OrgsService;
   /** The facade of an organization (the counts of `/orgs`, the audit of a system write). */
   facadeOf: (orgId: string) => Promise<Facade>;
+  /** The login limiter of this app instance (D-171). */
+  limiter: LoginLimiter;
 }
 
 /**
@@ -22,7 +25,7 @@ export interface SystemDeps {
  */
 export function createSystemRouter(deps: SystemDeps): Router {
   const r = Router();
-  const openapi = buildOpenApiDocument();
+  const openapi = buildOpenApiDocument({ sessionCookie: sessionCookieName(deps.config) });
   r.get('/openapi.json', (_req, res) => res.json(openapi));
   r.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
   r.get('/health', (_req, res) => res.json({ ok: true }));

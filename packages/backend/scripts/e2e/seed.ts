@@ -9,11 +9,12 @@
  * The login (D-170): the seed also creates the user `e2e-operator` of that organization, the system administrator
  * `e2e-sysadmin`, and organization B («Org B e2e») with one own label, one owner and its user `e2e-b`. The passwords are
  * random per run and written to the keys files only (`users`), with the ids of B (`orgB`); the e2e `globalSetup` signs in
- * with them. Nothing of B touches the numbers of A (`verify-seed.ts` is unchanged).
+ * with them. Nothing of B touches the numbers of A (`verify-seed.ts` is unchanged). D-171: `e2e-operator` and `e2e-b`
+ * are `org_admin` members of A and B; `e2e-multi` is an `org_admin` of both (the login asks to choose the organization).
  */
 /** The login part of the keys file (D-170); `packages/frontend/e2e/helpers.ts` reads it. */
 export interface SeedAuthKeys {
-  users: Record<'operator' | 'sysadmin' | 'b', { login: string; password: string }>;
+  users: Record<'operator' | 'sysadmin' | 'b' | 'multi' | 'manager', { login: string; password: string }>;
   orgB: { id: string; name: string; labelId: string; labelName: string; ownerId: string; ownerName: string };
 }
 import { randomBytes } from 'node:crypto';
@@ -80,12 +81,20 @@ try {
     operator: { login: 'e2e-operator', password: password() },
     sysadmin: { login: 'e2e-sysadmin', password: password() },
     b: { login: 'e2e-b', password: password() },
+    multi: { login: 'e2e-multi', password: password() },
+    manager: { login: 'e2e-manager', password: password() },
   };
   const auth = createAuthService(stores.db);
-  await auth.createUser({ ...users.operator, orgId: stores.orgId, createdBy: 'e2e seed' });
+  await auth.createUser({ ...users.operator, orgId: stores.orgId, role: 'org_admin', createdBy: 'e2e seed' });
   await auth.createUser({ ...users.sysadmin, system: true, createdBy: 'e2e seed' });
   const orgB = await createOrgsService(stores.db).createOrganization({ name: 'Org B e2e', createdBy: 'e2e seed' });
-  await auth.createUser({ ...users.b, orgId: orgB.id, createdBy: 'e2e seed' });
+  await auth.createUser({ ...users.b, orgId: orgB.id, role: 'org_admin', createdBy: 'e2e seed' });
+  await auth.createUser({ ...users.multi, orgId: stores.orgId, role: 'org_admin', createdBy: 'e2e seed' });
+  // a label manager of A with the 0to8 label only (D-171): `label=A` 2xx, `label=B` 403, «Все» 400
+  const label0to8 = seed.shared['label:0to8'];
+  if (!label0to8) throw new Error('the seed has no label:0to8 key for the manager');
+  await auth.createUser({ ...users.manager, orgId: stores.orgId, role: 'label_manager', labelIds: [label0to8], createdBy: 'e2e seed' });
+  await auth.addMembership({ login: users.multi.login, orgId: orgB.id, role: 'org_admin', labelIds: [], createdBy: 'e2e seed' });
   const facadeB = openFacade({
     db: stores.db,
     orgId: orgB.id,

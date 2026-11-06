@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { loginAs, seedKeys, seedUsers, toastOk } from '../helpers';
+import { choose, loginAs, seedKeys, seedUsers, toastOk } from '../helpers';
 
 // 36-orgs «Граница арендатора» (D-170, 19 §6; no scenario of its own: the users and organization B of the seed): the login, organization B seen from its own user, the system administrator's
 // pages P24/P25. Every test opens its own context without the session of e2e-operator. Organization A is never written
@@ -52,9 +52,10 @@ test('the system administrator lists the organizations, creates C and its user, 
   const rowA = page.getByTestId(`org-${orgId}`);
   const rowB = page.getByTestId(`org-${orgB.id}`);
   await expect(rowA).toBeVisible();
-  await expect(rowA.locator('[data-col="users"]')).toHaveText('1');
+  // D-171: e2e-multi is a member of A and of B besides their own users
+  await expect(rowA.locator('[data-col="users"]')).toHaveText('3');
   await expect(rowB).toContainText(orgB.name);
-  for (const [col, n] of [['labels', '1'], ['files', '0'], ['statements', '0'], ['owners', '1'], ['users', '1']] as const)
+  for (const [col, n] of [['labels', '1'], ['files', '0'], ['statements', '0'], ['owners', '1'], ['users', '2']] as const)
     await expect(rowB.locator(`[data-col="${col}"]`), col).toHaveText(n);
 
   // create organization C
@@ -73,9 +74,17 @@ test('the system administrator lists the organizations, creates C and its user, 
   await page.getByTestId('action-create-user').click();
   await page.getByTestId('field-user-login').fill('e2e-c');
   await page.getByTestId('field-user-password').fill('e2e-c-synthetic-pass');
+  // C has no own label: a label manager cannot be created there (D-171), an administrator of the organization can
+  await choose(page, 'user-role', 'менеджер лейбла');
+  await expect(page.getByTestId('user-no-labels')).toBeVisible();
+  await expect(page.getByTestId('action-create-user-submit')).toBeDisabled();
+  await choose(page, 'user-role', 'администратор организации');
   await page.getByTestId('action-create-user-submit').click();
   await toastOk(page, 'Создан пользователь e2e-c');
-  await expect(page.getByTestId('org-user-e2e-c')).toBeVisible();
+  const userC = page.getByTestId('org-user-e2e-c');
+  await expect(userC).toBeVisible();
+  await expect(userC.locator('[col-id="role"]')).toHaveText('администратор организации');
+  await expect(userC.locator('[col-id="active"]')).toHaveText('да');
 
   // the writes of the system administrator are in the audit of C under their login
   const trail = await auditOf(page.request, orgC, orgC);

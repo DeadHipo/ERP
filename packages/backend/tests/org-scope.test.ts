@@ -280,8 +280,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const orgs = createOrgFacades({ stores: { db: stack.db, pool: stack.pg.pool, columnar: stack.columnar }, dataDir, payoutThresholdCents: 0 });
     const auth = createAuthService(stack.db);
     const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
-    await auth.createUser({ login: users.a, password: PASSWORD, orgId: orgA, createdBy: 'tests' });
-    await auth.createUser({ login: users.b, password: PASSWORD, orgId: orgB, createdBy: 'tests' });
+    await auth.createUser({ login: users.a, password: PASSWORD, orgId: orgA, role: 'org_admin', createdBy: 'tests' });
+    await auth.createUser({ login: users.b, password: PASSWORD, orgId: orgB, role: 'org_admin', createdBy: 'tests' });
     await auth.createUser({ login: users.sys, password: PASSWORD, system: true, createdBy: 'tests' });
     app = createServerApp({ orgs, auth: { service: auth, config: { mode: 'on', secret: SECRET } } });
     for (const who of ['a', 'b', 'sys'] as const) {

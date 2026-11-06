@@ -13,12 +13,17 @@ function openApiPath(path: string): { path: string; params: string[] } {
   return { path: out, params };
 }
 
-/** The OpenAPI 3.1 document of /api/v1, built from the operations list. */
-export function buildOpenApiDocument() {
+/** The OpenAPI 3.1 document of /api/v1, built from the operations list; the cookie name is the process's (D-171). */
+export function buildOpenApiDocument(opts: { sessionCookie?: string } = {}) {
   const registry = new OpenAPIRegistry();
   const error = errorBody;
-  // D-170: the session cookie of /auth/login, or the system key of scripts and a clean stack
-  registry.registerComponent('securitySchemes', 'session', { type: 'apiKey', in: 'cookie', name: 'erp_session' });
+  // D-170: the session cookie of /auth/login (`__Host-erp_session` with AUTH_COOKIE_SECURE=1, D-171), or the system
+  // key of scripts and a clean stack
+  registry.registerComponent('securitySchemes', 'session', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: opts.sessionCookie ?? 'erp_session',
+  });
   registry.registerComponent('securitySchemes', 'systemKey', { type: 'apiKey', in: 'header', name: 'X-System-Key' });
   const security: Record<ApiOperation['access'], string[]> = {
     public: [],
@@ -36,6 +41,8 @@ export function buildOpenApiDocument() {
       tags: [op.tag],
       summary: op.summary,
       security: security[op.access].map((name) => ({ [name]: [] })),
+      // the right the operation needs (D-171): action, subject and, in an organization, scope
+      ...(op.ability ? { 'x-ability': { ...op.ability } } : {}),
       ...(op.errors ? { description: `Errors:\n\n${op.errors.map((e) => `- ${e}`).join('\n')}` } : {}),
       request: {
         ...(params.length

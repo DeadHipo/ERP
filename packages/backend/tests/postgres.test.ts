@@ -108,4 +108,41 @@ describe.runIf(postgresUp)('migration 0016_organizations', () => {
       await d.drop();
     }
   });
+  // 0017 (D-171): idempotent; the users of stage 2 become org_admin members of their organization, the column goes.
+  const m17 = () => postgresMigrations().find((m) => m.version === 17)?.text as string;
+
+  it('0017 on a stage-2 base: users.org_id moves into memberships (org_admin), the column goes; a second run changes nothing', async () => {
+    const d = await database(16);
+    try {
+      const q = (text: string, values?: unknown[]) => d.pg.pool.query(text, values);
+      await q(`INSERT INTO orgs.organizations (id, name, created_by) VALUES ('${FIRST}', 'Org M', 't')`);
+      await q("INSERT INTO auth.users (id, login, password_hash, org_id, created_by) VALUES ('u1', 'user-one', 'x', $1, 't')", [FIRST]);
+      await q("INSERT INTO auth.users (id, login, password_hash, is_system_admin, created_by) VALUES ('u2', 'sys-one', 'x', true, 't')");
+      await q(m17());
+      await q(m17());
+      const members = (await q('SELECT user_id, org_id, role, created_by, disabled_at FROM auth.memberships')).rows;
+      expect(members).toEqual([{ user_id: 'u1', org_id: FIRST, role: 'org_admin', created_by: 'migration 0017', disabled_at: null }]);
+      const column = await q("SELECT 1 FROM information_schema.columns WHERE table_schema = 'auth' AND table_name = 'users' AND column_name = 'org_id'");
+      expect(column.rows).toEqual([]);
+      const index = await q("SELECT to_regclass('auth.users_org') AS i");
+      expect(index.rows[0].i).toBeNull();
+      for (const t of ['auth.memberships', 'auth.user_labels', 'auth.sessions', 'auth.support_grants'])
+        expect((await q(`SELECT to_regclass('${t}') IS NOT NULL AS ok`)).rows[0].ok, t).toBe(true);
+      await expect(q("INSERT INTO auth.memberships (user_id, org_id, role, created_by) VALUES ('u2', 'o', 'owner', 't')")).rejects.toThrow(/memberships_role/);
+      await expect(q("INSERT INTO auth.user_labels (user_id, org_id, label_id, created_by) VALUES ('u2', 'o', 'l', 't')")).rejects.toThrow(/foreign key/);
+    } finally {
+      await d.drop();
+    }
+  });
+
+  it('0017 on an empty base: no membership, twice', async () => {
+    const d = await database(16);
+    try {
+      await d.pg.pool.query(m17());
+      await d.pg.pool.query(m17());
+      expect((await d.pg.pool.query('SELECT count(*)::int AS n FROM auth.memberships')).rows[0].n).toBe(0);
+    } finally {
+      await d.drop();
+    }
+  });
 });
