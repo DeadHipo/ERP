@@ -11,6 +11,7 @@ import { QueryView } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
 import { ru } from '../../i18n/ru';
 import { PublishingTermsDialog } from '../work/actions/dialogs';
+import { useWriteLabel } from '../../lib/label';
 import { CreateOperationDialog } from '../operations/CreateOperationDialog';
 import { OperationsGrid } from '../operations/OperationsGrid';
 import { Section, SimpleTable, Td } from './components/Fact';
@@ -45,7 +46,10 @@ export function ArtistsTab(props: { detail: OwnerDetail }) {
   );
 }
 
-/** P10 Паблишинг: the terms by operation type (set terms) and the publishing lines of the balance. */
+/**
+ * P10 Паблишинг: the terms by operation type (set terms) and the publishing lines of the balance. The lines are those of
+ * the book in view (D-169: a B17 line sits in the book of the label of its statement; under «Все» every book).
+ */
 export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | undefined }) {
   const [open, setOpen] = useState(false);
   const p = m.publishing;
@@ -80,14 +84,14 @@ export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | u
         <Section title={b.publishingLines}>
           <SimpleTable head={[b.period, b.workTitle, b.amount, b.percent, b.category, b.reason]}>
             {props.balance.publishing.map((x, i) => (
-              <tr key={`${x.period}-${x.workTitle}-${i}`}>
-                <Td>{x.period}</Td>
-                <Td>{x.workTitle}</Td>
-                <Td>
+              <tr key={`${x.period}-${x.workTitle}-${i}`} data-testid="publishing-line" data-period={x.period}>
+                <Td col="period">{x.period}</Td>
+                <Td col="workTitle">{x.workTitle}</Td>
+                <Td col="amount">
                   <Money value={x.amount} />
                 </Td>
                 <Td>{x.percent} %</Td>
-                <Td>{x.category}</Td>
+                <Td col="category">{x.category}</Td>
                 <Td>{x.reason ? (ru.reasons[x.reason as keyof typeof ru.reasons] ?? x.reason) : ''}</Td>
               </tr>
             ))}
@@ -105,10 +109,11 @@ export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | u
 export function OperationsTab(props: { detail: OwnerDetail; balance: Balance | undefined; labelId?: string }) {
   const query = useQuery(settlementQueries.operations({ ownerId: props.detail.owner.id, ...(props.labelId ? { label: props.labelId } : {}) }));
   const [open, setOpen] = useState(false);
+  const write = useWriteLabel(); // an operation is written under a label (D-168): closed under «Все»
   return (
     <div className="flex flex-col gap-3" data-testid="operations-tab">
       <div className="flex flex-wrap items-center gap-3">
-        <ActionButton name="create-operation" onPress={() => setOpen(true)}>
+        <ActionButton name="create-operation" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setOpen(true)}>
           {m.actions.create}
         </ActionButton>
         {props.balance && props.balance.blockingPayouts.length > 0 ? (

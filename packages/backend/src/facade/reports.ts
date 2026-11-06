@@ -7,7 +7,7 @@ import { periodScope, scoped, type UnitScope } from './scope';
 import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
 import type { FacadeContext } from './context';
-import type { LabelVisibility } from './label-scope';
+import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
@@ -254,6 +254,13 @@ export async function signalsFrom(
         .filter((x) => x.status === 'loaded' && x.labelId === null)
         .map((x) => ({ fileId: x.id, account: x.account, reportingMonth: x.reportingMonth, fileName: x.fileName }))
         .sort((a, b) => a.account.localeCompare(b.account) || a.reportingMonth.localeCompare(b.reportingMonth));
+  // loaded B17 statements without a label (D-169): their lines sit in the book '?'; under a label the list is empty
+  const statementsWithoutLabel = visible
+    ? []
+    : (await publishing.activeStatements())
+        .filter((s) => s.labelId === null)
+        .map((s) => ({ statementId: s.id, periods: s.periods, fileName: s.fileName }))
+        .sort((a, b) => (a.periods[0] ?? '').localeCompare(b.periods[0] ?? '') || a.statementId.localeCompare(b.statementId));
   const { tracks, parts, unlabelled, ownerNames } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
     parts: await splits.listParticipations(),
@@ -331,6 +338,7 @@ export async function signalsFrom(
       (a, b) => a.account.localeCompare(b.account) || a.month.localeCompare(b.month) || a.labelName.localeCompare(b.labelName),
     ),
     filesWithoutLabel,
+    statementsWithoutLabel,
     // active advertising records without a payer (D-169): migrated records until `assign-label-books --step ads`
     adsWithoutLabel: visible
       ? []
@@ -372,10 +380,11 @@ export function reportsApi(ctx: FacadeContext) {
      * participations whose recipient has no owner, money under assumptions grouped by document.
      */
     async signals(f: PeriodFilter = {}, labelId?: string) {
-      // under a label (D-168, D-169): the units of the label's files only, no B17 lines (publishing has no label yet)
+      // under a label (D-168, D-169): the units of the label's files and the B17 lines of its statements
       const lc = await ctx.labelContext(labelId);
-      const scope: UnitScope = lc ? { labelIds: [lc.book.id], publishingLines: false } : {};
-      const calc = await calculate(scoped(modules, scope));
+      const scope: UnitScope = lc ? { labelIds: [lc.book.id] } : {};
+      const all = await calculate(scoped(modules, scope));
+      const calc = lc ? underLabel(all, lc.book.id) : all;
       if (!lc) return signalsFrom(ctx, calc, f);
       // the ads the label pays or whose ISRC is in its files: their income books need every unit of their ISRCs (D-169)
       const L = lc.book.id;
@@ -420,10 +429,11 @@ export function reportsApi(ctx: FacadeContext) {
     /** One reason of the C queue, grouped by what the operator fixes (17 N3). */
     async queue(reason: CReason, f: PeriodFilter = {}, o: Omit<QueueOptions, 'reason'> = {}, labelId?: string) {
       // the groups hold only the items of the period: the units outside it are not read (D-161); under a label only
-      // the units of its files and no B17 lines (D-168, D-169)
+      // the units of its files and the B17 lines of its statements (D-168, D-169)
       const lc = await ctx.labelContext(labelId);
-      const scope: UnitScope = { ...periodScope(f), ...(lc ? { labelIds: [lc.book.id], publishingLines: false } : {}) };
-      const calc = await calculate(scoped(modules, scope), await ctx.opDocIds());
+      const scope: UnitScope = { ...periodScope(f), ...(lc ? { labelIds: [lc.book.id] } : {}) };
+      const all = await calculate(scoped(modules, scope), await ctx.opDocIds());
+      const calc = lc ? underLabel(all, lc.book.id) : all;
       const ownerList = await owners.listOwners();
       const { groups } = cQueue(
         calc,

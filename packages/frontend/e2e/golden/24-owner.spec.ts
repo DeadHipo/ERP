@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, expectMoneyCalls, expectOverview, isrc, labelOf, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, choose, expectMoneyCalls, expectOverview, isrc, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // P10 Владелец and P9 Владельцы, read-only scenarios and the G39 change made through the API (19 §4: S24, S23).
 // The merge (S33) is 25-merge, the duplicate dialog (S36) 23-duplicate-dialog, the payout (S22) 26-payout. Runs after
@@ -137,6 +137,7 @@ test('Документы и договоры: a contract with a new approved doc
   const dialog = page.getByTestId('form-dialog');
   await expect(dialog.getByTestId(`contract-artist-${k.artists.A}`)).toBeChecked();
   await expect(dialog.getByTestId('action-contract-submit')).toBeDisabled();
+  await choose(page, 'document-step-label', 'любой лейбл'); // under «Все» the step asks the label (D-169)
   await dialog.getByTestId('field-document-file').fill('dummy://e2e-contract-361.pdf');
   const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/documents') && r.request().method() === 'POST');
   await dialog.getByTestId('action-document-create').click();

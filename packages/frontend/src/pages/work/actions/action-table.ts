@@ -46,6 +46,7 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   operationsWithoutLabel: { action: 'SetOperationLabelDialog' },
   labelOutsideAccount: { information: true, note: 'units of an account that lead to another own label (D-168): the known history, nothing to fix' },
   filesWithoutLabel: { information: true, note: 'loaded Believe files without a label (D-169): marked by the script assign-label-books, nothing to fix here' },
+  statementsWithoutLabel: { information: true, note: 'loaded B17 statements without a label (D-169): marked by the script assign-label-books, nothing to fix here' },
   adsWithoutLabel: { action: 'EditAdByIdDialog' },
   adOutsideBook: { action: 'EditAdByIdDialog' },
 };

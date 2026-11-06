@@ -166,10 +166,12 @@ export const signalRow = (page: Page, name: string, key: string) => page.getByTe
 
 /**
  * The document part of an action dialog: a new document with a file reference, then its approval (the confirmation states
- * the money waiting for this very document, N13). Returns the new document id.
+ * the money waiting for this very document, N13). Called under «Все» only (the step asks the label there). Returns the new document id.
  */
 export async function newDocument(page: Page, fileRef: string, waiting?: string): Promise<string> {
   const dialog = page.getByTestId('form-dialog');
+  // under «Все» the step asks for the label of the document (D-169): the queue documents of the seed are «любой лейбл»
+  await choose(page, 'document-step-label', 'любой лейбл');
   await dialog.getByTestId('field-document-file').fill(fileRef);
   const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/documents') && r.request().method() === 'POST');
   await dialog.getByTestId('action-document-create').click();

@@ -45,6 +45,7 @@ export function reportsRouter(facade: Facade) {
       operationsWithoutLabel: cut(s.operationsWithoutLabel),
       labelOutsideAccount: cut(s.labelOutsideAccount),
       filesWithoutLabel: cut(s.filesWithoutLabel),
+      statementsWithoutLabel: cut(s.statementsWithoutLabel),
       adsWithoutLabel: cut(s.adsWithoutLabel),
       adOutsideBook: cut(s.adOutsideBook),
     });

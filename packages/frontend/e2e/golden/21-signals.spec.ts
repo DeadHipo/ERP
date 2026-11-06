@@ -23,12 +23,14 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 16 lists with their counts and links', async ({ page }) => {
+test('the index lists the 17 lists with their counts and links', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(16);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(17);
   // D-169: every seed file is loaded under a label, so «Файлы Believe без лейбла» is empty
   await expect(page.getByTestId('signal-list-filesWithoutLabel').getByTestId('signal-count')).toHaveText('0');
+  // D-169: the one B17 statement of the seed is loaded under 0to8, so «Выписки B17 без лейбла» is empty too
+  await expect(page.getByTestId('signal-list-statementsWithoutLabel').getByTestId('signal-count')).toHaveText('0');
   // D-169: the seed posts no advertising (32-ads acts on its own records later), so both ad lists are empty here
   await expect(page.getByTestId('signal-list-adsWithoutLabel').getByTestId('signal-count')).toHaveText('0');
   await expect(page.getByTestId('signal-list-adOutsideBook').getByTestId('signal-count')).toHaveText('0');
@@ -36,6 +38,13 @@ test('the index lists the 16 lists with their counts and links', async ({ page }
   await expect(page).toHaveURL(/\/signals\/unfunded$/);
   await settled(page);
   await expect(page.getByTestId('signal-total')).toContainText('Записей');
+});
+
+test('D-169 «Выписки B17 без лейбла» renders empty on the seed (the statement is 0to8\'s)', async ({ page }) => {
+  await openList(page, 'statementsWithoutLabel');
+  await expect(page.getByTestId('signals-page')).toContainText('Выписки B17 без лейбла');
+  await expect(page.getByTestId('signal-total')).toContainText('0');
+  await expect(page.locator('[data-testid^="signal-row-statementsWithoutLabel-"]')).toHaveCount(0);
 });
 
 test('rows of other scenarios: unfunded S03/8, isrcsWithoutSplit S08/4 and S30, assumptions S08', async ({ page }) => {

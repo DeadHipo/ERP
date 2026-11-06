@@ -1066,21 +1066,21 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect([b.total.recouped, b.positions[0]?.remaining, b.total.payable].map((x) => x?.toFixed())).toEqual(
         ['30', '10', '50'],
       );
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
     it('(ii) an advance 40 scope isrcs [another ISRC]: recouped 0, payable 80', async () => {
       const c = await base();
       await advance(c, 'A', '40', { kind: 'isrcs', isrcs: [I(2)] }, '2026-01-01');
       const b = await c.balance('A');
       expect([b.total.recouped, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '80']);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
     it('(iii) a migration payout 20 without scope: paid 20, payable 60', async () => {
       const c = await base();
       await migrationPayout(c, 'A', '20');
       const b = await c.balance('A');
       expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['20', '60']);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
   });
 
@@ -1123,7 +1123,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect(b.positions.map((p) => [p.amount, p.recouped, p.remaining].map((x) => x.toFixed()))).toEqual([
         ['10', '10', '0'],
       ]);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
     it('a credit -5 adds 5: credits 5, payable 45', async () => {
       const c = await base();
@@ -1136,7 +1136,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
         '5',
         '45',
       ]);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
     it('a deduction 70 above the income 50: recouped 50, remaining 20, payable 0', async () => {
       const c = await base();
@@ -1145,7 +1145,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect(
         [b.total.recouped, b.positions[0]?.remaining, b.total.payable].map((x) => x?.toFixed()),
       ).toEqual(['50', '20', '0']);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
   });
 
@@ -1165,7 +1165,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       expect(off.active).toBe(false);
       const b = await c.balance('A');
       expect([b.total.paid, b.total.payable].map((x) => x.toFixed())).toEqual(['0', '50']);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
     it('a button payout without proof does not count; deactivated (transfer failed) it unblocks', async () => {
       const c = await base();
@@ -1214,7 +1214,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
         '55',
         '55',
       ]);
-      await c.verify({ skipOwners: ['A'] });
+      await c.verify();
     });
   });
 });
@@ -1249,7 +1249,7 @@ describe('G50 (D-168): the label as a book', () => {
     expect([p.amountCents, p.labelId]).toEqual([1000, f.testLabels['0to8']]);
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof-2.pdf' });
     expect(await books()).toEqual({ total: ['80', '50', '10', '20'], '0to8': ['50', '40', '10', '0'], Echo8: ['30', '10', '0', '20'] });
-    await c.verify({ skipOwners: ['A'] });
+    await c.verify();
   });
 });
 
@@ -1337,6 +1337,45 @@ describe('G54 (D-169): the label of an advertising record is its payer', () => {
     ]);
     expect([s.counts.adOutsideBook, s.counts.adsWithoutLabel]).toEqual([1, 0]);
     await expect(f.createAds([{ isrc: I(1), month: '2026-03', amount: '10' }])).rejects.toMatchObject({ code: 'label_required' });
+    await c.verify();
+  });
+});
+
+describe('G55 (D-169): a B17 statement sits in the book of its label', () => {
+  it('a statement under Echo8 for an owner whose only contract is 0to8: the publishing money is in the Echo8 book, closed by no_contract_for_label', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    const [zero, echo] = [f.testLabels['0to8'], f.testLabels.Echo8];
+    await c.person('A');
+    await c.track(I(1));
+    await c.split(I(1), [['A', '50']]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    const owner = c.owners.get('A') as string;
+    const [contractDoc] = await f.modules.owners.listDocuments({ ownerId: owner, kind: 'contract' });
+    await f.setDocumentLabel(contractDoc?.id as string, zero);
+    await f.modules.owners.addOwnerAlias(owner, 'OWNER, A');
+    await f.setPublishingTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: contractDoc?.id as string });
+    const r = await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]), echo);
+    await f.resolveWriters();
+    expect(r.statement.labelId).toBe(echo);
+    const b = await c.balance('A');
+    expect(Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, [x.earned, x.payable].map((v) => v.toFixed())]))).toEqual({
+      '0to8': ['50', '50'],
+      Echo8: ['30', '30'],
+    });
+    expect([b.total.earned, b.total.payable].map((v) => v.toFixed())).toEqual(['80', '80']);
+    // the view under Echo8 is the Echo8 book with its publishing line; under 0to8 no B17 line is seen
+    const underEcho = await f.ownerBalance(owner, {}, echo);
+    expect([underEcho.confirmed, underEcho.payout.reason, underEcho.total.payable.toFixed()]).toEqual([false, 'no_contract_for_label', '30']);
+    expect(underEcho.publishing.map((p) => [p.period, p.amount.toFixed(), p.category])).toEqual([['2026-Q2', '30', 'B']]);
+    const underZero = await f.ownerBalance(owner, {}, zero);
+    expect([underZero.payout.reason, underZero.total.payable.toFixed(), underZero.publishing.length]).toEqual([null, '50', 0]);
+    await expect(f.createPayout(owner, { labelId: echo })).rejects.toMatchObject({ code: 'no_contract_for_label' });
+    // the reconciliation row of B17 is the one book Echo8
+    const row = (await f.reconciliation()).find((x) => x.source === 'b17');
+    expect(Object.keys(row?.byLabel ?? {})).toEqual(['Echo8']);
+    const s = await f.signals();
+    expect(s.counts.statementsWithoutLabel).toBe(0);
     await c.verify();
   });
 });

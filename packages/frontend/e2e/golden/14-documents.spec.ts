@@ -37,9 +37,17 @@ test('P13 an assumption has no approve button: «допущение заменя
   await expect(row.getByTestId('assumption-note')).toContainText('допущение заменяется документом');
 });
 
+test('P13 under «Все» «Создать документ» is closed with «выберите лейбл» (D-169)', async ({ page }) => {
+  await openAs(page, '/documents?q=Ref spec doc&label=');
+  await expect(page.getByTestId('action-create-document')).toBeDisabled();
+  await expect(page.getByTestId('action-create-document').locator('..')).toContainText('выберите лейбл');
+});
+
 test('P13 create a document, attach a file, approve it from the list', async ({ page }) => {
-  await openAs(page, '/documents?q=Ref spec doc');
+  // created under 0to8 (the button is closed under «Все»), as «любой лейбл»: the document stays without a label
+  await openAs(page, `/documents?q=Ref spec doc&label=${labelOf('0to8')}`);
   await page.getByTestId('action-create-document').click();
+  await choose(page, 'document-label', 'любой лейбл');
   await page.getByTestId('field-document-title').fill('Ref spec doc');
   const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/documents') && r.request().method() === 'POST');
   await page.getByTestId('action-create-document-submit').click();

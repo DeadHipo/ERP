@@ -11,8 +11,9 @@ const fact = (page: Page, name: string) => page.getByTestId(`balance-${name}`).g
 async function expectTotals(page: Page, totals: Record<string, string>) {
   for (const [name, value] of Object.entries(totals)) await expect(fact(page, name), name).toHaveAttribute('title', value);
 }
+/** Under 0to8 (D-168): an operation is written under a label, «Аванс / вычет / кредит» is closed under «Все»; every S31 book is 0to8. */
 async function openOwner(page: Page, ownerId: string, tab = 'balance') {
-  await openAs(page, `/owners/${ownerId}?tab=${tab}`);
+  await openAs(page, `/owners/${ownerId}?tab=${tab}&label=${labelOf('0to8')}`);
   await settled(page);
 }
 async function tab(page: Page, id: string) {
@@ -64,6 +65,12 @@ async function attachProof(page: Page, opId: string, file: string) {
 let advance1 = '';
 /** The body the dialog sent, for the second press. */
 let lastBody: Record<string, unknown> = {};
+
+test('under «Все» «Аванс / вычет / кредит» is closed with «выберите лейбл» (D-169)', async ({ page }) => {
+  await openAs(page, `/owners/${sc(31, 1).owners.A}?tab=operations&label=`);
+  await expect(page.getByTestId('action-create-operation')).toBeDisabled();
+  await expect(page.getByTestId('action-create-operation').locator('..')).toContainText('выберите лейбл');
+});
 
 test('S31/1 (i) advance 40, scope publishing: unproved → payable 80, pending and blocking; second advance refused', async ({ page, request }) => {
   const k = sc(31, 1);

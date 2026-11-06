@@ -29,6 +29,12 @@ export interface AggregatedLine {
   workTitle: string;
   songwriters: string | null;
   operationType: string | null;
+  /**
+   * The own label of the statement of the line (D-169), null = a statement without a label. A period belongs to one
+   * statement (`pub_statement_periods`), so the label in the GROUP BY of `pub_lines_by_key` never splits a group; this
+   * holds as long as a second statement for a loaded quarter is refused (D-041).
+   */
+  labelId: string | null;
   payablePico: bigint;
 }
 
@@ -108,6 +114,14 @@ export function createPublishingRepository(db: Db) {
       const row = r.rows[0] as { s: string; n: string };
       return { sum: BigInt(row.s), count: BigInt(row.n) };
     },
+    /** Marks a statement without a label (D-169, the script only); returns whether a row changed. */
+    async assignStatementLabel(id: string, labelId: string): Promise<boolean> {
+      const r = await db.query(
+        'UPDATE publishing.pub_statements SET label_id = $2 WHERE id = $1 AND label_id IS NULL',
+        [id, labelId],
+      );
+      return (r.rowCount ?? 0) > 0;
+    },
     setStatementTotal: async (id: string, totalPayable: string) => {
       await orm().update(pubStatements).set({ totalPayable }).where(eq(pubStatements.id, id));
     },
@@ -129,10 +143,12 @@ export function createPublishingRepository(db: Db) {
         work_title: string;
         songwriters: string | null;
         operation_type: string | null;
+        label_id: string | null;
         payable: string;
       }>(
         // the grouped lines are kept by the materialized view pub_lines_by_key (D-164), refreshed by every load
-        `SELECT period, writer_norm, writer_name, work_title, songwriters, operation_type, payable_pico::text AS payable
+        `SELECT period, writer_norm, writer_name, work_title, songwriters, operation_type, label_id,
+                payable_pico::text AS payable
          FROM publishing.pub_lines_by_key
          ORDER BY period COLLATE "C", writer_norm COLLATE "C", songwriters COLLATE "C" NULLS FIRST,
                   work_title COLLATE "C", operation_type COLLATE "C" NULLS FIRST`,
@@ -144,6 +160,7 @@ export function createPublishingRepository(db: Db) {
         workTitle: x.work_title,
         songwriters: x.songwriters,
         operationType: x.operation_type,
+        labelId: x.label_id,
         payablePico: BigInt(x.payable),
       }));
     },

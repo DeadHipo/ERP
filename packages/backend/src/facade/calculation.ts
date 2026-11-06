@@ -293,8 +293,7 @@ export async function calculate(
         labelAmount: p.labelAmount,
         category: p.category,
         reason: p.reason,
-        // The statement's label reaches the line with D-169 commit 5; until then every line is without a label.
-        labelId: null,
+        labelId: l.labelId,
       }));
     }),
   );

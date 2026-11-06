@@ -22,7 +22,7 @@ arithmetic in §7), `packages/backend/tests/golden.test.ts` (how each case is se
 | Pseudonyms, owners | the letter of 12 plus `-<nn><k>`: `A-011`, `M1-031`; owner `Owner A-011` (person, confirmed: approved contract). Tables write the bare letter. `Case.ordered` artists (S09) and the default approved appendix are created per scenario. Shared read-only: `NG` (owner `Company NG`, kind label) as recipient of `NoGhost Records`, `QQ` of `qaraqshy records`, brand pseudonym `0to8` |
 | Labels (seeded once) | own `0to8` (aliases `Test Label`, `0to8`, `Ahh Music`), own `Echo8` (alias `Echo8`); sublabel `NoGhost Records` of 0to8, rule 50 → NG from 2020-01-01 (approved contract); sublabel `qaraqshy records` of Echo8, rule 50 → QQ under an `assumption` document. A case whose queue group, balance or action touches a sublabel has its own string and recipient: `NoGhost Records 08a/08b/08d` → `NG-081/082/084` (S08), `NoGhost Records 23` → `NG-231`, `Mystery Records` (S16), `Mystery Records B` (S17), `Ghost Label 35` (S35), `Close Label 37` (S37) |
 | Shared mutations | the exact list of what a spec may change outside its own scenario (fresh stores per run); no spec asserts a list these touch (the alias list or sublabels of 0to8, the document list totals): (1) `20-queue` S16 adds the alias `Mystery Records` to 0to8; (2) `29-labels` creates the sublabel `Ref Spec Sublabel` under 0to8; (3) `14-documents` creates, attaches and approves the document `Ref spec doc` (no owner, nothing uses it); (4) `15-publishing` adds the terms `Print` 20 % from 2021-01-01 to W1 of S18 (an operation type the statement does not use, so no S18 number moves). Anything else a spec creates belongs to a scenario's own entities (the alias `Close Label 37 Alt` of S37, the second `Owner DUP-361` and artist `A-361` of S36) |
-| B17 | one statement for the whole seed, loaded last (after every owner and alias), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
+| B17 | one statement for the whole seed, loaded last (after every owner and alias) under the label 0to8 (D-169: its lines sit in the book 0to8, `statementsWithoutLabel` is empty), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
 | Isolation | every scenario owns its ISRCs, UPCs, accounts, owners, pseudonyms, documents. **Never asserted**: queue reason totals, signal counts, P1 totals, P3 items, queue groups keyed by a shared entity (the NoGhost rule, QQ rule, 0to8), and N3 has no `isrc` filter (a spec finds its group by key, `ownerId` or `month`) |
 | Operator | `e2e-operator` in `localStorage` before every spec; every write sends `X-Operator: e2e-operator` |
 | Payout threshold | `scripts/e2e/start.sh` sets `PAYOUT_THRESHOLD_CENTS=0` (default 10000 → `below_threshold` for G27) |
@@ -403,6 +403,20 @@ doc A/B/C`): created under 0to8 (`field-document-label` defaults to the switch, 
 «любой»), under Echo8 A and C, under «Все» all three. `32-ads` asserts the audit column (`ad-audit` `[data-col="label"]`:
 `POST /ads` 0to8, `PATCH /ads/:id` Echo8).
 
+**S42 (G55, D-169): not seeded, covered by G55** (`tests/golden.test.ts`): a statement under Echo8 with a contract of
+0to8 only needs a second B17 file, and the e2e specs have no reusable synthetic B17 workbook (the seed builds its one
+statement in `scripts/e2e/lib.ts` `loadB17`, under 0to8). The screens assert the R8 side of the seed instead: every B17
+line is in the book 0to8 and no book «без лейбла» is left. `15-publishing` (reads): the P1 b17 rows 2025-12, 2026-03,
+2026-06 have `data-book="0to8"` (`book-0to8`), no `overview-label-?`; P19 `statement-label` 0to8; P10 S18 W1 under «Все»
+`by-label-0to8` earned `100`, no `by-label-?`; under 0to8 earned `100`, payable `100`, three `publishing-line` rows
+(T-A, T-B, T-C); under Echo8 earned `0`, no `publishing-line`. `21-signals`: `statementsWithoutLabel` `0`, the list
+renders empty. `26-payout`: S31/1 (read only, `27-operations` acts on it) under «Все» `by-label-0to8` earned `80`, no
+`by-label-?`; under 0to8 earned `80`, payable `80`, one `publishing-line` `30`, the Pay dialog «К выплате: 80,00 (будет
+отправлено 8000 центов)» (master 50 + publishing 30), cancelled; S18 W1 under Echo8 `POST /owners/:id/payouts` → 422
+`nothing_to_pay`, under 0to8 the payout of `10000` cents with `labelId` 0to8, after the proof paid `100`, payable `0`
+(`by-label-0to8` paid `100`). `35-label-switch`: P9 payouts view, S18 W2 listed under 0to8 with payable `70`, absent
+under Echo8.
+
 **S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
 `validFrom` 2026-03-01; toast "начало округлено до 2026-03-01" (dates compared, no money). P6 A 50, ours 50 → A 50, P
 7.5, ours 42.5; P1 2728100 B 50 → 57.5.
@@ -489,16 +503,16 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166) | reads |
 | 12 | `12-track.spec.ts` | S01–S11 on P6 (the book of S06/2 and S10/2, D-169), G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
 | 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
-| 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169) | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |
-| 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous) | reads (adds W1 terms `Print`) |
+| 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169); `action-create-document` closed under «Все» («выберите лейбл»), `Ref spec doc` created under 0to8 as «любой лейбл» | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |
+| 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous); D-169 the B17 lines in the book 0to8 (P1 b17 rows, P19 `statement-label`, P10 W1 under «Все» / 0to8 / Echo8, S42 part) | reads (adds W1 terms `Print`) |
 | 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
-| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 16 lists, `filesWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
+| 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 17 lists, `filesWithoutLabel`, `statementsWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
 | 22 | `22-duplicates.spec.ts` | S30 (assign owner, create split from the candidate) | acts |
 | 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
 | 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
 | 25 | `25-merge.spec.ts` | S33 | acts |
-| 26 | `26-payout.spec.ts` | S22; S43 (a 0to8 contract does not open Echo8, built by API on its own owner) | acts |
-| 27 | `27-operations.spec.ts` | S31 | acts |
+| 26 | `26-payout.spec.ts` | S22; S43 (a 0to8 contract does not open Echo8, built by API on its own owner); D-169 S31/1 Pay dialog master + publishing (read, cancelled), S18 W1 paid under 0to8 (publishing 100) | acts |
+| 27 | `27-operations.spec.ts` | S31 (the owner card under 0to8: every S31 book is 0to8); `action-create-operation` closed under «Все» (D-169) | acts |
 | 28 | `28-rules.spec.ts` | S25–S29, S13 **after**, S21 (read) | acts |
 | 29 | `29-labels.spec.ts` | S37 (and P17) | acts |
 | 30 | `30-sources.spec.ts` | S34 | acts |
@@ -506,7 +520,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`); D-169: payer 0to8, «Все» closed, `label_required`, payer Echo8 → `adOutsideBook` row → set back from P21; the audit «Лейбл» column | acts |
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
-| 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=` | acts |
+| 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=`; D-169 P9 payouts view S18 W2 under 0to8, not under Echo8 | acts |
 | – | `smoke.spec.ts` | the shell, every route renders | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks | no seed |
 

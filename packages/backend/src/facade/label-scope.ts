@@ -1,6 +1,8 @@
 import { ValidationError } from '../shared/errors';
+import { normalizeName } from '../shared/identifiers';
+import { parseSongwriters } from '../modules/publishing';
 import type { SettlementsService } from '../modules/settlements';
-import type { Modules } from './calculation';
+import type { Calculation, Modules } from './calculation';
 
 /**
  * The label as a book (D-168, D-169). The book of an own label L is the set of the `loaded` Believe files loaded under L
@@ -24,6 +26,15 @@ export async function labelBook(modules: Pick<Modules, 'labels' | 'sources'>, la
   return { id: l.id, name: l.name, fileIds: (await sources.filesOfLabel(l.id)).map((f) => f.id) };
 }
 
+/**
+ * A calculation read under a label (D-169): the units are already those of the label's files (`labelIds`), the B17
+ * lines are narrowed here to the statements of the label. The unit scope (`scope.ts`) stays as it is: the B17 lines are
+ * filtered after the calculation, a line's allocation does not depend on the other lines.
+ */
+export function underLabel(calc: Calculation, labelId: string): Calculation {
+  return { ...calc, publishing: calc.publishing.filter((p) => p.labelId === labelId) };
+}
+
 /** The ISRCs of the label's files (the catalog of the label). */
 export async function labelIsrcs(modules: Pick<Modules, 'sources'>, book: LabelBook): Promise<string[]> {
   return modules.sources.isrcsOfFiles(book.fileIds);
@@ -41,13 +52,15 @@ export interface LabelVisibility {
  * an ISRC of the label's files (D-169), is the recipient of a sublabel rule of the label, or carries an operation or an advertising
  * record under it; an owner whose pseudonym is visible, or that carries an operation under the label. An advertising
  * record paid by the label (D-169, R9) makes visible its pseudonym and the split rows of its ISRC (a superset of the
- * pseudonyms it charges), even when the ISRC is in another label's files.
+ * pseudonyms it charges), even when the ISRC is in another label's files. An owner with B17 lines in a statement of the
+ * label (D-169) is visible: the owner of the holder or of any listed songwriter of such a line (a superset of the owners
+ * the writer parts pay).
  */
 export async function labelVisibility(
-  modules: Pick<Modules, 'owners' | 'splits' | 'labels' | 'sources' | 'ads'> & { settlements: SettlementsService },
+  modules: Pick<Modules, 'owners' | 'splits' | 'labels' | 'sources' | 'ads' | 'publishing'> & { settlements: SettlementsService },
   book: LabelBook,
 ): Promise<LabelVisibility> {
-  const { owners, splits, labels, ads, settlements } = modules;
+  const { owners, splits, labels, ads, settlements, publishing } = modules;
   const isrcs = new Set(await labelIsrcs(modules, book));
   const idx = await owners.artistIndex();
   const canon = (id: string) => idx.get(id)?.id ?? id;
@@ -72,6 +85,17 @@ export async function labelVisibility(
   for (const id of artistIds) {
     const owner = idx.get(id)?.ownerId;
     if (owner) ownerIds.add(owner);
+  }
+  const pub = await publishing.snapshotForCalculation();
+  const writerNorms = new Set<string>();
+  for (const l of pub.lines) {
+    if (l.labelId !== book.id) continue;
+    writerNorms.add(l.writerNorm);
+    for (const name of parseSongwriters(l.songwriters)) writerNorms.add(normalizeName(name));
+  }
+  if (writerNorms.size > 0) {
+    const resolve = await owners.ownerResolver();
+    for (const w of pub.writers) if (w.ownerId && writerNorms.has(w.writerNorm)) ownerIds.add(resolve(w.ownerId));
   }
   return { isrcs, artistIds, ownerIds };
 }

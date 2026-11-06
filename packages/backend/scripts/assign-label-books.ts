@@ -5,7 +5,9 @@
  *   files       every Believe file without a label → the own label its account is registered under (`label_accounts`),
  *               through `sources.assignFileLabel` (only `WHERE label_id IS NULL`: a label is never changed). An
  *               unregistered account is printed and stops the step (register it on the label page, then rerun).
- *   statements  (D-169 commit 5) every B17 statement → 0to8.
+ *   statements  (D-169 commit 5, R8) every loaded B17 statement without a label → 0to8 (the owner's decision), through
+ *               `publishing.assignStatementLabel` (only `WHERE label_id IS NULL`); the grouped lines
+ *               (`pub_lines_by_key`) are refreshed once after the last statement.
  *   ads         (D-169 commit 3, R9) every active advertising record with an ISRC and without a label → 0to8 (the
  *               payer of the history), through `ads.assignLabel` (only `WHERE label_id IS NULL`). The dry run prints the
  *               disputable records: those whose ISRC income at the month of the expense sits in another book (from one
@@ -88,6 +90,29 @@ async function ownLabel(f: Facade, name: string): Promise<string | undefined> {
   return l?.id;
 }
 
+/** Every loaded B17 statement without a label → 0to8 (R8, the owner's decision). */
+const statements: Step = async (f) => {
+  const zero = await ownLabel(f, '0to8');
+  if (!zero) return false;
+  const { publishing } = f.modules;
+  const all = await publishing.activeStatements();
+  const todo = all.filter((s) => s.labelId === null);
+  const nameOf = (id: string) => (id === zero ? '0to8' : id);
+  console.log(`step statements: ${all.length} loaded B17 statements, ${all.reduce((n, s) => n + s.periods.length, 0)} quarters`);
+  console.log(`  already_done: ${all.length - todo.length}`);
+  for (const s of all) if (s.labelId !== null) console.log(`    ${s.id} ${s.periods.join(',')} under ${nameOf(s.labelId)}`);
+  console.log(`  → 0to8: ${todo.length}`);
+  for (const s of todo) console.log(`    ${s.id} ${s.periods.join(',')}`);
+  if (!apply) return true;
+  // the view is refreshed on every --apply, even with nothing to mark: a run that stopped between the labels and the
+  // refresh leaves pub_lines_by_key stale, and the rerun says already_done
+  let n = 0;
+  for (const s of todo) if ((await publishing.assignStatementLabel(s.id, zero, { refresh: false })) === 'assigned') n += 1;
+  await publishing.refreshLinesByKey();
+  console.log(`  applied ${n} labels; pub_lines_by_key refreshed`);
+  return true;
+};
+
 /** Every active advertising record with an ISRC and without a label → 0to8, the payer of the history (R9). */
 const ads: Step = async (f) => {
   const zero = await ownLabel(f, '0to8');
@@ -155,9 +180,9 @@ const operationsEcho8: Step = async (f) => {
   return true;
 };
 
-// The step `statements` comes with D-169 commit 5; it goes between `files` and `ads`.
 const STEPS: [string, Step][] = [
   ['files', files],
+  ['statements', statements],
   ['ads', ads],
   ['operations-echo8', operationsEcho8],
 ];
@@ -168,7 +193,12 @@ try {
   let ok = true;
   for (const [name, step] of STEPS) {
     if (only !== undefined && name !== only) continue;
-    if (!(await step(f))) ok = false;
+    if (!(await step(f))) {
+      // a stopped step stops the run: the later steps read the books, which the stopped step was to fix
+      ok = false;
+      console.log(`stopped at step ${name}`);
+      break;
+    }
   }
   if (!apply) console.log('dry run: nothing changed (add --apply)');
   process.exitCode = ok ? 0 : 1;

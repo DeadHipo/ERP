@@ -120,3 +120,35 @@ describe('publishing terms by operation type (D-128)', () => {
     ).rejects.toMatchObject({ code: 'validation_error' });
   });
 });
+
+describe('a statement under a label (D-169)', () => {
+  it('the grouped lines carry the label of their statement; assignStatementLabel marks only a statement without one', async () => {
+    const f = await newFacade();
+    const p = f.modules.publishing;
+    const [zero, echo] = [f.testLabels['0to8'], f.testLabels.Echo8];
+    await f.ingestB17(await writeB17('Q12026', [{ writer: 'Label Writer', title: 'L1', payable: '10', period: '1Q26' }]), zero);
+    // the module alone loads a statement without a label (the history before D-169)
+    const bare = await p.ingestB17({
+      ...(await writeB17('Q22026', [{ writer: 'Label Writer', title: 'L2', payable: '20' }])),
+    });
+    expect(bare.labelId).toBeNull();
+    const labels = async () => (await p.snapshotForCalculation()).lines.map((l) => [l.period, l.labelId]);
+    expect(await labels()).toEqual([['2026-Q1', zero], ['2026-Q2', null]]);
+    expect((await p.activeStatements()).map((s) => [s.periods, s.labelId])).toEqual([[['2026-Q1'], zero], [['2026-Q2'], null]]);
+    expect((await accruals(f)).map((a) => [a.period, a.labelId])).toEqual([['2026-Q1', zero], ['2026-Q2', null]]);
+    // the label of a statement without one is set and the grouped lines follow it; a label is never changed
+    expect(await p.assignStatementLabel(bare.id, echo)).toBe('assigned');
+    expect(await labels()).toEqual([['2026-Q1', zero], ['2026-Q2', echo]]);
+    expect(await p.assignStatementLabel(bare.id, zero)).toBe('already_done');
+    const first = (await p.activeStatements())[0]?.id as string;
+    expect(await p.assignStatementLabel(first, echo)).toBe('already_done');
+    expect(await labels()).toEqual([['2026-Q1', zero], ['2026-Q2', echo]]);
+    // with `refresh: false` (the script) the grouped lines wait for one refreshLinesByKey()
+    const q3 = await p.ingestB17({ ...(await writeB17('Q32026', [{ writer: 'Label Writer', title: 'L3', payable: '5', period: '3Q26' }])) });
+    expect(await p.assignStatementLabel(q3.id, echo, { refresh: false })).toBe('assigned');
+    expect((await labels()).at(-1)).toEqual(['2026-Q3', null]);
+    await p.refreshLinesByKey();
+    expect((await labels()).at(-1)).toEqual(['2026-Q3', echo]);
+    await expect(p.assignStatementLabel('no-such-statement', echo)).rejects.toMatchObject({ code: 'not_found' });
+  });
+});

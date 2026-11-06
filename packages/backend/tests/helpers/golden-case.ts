@@ -1,5 +1,6 @@
 import { expect } from 'vitest';
 import { Decimal, ZERO } from '../../src/shared/money';
+import { calculate } from '../../src/facade/calculation';
 import type { FundedFrom, ParticipationBase } from '../../src/modules/splits';
 import {
   approvedAppendix,
@@ -215,7 +216,7 @@ export class Case {
   }
 
   /** 12 §"Checks every master case also asserts". */
-  async verify(o: { skipOwners?: string[] } = {}) {
+  async verify() {
     const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.add(x), ZERO).toFixed();
     for (const r of await this.f.reconciliation()) {
       expect(r.discrepancy.toFixed(), `discrepancy ${r.account} ${r.month}`).toBe('0');
@@ -249,6 +250,12 @@ export class Case {
         }
       }
     }
+    // the owner's publishing (D-169: in the book of its statement's label) from the calculation itself
+    for (const p of (await calculate({ ...this.f.modules, db: this.f.db })).publishing) {
+      if (!p.ownerId || ![...this.owners.values()].includes(p.ownerId)) continue;
+      const m = p.category === 'B' ? earned : waiting;
+      m.set(p.ownerId, (m.get(p.ownerId) ?? ZERO).add(p.authorAmount));
+    }
     for (const [name, owner] of this.owners) {
       const b = await this.f.ownerBalance(owner);
       // the books of every label, «without a label» included, add up to the total, field by field (D-168)
@@ -260,7 +267,6 @@ export class Case {
         for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster'] as const)
           expect(sum(rows.map((x) => x[k])), `Σ books ${k} of ${a.pseudonym}`).toBe(a[k].toFixed());
       }
-      if (o.skipOwners?.includes(name)) continue;
       expect(b.total.earned.toFixed(), `earned of ${name}`).toBe((earned.get(owner) ?? ZERO).toFixed());
       expect(b.total.waiting.toFixed(), `waiting of ${name}`).toBe((waiting.get(owner) ?? ZERO).toFixed());
     }

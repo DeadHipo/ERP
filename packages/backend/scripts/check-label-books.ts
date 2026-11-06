@@ -9,12 +9,18 @@
  * D-169 (the book of a unit is the label of its file): (а) every loaded Believe file carries the label its account is
  * registered under; (б) every Believe reconciliation row has exactly one named book; (в) the books of the owner and
  * the pseudonym given by id (`--owner <id>`, `--artist <id>`; ids and numbers only); (д) the number of owners with a
- * non-empty book '?' (0 expected once the files are marked by `assign-label-books`).
+ * non-empty book '?' (0 expected once the files and the statements are marked by `assign-label-books`); (е)
+ * `--dump <file>` writes every owner's total payable (id → payable), `--compare <file>` prints the owners whose payable
+ * differs from such a dump (ids and Δ only); (ж) the residual leak В1 (D-169): the recoupments of a position under a
+ * label L that took publishing income of another book (`layers/recoup.ts` checks the label only for master income),
+ * count and Σ — counted, not fixed (Open В1).
  *
  *   npx tsx packages/backend/scripts/check-label-books.ts [dataDir] [limit] [--owner <id>] [--artist <id>]
+ *     [--dump <file> | --compare <file>]
  *
  * Read-only. Needs the stack of `.env` (docker compose up -d).
  */
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
 import { connectSources } from '../src/connect-sources';
@@ -28,11 +34,14 @@ const flag = (name: string) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 };
-const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && (argv[i - 1] === '--owner' || argv[i - 1] === '--artist')));
+const VALUED = ['--owner', '--artist', '--dump', '--compare'];
+const positional = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && VALUED.includes(argv[i - 1] as string)));
 const dataDir = resolve(positional[0] ?? join(root, 'data'));
 const limit = Number(positional[1] ?? 0);
 const askedOwner = flag('--owner');
 const askedArtist = flag('--artist');
+const dumpTo = flag('--dump');
+const compareWith = flag('--compare');
 const stack = connectSources(join(dataDir, 'files', 'sources'));
 const f = openFacade({ db: stack.db, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
 
@@ -91,11 +100,23 @@ try {
   let viewMs = 0;
   let views = 0;
   let unlabelledBook = 0;
+  // (ж) В1: a position under a label L recouped from publishing income of another book
+  let leakCount = 0;
+  let leakSum = ZERO;
+  const leakOwners = new Set<string>();
+  const payables = new Map<string, string>();
   const t1 = performance.now();
   for (const [n, o] of list.entries()) {
     const ops = opsOf.get(o.id) ?? [];
     const idx = index.get(o.id) ?? { units: [], publishing: [] };
-    const b = ownerBalance(full, o.id, ops, {}, idx);
+    const b = ownerBalance(full, o.id, ops, {}, idx, undefined, (p, item, amount) => {
+      if (p.labelId !== null && item.stream === 'publishing' && item.labelId !== p.labelId && !amount.isZero()) {
+        leakCount += 1;
+        leakSum = leakSum.add(amount);
+        leakOwners.add(o.id);
+      }
+    });
+    payables.set(o.id, b.total.payable.toFixed());
     const books = Object.values(b.byLabel);
     if (books.length > 1) withBooks += 1;
     // (д) an owner with money in the book '?' (a file or a statement without a label, an operation without one)
@@ -134,6 +155,27 @@ try {
   console.log(`owners whose totals the labels of the operations change: ${changed.length}`);
   for (const c of changed) console.log(`  changed: ${c}`);
   console.log(`(д) owners with a non-empty book '?': ${unlabelledBook}`);
+  console.log(`(ж) В1: recoupments of a labelled position from publishing of another book: ${leakCount}, Σ ${leakSum.toFixed()}, owners ${leakOwners.size}`);
+  for (const id of [...leakOwners].sort()) console.log(`  (ж) owner ${id}`);
+  // (е) the owners whose payable changed against a dump
+  if (dumpTo) {
+    writeFileSync(dumpTo, JSON.stringify(Object.fromEntries([...payables.entries()].sort()), null, 1));
+    console.log(`(е) ${payables.size} payables written to ${dumpTo}`);
+  }
+  if (compareWith) {
+    const before = JSON.parse(readFileSync(compareWith, 'utf8')) as Record<string, string>;
+    let n = 0;
+    let delta = ZERO;
+    for (const id of [...new Set([...Object.keys(before), ...payables.keys()])].sort()) {
+      const was = new Decimal(before[id] ?? '0');
+      const now = new Decimal(payables.get(id) ?? '0');
+      if (was.eq(now)) continue;
+      n += 1;
+      delta = delta.add(now.sub(was));
+      console.log(`  (е) ${id}: Δ payable ${now.sub(was).toFixed()}`);
+    }
+    console.log(`(е) owners whose payable changed against ${compareWith}: ${n}, Σ Δ ${delta.toFixed()}`);
+  }
   // (в) the books of one owner and one pseudonym, by id
   const bookLine = (name: string, x: object) =>
     `  ${name}: ${Object.entries(x)

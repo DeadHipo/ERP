@@ -85,7 +85,22 @@ export async function uploadLabel(facade: Facade, req: Request): Promise<string>
     const { label } = parse(S.uploadLabelQuery, req.query);
     return (await facade.assertUploadLabel(label)).id;
   } catch (e) {
-    req.resume();
+    await drain(req);
     throw e;
   }
+}
+
+/**
+ * Reads the request body to its end without keeping any of it, so that the client finishes writing before the
+ * refusal is sent (a response that closes the socket while the client still writes gives it EPIPE).
+ */
+function drain(req: Request): Promise<void> {
+  return new Promise((resolve) => {
+    if (req.readableEnded || req.complete) return resolve();
+    const done = () => resolve();
+    req.once('end', done);
+    req.once('error', done);
+    req.once('close', done);
+    req.resume();
+  });
 }

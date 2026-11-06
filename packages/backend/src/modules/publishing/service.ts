@@ -215,10 +215,36 @@ export function createPublishingService(db: Db, storageDir: string) {
       return (await repo.listStatements()).map(view);
     },
 
-    async activeStatements(): Promise<{ id: string; sha256: string; periods: string[]; fileName: string }[]> {
+    async activeStatements(): Promise<
+      { id: string; sha256: string; periods: string[]; fileName: string; labelId: string | null }[]
+    > {
       return (await rest.listStatements())
         .filter((s) => s.status === 'loaded')
-        .map((s) => ({ id: s.id, sha256: s.sha256, periods: s.periods, fileName: s.fileName }));
+        .map((s) => ({ id: s.id, sha256: s.sha256, periods: s.periods, fileName: s.fileName, labelId: s.labelId }));
+    },
+
+    /**
+     * Puts a statement loaded without a label under one (D-169, `scripts/assign-label-books.ts` only): a statement that
+     * already has a label is never changed (`already_done`). Refreshes the grouped lines unless `refresh: false` (the
+     * script refreshes them once after the last statement, `refreshLinesByKey()`).
+     */
+    async assignStatementLabel(
+      id: string,
+      labelId: string,
+      o: { refresh?: boolean } = {},
+    ): Promise<'assigned' | 'already_done'> {
+      if (!(await repo.getStatement(id))) throw new NotFoundError('Statement', id);
+      const changed = await tx(async () => {
+        const done = await repo.assignStatementLabel(id, labelId);
+        if (done && o.refresh !== false) await repo.refreshLinesByKey();
+        return done;
+      });
+      return changed ? 'assigned' : 'already_done';
+    },
+
+    /** Rebuilds the grouped lines of the loaded statements (`pub_lines_by_key`). */
+    refreshLinesByKey(): Promise<void> {
+      return tx(() => repo.refreshLinesByKey());
     },
 
     // ---- writers ----

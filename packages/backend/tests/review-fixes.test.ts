@@ -454,7 +454,7 @@ describe('publishing: labels, similar names, numeric cells', () => {
 });
 
 describe('payout snapshot attribution', () => {
-  it('a publishing-scoped advance reduces the publishing part, which stays in the «without a label» book: a payout under 0to8 pays the master part alone (D-168)', async () => {
+  it('a publishing-scoped advance reduces the publishing part; the statement of 0to8 sits in the 0to8 book, so the payout under 0to8 pays master + publishing (D-168, D-169 R8)', async () => {
     const f = await newFacade();
     const a = await confirmedOwner(f, 'Owner A', ['A1']);
     const artistId = a.artists[0]?.id as string;
@@ -488,19 +488,20 @@ describe('payout snapshot attribution', () => {
     const whole = await f.ownerBalance(a.owner.id);
     expect([whole.total.payable.toFixed(), whole.publishingRecouped.toFixed()]).toEqual(['150', '150']);
     const books = Object.fromEntries(Object.entries(whole.byLabel).map(([k, b]) => [k, [b.earned.toFixed(), b.recouped.toFixed(), b.payable.toFixed()]]));
-    expect(books).toEqual({ '0to8': ['100', '0', '100'], '?': ['200', '150', '50'] });
+    expect(books).toEqual({ '0to8': ['300', '150', '150'] });
     const p = await f.createPayout(a.owner.id, { labelId: f.testLabels['0to8'] });
-    expect(p.amountCents).toBe(10000);
+    expect(p.amountCents).toBe(15000);
     const snap = JSON.parse(JSON.stringify(await f.modules.settlements.getSnapshot(p.id))) as {
       labelId: string;
       total: { payable: string };
       payoutByArtist: { label: string; shareOfPayout: string }[];
     };
-    expect([snap.labelId, snap.total.payable]).toEqual([f.testLabels['0to8'], '100']);
-    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([['A1', '100']]);
-    // after it the 0to8 book is paid in full, the publishing 50 waits in «without a label»
+    expect([snap.labelId, snap.total.payable]).toEqual([f.testLabels['0to8'], '150']);
+    // master 100 − 0 and publishing 200 − 150: the advance reduced the publishing part only
+    expect(snap.payoutByArtist.map((x) => [x.label, x.shareOfPayout])).toEqual([['A1', '100'], ['Publishing (owner)', '50']]);
+    // after it the 0to8 book is paid in full
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://p' });
     const after = await f.ownerBalance(a.owner.id);
-    expect([after.total.payable.toFixed(), after.byLabel['0to8']?.payable.toFixed(), after.byLabel['?']?.payable.toFixed()]).toEqual(['50', '0', '50']);
+    expect([after.total.payable.toFixed(), after.byLabel['0to8']?.payable.toFixed(), after.byLabel['?']]).toEqual(['0', '0', undefined]);
   });
 });

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import type { ColDef } from 'ag-grid-community';
 import type { Signals } from '@erp/shared/api-responses';
 import { EntityLink } from '../../../components/EntityLink';
@@ -11,7 +12,7 @@ import { actionCol, btn, c, Grid, info, isrcCol, moneyCol, t, textCol, type List
 
 /**
  * The label lists of P21 (D-168, D-169): one renderer per list name. `SignalsPage.tsx` asks this table first, so a new
- * label list (`statementsWithoutLabel`) is one entry here plus its string in
+ * label list is one entry here plus its string in
  * `i18n/ru/signals.ts` and its row in `actions/action-table.ts`.
  */
 export const LABEL_SIGNALS = {
@@ -88,6 +89,31 @@ export const LABEL_SIGNALS = {
           textCol('month', c.month, (r) => r.reportingMonth),
           textCol('fileName', c.fileName, (r) => r.fileName),
           informationCol<R>('filesWithoutLabel'),
+        ]}
+      />
+    );
+  },
+  statementsWithoutLabel: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['statementsWithoutLabel'][number];
+    return (
+      <Grid<R>
+        name="statementsWithoutLabel"
+        count={count}
+        rows={data.statementsWithoutLabel}
+        rowKey={(r) => r.statementId}
+        columns={[
+          textCol('periods', c.periods, (r) => r.periods.join(', ')),
+          {
+            ...textCol<R>('fileName', c.fileName, (r) => r.fileName),
+            // P19 lists the statement under its file name (`/sources?q=`): the row `statement-<id>` with its «Лейбл»
+            cellRenderer: (p: { data?: R }) =>
+              p.data ? (
+                <Link to={`/sources?q=${encodeURIComponent(p.data.fileName)}`} className="text-accent hover:underline" data-col-link="statement">
+                  {p.data.fileName}
+                </Link>
+              ) : null,
+          },
+          informationCol<R>('statementsWithoutLabel'),
         ]}
       />
     );

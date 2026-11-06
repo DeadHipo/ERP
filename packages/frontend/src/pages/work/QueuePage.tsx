@@ -107,7 +107,7 @@ function QueueReason({ reason }: { reason: CReason }) {
     ownerId: params.get('ownerId') ?? undefined,
     q: params.get('q') ?? undefined,
   };
-  const { labelId } = useLabel(); // the label view (D-168): the units of the label, no B17 lines
+  const { labelId } = useLabel(); // the label view (D-168, D-169): the units of the label's files and the B17 lines of its statements
   const query = useQuery(reportQueries.queue(reason, { ...period, ...filter, limit, offset }, labelId));
   const [active, setActive] = useState<Active | null>(null);
   const ownerNames = useOwnerNames(filter.ownerId !== undefined);

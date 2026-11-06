@@ -14,7 +14,7 @@ import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { useLabel } from '../../../lib/label';
+import { useLabel, useWriteLabel } from '../../../lib/label';
 import { useUrlParam } from '../../catalog/components/url';
 import { ApproveDocumentDialog } from '../../work/actions/dialogs';
 import { OwnerLink, useOwnerNames } from '../shared';
@@ -52,6 +52,8 @@ export function DocumentsPage() {
   const [ownerId, setOwnerId] = useUrlParam('ownerId');
   const [dialog, setDialog] = useState<{ kind: 'create' } | { kind: 'attach' | 'approve'; doc: Row } | null>(null);
   const names = useOwnerNames();
+  // a document is created under the switch (D-169): closed under «Все»; in the dialog it may still be «любой лейбл»
+  const write = useWriteLabel();
   const { labelId } = useLabel();
   const labelName = useDocumentLabelName();
   const query = useQuery(
@@ -131,7 +133,7 @@ export function DocumentsPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="create-document" onPress={() => setDialog({ kind: 'create' })}>
+          <ActionButton name="create-document" isDisabled={write.closed} reason={write.closed ? write.reason : undefined} onPress={() => setDialog({ kind: 'create' })}>
             {t.create}
           </ActionButton>
         }

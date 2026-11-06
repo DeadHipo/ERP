@@ -5,7 +5,7 @@ import { type Scope } from '../modules/settlements';
 import type { FacadeContext } from './context';
 
 export function payoutsApi(ctx: FacadeContext) {
-  const { db, config, owners, settlements, publishing, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;
+  const { db, config, owners, settlements, publishing, sources, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;
   const api = {
     /**
      * Adjustments (deduction, credit) and recoupable payouts (advance with scope). Settlements are tied to the artist;
@@ -201,7 +201,14 @@ export function payoutsApi(ctx: FacadeContext) {
           publishing: balance.publishing,
           positions: balance.positions,
           ads: balance.ads,
-          files: { believe: believeFiles, b17: await publishing.activeStatements() },
+          // the files of the book that was paid (D-169): the Believe files and the B17 statements loaded under the label
+          files: await (async () => {
+            const ofLabel = new Set((await sources.filesOfLabel(label.id)).map((f) => f.id));
+            return {
+              believe: believeFiles.filter((f) => ofLabel.has(f.id)),
+              b17: (await publishing.activeStatements()).filter((s) => s.labelId === label.id),
+            };
+          })(),
         };
         const op = await settlements.recordPayout({
           ownerId: id,

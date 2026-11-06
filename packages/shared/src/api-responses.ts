@@ -507,6 +507,15 @@ export const signalsSchema = z.object({
       }),
     )
     .describe("Loaded Believe files without a label (D-169): their units sit in the book '?'; empty under a label"),
+  statementsWithoutLabel: z
+    .array(
+      z.object({
+        statementId: z.string(),
+        periods: z.array(z.string()),
+        fileName: z.string(),
+      }),
+    )
+    .describe("Loaded B17 statements without a label (D-169): their lines sit in the book '?'; empty under a label"),
   adsWithoutLabel: z
     .array(z.object({ adId: z.string(), isrc: z.string().nullable(), month, amount: money }))
     .describe("Active advertising records without a payer (D-169): they charge the book '?'; the operator sets the label (PATCH /ads/:id); empty under a label"),

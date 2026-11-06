@@ -3,6 +3,7 @@ import { Decimal } from '../src/shared/money';
 import { ACC1, ACC2, Case, I, UPC } from './helpers/golden-case';
 import type { SnapshotFilter } from '../src/modules/sources';
 import { testStack } from './helpers/test-sources';
+import { approvedDoc, writeB17 } from './helpers/fixtures';
 
 // The unit scope of the facade (D-161, D-162, D-163, D-164): a method whose answer depends on a subset of the Believe
 // units reads only that subset, and the answer is byte for byte the one of the full calculation. The facade has one
@@ -231,7 +232,7 @@ describe('unit scope of the facade (D-161)', () => {
     expect(reads.map((r) => [r.filter, r.units])).toEqual(reads.map(() => [{}, 5]));
   });
 
-  it('a payout records the snapshot of the reach calculation, which is the full balance of the owner (D-164)', async () => {
+  it('a payout records the snapshot of the reach calculation, which is the book of the paid label of the full balance (D-164, D-169)', async () => {
     const { c } = await world();
     const f = c.f;
     const id = c.owners.get('A') as string;
@@ -253,7 +254,8 @@ describe('unit scope of the facade (D-161)', () => {
     expect(text((snapshot.perArtist as { artistId: string; earned: unknown; tracks: unknown }[]).map((a) => [a.artistId, a.earned, a.tracks]))).toBe(
       text(full.artists.map((a) => [a.artistId, a.earned, a.tracks])),
     );
-    expect(snapshot.files.believe.length).toBe(2); // every file in force, from the registry, not only the reach's
+    // the files in force of the paid book (D-169, plan NOTE 10), from the registry, not only the reach's: the 0to8 file
+    expect(snapshot.files.believe.length).toBe(1);
   });
 });
 
@@ -837,6 +839,58 @@ describe('the book by the account of the file (D-169)', () => {
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     const after = await f.ownerBalance(a);
     expect([after.byLabel['?']?.payable.toFixed(), after.byLabel['0to8']?.payable.toFixed(), after.total.payable.toFixed()]).toEqual(['20', '0', '20']);
+    await c.verify();
+  });
+
+  it('B17 of a label sits in its book, is read under the label and is paid by the label payout', async () => {
+    const { c, f, zero, echo } = await bookWorld();
+    const a = c.owners.get('A') as string;
+    await f.modules.owners.addOwnerAlias(a, 'OWNER, A');
+    await c.person('P'); // an owner with publishing only: visible under the label of its statement (D-169)
+    await f.modules.owners.addOwnerAlias(c.owners.get('P') as string, 'OWNER, P');
+    await f.setPublishingTerms({ ownerId: a, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', a)).id });
+    // Q1 under 0to8 (only an unknown holder), Q2 under Echo8 (A's 60 and an unknown holder's 10)
+    await f.ingestB17(await writeB17('Q12026', [{ writer: 'HOLDER, Z', title: 'Z', payable: '4', period: '1Q26' }]), zero);
+    const q2 = await f.ingestB17(
+      await writeB17('Q22026', [
+        { writer: 'OWNER, A', title: 'Song', payable: '60' },
+        { writer: 'HOLDER, Y', title: 'Y', payable: '10' },
+        { writer: 'OWNER, P', title: 'P', payable: '8' },
+      ]),
+      echo,
+    );
+    // the book: A's publishing 30 sits in Echo8 (master 20 + 30), 0to8 keeps its master 50
+    const full = await f.ownerBalance(a);
+    expect(earnedBooks(full)).toEqual({ '0to8': '50', Echo8: '50' });
+    for (const k of fields) expect(sum(Object.values(full.byLabel).map((x) => x[k])), k).toBe(full.total[k].toFixed());
+    const recon = await f.reconciliation();
+    expect(recon.filter((r) => r.source === 'b17').map((r) => [r.month, Object.keys(r.byLabel)])).toEqual([
+      ['2026-03', ['0to8']],
+      ['2026-06', ['Echo8']],
+    ]);
+    // read under the label: the view, the publishing lines, the payables, the queue and the visibility
+    const underEcho = await f.ownerBalance(a, {}, echo);
+    expect(underEcho.total.earned.toFixed()).toBe('50');
+    expect(underEcho.publishing.map((p) => [p.period, p.amount.toFixed()])).toEqual([['2026-Q2', '30']]);
+    expect((await f.ownerBalance(a, {}, zero)).publishing).toEqual([]);
+    expect((await f.ownerPayables({ label: echo })).items.find((i) => i.ownerId === a)?.earned.toFixed()).toBe('50');
+    const unconfirmed = async (label?: string) =>
+      (await f.queue('owner_unconfirmed', {}, {}, label)).groups.reduce((s, g) => s.add(g.amount), new Decimal(0)).toFixed();
+    expect([await unconfirmed(), await unconfirmed(echo), await unconfirmed(zero)]).toEqual(['7', '5', '2']);
+    const p8 = c.owners.get('P') as string;
+    expect((await f.ownerPayables({ label: echo })).items.some((i) => i.ownerId === p8)).toBe(true);
+    expect((await f.ownerPayables({ label: zero })).items.some((i) => i.ownerId === p8)).toBe(false);
+    expect((await f.signals({}, echo)).statementsWithoutLabel).toEqual([]);
+    expect((await f.signals()).counts.statementsWithoutLabel).toBe(0);
+    // the label payout pays the book master + publishing of Echo8, and records the files of that book only
+    const p = await f.createPayout(a, { labelId: echo });
+    expect([p.amountCents, p.labelId]).toEqual([5000, echo]);
+    const snapshot = (await f.modules.settlements.getSnapshot(p.id)) as { files: { believe: { id: string }[]; b17: { id: string }[] } };
+    expect(snapshot.files.b17.map((x) => x.id)).toEqual([q2.statement.id]);
+    expect(snapshot.files.believe.length).toBe(1);
+    await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
+    const after = await f.ownerBalance(a);
+    expect([after.byLabel['0to8']?.payable.toFixed(), after.byLabel.Echo8?.payable.toFixed(), after.total.payable.toFixed()]).toEqual(['50', '0', '50']);
     await c.verify();
   });
 

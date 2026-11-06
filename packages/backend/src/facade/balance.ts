@@ -68,7 +68,7 @@ export interface AdChargeView {
 
 /**
  * The book of one label (D-168): every money field of the owner's total, partitioned by label. earned and waiting by
- * the label the unit's file was loaded under (D-169; publishing has none yet); recouped by the label of the income consumed; adsCharged by the
+ * the label the unit's file was loaded under, publishing by the label of its statement (D-169); recouped by the label of the income consumed; adsCharged by the
  * charge's label; paid, returns, credits by the operation's label. Σ over the books, «without a label» included,
  * equals the total field by field.
  */
@@ -139,8 +139,8 @@ export interface OwnerBalance {
     payableNegative: boolean;
   };
   /**
-   * The book of every label (by name, '?' = without a label: an unmapped label string, publishing, an operation or a
-   * charge without a label), D-168. Under a view, the one book of that label.
+   * The book of every label (by name, '?' = without a label: a file or a statement, an operation or a charge without a
+   * label), D-168. Under a view, the one book of that label.
    */
   byLabel: Record<string, LabelBook>;
   artists: ArtistBalance[];
@@ -299,6 +299,8 @@ export function ownerBalance(
    */
   index: { units?: UnitResult[]; publishing?: PublishingResult[] } = {},
   view?: BalanceView,
+  /** Diagnostics only (`scripts/check-label-books.ts` (ж)): every amount a position took from an income item. */
+  onConsumed?: (position: Position, item: IncomeItem, amount: Decimal) => void,
 ): OwnerBalance {
   const basis = f.basis ?? 'report';
   const confirmedAny = calc.confirmedOwners.has(ownerId);
@@ -387,12 +389,14 @@ export function ownerBalance(
     }
   }
 
-  // Publishing has no label of record (08 decision 7): its book is «without a label».
-  const publishing: OwnerBalance['publishing'] = [];
+  // Publishing sits in the book of the label of its statement (D-169), «without a label» before the marking.
+  // The income id `p|<month>` stays unique per book: a quarter belongs to one statement, hence to one label (D-041).
+  const publishing: (OwnerBalance['publishing'][number] & { key: string })[] = [];
   (index.publishing ?? calc.publishing).forEach((p) => {
     if (p.ownerId !== ownerId) return;
-    const book = books.of(NONE);
-    const period = periods.of(NONE);
+    const key = keyOf(p.labelId);
+    const book = books.of(key);
+    const period = periods.of(key);
     const inP = pubInPeriod(p, f);
     if (p.category === 'B') {
       book.earned = book.earned.add(p.authorAmount);
@@ -408,7 +412,7 @@ export function ownerBalance(
           isrc: null,
           reportMonth: p.reportMonth,
           amount: p.authorAmount,
-          labelId: null,
+          labelId: p.labelId,
         };
         incomeById.set(id, item);
         income.push(item);
@@ -436,6 +440,7 @@ export function ownerBalance(
         amount: p.authorAmount,
         category: p.category,
         reason: p.reason,
+        key,
       });
     }
   });
@@ -495,6 +500,7 @@ export function ownerBalance(
     const p = positions.find((x) => x.id === r.positionId) as Position;
     for (const c of r.consumed) {
       const item = incomeById.get(c.itemId) as IncomeItem;
+      onConsumed?.(p, item, c.amount);
       const key = keyOf(item.labelId);
       const book = books.of(key);
       book.recouped = book.recouped.add(c.amount);
@@ -643,7 +649,7 @@ export function ownerBalance(
     byLabel,
     artists,
     publishingRecouped: tot((b) => b.publishingRecouped),
-    publishing: inView(NONE) ? publishing : [],
+    publishing: publishing.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),
     positions: positionViews.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),
     ads: adViews.filter((a) => inView(keyOf(a.labelId))),
     pendingOperations: pending.filter((p) => inView(p.key)).map(({ key: _k, ...p }) => p),

@@ -2,7 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { account, apiPost, choose, expectOverview, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // The payout (19 §4 S22: G27, G27b and the deferred flag): the gate of the balance, the Pay dialog, the operation
-// deferred until its proof, the proof, the deferred toggle on P20, the snapshot; the second press per 19 §5.
+// deferred until its proof, the proof, the deferred toggle on P20, the snapshot; the second press per 19 §5. D-169 (R8):
+// the payout under 0to8 pays the master and the publishing of 0to8 (S31/1 read before 27-operations acts on it, S18 W1
+// paid here: no later spec reads S18).
 
 test.describe.configure({ mode: 'serial' });
 
@@ -191,4 +193,52 @@ test('S43 a 0to8 contract does not open Echo8 («нет договора с эт
   await expect(gate(page, 'nothing_to_pay')).toBeVisible();
   const echo = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
   expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
+});
+
+// D-169 (R8): the B17 statement of the seed is loaded under 0to8, so the publishing of an owner is the book 0to8 and the
+// payout under 0to8 pays it with the master. S31/1 (master 50 + publishing 30) is only read here: 27-operations acts on it.
+test('S31/1 under 0to8 the Pay dialog states master + publishing (80,00), one book and no «?»; cancelled', async ({ page }) => {
+  const ownerId = sc(31, 1).owners.A ?? '';
+  await openAs(page, `/owners/${ownerId}?tab=balance&label=`);
+  await settled(page);
+  await expect(page.getByTestId('by-label-0to8').locator('[data-col="earned"]').getByTestId('money')).toHaveAttribute('title', '80');
+  await expect(page.getByTestId('by-label-?')).toHaveCount(0);
+  await openOwner(page, ownerId);
+  await expectTotals(page, { earned: '80', recouped: '0', paid: '0', payable: '80' });
+  await page.getByTestId('tab-publishing').click();
+  await expect(page.getByTestId('publishing-line')).toHaveCount(1);
+  await expect(page.getByTestId('publishing-line').locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '30');
+  await balanceTab(page);
+  await page.getByTestId('action-pay').click();
+  const dialog = page.getByTestId('confirm-dialog');
+  await expect(dialog).toContainText('Лейбл: 0to8');
+  await expect(dialog).toContainText('К выплате: 80,00 (будет отправлено 8000 центов)');
+  await expect(dialog).toContainText('Заработано 80,00 − удержано 0,00 − выплачено 0,00');
+  await page.getByTestId('confirm-dialog-cancel').click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test('S18 W1 (publishing only) under 0to8: the payout pays the publishing book, 100.00; Echo8 has nothing to pay', async ({ page, request }) => {
+  const ownerId = sc(18).owners.W1 ?? '';
+  const echo = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
+  expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
+  await openOwner(page, ownerId);
+  await expectTotals(page, { earned: '100', payable: '100' });
+  await expect(gate(page, 'allowed')).toBeVisible();
+  await page.getByTestId('action-pay').click();
+  const dialog = page.getByTestId('confirm-dialog');
+  await expect(dialog).toContainText('К выплате: 100,00 (будет отправлено 10000 центов)');
+  const paid = page.waitForResponse((r) => r.url().endsWith(`/owners/${ownerId}/payouts`) && r.request().method() === 'POST');
+  await dialog.getByTestId('confirm-dialog-ok').click();
+  const body = (await (await paid).json()) as { id: string; amountCents: number; labelId: string };
+  expect([body.amountCents, body.labelId]).toEqual([10000, labelOf('0to8')]);
+  await toastOk(page, 'Выплачено: 100,00');
+  const proof = await apiPost(request, `/settlements/operations/${body.id}/proof`, { fileRef: 'dummy://e2e-proof-181.pdf' });
+  expect(proof.status).toBe(200);
+  await openOwner(page, ownerId);
+  await expectTotals(page, { paid: '100', payable: '0' });
+  await openAs(page, `/owners/${ownerId}?tab=balance&label=`);
+  await settled(page);
+  await expect(page.getByTestId('by-label-0to8').locator('[data-col="paid"]').getByTestId('money')).toHaveAttribute('title', '100');
+  await expect(page.getByTestId('by-label-?')).toHaveCount(0);
 });

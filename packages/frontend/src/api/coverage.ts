@@ -20,8 +20,8 @@ export const OPERATION_COVERAGE: Record<
   'POST /owners/merge': { page: 'P10', route: '/owners/:id', note: 'action-merge' },
   'GET /owners/payables': { page: 'P9', route: '/owners', note: 'also the payouts view /owners?view=payouts (P4 of revision 1)' },
   'GET /owners/:id': { page: 'P10', route: '/owners/:id' },
-  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs; also the merge confirmation (the merged owner, once)' },
-  'POST /owners/:id/payouts': { page: 'P10', route: '/owners/:id', note: 'action-pay on the balance tab' },
+  'GET /owners/:id/balance': { page: 'P10', route: '/owners/:id', note: 'one call shared by the tabs (under a label its book: master of its files and publishing of its statements, D-169); also the merge confirmation (the merged owner, once)' },
+  'POST /owners/:id/payouts': { page: 'P10', route: '/owners/:id', note: 'action-pay on the balance tab: pays the book of the label, master and publishing (D-169)' },
 
   'GET /artists': { page: 'P11', route: '/artists', note: 'also the pseudonyms of the rows of P14 that carry only an artist id (useArtistNames)' },
   'GET /artists/duplicates': { page: 'P11', route: '/artists/duplicates' },
@@ -93,7 +93,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /publishing/terms': { page: 'P18', route: '/publishing', note: 'action-set-terms; also the queue' },
 
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
-  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, adsWithoutLabel, adOutsideBook, D-169) in pages/work/signals/label-signals.tsx' },
+  'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, statementsWithoutLabel, adsWithoutLabel, adOutsideBook, D-169) in pages/work/signals/label-signals.tsx' },
   'GET /overview': { page: 'P1', route: '/', note: 'also the queue summary of P2' },
   'GET /queue/:reason': { page: 'P2', route: '/queue/:reason' },
 

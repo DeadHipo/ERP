@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, choose, expectMoneyCalls, expectP1, isrc, openAs, openSignalList, overviewRow, sc, settled, signalRow, toastOk } from '../helpers';
+import { account, apiPost, choose, expectMoneyCalls, expectP1, isrc, labelOf, openAs, openSignalList, overviewRow, sc, settled, signalRow, toastOk } from '../helpers';
 
 // The label as a book (19 §4 S38, D-168): the switch of the header («0to8 / Echo8 / Все»), the owner under both labels
 // (the books on P10, the view under a label), the payout under a label, the operation without a label in «Все» and on
@@ -155,4 +155,18 @@ test('S38 P21 «Операции без лейбла»: the old advance, set to 
   await page.goto(`/tracks?q=${isrc(38, 1, 1).slice(0, 11)}&label=`);
   await expect(page.getByTestId(`track-${isrc(38, 1, 1)}`)).toBeVisible();
   await expect(page.getByTestId(`track-${isrc(38, 1, 2)}`)).toBeVisible();
+});
+
+test('D-169 P9 payouts view: the publishing owner S18 W2 is listed under 0to8 (payable 70), not under Echo8', async ({ page }) => {
+  const ownerId = sc(18).owners.W2 ?? '';
+  const grid = JSON.stringify({ f: { name: { filterType: 'text', type: 'contains', filter: 'W2-181' } } });
+  await openAs(page, `/owners?view=payouts&grid=${encodeURIComponent(grid)}&label=${labelOf('0to8')}`);
+  await settled(page);
+  const row = page.getByTestId(`owner-${ownerId}`);
+  await expect(row).toBeVisible();
+  await expect(row.locator('[data-col="payable"]').getByTestId('money')).toHaveAttribute('title', '70');
+  await openAs(page, `/owners?view=payouts&grid=${encodeURIComponent(grid)}&label=${labelOf('Echo8')}`);
+  await settled(page);
+  await expect(page.getByTestId('owners-page')).toBeVisible();
+  await expect(page.getByTestId(`owner-${ownerId}`)).toHaveCount(0);
 });
