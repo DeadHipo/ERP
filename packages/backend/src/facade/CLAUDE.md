@@ -96,3 +96,22 @@
   `orgs.organizations` row checked first). The facade never imports `src/orgs` / `src/auth` and never reads an
   organization from a request; `calculation.ts`, `layers/*`, `balance.ts`, `owner-scope.ts` did not change (the filter
   sits in the repositories, so `calculate()` sees only the organization's rows).
+- **The viewer** (`viewer.ts`, D-171): the data-dependent right lives here through the facade's own type
+  `Viewer = { kind: 'all' } | { kind: 'labels', labelIds }` (never `Principal`; the facade never imports `src/auth` /
+  `src/api` / `src/orgs` and never names a role: `tests/boundaries.test.ts`). Every record-dependent method takes a
+  trailing `viewer = ALL_VIEWER`: scripts, tests and `AUTH_MODE=off` call without it and get the answers byte for byte;
+  the routes pass `viewerOf(res)` (`src/api/viewer.ts`; `labelsViewer(ids)` for a label manager). Rules: a read of
+  another label's record answers as an unknown id (404: owner / pseudonym card and balance with the documents and
+  contracts of other labels hidden, an ad by its payer, document uses); a write on another label's record or ISRC is
+  `403 label_forbidden` (`assertViewerLabel` for a record that may be «any label» = `null`, a document;
+  `assertViewerHolds` for a record in a book, an operation or an ad, where `null` is the administrator's). **The ISRC
+  rule**: a manager may touch an ISRC in the loaded files of its labels or in no loaded file at all (a new track); an
+  ISRC only in other files (a file without a label included) is another book (splits, participations, change, buyout,
+  confirm, close, `updateTrack` old and new ISRC). **The document rule**: a cited document of the viewer's label or of
+  none. The lists `listSplits`, `listParticipations`, `search` (filtered after its per-kind limit), `artistDuplicates`
+  keep only what is visible under the union of `labelVisibility()` of the viewer's labels; an owner visible under no own
+  label is reachable as a new one (`ownerReachable`). `viewerScope(modules, viewer)` reads each set lazily once per
+  call and nothing for `ALL_VIEWER`. The routes no longer call modules directly for these writes: `attachDocumentFile`,
+  `approveDocument`, `createContract`, `updateTrack`, `setOperationDeferred`, `deactivateOperation`,
+  `operationSnapshot`. The operation's own right (class, the label of the request) is decided before the route by
+  `authorize`; a new record-dependent method takes a viewer and gets a case in `tests/viewer.test.ts`.

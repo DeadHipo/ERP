@@ -27,6 +27,18 @@
     and open a second facade on it (`org-scope.test.ts`, `concurrency.test.ts`). `api-contract.test.ts` runs in two
     blocks: `off` (`createApp(f)`, `/orgs*` with `X-System-Key`, the route list) and `on` (`createServerApp`, a login,
     every operation with the cookie). `auth.test.ts`, `http-errors.test.ts` cover the login and the constant 500.
+  - **Roles (D-171):** `helpers/manager-answers.ts` is the **frozen** answer of a label manager per organization
+    operation (`L` only under its label, `R` the facade checks the record, `O` allowed, `x` 403), copied from the plan
+    (`docs/идеи/лейбл_с_нуля/api/этап3_роли.md` §1); it is the oracle of `abilities.test.ts` and of the manager walk in
+    `api-contract.test.ts`; never derive it from `RULES`, change it only with the plan (a new organization operation
+    needs a line). The manager walk (the `on` block) calls every operation as a manager of label A with a stub
+    body: under label A, without a label (400 `label_required` for L), under label B (403), plus record-level cases (an
+    ad and a document of B). `abilities.test.ts` also pins the pure rule table and `operationOf` (`/Owners/merge`, a
+    trailing `/`, an unknown path = 404). `auth.test.ts` (login with several memberships, `no_membership`, limits on its
+    own app instance, Origin, the `__Host-` cookie app, the rehash and its race), `sessions.test.ts` (revocation),
+    `viewer.test.ts` (the facade with `labelsViewer`: another label's record 404 / 403, the ISRC and document rules, the
+    lists, `ALL_VIEWER` byte-identical); commit 4: `users.test.ts`, `support.test.ts`. The login limits are off in tests
+    unless a test builds its own app with limits.
   - `tmp-root.ts`: every test file writes under its own `data/test-tmp/run-*`, removed after the file.
 - Layer tests: `layers/*.test.ts` are pure (no stack) over the hand-built world in `layers/world.ts`; one file per
   layer, `index.test.ts` pins the order, `exactness.test.ts` is the seeded random exactness test (12 decimals).
@@ -36,7 +48,7 @@
   `publishing-terms.test.ts`, `recoup.test.ts`.
 - Guard tests (do not weaken them to make a change pass; see `docs/agents/04_recipes.md` §1):
   `boundaries.test.ts`, `rules-coverage.test.ts` (README §5 + the `Number(` allow-list), `api-contract.test.ts`
-  (every route in `operations.ts` and called in the scenario).
+  (every route in `operations.ts` with `access` and `ability`, called in the scenario).
 - `review-fixes`, `review-round2`, `review-round3`: regressions from independent reviews; each test names its D-entry.
 - `Hook timed out in 10000ms` across many stack test files, with a run of minutes instead of seconds, means the
   Docker VM is starved for CPU (a busy host), not a code bug: check `docker stats` / `uptime` and rerun. Timed-out

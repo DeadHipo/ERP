@@ -83,12 +83,15 @@ Rules (enforced by `packages/backend/tests/boundaries.test.ts`): a module never 
 or the API; the API never opens a module; only `src/facade/` calls several modules.
 
 Request path: React page → `packages/frontend/src/api/client.ts` → (D-170) the session cookie → `resolveOrg` picks the
-facade of the session's organization → Express router `src/api/routes/<topic>.ts` (zod schemas from `@erp/shared`) →
-`facade.<method>` → module services → repositories (all SQL, every statement filtered by the organization).
+facade of the session's organization and builds the principal (D-171) → `labelGuard` → `authorize` (the operation's
+`ability` against the rule table `src/auth/abilities.ts`) → Express router `src/api/routes/<topic>.ts` (zod schemas
+from `@erp/shared`) → `facade.<method>(…, viewerOf(res))` (the facade's `Viewer` decides the label of a record) →
+module services → repositories (all SQL, every statement filtered by the organization).
 
 Every module in the table above is opened under one organization (`openModules(db, org)`, D-170): its tables carry
 `org_id NOT NULL` and its repository filters through `src/shared/org-scope.ts`; `src/orgs` (organizations, the facade
-per organization) and `src/auth` (users, the login) sit above the facade and are not modules.
+per organization, support access) and `src/auth` (users, memberships, sessions, the rule table of rights) sit above
+the facade and are not modules.
 
 ## 4. Money and dates in one table
 
@@ -112,7 +115,7 @@ floored to the first day of its month; the part-month goes to the new holder.
 Period filters use report date by default, sales date on request (README §5; signals follow the chosen basis, D-061).
 Publishing has no sales date: both bases use the statement's quarter-end month.
 
-## 5. State of the project (2026-11-03)
+## 5. State of the project (2026-11-06)
 
 - Iteration 1 is done (`README.md` §2, §5, §8; D-096, D-098). Believe is in PostgreSQL + ClickHouse (D-102…D-114),
   the other modules are PostgreSQL schemas (D-121).
@@ -148,8 +151,16 @@ Publishing has no sales date: both bases use the statement's quarter-end month.
   organization; a minimal login (`/auth/login`, a JWT in the cookie `erp_session`, `AUTH_MODE` on by default), the
   organization only from the session (`X-Org` for the system administrator), `/orgs*` for the system administrator,
   `scripts/create-user.ts`, the constant 500 with a `requestId`. Labels (0to8, Echo8) stay books inside the
-  organization. Roles, memberships and abilities are stage 3. Clean stack: recipe 12.
-- **Out of scope until asked:** ASCAP, roles and memberships (the minimal login exists, D-170), a real payment-service integration (stubbed in
+  organization. Clean stack: recipe 12.
+- **Stage 3 «Пользователи и роли» (D-171, the brief's «D-172», 2026-11-06):** memberships in several organizations
+  (the login asks to choose, `409 org_choice_required`), roles `org_admin` (everything in the organization, «Все») and
+  `label_manager` (its own labels only, no approvals, payouts or settings, no money of the whole organization), the
+  system administrator without money (organizations and users; an organization only as support under a grant of its
+  `org_admin`, ≤ 7 days); revocable sessions (`auth.sessions`, migration 0017), a limit of failed logins, the `Origin`
+  rule on writes, scrypt 2^15; an `ability` on every API operation checked by one `authorize` against one rule table,
+  `me.abilities` for the UI; record-dependent rights in the facade's `Viewer`. Users of the organization, system users
+  and support grants (commit 4) and the frontend (commit 5) were in progress on 2026-11-06.
+- **Out of scope until asked:** ASCAP, a password policy and fine-grained rights of managers (D-171), a real payment-service integration (stubbed in
   `facade/payment-service.ts`), caches, PDF parsing, deployment (D-112, D-114 postponed items stand).
 - **Waiting for the product owner** (do not "fix" these silently; see `03_decision_index.md`): D-018, D-032, D-035,
   D-041, D-043, D-045, D-049 ("largest"), D-068, D-083 (writer merge), D-087 (equal parts), D-096. D-067 (sub-label)

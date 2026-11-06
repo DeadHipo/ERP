@@ -218,8 +218,10 @@ disk, in this order (every step idempotent; the stack from `docker compose … u
 on the live `erp` it is №1 (`00000000-0000-4000-8000-000000000001`, created by migration 0016). Put
 `ERP_DEFAULT_ORG=<id>` in `.env` (every script resolves `--org <id>` → `ERP_ORG` → `ERP_DEFAULT_ORG`, else exits 1
 listing the organizations), or pass `--org <id>` to each script below. The dev stand for the API steps (5, 6, 8) runs
-with `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` (no login, the operator from `X-Operator`); with `AUTH_MODE=on` log in first
-or send `X-System-Key` + `X-Org`. Stored copies land in `<dataDir>/orgs/<id>/files/{sources,publishing}`.
+with `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` (no login, the operator from `X-Operator`, the principal `local` = an
+`org_admin`); with `AUTH_MODE=on` log in as an `org_admin` of the organization (recipe 12, step 8). Since D-171 the
+system key or the system administrator with `X-Org` is `403 support_required` on every organization step (support
+needs a grant and can never `approve`, `pay` or `admin`), and a `label_manager` cannot do steps 5–6 (accounts, approvals). Stored copies land in `<dataDir>/orgs/<id>/files/{sources,publishing}`.
 
 1. Believe: the 47 report files (34 of account 1052428 from `context_data/ERP_data/believe/raw`, 13 of 1055956 from
    `context_data/ERP_data/believe_echo8`) through `scripts/load-believe.ts --data data/real [--org <id>] <files>` (since D-170 `--data`; the copies go to `data/real/orgs/<id>/files/sources`)
@@ -289,15 +291,30 @@ D-170. The stack starts without organizations and users; the first of each is ma
    from the server). The system administrator's session in the browser (P24) does the same.
 6. `ERP_DEFAULT_ORG=<id>` in `.env` for the scripts (or `--org <id>` / `ERP_ORG` per run).
 7. Recipe 11, steps 1–8, with `--org <id>` (the API steps under `AUTH_MODE=off ERP_DEFAULT_ORG=<id>` on the dev stand,
-   or with `X-System-Key` + `X-Org: <id>`).
-8. The users of the organization: `create-user.ts <login> --org <id>` (or `POST /api/v1/orgs/:id/users` by the system
-   administrator); later `--reset-password`, `--disable`, `--enable`.
+   or, with `AUTH_MODE=on`, under the session of the `org_admin` of step 8; not with `X-System-Key` + `X-Org`, which
+   is `403 support_required` since D-171).
+8. The users of the organization (D-171): the administrator `ERP_NEW_PASSWORD=… npx tsx
+   packages/backend/scripts/create-user.ts <login> --org <id> --role org_admin`; a label manager
+   `create-user.ts <login> --org <id> --role label_manager --label <labelId> [--label <labelId>]…` (own labels of the
+   organization; the label ids from `GET /api/v1/labels`); the same command with an existing login adds a membership
+   in another organization. Or through the API: `POST /api/v1/orgs/:id/users { login, password, role, labelIds }` by
+   the system administrator, and (commit 4) `POST /api/v1/users` by the organization's `org_admin` (P26). Later
+   `--reset-password`, `--disable`, `--enable` (all revoke the user's sessions).
 9. Restart with `AUTH_MODE=on` and log in (`/login` in the client, or `POST /api/v1/auth/login { login, password }` →
-   cookie `erp_session`). The organization comes from the session; a system administrator chooses one (`X-Org`).
+   cookie `erp_session`, `__Host-erp_session` with `AUTH_COOKIE_SECURE=1`). A user with several memberships gets
+   `409 org_choice_required` with `details.orgs: [{ id, name, role }]` and repeats the login with `{ …, orgId }` (the
+   client shows the choice as a second step); no membership = `403 no_membership`. The organization then comes from the
+   session; changing it = log out and in. The system administrator works in an organization only as support: its
+   `org_admin` grants it (`POST /api/v1/support { login, expiresAt?, write? }`, ≤ 7 days, commit 4), then the system
+   administrator sends `X-Org: <id>` (or `POST /api/v1/orgs/:id/support/enter`). After a deployment of 0017 everyone
+   signs in again (tokens without `sid` are refused). Failed logins are limited (`AUTH_LOGIN_LIMIT` 5 per login,
+   `AUTH_IP_LIMIT` 20 per IP and minute, `429` with `Retry-After`; behind a reverse proxy `TRUST_PROXY=1`); a write
+   from another origin is `403 csrf` (add the public origin to `APP_ORIGIN` if the client is served from another one).
 
 **The live `erp`** (data before D-170): `npm run migrate:pg` creates organization №1
 `00000000-0000-4000-8000-000000000001` (`Организация №1`) and stamps every row; set `ERP_DEFAULT_ORG` to it; run the
-server and the scripts as before (`AUTH_MODE=off` on the dev stand, or create users with `--org <№1>` and log in);
+server and the scripts as before (`AUTH_MODE=off` on the dev stand, or create users with `--org <№1> --role …` and
+log in; migration 0017 turned every stage-2 user into an `org_admin` member of its organization);
 `compare-reference` and `check-owner-scope --org <№1>` give 0 differing (recipe 11, step 8). Old `stored_path` values are
 absolute: the files are not moved. The Python extractors of recipe 9 read without an organization: valid only while
 the database holds one organization.
