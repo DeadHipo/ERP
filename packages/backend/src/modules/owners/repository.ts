@@ -178,6 +178,8 @@ export function createOwnersRepository(db: Db) {
         kind?: string;
         q?: string;
         limit?: number;
+        /** The documents of the label and those without a label (D-169). */
+        labelId?: string;
       } = {},
     ) => {
       const noFile = sql`(${documents.fileRef} is null or ${documents.fileRef} = '')`;
@@ -186,6 +188,7 @@ export function createOwnersRepository(db: Db) {
         f.ownerId === undefined ? undefined : eq(documents.ownerId, f.ownerId),
         f.kind === undefined ? undefined : eq(documents.kind, f.kind),
         f.q ? containsText(documents.title, f.q) : undefined,
+        f.labelId === undefined ? undefined : or(eq(documents.labelId, f.labelId), isNull(documents.labelId)),
         f.status === 'not_attached'
           ? noFile
           : f.status === 'not_approved'

@@ -44,6 +44,7 @@ export const status = {
   },
   payoutGate: {
     owner_not_confirmed: 'владелец не подтверждён',
+    no_contract_for_label: 'нет договора с этим лейблом',
     payout_blocked: 'есть выплата без подтверждения',
     nothing_to_pay: 'нечего выплачивать',
     below_threshold: 'ниже порога',

@@ -93,7 +93,16 @@ export interface BalanceView {
 
 export interface OwnerBalance {
   ownerId: string;
+  /**
+   * The owner may be paid: an approved contract; under a view, one whose document has the view's label or none
+   * (D-169).
+   */
   confirmed: boolean;
+  /**
+   * Internal (the payout gate's input, never in the response, D-169): an approved contract of any label, so that the
+   * gate tells "no contract at all" from "no contract with this label".
+   */
+  confirmedAny: boolean;
   /** The label the balance is restricted to (D-168); null = the whole owner, every book. */
   label: { id: string; name: string } | null;
   /** Figures for the requested period (by report or sales date). */
@@ -292,7 +301,8 @@ export function ownerBalance(
   view?: BalanceView,
 ): OwnerBalance {
   const basis = f.basis ?? 'report';
-  const confirmed = calc.confirmedOwners.has(ownerId);
+  const confirmedAny = calc.confirmedOwners.has(ownerId);
+  const confirmed = view ? calc.confirmedOwnersUnder(view.labelId).has(ownerId) : confirmedAny;
   const inView = (key: string) => !view || key === view.labelId;
   const artistsOfOwner = new Map<string, { id: string; pseudonym: string }>();
   for (const [, a] of calc.artistIndex)
@@ -600,6 +610,7 @@ export function ownerBalance(
   return {
     ownerId,
     confirmed,
+    confirmedAny,
     label: view ? { id: view.labelId, name: calc.labelName(view.labelId) ?? '?' } : null,
     period: {
       from: f.from ?? null,

@@ -94,6 +94,11 @@ export interface Calculation {
   publishing: PublishingResult[];
   artistIndex: Awaited<ReturnType<OwnersService['artistIndex']>>;
   confirmedOwners: Set<string>;
+  /**
+   * The owners confirmed under an own label: an approved contract whose document has that label or none (D-169). Read
+   * in the same snapshot; the layers keep `confirmedOwners` (any label).
+   */
+  confirmedOwnersUnder: (labelId: string) => Set<string>;
   documentStatus: (id: string | null | undefined) => 'approved' | 'not_approved' | 'not_attached' | 'missing';
   documentKind: (id: string | null | undefined) => string | undefined;
   /** The name of a label by id (the books of the balance are named, D-168). */
@@ -140,6 +145,7 @@ export async function calculate(
   const {
     artistIndex,
     confirmedOwners,
+    confirmedContracts,
     labelOwners,
     knownPairs,
     splitIndex,
@@ -152,6 +158,7 @@ export async function calculate(
     m.db.snapshot(async () => {
       const artistIndex = await timed('owners.artistIndex', () => m.owners.artistIndex());
       const confirmedOwners = await timed('owners.confirmedOwnerIds', () => m.owners.confirmedOwnerIds());
+      const confirmedContracts = await timed('owners.confirmedContracts', () => m.owners.confirmedContracts());
       // Publishing is never accrued to a label (08, decision 7): a writer resolved to a label owner counts as unmapped.
       const labelOwners = new Set(
         (await timed('owners.listOwners', () => m.owners.listOwners()))
@@ -180,6 +187,7 @@ export async function calculate(
         adExpenses,
         artistIndex,
         confirmedOwners,
+        confirmedContracts,
         labelOwners,
         knownPairs,
         splitIndex,
@@ -348,12 +356,26 @@ export async function calculate(
     publishing,
     artistIndex,
     confirmedOwners,
+    confirmedOwnersUnder: confirmedUnder(confirmedContracts),
     documentStatus,
     documentKind,
     labelName: (id) => labelIndex.labelName(id),
     ownLabels: labelIndex.ownLabels(),
     ads,
     adPositions: adPositionsByOwner(ads),
+  };
+}
+
+/** "Confirmed under L" from the approved contracts with their document's label; memoised per label. */
+function confirmedUnder(contracts: { ownerId: string; labelId: string | null }[]) {
+  const memo = new Map<string, Set<string>>();
+  return (labelId: string): Set<string> => {
+    let set = memo.get(labelId);
+    if (!set) {
+      set = new Set(contracts.filter((c) => c.labelId === null || c.labelId === labelId).map((c) => c.ownerId));
+      memo.set(labelId, set);
+    }
+    return set;
   };
 }
 

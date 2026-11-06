@@ -128,10 +128,15 @@ export const tracks = {
 };
 
 export const documents = {
-  list: (query: z.input<typeof S.listQuery> = {}) =>
+  /** Under a label (`label=`, D-169): the documents of that label and those without one. */
+  list: (query: z.input<typeof S.documentsQuery> = {}) =>
     call('GET', '/documents', { query, schema: list(R.documentSchema) }),
+  /** `labelId` absent or null = the document opens any label (D-169). */
   create: (body: z.input<typeof S.createDocumentBody>) =>
     call('POST', '/documents', { body, schema: R.documentSchema }),
+  /** Sets or clears (null = any label) the own label of a document (D-169). */
+  setLabel: (documentId: string, body: z.input<typeof S.setDocumentLabelBody>) =>
+    call('PATCH', `/documents/${id(documentId)}`, { body, schema: R.documentSchema }),
   attach: (documentId: string, body: z.input<typeof S.attachFileBody>) =>
     call('POST', `/documents/${id(documentId)}/attach`, { body, schema: R.documentSchema }),
   approve: (documentId: string, body: z.input<typeof S.approveBody>) =>

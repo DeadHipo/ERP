@@ -45,18 +45,26 @@ describe('API contract', () => {
   const OPERATOR = 'contract-test';
   let auditRows = 0;
   /** Every successful write leaves exactly one audit row, newest first, with the route template (R5, D-140). */
-  async function expectOneAuditRow(method: string, template: string, params?: Record<string, string>) {
+  async function expectOneAuditRow(
+    method: string,
+    template: string,
+    params?: Record<string, string>,
+    /** The label the row must carry (D-169); undefined = not checked. */
+    labelId?: string | null,
+  ) {
     const res = await request(app).get('/api/v1/audit').query({ limit: '500' }).expect(200);
     const items = res.body.items as {
       operator: string;
       method: string;
       route: string;
       entityIds: string[];
+      labelId: string | null;
     }[];
     expect(items.length, `audit rows after ${method} ${template}`).toBe(auditRows + 1);
     auditRows = items.length;
     expect(items[0]).toMatchObject({ operator: OPERATOR, method: method.toUpperCase(), route: template });
     for (const id of Object.values(params ?? {})) expect(items[0]?.entityIds).toContain(id);
+    if (labelId !== undefined) expect(items[0]?.labelId, `audit label of ${method} ${template}`).toBe(labelId);
   }
 
   /** Calls an operation by its template path and checks status and response body against the contract. */
@@ -68,6 +76,8 @@ describe('API contract', () => {
       query?: Record<string, string>;
       body?: unknown;
       file?: { path: string; fileName: string };
+      /** The label the audit row of a write must carry (D-169); undefined = not checked. */
+      labelId?: string | null;
     } = {},
   ) {
     const op = API_OPERATIONS.find((x) => x.method === method && x.path === template);
@@ -88,7 +98,7 @@ describe('API contract', () => {
       `${operationKey(op)} response does not fit its schema`,
     ).toBeNull();
     covered.add(operationKey(op));
-    if (method !== 'get') await expectOneAuditRow(method, template, o.params);
+    if (method !== 'get') await expectOneAuditRow(method, template, o.params, o.labelId);
     return res.body as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
@@ -194,6 +204,7 @@ describe('API contract', () => {
     const rule = await call('post', '/labels/:id/rules', {
       params: { id: sub.id },
       body: { percent: '30', recipientArtistId: a2.id, validFrom: '2026-02-10', documentId: appendix.id },
+      labelId: null, // the response's labelId is the sublabel: never recorded (D-169)
     });
     expect(rule.validFrom).toBe('2026-02-01');
     const labelList = await call('get', '/labels');
@@ -203,6 +214,23 @@ describe('API contract', () => {
     ).toBe('Synth Two');
     // D-168: a Believe account under an own label; the seeded 0to8 is the label of every operation below
     const zero = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === '0to8') as { id: string };
+    // D-169: a document under a label; PATCH sets and clears it; the list under a label adds those without a label
+    const labelled = await call('post', '/documents', {
+      body: { kind: 'other', title: 'Labelled', requiresApproval: false, labelId: zero.id },
+      labelId: zero.id,
+    });
+    expect(labelled.labelId).toBe(zero.id);
+    const moved = await call('patch', '/documents/:id', { params: { id: labelled.id }, body: { labelId: own.id }, labelId: own.id });
+    expect(moved.labelId).toBe(own.id);
+    expect((await call('get', '/documents', { query: { label: zero.id } })).map((d: { id: string }) => d.id)).toEqual(
+      expect.arrayContaining([contractDoc.id]),
+    );
+    expect((await call('get', '/documents', { query: { label: zero.id } })).map((d: { id: string }) => d.id)).not.toContain(labelled.id);
+    const cleared = await call('patch', '/documents/:id', { params: { id: labelled.id }, body: { labelId: null }, labelId: null });
+    expect(cleared.labelId).toBeNull();
+    const subRefused = (await request(app).patch(`/api/v1/documents/${labelled.id}`).set('X-Operator', OPERATOR).send({ labelId: sub.id }))
+      .body as { error: { code: string } };
+    expect(subRefused.error.code).toBe('label_not_own');
     // (1052428 → 0to8 and 1055956 → Echo8 are registered by newFacade, D-169)
     const withAccount = await call('post', '/labels/:id/accounts', { params: { id: own.id }, body: { account: '2799001' } });
     expect(withAccount.accounts).toEqual(['2799001']);
@@ -349,29 +377,34 @@ describe('API contract', () => {
     await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
     // settlements
-    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id } });
+    const payout = await call('post', '/owners/:id/payouts', { params: { id: owner.id }, body: { labelId: zero.id }, labelId: zero.id });
     expect(payout.labelId).toBe(zero.id);
     await call('get', '/settlements/operations/:id/snapshot', { params: { id: payout.id } });
     await call('post', '/settlements/operations/:id/deferred', {
       params: { id: payout.id },
       body: { deferred: true },
+      labelId: zero.id, // from the response (D-169)
     });
     await call('post', '/settlements/operations/:id/proof', {
       params: { id: payout.id },
       body: { fileRef: 'dummy://p.pdf' },
+      labelId: zero.id,
     });
     const deduction = await call('post', '/settlements/operations', {
       body: { direction: 'in', amount: '1.00', artistId: a1.id, date: '2026-08-01', comment: 'penalty', labelId: zero.id },
+      labelId: zero.id,
     });
-    const relabelled = await call('patch', '/settlements/operations/:id', { params: { id: deduction.id }, body: { labelId: own.id } });
+    const relabelled = await call('patch', '/settlements/operations/:id', { params: { id: deduction.id }, body: { labelId: own.id }, labelId: own.id });
     expect(relabelled.labelId).toBe(own.id);
     await call('post', '/settlements/operations/:id/deactivate', {
       params: { id: deduction.id },
       body: { reason: 'mistake' },
+      labelId: own.id,
     });
     await call('post', '/settlements/operations/:id/return', {
       params: { id: payout.id },
       body: { fileRef: 'dummy://r.pdf', date: '2099-12-31', comment: 'bounced' },
+      labelId: zero.id,
     });
     await call('get', '/settlements/operations');
     await call('get', '/settlements/operations', { query: { label: zero.id } });
@@ -396,6 +429,7 @@ describe('API contract', () => {
           { month: '2026-07', amount: '3', artistId: a1.id, scope: 'any', labelId: zero.id },
         ],
       },
+      labelId: zero.id, // the one label of the items
     });
     expect(ads.created).toHaveLength(2);
     const adList = await call('get', '/ads', { query: { isrc: I1, limit: '10' } });
@@ -409,9 +443,9 @@ describe('API contract', () => {
     const patched = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { recoveryPercent: '0' } });
     expect(patched.recoveryPercent).toBe('0');
     const echoPayer = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === 'Echo8') as { id: string };
-    const repaid = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { labelId: echoPayer.id } });
+    const repaid = await call('patch', '/ads/:id', { params: { id: ads.created[0].id }, body: { labelId: echoPayer.id }, labelId: echoPayer.id });
     expect(repaid.labelId).toBe(echoPayer.id);
-    await call('post', '/ads/:id/deactivate', { params: { id: ads.created[1].id }, body: { reason: 'contract test' } });
+    await call('post', '/ads/:id/deactivate', { params: { id: ads.created[1].id }, body: { reason: 'contract test' }, labelId: zero.id });
     await call('get', '/owners/:id/balance', { params: { id: owner.id } });
 
     // the trail of one entity: the merge, newest first, with ids and no free text
@@ -420,6 +454,10 @@ describe('API contract', () => {
     expect(trail.items[0].entityIds).toEqual(expect.arrayContaining([other.id, owner.id]));
     expect(trail.items[0].summary.body).toEqual({}); // the free-text reason is not kept (D-150)
     expect(trail.items.length).toBeLessThanOrEqual(3);
+    // under a label: strictly the rows recorded under it (D-169)
+    const underZero = await call('get', '/audit', { query: { label: zero.id, limit: '500' } });
+    expect(underZero.items.length).toBeGreaterThan(5);
+    expect(new Set(underZero.items.map((i: { labelId: string | null }) => i.labelId))).toEqual(new Set([zero.id]));
   });
 
   it('a write without the X-Operator header is refused and leaves no trace', async () => {

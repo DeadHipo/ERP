@@ -81,6 +81,15 @@ export const createDocumentBody = z.object({
   ownerId: z.string().nullish(),
   requiresApproval: z.boolean(),
   uploadDeadline: date.nullish(),
+  labelId: z
+    .string()
+    .min(1)
+    .nullish()
+    .describe('The own label of the document (D-169); none = any label. 404 unknown, 400 label_not_own'),
+});
+/** `PATCH /documents/:id`: sets or clears (null = any label) the own label of a document (D-169). */
+export const setDocumentLabelBody = z.object({
+  labelId: z.string().min(1).nullable().describe('Id of an own label; null = any label'),
 });
 
 export const attachFileBody = z.object({ fileRef: z.string().min(1) });
@@ -202,6 +211,7 @@ export const documentsQuery = z.object({
   kind: documentKind.optional(),
   q: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(5000).optional(),
+  ...labelQuery.shape,
 });
 
 const flag = z.enum(['true', 'false']);
@@ -310,6 +320,10 @@ export const createParticipationBody = z.object({
 export const auditQuery = z.object({
   entityId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).optional(),
+  label: z
+    .string()
+    .optional()
+    .describe('Id of an own label: only the writes recorded under it (D-169; writes without a label only without it); 404 unknown, 400 label_not_own'),
 });
 export type AuditQuery = z.infer<typeof auditQuery>;
 

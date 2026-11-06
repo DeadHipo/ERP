@@ -151,6 +151,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           key={direction}
           kinds={direction === 'out' ? ['advance_basis', 'contract'] : ['adjustment_basis', 'contract', 'other']}
           ownerId={owner.id}
+          labelId={labelId}
           defaultTitle={`${direction === 'out' ? 'Основание аванса' : 'Основание корректировки'} ${owner.name}`}
           ready={doc}
           onReady={setDoc}

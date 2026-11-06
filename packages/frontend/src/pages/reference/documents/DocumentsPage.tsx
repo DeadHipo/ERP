@@ -14,10 +14,11 @@ import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
+import { useLabel } from '../../../lib/label';
 import { useUrlParam } from '../../catalog/components/url';
 import { ApproveDocumentDialog } from '../../work/actions/dialogs';
 import { OwnerLink, useOwnerNames } from '../shared';
-import { AttachDialog, CreateDocumentDialog, KINDS } from './DocumentDialogs';
+import { AttachDialog, CreateDocumentDialog, KINDS, useDocumentLabelName } from './DocumentDialogs';
 
 const t = ru.reference.documents;
 type Row = z.output<typeof documentSchema>;
@@ -40,7 +41,10 @@ export function ApproveControl(props: { doc: Row; onApprove: () => void }) {
   );
 }
 
-/** P13 «Документы» `/documents?status&kind&q&ownerId`: `GET /documents` with the filters (N12). */
+/**
+ * P13 «Документы» `/documents?status&kind&q&ownerId`: `GET /documents` with the filters (N12); under a label (the switch,
+ * D-169) the documents of that label and those without one, the «Лейбл» column (`document-label`, «любой» for none).
+ */
 export function DocumentsPage() {
   const [status, setStatus] = useUrlParam('status');
   const [kind, setKind] = useUrlParam('kind');
@@ -48,12 +52,15 @@ export function DocumentsPage() {
   const [ownerId, setOwnerId] = useUrlParam('ownerId');
   const [dialog, setDialog] = useState<{ kind: 'create' } | { kind: 'attach' | 'approve'; doc: Row } | null>(null);
   const names = useOwnerNames();
+  const { labelId } = useLabel();
+  const labelName = useDocumentLabelName();
   const query = useQuery(
     documentQueries.filtered({
       status: STATUSES.find((s) => s === status),
       kind: KINDS.find((k) => k === kind),
       q: q.trim() || undefined,
       ownerId: ownerId || undefined,
+      label: labelId || undefined,
     }),
   );
   const columns = useMemo<ColDef<Row>[]>(
@@ -83,6 +90,18 @@ export function DocumentsPage() {
         valueGetter: (p) => (p.data?.ownerId ? (names.get(p.data.ownerId) ?? p.data.ownerId) : ''),
         cellRenderer: (p: { data?: Row }) => (p.data ? <OwnerLink ownerId={p.data.ownerId} names={names} /> : null),
       },
+      {
+        colId: 'label',
+        headerName: t.cols.label,
+        maxWidth: 160,
+        valueGetter: (p) => (p.data ? labelName(p.data.labelId) : ''),
+        cellRenderer: (p: { data?: Row }) =>
+          p.data ? (
+            <span data-testid="document-label" data-col="label" data-label-id={p.data.labelId ?? ''}>
+              {labelName(p.data.labelId)}
+            </span>
+          ) : null,
+      },
       { colId: 'approvedAt', headerName: t.cols.approvedAt, valueGetter: (p) => p.data?.approvedAt?.slice(0, 10) ?? '' },
       { colId: 'migration', headerName: t.cols.migration, maxWidth: 130, valueGetter: (p) => (p.data?.migration ? t.migration : '') },
       {
@@ -104,7 +123,7 @@ export function DocumentsPage() {
           ) : null,
       },
     ],
-    [names],
+    [names, labelName],
   );
   return (
     <div data-testid="documents-page">

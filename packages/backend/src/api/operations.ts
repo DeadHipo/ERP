@@ -114,7 +114,11 @@ const operations: ApiOperation[] = [
     body: S.createPayoutBody,
     status: 201,
     response: R.operationSchema,
-    errors: ['400 label_required: no labelId', '422 payout_blocked: a previous payout has no payment proof yet'],
+    errors: [
+      '400 label_required: no labelId',
+      '422 payout_blocked: a previous payout has no payment proof yet',
+      '422 no_contract_for_label: the owner has an approved contract, but none with this label (D-169)',
+    ],
   },
 
   // ---- artists ----
@@ -268,18 +272,30 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/documents',
     tag: 'documents',
-    summary: 'Documents, filtered by owner, status, kind and a title substring (17 N12)',
+    summary:
+      'Documents, filtered by owner, status, kind and a title substring (17 N12); under a label (`label=`) those of the label and those without a label (D-169)',
     query: S.documentsQuery,
     response: list(R.documentSchema),
+    errors: ['400 label_not_own', '404 not_found: label'],
   },
   {
     method: 'post',
     path: '/documents',
     tag: 'documents',
-    summary: 'Create a document',
+    summary: 'Create a document, optionally under an own label (D-169: a contract opens the label of its document; none = any label)',
     body: S.createDocumentBody,
     status: 201,
     response: R.documentSchema,
+    errors: ['400 label_not_own', '404 not_found: label'],
+  },
+  {
+    method: 'patch',
+    path: '/documents/:id',
+    tag: 'documents',
+    summary: 'Set or clear (null = any label) the own label of a document (D-169)',
+    body: S.setDocumentLabelBody,
+    response: R.documentSchema,
+    errors: ['400 label_not_own', '404 not_found: label or document'],
   },
   {
     method: 'post',
@@ -599,7 +615,12 @@ const operations: ApiOperation[] = [
     body: S.createOperationBody,
     status: 201,
     response: R.operationSchema,
-    errors: ['400 label_required: no labelId', '400 label_not_own', '404 not_found: label'],
+    errors: [
+      '400 label_required: no labelId',
+      '400 label_not_own',
+      '404 not_found: label',
+      '422 no_contract_for_label: an advance under a label the owner has no approved contract with (D-169)',
+    ],
   },
   {
     method: 'patch',
@@ -656,9 +677,11 @@ const operations: ApiOperation[] = [
     method: 'get',
     path: '/audit',
     tag: 'system',
-    summary: 'The trail of writes that touched an entity (newest first); without entityId the latest writes',
+    summary:
+      'The trail of writes that touched an entity (newest first); without entityId the latest writes; `label=` only the writes recorded under that label (D-169)',
     query: S.auditQuery,
     response: R.auditListSchema,
+    errors: ['400 label_not_own', '404 not_found: label'],
   },
 
   {

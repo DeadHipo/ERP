@@ -40,6 +40,8 @@ export interface DocumentView {
   uploadDeadline: string | null;
   migration: boolean;
   createdAt: string;
+  /** The own label of the document (D-169); null = any label. The module does not know labels. */
+  labelId: string | null;
 }
 
 export type OwnerStatus = 'confirmed' | 'waiting_documents';
@@ -105,6 +107,7 @@ function toDocumentView(d: DocumentRow): DocumentView {
     uploadDeadline: d.uploadDeadline,
     migration: d.migration,
     createdAt: d.createdAt,
+    labelId: d.labelId,
   };
 }
 
@@ -116,15 +119,35 @@ const toTrackView = (t: TrackRow): TrackView => ({
   note: t.note,
 });
 
-/** Owners whose contract document is approved. Payout is possible only for them. */
-function computeConfirmedOwners(contracts: ContractRow[], documents: DocumentRow[]): Set<string> {
+/**
+ * Owners whose contract document is approved. Payout is possible only for them. With `labelId` only the documents of
+ * that label or without a label count (D-169: a contract opens its document's label; a document without a label opens
+ * every label).
+ */
+function computeConfirmedOwners(
+  contracts: ContractRow[],
+  documents: DocumentRow[],
+  labelId?: string,
+): Set<string> {
   const docs = new Map(documents.map((d) => [d.id, d]));
   const result = new Set<string>();
-  for (const c of contracts) {
-    const d = docs.get(c.documentId);
-    if (d && documentStatus(d) === 'approved') result.add(c.ownerId);
-  }
+  for (const c of contracts) if (approvedContractLabel(c, docs, labelId) !== undefined) result.add(c.ownerId);
   return result;
+}
+
+/**
+ * The one rule of a confirming contract: its document is approved (and, with `labelId`, has that label or none).
+ * Returns the document's label (null = any) when the contract confirms, undefined otherwise.
+ */
+function approvedContractLabel(
+  c: ContractRow,
+  docs: Map<string, DocumentRow>,
+  labelId?: string,
+): string | null | undefined {
+  const d = docs.get(c.documentId);
+  if (!d || documentStatus(d) !== 'approved') return undefined;
+  if (labelId !== undefined && d.labelId !== null && d.labelId !== labelId) return undefined;
+  return d.labelId;
 }
 
 /** Artists listed in an approved contract of their own owner. */
@@ -368,6 +391,37 @@ export function createOwnersService(db: Db) {
       return (await confirmedOwnerIds()).has(await resolveOwner(id));
     },
 
+    /** Confirmed under the own label `labelId`: an approved contract whose document has that label or none (D-169). */
+    async isOwnerConfirmedUnder(id: string, labelId: string): Promise<boolean> {
+      const [contracts, documents] = await db.snapshot(() =>
+        Promise.all([repo.allContracts(), repo.allDocuments()]),
+      );
+      return computeConfirmedOwners(contracts, documents, labelId).has(await resolveOwner(id));
+    },
+
+    /**
+     * The approved contracts with the label of their document (null = any label), one entry per owner and label; the
+     * facade answers "confirmed under L" from it inside its own snapshot (D-169).
+     */
+    async confirmedContracts(): Promise<{ ownerId: string; labelId: string | null }[]> {
+      const [contracts, documents] = await db.snapshot(() =>
+        Promise.all([repo.allContracts(), repo.allDocuments()]),
+      );
+      const docs = new Map(documents.map((d) => [d.id, d]));
+      const seen = new Set<string>();
+      const out: { ownerId: string; labelId: string | null }[] = [];
+      for (const c of contracts) {
+        // the same rule as computeConfirmedOwners, contract by contract
+        const labelId = approvedContractLabel(c, docs);
+        if (labelId === undefined) continue;
+        const key = `${c.ownerId}|${labelId ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ ownerId: c.ownerId, labelId });
+      }
+      return out;
+    },
+
     confirmedOwnerIds,
 
     resolveOwnerId(id: string): Promise<string> {
@@ -600,6 +654,8 @@ export function createOwnersService(db: Db) {
       requiresApproval: boolean;
       uploadDeadline?: string | null;
       migration?: boolean;
+      /** The own label (D-169); the facade checks it, the module stores it. */
+      labelId?: string | null;
     }): Promise<DocumentView> {
       if (!DOCUMENT_KINDS.includes(input.kind))
         throw new ValidationError(`Unknown document kind ${input.kind}`);
@@ -619,6 +675,7 @@ export function createOwnersService(db: Db) {
           uploadDeadline: input.uploadDeadline ?? null,
           migration: input.migration ?? false,
           createdAt: nowIso(),
+          labelId: input.labelId ?? null,
         });
         return this.getDocument(id);
       });
@@ -633,10 +690,27 @@ export function createOwnersService(db: Db) {
     async listDocuments(
       filter:
         | string
-        | { ownerId?: string; status?: DocumentStatus; kind?: string; q?: string; limit?: number } = {},
+        | {
+            ownerId?: string;
+            status?: DocumentStatus;
+            kind?: string;
+            q?: string;
+            limit?: number;
+            /** The documents of the label and those without a label (D-169). */
+            labelId?: string;
+          } = {},
     ): Promise<DocumentView[]> {
       const f = typeof filter === 'string' ? { ownerId: filter } : filter;
       return (await repo.listDocuments(f)).map(toDocumentView);
+    },
+
+    /** Sets or clears (null = any label) the own label of a document; only this field (D-169). */
+    async setDocumentLabel(id: string, labelId: string | null): Promise<DocumentView> {
+      return repo.transaction(async () => {
+        await this.getDocument(id);
+        await repo.updateDocument(id, { labelId });
+        return this.getDocument(id);
+      });
     },
 
     /**

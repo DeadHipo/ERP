@@ -11,6 +11,8 @@ export interface AuditAction {
   route: string;
   entityIds: string[];
   summary: Record<string, unknown>;
+  /** The own label of the write (D-169); null = none. History is never back-filled. */
+  labelId: string | null;
 }
 
 export interface RecordActionInput {
@@ -21,6 +23,8 @@ export interface RecordActionInput {
   entityIds: string[];
   /** Ids, amounts and dates only: never names or free text. */
   summary: Record<string, unknown>;
+  /** The own label of the write (D-169); the module stores it as given. */
+  labelId?: string | null;
 }
 
 const view = (r: ActionRow): AuditAction => ({
@@ -31,6 +35,7 @@ const view = (r: ActionRow): AuditAction => ({
   route: r.route,
   entityIds: r.entityIds,
   summary: r.summary,
+  labelId: r.labelId,
 });
 
 const clampLimit = (limit: number) => Math.min(Math.max(limit || 50, 1), 500);
@@ -48,14 +53,16 @@ export function createAuditService(db: Db) {
         route: input.route,
         entityIds: [...new Set(input.entityIds)],
         summary: input.summary,
+        labelId: input.labelId ?? null,
       });
       return view(row);
     },
-    async listByEntity(entityId: string, limit = 50): Promise<AuditAction[]> {
-      return (await repo.byEntity(entityId, clampLimit(limit))).map(view);
+    /** With `labelId`: only the rows recorded under that label (strictly `label_id = L`). */
+    async listByEntity(entityId: string, limit = 50, labelId?: string): Promise<AuditAction[]> {
+      return (await repo.byEntity(entityId, clampLimit(limit), labelId)).map(view);
     },
-    async listRecent(limit = 50): Promise<AuditAction[]> {
-      return (await repo.recent(clampLimit(limit))).map(view);
+    async listRecent(limit = 50, labelId?: string): Promise<AuditAction[]> {
+      return (await repo.recent(clampLimit(limit), labelId)).map(view);
     },
   };
 }

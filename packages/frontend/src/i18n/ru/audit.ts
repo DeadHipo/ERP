@@ -3,7 +3,10 @@
  * API (`packages/backend/src/api/routes/`), and the names of the summary fields (D-140: ids, amounts, dates, enums).
  */
 export const audit = {
-  cols: { at: 'Когда', operator: 'Оператор', action: 'Действие', summary: 'Что' },
+  cols: { at: 'Когда', operator: 'Оператор', action: 'Действие', label: 'Лейбл', summary: 'Что' },
+  /** The label of a write that has none (D-169), and of a cleared document label in the summary. */
+  noLabel: '—',
+  anyLabel: 'любой',
   empty: 'Записей нет.',
   routes: {
     'POST /owners': 'создан владелец',
@@ -14,6 +17,7 @@ export const audit = {
     'POST /tracks': 'зарегистрирован трек',
     'PATCH /tracks/:id': 'изменена заметка трека',
     'POST /documents': 'создан документ',
+    'PATCH /documents/:id': 'изменён лейбл документа',
     'POST /documents/:id/attach': 'приложен файл документа',
     'POST /documents/:id/approve': 'утверждён документ',
     'POST /contracts': 'создан договор',
@@ -54,5 +58,6 @@ export const audit = {
     kind: 'вид',
     status: 'статус',
     direction: 'направление',
+    labelId: 'лейбл',
   } as Record<string, string>,
 } as const;

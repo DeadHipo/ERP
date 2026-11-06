@@ -3,8 +3,31 @@ import type { OperationFilter } from '../modules/settlements';
 import type { FacadeContext } from './context';
 
 export function ownerViewApi(ctx: FacadeContext) {
-  const { db, owners, settlements, publishing, labels, labelContext } = ctx;
+  const { db, owners, settlements, publishing, labels, labelContext, assertOwnLabel } = ctx;
   const api = {
+    /** A document; its label (D-169), when given, must be an own label (the module does not know labels). */
+    async createDocument(input: Parameters<typeof owners.createDocument>[0]) {
+      if (input.labelId) await assertOwnLabel(input.labelId);
+      return owners.createDocument(input);
+    },
+
+    /** Sets or clears (null = any label) the label of a document (D-169); a contract opens the label of its document. */
+    async setDocumentLabel(id: string, labelId: string | null) {
+      if (labelId !== null) await assertOwnLabel(labelId);
+      return owners.setDocumentLabel(id, labelId);
+    },
+
+    /** The documents; under a label (D-169) those of the label and those without a label. */
+    async listDocuments(
+      query: Omit<Exclude<Parameters<typeof owners.listDocuments>[0], string | undefined>, 'labelId'> & {
+        label?: string;
+      } = {},
+    ) {
+      const { label, ...rest } = query;
+      if (label !== undefined) await assertOwnLabel(label);
+      return owners.listDocuments(label === undefined ? rest : { ...rest, labelId: label });
+    },
+
     /** The owners (merged ones hidden); under a label (D-168) those visible under it. */
     async ownerList(f: { label?: string } = {}) {
       const lc = await labelContext(f.label);

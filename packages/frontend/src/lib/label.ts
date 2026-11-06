@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ru } from '../i18n/ru';
 import { readStorage, writeStorage } from './storage';
@@ -37,10 +37,13 @@ export function useLabel(): { labelId: string; setLabel: (id: string) => void } 
   const stored = useSyncExternalStore(subscribe, getStoredLabel, () => '');
   const fromUrl = params.get(LABEL_PARAM);
   const labelId = fromUrl ?? stored;
-  // the URL wins: a link with `?label=` moves the switch
+  // the URL wins: a link with `?label=` moves the switch. Only when the URL value changes: `setLabel('')` writes the
+  // storage before the URL loses `label=`, and syncing on every render would write the old URL value back (D-169).
+  const synced = useRef<string | null>(null);
   useEffect(() => {
-    if (fromUrl !== null && fromUrl !== stored) setStoredLabel(fromUrl);
-  }, [fromUrl, stored]);
+    if (fromUrl !== null && fromUrl !== synced.current && fromUrl !== getStoredLabel()) setStoredLabel(fromUrl);
+    synced.current = fromUrl;
+  }, [fromUrl]);
   const setLabel = useCallback(
     (id: string) => {
       setStoredLabel(id);

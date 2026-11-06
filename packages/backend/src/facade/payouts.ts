@@ -59,6 +59,14 @@ export function payoutsApi(ctx: FacadeContext) {
               'owner_not_confirmed',
             );
           }
+          // under a label: a contract whose document has that label or none (D-169)
+          if (input.labelId && !(await owners.isOwnerConfirmedUnder(ownerId, input.labelId))) {
+            throw new RuleViolationError(
+              'The owner has no approved contract with this label: payout is not possible',
+              'no_contract_for_label',
+              { labelId: input.labelId },
+            );
+          }
           const blocking = await blockingPayoutsOf(ownerId);
           if (blocking.length > 0) {
             throw new RuleViolationError(
@@ -116,8 +124,8 @@ export function payoutsApi(ctx: FacadeContext) {
         const label = await assertOwnLabel(labelId);
         const id = await owners.resolveOwnerId(ownerId);
         const { balance, files: believeFiles } = await balanceWithFiles(id, {}, { labelId });
-        // One decision for the button and the screen (N19): the order owner_not_confirmed, payout_blocked,
-        // nothing_to_pay, below_threshold is the order of payoutGate().
+        // One decision for the button and the screen (N19): the order owner_not_confirmed, no_contract_for_label,
+        // payout_blocked, nothing_to_pay, below_threshold is the order of payoutGate().
         const gate = balance.payout;
         const cents = gate.amountCents;
         if (!gate.allowed) {
@@ -127,6 +135,12 @@ export function payoutsApi(ctx: FacadeContext) {
               throw new RuleViolationError(
                 'The owner has no approved contract: payout is not possible',
                 'owner_not_confirmed',
+              );
+            case 'no_contract_for_label':
+              throw new RuleViolationError(
+                'The owner has no approved contract with this label: payout is not possible',
+                'no_contract_for_label',
+                { labelId },
               );
             case 'payout_blocked':
               throw new RuleViolationError(
@@ -217,6 +231,7 @@ export function payoutsApi(ctx: FacadeContext) {
           fileRef: input.fileRef,
           ownerId: op.ownerId,
           requiresApproval: false,
+          labelId: op.labelId,
         });
         return settlements.attachPaymentProof(operationId, doc.id);
       });
@@ -245,6 +260,7 @@ export function payoutsApi(ctx: FacadeContext) {
           fileRef: input.fileRef,
           ownerId: op.ownerId,
           requiresApproval: false,
+          labelId: op.labelId,
         });
         return settlements.createOperation({
           direction: 'in',

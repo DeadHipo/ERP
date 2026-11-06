@@ -111,6 +111,10 @@ export const documentSchema = z.object({
   uploadDeadline: date.nullable(),
   migration: z.boolean(),
   createdAt: timestamp,
+  labelId: z
+    .string()
+    .nullable()
+    .describe('The own label of the document (D-169); null = any label. A contract opens the label of its document'),
 });
 export type DocumentView = z.infer<typeof documentSchema>;
 
@@ -594,7 +598,12 @@ export type Overview = z.infer<typeof overviewSchema>;
 /** Whether the payout button works for the owner now, and why not (17 N19); the client shows it, never recomputes it. */
 export const payoutGateSchema = z.object({
   allowed: z.boolean(),
-  reason: z.enum(['owner_not_confirmed', 'payout_blocked', 'nothing_to_pay', 'below_threshold']).nullable(),
+  reason: z
+    .enum(['owner_not_confirmed', 'no_contract_for_label', 'payout_blocked', 'nothing_to_pay', 'below_threshold'])
+    .nullable()
+    .describe(
+      'owner_not_confirmed: no approved contract at all; no_contract_for_label: none whose document has the label of the view or no label (D-169)',
+    ),
   amountCents: z
     .number()
     .int()
@@ -908,6 +917,10 @@ export const auditActionSchema = z.object({
   summary: z
     .record(z.string(), z.unknown())
     .describe('Ids, amounts and dates of the write; never names or free text'),
+  labelId: z
+    .string()
+    .nullable()
+    .describe('The own label of the write (D-169): ?label=, the body, the items or the response of a listed route; null = none'),
 });
 export const auditListSchema = z.object({ items: z.array(auditActionSchema) });
 export type AuditAction = z.infer<typeof auditActionSchema>;

@@ -16,7 +16,7 @@ import { centsToText } from '../../owners/components/cents';
 import { ApproveDocumentDialog, CreateContractDialog } from '../../work/actions/dialogs';
 import { DocumentCell, OwnerLink, period, useArtistNames, useOwnerNames } from '../shared';
 import { ApproveControl } from './DocumentsPage';
-import { AttachDialog, ConfirmSplitWithDocumentDialog } from './DocumentDialogs';
+import { AttachDialog, ConfirmSplitWithDocumentDialog, SetDocumentLabelDialog, useDocumentLabelName } from './DocumentDialogs';
 
 const t = ru.reference.documents;
 const r = ru.catalog.rules;
@@ -36,7 +36,8 @@ export function DocumentPage() {
   const names = useOwnerNames();
   const pseudonyms = useArtistNames();
   const query = useQuery(documentQueries.uses(id));
-  const [dialog, setDialog] = useState<'approve' | 'attach' | 'confirm-split' | 'contract' | null>(null);
+  const labelName = useDocumentLabelName();
+  const [dialog, setDialog] = useState<'approve' | 'attach' | 'confirm-split' | 'contract' | 'label' | null>(null);
   useBreadcrumbLabel(query.data?.document.title ?? id);
   const close = () => setDialog(null);
   return (
@@ -55,6 +56,15 @@ export function DocumentPage() {
                 </span>
                 <span>
                   {t.file}: {d.fileRef ? <span data-testid="document-file">{d.fileRef}</span> : t.noFile}
+                </span>
+                <span className="flex items-center gap-2">
+                  {t.cols.label}:{' '}
+                  <span data-testid="document-label" data-label-id={d.labelId ?? ''}>
+                    {labelName(d.labelId)}
+                  </span>
+                  <ActionButton name="set-document-label" variant="secondary" compact onPress={() => setDialog('label')}>
+                    {t.setLabel}
+                  </ActionButton>
                 </span>
                 {d.approvedAt ? <span data-testid="document-approved-at">{t.approvedAt}: {d.approvedAt.slice(0, 10)}</span> : null}
               </div>
@@ -165,6 +175,7 @@ export function DocumentPage() {
                 </SimpleTable>
               </Section>
               {dialog === 'approve' ? <ApproveDocumentDialog documentId={d.id} doc={d} onClose={close} /> : null}
+              {dialog === 'label' ? <SetDocumentLabelDialog doc={d} onClose={close} /> : null}
               {dialog === 'attach' ? <AttachDialog documentId={d.id} title={d.title} onClose={close} /> : null}
               {dialog === 'confirm-split' ? <ConfirmSplitWithDocumentDialog documentId={d.id} title={d.title} onClose={close} /> : null}
               {dialog === 'contract' ? <CreateContractDialog

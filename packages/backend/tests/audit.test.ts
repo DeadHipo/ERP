@@ -99,7 +99,7 @@ describe('operator header hook', () => {
       .send({ direction: 'in', amount: '1.50', artistId: artist.id, date: '2026-08-01', comment: 'secret words', labelId: f.testLabels['0to8'] })
       .expect(201);
     const [opRow] = await f.auditOf(artist.id);
-    expect(opRow?.summary).toEqual({ params: {}, body: { direction: 'in', amount: '1.50' } });
+    expect(opRow?.summary).toEqual({ params: {}, body: { direction: 'in', amount: '1.50', labelId: f.testLabels['0to8'] } });
     expect(opRow?.entityIds).toContain(f.testLabels['0to8']); // the label is an entity of the write (D-168)
     expect(op.body.id).toBeTruthy();
 
@@ -108,6 +108,84 @@ describe('operator header hook', () => {
     await writer(app).post('/api/v1/owners').send({ name: '', kind: 'x' }).expect(400);
     await writer(app).get('/api/v1/owners').expect(200);
     expect((await f.recentActions(100)).length).toBe(before);
+  });
+
+  it('label_id from ?label=, the body, the items, the response of the listed routes (D-169)', async () => {
+    const { f, app } = await setup();
+    const zero = f.testLabels['0to8'];
+    const echo = f.testLabels.Echo8;
+    const owner = await f.modules.owners.createOwner({ name: 'Label Owner Synthetic', kind: 'person' });
+    const artist = await f.modules.owners.createArtist({ pseudonym: 'Label Artist', ownerId: owner.id });
+    const last = async () => (await f.recentActions(1))[0];
+
+    // ?label= first (a write route that ignores the query still records it), even over the body
+    await writer(app).post('/api/v1/owners').query({ label: echo }).send({ name: 'Query Synthetic', kind: 'person' }).expect(201);
+    expect((await last())?.labelId).toBe(echo);
+    // body.labelId
+    const op = await writer(app)
+      .post('/api/v1/settlements/operations')
+      .send({ direction: 'in', amount: '2.00', artistId: artist.id, date: '2026-08-01', comment: 'x', labelId: zero })
+      .expect(201);
+    expect((await last())?.labelId).toBe(zero);
+    // the one label of body.items[] (POST /ads); two different labels → none
+    const ads = await writer(app)
+      .post('/api/v1/ads')
+      .send({ items: [{ month: '2026-07', amount: '3', artistId: artist.id, labelId: echo }, { month: '2026-07', amount: '1', artistId: artist.id, labelId: echo }] })
+      .expect(201);
+    expect((await last())?.labelId).toBe(echo);
+    await writer(app)
+      .post('/api/v1/ads')
+      .send({ items: [{ month: '2026-08', amount: '3', artistId: artist.id, labelId: echo }, { month: '2026-08', amount: '1', artistId: artist.id, labelId: zero }] })
+      .expect(201);
+    expect((await last())?.labelId).toBeNull();
+    // the response of a listed route: the operation's, the record's, the document's label
+    await writer(app).post(`/api/v1/settlements/operations/${op.body.id as string}/deactivate`).send({ reason: 'x' }).expect(200);
+    expect((await last())?.labelId).toBe(zero);
+    await writer(app).post(`/api/v1/ads/${ads.body.created[0].id as string}/deactivate`).send({ reason: 'x' }).expect(200);
+    expect((await last())?.labelId).toBe(echo);
+    const doc = await f.createDocument({ kind: 'contract', title: 'Labelled Synthetic', fileRef: 'dummy://l.pdf', ownerId: owner.id, requiresApproval: true, labelId: echo });
+    await writer(app).post(`/api/v1/documents/${doc.id}/approve`).send({}).expect(200);
+    expect((await last())?.labelId).toBe(echo);
+    // a route outside the list records nothing from its response; reads are filtered strictly by label
+    await writer(app).post('/api/v1/contracts').send({ ownerId: owner.id, documentId: doc.id, artistIds: [] }).expect(201);
+    expect((await last())?.labelId).toBeNull();
+    const underEcho = await writer(app).get('/api/v1/audit').query({ label: echo, limit: '50' }).expect(200);
+    expect((underEcho.body.items as { labelId: string }[]).map((i) => i.labelId)).toEqual([echo, echo, echo, echo]);
+    expect((await f.auditOf(owner.id, 50, zero)).map((i) => i.route)).toEqual([]);
+    expect((await f.auditOf(artist.id, 50, zero)).map((i) => i.route)).toEqual(['/settlements/operations']);
+    await writer(app).get('/api/v1/audit').query({ label: 'no-such-label' }).expect(404);
+  });
+
+  it('a sublabel id of a rule response is not recorded (D-169)', async () => {
+    const { f, app } = await setup();
+    const sub = await f.modules.labels.createLabel({ name: 'Sub Audit Synthetic', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
+    const artist = await f.modules.owners.createArtist({ pseudonym: 'Rule Recipient', ownerId: null });
+    const rule = await writer(app)
+      .post(`/api/v1/labels/${sub.id}/rules`)
+      .send({ percent: '20', recipientArtistId: artist.id, validFrom: '2026-01-01' })
+      .expect(201);
+    expect(rule.body.labelId).toBe(sub.id);
+    const [created] = await f.auditOf(rule.body.id as string);
+    expect(created).toMatchObject({ route: '/labels/:id/rules', labelId: null });
+    await writer(app).post(`/api/v1/labels/rules/${rule.body.id as string}/close`).send({ validTo: '2026-06-01' }).expect(200);
+    const [closed] = await f.recentActions(1);
+    expect(closed).toMatchObject({ route: '/labels/rules/:id/close', labelId: null });
+  });
+
+  it('a cleared document label is in the summary (D-169)', async () => {
+    const { f, app } = await setup();
+    const zero = f.testLabels['0to8'];
+    const doc = await writer(app)
+      .post('/api/v1/documents')
+      .send({ kind: 'other', title: 'Clear Synthetic', requiresApproval: false, labelId: zero })
+      .expect(201);
+    expect(doc.body.labelId).toBe(zero);
+    const cleared = await writer(app).patch(`/api/v1/documents/${doc.body.id as string}`).send({ labelId: null }).expect(200);
+    expect(cleared.body.labelId).toBeNull();
+    const [row, created] = await f.auditOf(doc.body.id as string);
+    expect(row).toMatchObject({ method: 'PATCH', route: '/documents/:id', labelId: null });
+    expect(row?.summary).toEqual({ params: { id: doc.body.id }, body: { labelId: null } });
+    expect(created).toMatchObject({ route: '/documents', labelId: zero, summary: { body: { labelId: zero } } });
   });
 
   it('keeps the free-text reason of a merge out of the summary (D-150)', async () => {

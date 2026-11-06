@@ -1341,6 +1341,54 @@ describe('G54 (D-169): the label of an advertising record is its payer', () => {
   });
 });
 
+describe('G56 (D-169): a payout under a label requires an approved contract with that label', () => {
+  it('a document without a label opens both labels; a contract of 0to8 does not open Echo8', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    const [zero, echo] = [f.testLabels['0to8'], f.testLabels.Echo8];
+    await c.person('A');
+    await c.track(I(1));
+    await c.track(I(2));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['A', '50']]);
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-03', [{ isrc: I(2), net: '60', label: 'Echo8' }], ACC2);
+    const owner = c.owners.get('A') as string;
+    const [contractDoc] = await f.modules.owners.listDocuments({ ownerId: owner, kind: 'contract' });
+    const gates = async () =>
+      Promise.all([undefined, zero, echo].map(async (l) => {
+        const b = await f.ownerBalance(owner, {}, l);
+        return [b.confirmed, b.payout.reason, b.total.payable.toFixed()];
+      }));
+    // the contract document without a label: any label
+    expect(contractDoc?.labelId).toBeNull();
+    expect(await gates()).toEqual([[true, null, '80'], [true, null, '50'], [true, null, '30']]);
+    // the contract of 0to8: Echo8 is closed with its own reason, the money is unchanged
+    await f.setDocumentLabel(contractDoc?.id as string, zero);
+    expect(await gates()).toEqual([[true, null, '80'], [true, null, '50'], [false, 'no_contract_for_label', '30']]);
+    expect((await f.ownerPayables({ label: echo })).items.find((x) => x.ownerId === owner)?.payout.reason).toBe('no_contract_for_label');
+    await expect(f.createPayout(owner, { labelId: echo })).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'no_contract_for_label',
+      details: { labelId: echo },
+    });
+    const basis = await approvedDoc(f, 'advance_basis', owner);
+    await expect(
+      f.createOperation({ direction: 'out', amount: '5', artistId: c.id('A'), date: '2026-03-01', scope: { kind: 'any' }, documentId: basis.id, comment: 'advance Echo8', labelId: echo }),
+    ).rejects.toMatchObject({ code: 'no_contract_for_label', details: { labelId: echo } });
+    // no contract at all stays owner_not_confirmed, under a label too
+    await f.modules.owners.attachFile(contractDoc?.id as string, 'dummy://again.pdf'); // re-attaching drops the approval
+    expect((await f.ownerBalance(owner, {}, echo)).payout.reason).toBe('owner_not_confirmed');
+    await expect(f.createPayout(owner, { labelId: echo })).rejects.toMatchObject({ code: 'owner_not_confirmed' });
+    await f.modules.owners.approveDocument(contractDoc?.id as string, 'manager');
+    const p = await f.createPayout(owner, { labelId: zero });
+    expect([p.amountCents, p.labelId]).toEqual([5000, zero]);
+    const total = await c.balance('A');
+    expect([total.total.earned, total.total.payable].map((x) => x.toFixed())).toEqual(['80', '80']); // deferred: not paid yet
+    await c.verify();
+  });
+});
+
 describe('signals of 10 §6 without a golden number (M29, D-130)', () => {
   it('tracksWithNote lists a noted track without changing an amount; participantsWithoutOwner carries the amount', async () => {
     let orphan = '';

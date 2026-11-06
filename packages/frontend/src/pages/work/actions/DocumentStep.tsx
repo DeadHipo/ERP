@@ -10,6 +10,7 @@ import { StatusChip, statusLabel } from '../../../components/StatusChip';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
+import { useLabel } from '../../../lib/label';
 import { useOperator } from '../../../lib/operator';
 import { fmt, ru } from '../../../i18n/ru';
 import { useApproveLines } from './approve-lines';
@@ -23,6 +24,8 @@ const a = ru.actions;
  * The document part of an action (17 §6): pick an approved document, or create one with its file reference
  * (`POST /documents`, the file is attached by the same call) and approve it (`POST /documents/:id/approve`, with the
  * confirmation). `onReady` gets the approved document; the final step of the action is enabled from then on.
+ * A new document carries the label of the switch (D-169: a contract opens the label of its document; under «Все» none =
+ * any label), or `labelId` when the action has its own label field (an operation).
  */
 export function DocumentStep(props: {
   /** The kinds the action accepts (the first is the default for a new document). */
@@ -34,8 +37,12 @@ export function DocumentStep(props: {
   onReady: (doc: ReadyDocument | null) => void;
   /** Hide "pick an existing one" (a contract of an owner is a new document). */
   newOnly?: boolean;
+  /** The own label of a new document; default the switch ('' = any label). */
+  labelId?: string;
 }) {
   const { operator } = useOperator();
+  const { labelId: switchLabel } = useLabel();
+  const labelId = props.labelId ?? switchLabel;
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [kind, setKind] = useState<Kind>(props.kinds[0] ?? 'appendix');
   const [title, setTitle] = useState(props.defaultTitle);
@@ -52,6 +59,7 @@ export function DocumentStep(props: {
         fileRef: fileRef.trim() || null,
         ownerId: props.ownerId ?? null,
         requiresApproval: true,
+        labelId: labelId || null,
       }),
     { invalidate: 'reference', success: (d) => fmt(a.toast.documentCreated, { title: d.title }) },
   );

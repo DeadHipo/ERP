@@ -1,6 +1,7 @@
 import type { AuditAction } from '@erp/shared/api-responses';
 import { formatDateTime } from '../lib/datetime';
 import { ru } from '../i18n/ru';
+import { useOwnLabels } from './LabelSwitch';
 
 const t = ru.audit;
 
@@ -8,11 +9,13 @@ const record = (v: unknown): Record<string, unknown> => (v && typeof v === 'obje
 const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
 
 /** The fields of the write (`summary.body`, D-140: amounts, dates, enums) as `name: value` lines; the ids of `params` are the row's entity. */
-function summaryLines(summary: Record<string, unknown>): string[] {
+function summaryLines(summary: Record<string, unknown>, labelName: (id: string) => string): string[] {
   const body = record(summary.body);
   const top = Object.entries(summary).filter(([k, v]) => k !== 'body' && k !== 'params' && scalar(v));
-  return [...Object.entries(body).filter(([, v]) => scalar(v)), ...top].map(
-    ([k, v]) => `${(Object.hasOwn(t.fields, k) ? t.fields[k] : undefined) ?? k}: ${String(v)}`,
+  // a label is shown by its name; a cleared one (`labelId: null`, D-169) as «любой»
+  const value = (k: string, v: unknown) => (k === 'labelId' ? (v === null ? t.anyLabel : labelName(String(v))) : String(v));
+  return [...Object.entries(body).filter(([k, v]) => scalar(v) || (k === 'labelId' && v === null)), ...top].map(
+    ([k, v]) => `${(Object.hasOwn(t.fields, k) ? t.fields[k] : undefined) ?? k}: ${value(k, v)}`,
   );
 }
 
@@ -24,16 +27,18 @@ export function routeLabel(method: string, route: string): string {
 
 /**
  * The history of an entity (`GET /audit?entityId=`) on P6 and P10: when (local `DD.MM.YYYY HH:mm`), who, what was done
- * (the Russian action; the API route template is the tooltip) and its fields. Rows `audit-<id>`, cells
- * `data-col="operator|route"`.
+ * (the Russian action; the API route template is the tooltip), under which own label (D-169: the name, `data-label-id`;
+ * «—» for a write without one) and its fields. Rows `audit-<id>`, cells `data-col="operator|route|label"`.
  */
 export function AuditTable(props: { items: readonly AuditAction[]; testId?: string }) {
+  const own = useOwnLabels();
+  const labelName = (id: string) => own.find((l) => l.id === id)?.name ?? id;
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-sm" data-testid={props.testId}>
         <thead className="bg-default/50 text-left text-xs text-muted">
           <tr>
-            {[t.cols.at, t.cols.operator, t.cols.action, t.cols.summary].map((h) => (
+            {[t.cols.at, t.cols.operator, t.cols.action, t.cols.label, t.cols.summary].map((h) => (
               <th key={h} className="px-3 py-2 font-medium">
                 {h}
               </th>
@@ -56,8 +61,11 @@ export function AuditTable(props: { items: readonly AuditAction[]; testId?: stri
                   {/* The template stays in the text for search and the specs, not on screen. */}
                   <span className="sr-only"> {template}</span>
                 </td>
+                <td className="whitespace-nowrap px-3 py-2" data-col="label" data-label-id={x.labelId ?? ''}>
+                  {x.labelId ? labelName(x.labelId) : t.noLabel}
+                </td>
                 <td className="px-3 py-2 text-xs">
-                  {summaryLines(x.summary).map((line) => (
+                  {summaryLines(x.summary, labelName).map((line) => (
                     <div key={line}>{line}</div>
                   ))}
                 </td>

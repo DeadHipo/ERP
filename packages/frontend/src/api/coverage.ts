@@ -55,8 +55,9 @@ export const OPERATION_COVERAGE: Record<
   'GET /releases': { page: 'P7', route: '/releases' },
   'GET /releases/:upc': { page: 'P8', route: '/releases/:upc' },
 
-  'GET /documents': { page: 'P13', route: '/documents', note: 'also the document titles of P21 assumptions and of the approve and recreate confirmations' },
-  'POST /documents': { page: 'P13', route: '/documents', note: 'action-create-document; also the document step of the queue actions' },
+  'GET /documents': { page: 'P13', route: '/documents', note: 'label= of the switch: the documents of the label and those without one, the «Лейбл» column document-label («любой» for none, D-169); also the document titles of P21 assumptions and of the approve and recreate confirmations' },
+  'POST /documents': { page: 'P13', route: '/documents', note: 'action-create-document with field-document-label (default the switch, «любой лейбл» = no labelId, D-169); also the document step of the queue actions, which sends the label of the switch (or of the operation)' },
+  'PATCH /documents/:id': { page: 'P14', route: '/documents/:id', note: 'action-set-document-label: field-document-label, an own label or «любой лейбл» (null), D-169' },
   'POST /documents/:id/attach': { page: 'P13', route: '/documents', note: 'action-attach' },
   'POST /documents/:id/approve': { page: 'P13', route: '/documents', note: 'action-approve; also the queue' },
   'GET /documents/:id/uses': { page: 'P14', route: '/documents/:id', note: 'also the approve and contract confirmations (OK waits for it)' },
@@ -111,7 +112,7 @@ export const OPERATION_COVERAGE: Record<
   'POST /ads/:id/deactivate': { page: 'P22', route: '/ads', note: 'action-ad-deactivate' },
   'GET /settlements/operations/:id/snapshot': { page: 'P20', route: '/operations', note: 'action-snapshot; also the balance tab of P10' },
 
-  'GET /audit': { page: 'P6', route: '/tracks/:isrc', note: 'history tab; also the history tab of P10' },
+  'GET /audit': { page: 'P6', route: '/tracks/:isrc', note: 'history tab; also the history tabs of P10, P12 and the P22 card; the «Лейбл» column (data-col="label", D-169); label= has no screen until stage 3, a card shows its whole history (D-168)' },
 };
 
 /** Pages with no operation of their own, with the reason (the guard test accepts exactly these as uncovered). */

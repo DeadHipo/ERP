@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { account, apiPost, expectOverview, labelOf, openAs, sc, settled, toastOk } from '../helpers';
+import { account, apiPost, choose, expectOverview, labelOf, openAs, sc, settled, toastOk } from '../helpers';
 
 // The payout (19 §4 S22: G27, G27b and the deferred flag): the gate of the balance, the Pay dialog, the operation
 // deferred until its proof, the proof, the deferred toggle on P20, the snapshot; the second press per 19 §5.
@@ -143,4 +143,52 @@ test('S22/2 G27b read-only: earned 0, recouped 0, remaining 10, payable 0; the b
   await expect(position.locator('[data-col="remaining"]').getByTestId('money')).toHaveAttribute('title', '10');
   await expect(gate(page, 'nothing_to_pay')).toBeVisible();
   await expect(page.getByTestId('action-pay')).toBeDisabled();
+});
+
+// S43 (G56, D-169): a contract opens the label of its document; a document without a label opens every label. Not
+// seeded: the case is built here by API on an owner of its own (a pseudonym, no income), so no seeded owner changes.
+test('S43 a 0to8 contract does not open Echo8 («нет договора с этим лейблом»); without a label it opens both', async ({ page, request }) => {
+  const owner = await apiPost(request, '/owners', { name: 'Owner S43 e2e', kind: 'person', force: true });
+  const ownerId = (owner.body as { id: string }).id;
+  const artist = await apiPost(request, '/artists', { pseudonym: 'P-431', ownerId, force: true });
+  const doc = await apiPost(request, '/documents', {
+    kind: 'contract',
+    title: 'Contract S43 0to8',
+    fileRef: 'dummy://s43-contract.pdf',
+    ownerId,
+    requiresApproval: true,
+    labelId: labelOf('0to8'),
+  });
+  const docId = (doc.body as { id: string }).id;
+  const approved = await apiPost(request, `/documents/${docId}/approve`, { by: 'e2e-operator' });
+  const contract = await apiPost(request, '/contracts', { ownerId, documentId: docId, artistIds: [(artist.body as { id: string }).id] });
+  expect([owner.status, artist.status, doc.status, approved.status, contract.status]).toEqual([201, 201, 201, 200, 201]);
+  const openUnder = async (label: '0to8' | 'Echo8') => {
+    await openAs(page, `/owners/${ownerId}?tab=balance&label=${labelOf(label)}`);
+    await settled(page);
+  };
+  // under Echo8: refused, with the caption of the gate; the API says the same
+  await openUnder('Echo8');
+  await expect(gate(page, 'no_contract_for_label')).toBeVisible();
+  await expect(page.getByTestId('payout-gate')).toContainText('нет договора с этим лейблом');
+  await expect(page.getByTestId('action-pay')).toBeDisabled();
+  const refused = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
+  expect([refused.status, refused.code]).toEqual([422, 'no_contract_for_label']);
+  // under 0to8 the contract opens the owner: only nothing to pay is left
+  await openUnder('0to8');
+  await expect(gate(page, 'nothing_to_pay')).toBeVisible();
+  // the document loses its label on P14: it opens both labels
+  await openAs(page, `/documents/${docId}`);
+  await settled(page);
+  await page.getByTestId('action-set-document-label').click();
+  await choose(page, 'document-label', 'любой лейбл');
+  await page.getByTestId('action-set-document-label-submit').click();
+  await toastOk(page, 'Лейбл документа Contract S43 0to8: любой');
+  await openUnder('Echo8');
+  await expect(gate(page, 'nothing_to_pay')).toBeVisible();
+  await expect(page.getByTestId('payout-gate')).not.toContainText('нет договора с этим лейблом');
+  await openUnder('0to8');
+  await expect(gate(page, 'nothing_to_pay')).toBeVisible();
+  const echo = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
+  expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
 });

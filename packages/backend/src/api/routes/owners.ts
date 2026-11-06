@@ -104,10 +104,13 @@ export function ownersRouter(facade: Facade) {
   r.get('/tracks/:isrc/explain', async (req, res) => res.json(await facade.explainTrack(param(req, 'isrc'))));
 
   r.get('/documents', async (req, res) =>
-    res.json(await owners.listDocuments(parse(S.documentsQuery, req.query))),
+    res.json(await facade.listDocuments(parse(S.documentsQuery, req.query))),
   );
   r.post('/documents', async (req, res) =>
-    res.status(201).json(await owners.createDocument(parse(S.createDocumentBody, req.body))),
+    res.status(201).json(await facade.createDocument(parse(S.createDocumentBody, req.body))),
+  );
+  r.patch('/documents/:id', async (req, res) =>
+    res.json(await facade.setDocumentLabel(param(req, 'id'), parse(S.setDocumentLabelBody, req.body).labelId)),
   );
   r.post('/documents/:id/attach', async (req, res) =>
     res.json(await owners.attachFile(param(req, 'id'), parse(S.attachFileBody, req.body).fileRef)),

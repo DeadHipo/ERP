@@ -77,6 +77,7 @@ sublabel) → categorise.
 | G51 | row A 50 on I(1); unit 100 with the label string `Echo8` in the file of the 0to8 account (R6: the book is the label of the file) | A 50; the reconciliation row of the 0to8 account has the one book 0to8 (A 100, B 50, ours 50); `ourShareByLabel.Echo8` 50 (the string); the unit: book 0to8, label of record Echo8; the signal `labelOutsideAccount` 1 (100); A's balance has the book 0to8 only, under Echo8 earned 0 | 50 | 0 | 50 | D-169 |
 | G52 | row A 50 on I(1); an advance 100 under 0to8 of 2026-03 (scope `any`, with proof); I(1) earns 120 in the 0to8 account in 2026-03 and 80 in the Echo8 account in 2026-04 (the ISRC moved); variant «the same month»: both in 2026-03 | 0to8 earned 60, recouped 60 (the advance takes the 0to8 income alone), remaining 40, payable 0; Echo8 earned 40, recouped 0, payable 40; total earned 100, recouped 60, payable 40; the same numbers in the variant (the income item of an ISRC-month carries its book) | 100 | 0 | 100 | D-169 |
 | G54 | row A 50 on I(1); unit 100 with the string `Echo8` in the file of the Echo8 account (2026-03); an ad 10 of 2026-03 on I(1), recovery 100 %, paid by 0to8 | books: 0to8 earned 0, adsCharged 10, payable −10; Echo8 earned 50, adsCharged 0, payable 50; total payable 40; `adOutsideBook` 1 (payer 0to8, book Echo8); `createAds` without `labelId` → `label_required` | 50 | 0 | 50 | D-169 |
+| G56 | rows A 50 on I(1) (unit 100 in the 0to8 account) and on I(2) (unit 60 in the Echo8 account), 2026-03; A's contract document first without a label, then marked 0to8 | without a label: confirmed and payable under both (0to8 50, Echo8 30, total 80); marked 0to8: under Echo8 `confirmed` false, `payout.reason` `no_contract_for_label`, the button and an Echo8 advance refused 422 `no_contract_for_label`; under 0to8 and in total unchanged; no approved contract at all stays `owner_not_confirmed`; the payout under 0to8 pays 50.00 | 80 | 0 | 80 | D-169 |
 
 ## Publishing cases
 
@@ -161,3 +162,7 @@ sublabel) → categorise.
   row), recovered 100 % = 10, charged to the book of the payer 0to8 (payable_0to8 = 0 − 10 = −10), while the income
   50 sits in the Echo8 book of its file (payable_Echo8 = 50); total 50 − 10 = 40. The record is the one `adOutsideBook`
   row: its payer is not the income book of I(1) in 2026-03. A record without a label is refused (`label_required`).
+- G56 (D-169, R10): a contract opens the label of its document; a document without a label opens every label. The
+  books do not move (0to8 100 × 50 % = 50, Echo8 60 × 50 % = 30, total 80): only the gate under Echo8 changes, to
+  `no_contract_for_label` (an approved contract exists, none with Echo8); with no approved contract at all the reason
+  stays `owner_not_confirmed`, under a label too.

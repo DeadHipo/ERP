@@ -53,6 +53,47 @@ describe('module 1: owners, artists, tracks, documents (README 5)', () => {
     expect((await o.getArtist(artist.id)).status).toBe('confirmed');
   });
 
+  it('D-169: listDocuments({ labelId }) gives the documents of the label and those without a label', async () => {
+    const f = await newFacade();
+    const o = f.modules.owners;
+    const [zero, echo] = [f.testLabels['0to8'], f.testLabels.Echo8];
+    const any = await o.createDocument({ kind: 'other', title: 'Any Synthetic', requiresApproval: false });
+    const ofZero = await o.createDocument({ kind: 'other', title: 'Zero Synthetic', requiresApproval: false, labelId: zero });
+    const ofEcho = await o.createDocument({ kind: 'other', title: 'Echo Synthetic', requiresApproval: false, labelId: echo });
+    expect([any.labelId, ofZero.labelId, ofEcho.labelId]).toEqual([null, zero, echo]);
+    const ids = async (labelId?: string) => (await o.listDocuments(labelId ? { labelId } : {})).map((d) => d.id).sort();
+    expect(await ids(zero)).toEqual([any.id, ofZero.id].sort());
+    expect(await ids(echo)).toEqual([any.id, ofEcho.id].sort());
+    expect(await ids()).toEqual([any.id, ofZero.id, ofEcho.id].sort());
+    // only the label changes; null = any label again
+    const moved = await o.setDocumentLabel(ofZero.id, null);
+    expect({ ...moved, labelId: zero }).toEqual(ofZero);
+    expect(await ids(echo)).toEqual([any.id, ofZero.id, ofEcho.id].sort());
+    await expect(o.setDocumentLabel('no-such-document', null)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('D-169: isOwnerConfirmedUnder needs an approved contract whose document has the label or none', async () => {
+    const f = await newFacade();
+    const o = f.modules.owners;
+    const [zero, echo] = [f.testLabels['0to8'], f.testLabels.Echo8];
+    const owner = await o.createOwner({ name: 'Under Synthetic', kind: 'person' });
+    const contract = async (labelId: string | null, approve: boolean) => {
+      const doc = await o.createDocument({ kind: 'contract', title: 'Dummy', fileRef: 'dummy://x', requiresApproval: true, ownerId: owner.id, labelId });
+      await o.createContract({ ownerId: owner.id, documentId: doc.id, artistIds: [] });
+      if (approve) await o.approveDocument(doc.id, 'manager');
+      return doc;
+    };
+    const under = async () => [await o.isOwnerConfirmed(owner.id), await o.isOwnerConfirmedUnder(owner.id, zero), await o.isOwnerConfirmedUnder(owner.id, echo)];
+    await contract(echo, false); // not approved: opens nothing
+    expect(await under()).toEqual([false, false, false]);
+    const ofZero = await contract(zero, true);
+    expect(await under()).toEqual([true, true, false]);
+    expect(await o.confirmedContracts()).toEqual([{ ownerId: owner.id, labelId: zero }]);
+    await o.setDocumentLabel(ofZero.id, null); // without a label: every label
+    expect(await under()).toEqual([true, true, true]);
+    expect(await o.confirmedContracts()).toEqual([{ ownerId: owner.id, labelId: null }]);
+  });
+
   it('an artist belongs to exactly one owner; the same pseudonym under two owners is two records', async () => {
     const f = await newFacade();
     const o = f.modules.owners;

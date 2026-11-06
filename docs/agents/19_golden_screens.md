@@ -392,6 +392,17 @@ payer Echo8 shows `ad-label` Echo8 and `ad-income-book` 0to8 and is the one `sig
 balance numbers of S31/3 are those under «Все» (the sum of the books). `adsWithoutLabel` and `adOutsideBook` are 0 in
 `21-signals`; `33-artist` posts its record with the payer 0to8.
 
+**S43 (G56, D-169): not seeded, built in `26-payout` by API** on an owner of its own (`Owner S43 e2e`, pseudonym
+`P-431`, no income, so no seeded owner changes): a contract whose document has the label 0to8. P10 under Echo8:
+`payout-gate` `gate-no_contract_for_label` «нет договора с этим лейблом», `action-pay` disabled, `POST
+/owners/:id/payouts` with Echo8 → 422 `no_contract_for_label`; under 0to8 `gate-nothing_to_pay`. P14
+`action-set-document-label` → «любой лейбл» (`PATCH /documents/:id { labelId: null }`): under Echo8 and 0to8
+`gate-nothing_to_pay` (the document without a label opens both). The documents part is in `14-documents` (`Label spec
+doc A/B/C`): created under 0to8 (`field-document-label` defaults to the switch, the `document-label` cell 0to8), set to
+«любой» and then Echo8 on P14 (`document-label` of the header); under 0to8 the list shows B (0to8) and C (no label,
+«любой»), under Echo8 A and C, under «Все» all three. `32-ads` asserts the audit column (`ad-audit` `[data-col="label"]`:
+`POST /ads` 0to8, `PATCH /ads/:id` Echo8).
+
 **S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
 `validFrom` 2026-03-01; toast "начало округлено до 2026-03-01" (dates compared, no money). P6 A 50, ours 50 → A 50, P
 7.5, ours 42.5; P1 2728100 B 50 → 57.5.
@@ -478,7 +489,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166) | reads |
 | 12 | `12-track.spec.ts` | S01–S11 on P6 (the book of S06/2 and S10/2, D-169), G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
 | 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
-| 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before** | reads (creates `Ref spec doc`) |
+| 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169) | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |
 | 15 | `15-publishing.spec.ts` | P18, S18 terms, S19 holder **before** (ambiguous) | reads (adds W1 terms `Print`) |
 | 20 | `20-queue.spec.ts` | S12–S19, S32 before and after (P1, the owner's balance, the P21 rows); S20 before; S08 read-only | acts |
 | 21 | `21-signals.spec.ts` | S20 action, S21, S35, the P21 rows of S03/8, S08, S30; the 16 lists, `filesWithoutLabel`, `adsWithoutLabel`, `adOutsideBook` 0 | acts |
@@ -486,13 +497,13 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 23 | `23-duplicate-dialog.spec.ts` | S36 owners and artists | acts |
 | 24 | `24-owner.spec.ts` | S23, S24, S36 contract, P9 / P10 tabs | reads, S24/3 by API |
 | 25 | `25-merge.spec.ts` | S33 | acts |
-| 26 | `26-payout.spec.ts` | S22 | acts |
+| 26 | `26-payout.spec.ts` | S22; S43 (a 0to8 contract does not open Echo8, built by API on its own owner) | acts |
 | 27 | `27-operations.spec.ts` | S31 | acts |
 | 28 | `28-rules.spec.ts` | S25–S29, S13 **after**, S21 (read) | acts |
 | 29 | `29-labels.spec.ts` | S37 (and P17) | acts |
 | 30 | `30-sources.spec.ts` | S34 | acts |
 | 31 | `31-questions.spec.ts` | the 14 open items | reads |
-| 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`); D-169: payer 0to8, «Все» closed, `label_required`, payer Echo8 → `adOutsideBook` row → set back from P21 | acts |
+| 32 | `32-ads.spec.ts` | S31/3 advertising (P22, P6 tab, P10 `balance-adsCharged`); D-169: payer 0to8, «Все» closed, `label_required`, payer Echo8 → `adOutsideBook` row → set back from P21; the audit «Лейбл» column | acts |
 | 33 | `33-artist.spec.ts` | S24/1 and S23 on P12 (reads), S24/2 **after** (an expense of 10 on its ISRC by API) | acts |
 | 34 | `34-artists.spec.ts` | S24/1 and S23 on P11 (the list, the search, the links to P12 and P10, the money of the visible rows, «Посчитать все») | reads |
 | 35 | `35-label-switch.spec.ts` | S38 (D-168, D-169): the two P1 rows with their books, `filesWithoutLabel` empty, the label switch, the books on P10, the view under a label, the payout under 0to8, the operation without a label on P21 (set to 0to8), P9 / P11 / P5 under Echo8, the link with `?label=` | acts |

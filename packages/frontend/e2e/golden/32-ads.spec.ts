@@ -89,6 +89,11 @@ test('the track tab lists both; the card shows who bears it; percent 0 and payer
   await expect(page.getByTestId('ad-label')).toContainText('Echo8');
   await expect(page.getByTestId('ad-income-book')).toContainText('0to8');
   await expect(page.getByTestId('ad-audit')).toContainText('e2e-operator');
+  // the history records the label of each write (D-169): the payer of the creation, the new payer of the change
+  const auditLabel = (route: string) =>
+    page.getByTestId('ad-audit').locator('tr', { has: page.locator(`[data-route="${route}"]`) }).locator('[data-col="label"]');
+  await expect(auditLabel('POST /ads')).toHaveText('0to8');
+  await expect(auditLabel('PATCH /ads/:id')).toHaveText('Echo8');
 
   // P21: the record paid by Echo8 on an ISRC whose income is in the 0to8 book; the row's action sets the payer back
   await openAs(page, '/signals/adOutsideBook');

@@ -197,8 +197,11 @@ export function createFacadeContext(
         })),
       (r) => `${r.operations.length} operations`,
     );
-    const balance = timedSync('ownerBalance (JS)', () => ownerBalance(calc, id, operations, f, {}, view));
-    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf(balance) } };
+    // `confirmedAny` is the gate's input only, never in the answer (D-169)
+    const { confirmedAny, ...balance } = timedSync('ownerBalance (JS)', () =>
+      ownerBalance(calc, id, operations, f, {}, view),
+    );
+    return { files: calc.believeFiles, balance: { owner, ...balance, payout: gateOf({ ...balance, confirmedAny }) } };
   }
 
   /**
@@ -230,9 +233,12 @@ export function createFacadeContext(
   }
 
   /** The payout gate of a balance (N19): the very decision the payout button takes. */
-  function gateOf(b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'blockingPayouts' | 'total'>) {
+  function gateOf(
+    b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'confirmedAny' | 'blockingPayouts' | 'total'>,
+  ) {
     return payoutGate({
       confirmed: b.confirmed,
+      confirmedAny: b.confirmedAny,
       blocking: b.blockingPayouts,
       payableCents: floorToCents(b.total.payable),
       thresholdCents: config.payoutThresholdCents,

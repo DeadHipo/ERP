@@ -42,7 +42,8 @@ try {
   const differing: string[] = [];
   for (const [n, o] of list.entries()) {
     const ops = await settlements.listOperations({ ownerId: o.id });
-    const a = text(ownerBalance(full, o.id, ops, {}));
+    const fullBalance = ownerBalance(full, o.id, ops, {});
+    const a = text(fullBalance);
     const t1 = performance.now();
     const reach = await ownerReach(modules, o.id);
     const calc = await calculate(scoped(modules, { isrcs: reach.isrcs }), docIds);
@@ -54,7 +55,8 @@ try {
     // the facade path, for the first owners: the public method (by reach) gives the balance of the full calculation
     if (n < 5) {
       const viaApi = text((({ owner: _o, payout: _p, ...rest }) => rest)(await f.ownerBalance(o.id)));
-      if (viaApi !== a) differing.push(`${o.id}: ownerBalance (facade, by reach) differs from the full balance`);
+      // the answer has no `confirmedAny` (the gate's input only, D-169)
+      if (viaApi !== text((({ confirmedAny: _c, ...rest }) => rest)(fullBalance))) differing.push(`${o.id}: ownerBalance (facade, by reach) differs from the full balance`);
     }
     if ((n + 1) % 25 === 0 || n + 1 === list.length)
       console.log(`${n + 1}/${list.length}: equal ${equal}, differing ${differing.length}; by reach ${(reachMs / (n + 1) / 1000).toFixed(2)} s per owner`);

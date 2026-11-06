@@ -36,7 +36,52 @@ const SUMMARY_FIELDS = [
   'direction',
   'recoveryPercent',
   'scope',
+  'labelId',
 ];
+/** Summary fields kept even when null: clearing them is the write (`PATCH /documents/:id { labelId: null }`, D-169). */
+const NULLABLE_SUMMARY_FIELDS = new Set(['labelId']);
+
+/**
+ * The writes whose own label is only in the response (D-169, R11): the operation, record or document they act on
+ * carries it. An explicit list: a rule's response (`POST /labels/:id/rules`, `/labels/rules/:id/close`) also has a
+ * `labelId`, but it is a sublabel, never recorded.
+ */
+export const RESPONSE_LABEL_ROUTES = new Set([
+  'PATCH /settlements/operations/:id',
+  'POST /settlements/operations/:id/proof',
+  'POST /settlements/operations/:id/deferred',
+  'POST /settlements/operations/:id/deactivate',
+  'POST /settlements/operations/:id/return',
+  'PATCH /ads/:id',
+  'POST /ads/:id/deactivate',
+  'PATCH /documents/:id',
+  'POST /documents/:id/attach',
+  'POST /documents/:id/approve',
+]);
+
+const nonEmpty = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+
+/**
+ * The own label of a write (D-169), in this order: `?label=` → `body.labelId` → the one distinct `labelId` of
+ * `body.items[]` (`POST /ads`) → the `labelId` of the response for `RESPONSE_LABEL_ROUTES` → null.
+ */
+export function labelOfWrite(
+  routeKey: string,
+  query: Record<string, unknown>,
+  body: Record<string, unknown>,
+  response: unknown,
+): string | null {
+  const fromQuery = nonEmpty(query.label);
+  if (fromQuery) return fromQuery;
+  const fromBody = nonEmpty(body.labelId);
+  if (fromBody) return fromBody;
+  if (Array.isArray(body.items)) {
+    const ids = new Set(body.items.map((i) => nonEmpty(asRecord(i).labelId)).filter((x): x is string => !!x));
+    if (ids.size === 1) return [...ids][0] as string;
+  }
+  if (RESPONSE_LABEL_ROUTES.has(routeKey)) return nonEmpty(asRecord(response).labelId) ?? null;
+  return null;
+}
 
 const asRecord = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -70,6 +115,7 @@ function summaryOf(params: Record<string, unknown>, body: Record<string, unknown
   for (const f of SUMMARY_FIELDS) {
     const v = body[f];
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') picked[f] = v;
+    else if (v === null && NULLABLE_SUMMARY_FIELDS.has(f)) picked[f] = null;
   }
   return { params, body: picked };
 }
@@ -104,14 +150,16 @@ export function operatorTrace(facade: Facade): RequestHandler {
       if (res.statusCode < 200 || res.statusCode >= 300 || !req.route) return original(body);
       const params = Object.fromEntries(Object.entries(req.params).map(([k, v]) => [k, String(v)]));
       const reqBody = asRecord(req.body);
+      const route = String((req.route as { path: unknown }).path);
       void (async () => {
         try {
           await facade.recordAction({
             operator,
             method: req.method,
-            route: String((req.route as { path: unknown }).path),
+            route,
             entityIds: [...new Set([...entityIdsOf(params, reqBody), ...createdIdsOf(body)])],
             summary: summaryOf(params, reqBody),
+            labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
           });
           original(body);
         } catch (e) {
