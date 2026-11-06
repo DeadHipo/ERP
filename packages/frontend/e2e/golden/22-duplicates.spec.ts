@@ -57,7 +57,7 @@ test('S30 assign the owner to the second artist: the group shows it, the candida
 
 test('S30 create the split DUP-301 50 % from the candidate: the candidate goes, P6 shows 50 B, P1 100 / 50 / 0 / 50', async ({ page }) => {
   const i = isrc(30, 1, 1);
-  await expectOverview(page, [[account(30, 1), '2026-03', '100 / 0 / 0 / 100']]);
+  await expectOverview(page, [[account(30, 1), '2026-03', '100 / 0 / 100 / 0']]); // D-175: no split → C no_split
   await openAs(page, '/artists/duplicates');
   const candidate = page.getByTestId(`candidate-${i}`);
   await candidate.getByTestId('action-create-split').click();

@@ -143,7 +143,7 @@ test('S13 assumption on a row → replace by a document from 2026-03 (the 05 gro
   expect((await apiPost(request, '/splits/change', body)).status).toBe(201);
 });
 
-test('S08 Q11 and R1 groups are read-only with the decision', async ({ page }) => {
+test('S08 Q11 groups are read-only with the decision; the ISRC without a split is a no_split group (D-175)', async ({ page }) => {
   await openReason(page, 'assumption');
   const q11 = group(page, 'labelRule', sc(8, 1).labelRules['NoGhost Records 08a'] ?? '');
   await expect(q11.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '19.125');
@@ -151,9 +151,10 @@ test('S08 Q11 and R1 groups are read-only with the decision', async ({ page }) =
   await expect(q11.getByTestId('action-replace-assumption')).toHaveCount(0);
   const p = group(page, 'participation', sc(8, 1).participations.P ?? '');
   await expect(p.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '4.25');
-  const r1 = group(page, 'labelRule', sc(8, 4).labelRules['NoGhost Records 08d'] ?? '');
-  await expect(r1.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
-  await expect(r1.getByTestId('read-only')).toContainText('⚠ R1');
+  // D-175: the label rule of S08/4 carves nothing on the ISRC without a split; its whole label share waits in C no_split
+  await expect(group(page, 'labelRule', sc(8, 4).labelRules['NoGhost Records 08d'] ?? '')).toHaveCount(0);
+  await openReason(page, 'no_split');
+  await expectAmount(page, 'pair', `${isrc(8, 4, 1)}|${upc(8, 4, 1)}`, '100');
 });
 
 test('S32 rule_unconfirmed → approve the rule document', async ({ page, request }) => {

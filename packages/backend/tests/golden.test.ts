@@ -466,9 +466,10 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       'NoGhost Records',
     );
     const a = await c.amounts(I(1));
-    expect(a.amounts).toEqual({ NG: '50' });
-    expect(a.reasons.NG).toBe('assumption');
-    expect(await c.row()).toMatchObject({ B: '0', C: '50', ours: '50', noSplit: '50' });
+    // D-175: the whole label share of a unit without a split waits in C `no_split`; the sublabel carve does not run
+    // (before: NG 50 C assumption by R1, ours 50)
+    expect(a.amounts).toEqual({});
+    expect(await c.row()).toMatchObject({ B: '0', C: '100', ours: '0', noSplit: '100', breakdown: { no_split: '100' } });
     await c.verify();
   });
 

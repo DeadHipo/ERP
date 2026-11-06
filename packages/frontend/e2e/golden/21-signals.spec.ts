@@ -63,11 +63,8 @@ test('rows of other scenarios: unfunded S03/8, isrcsWithoutSplit S08/4 and S30, 
   await expect(money(page, 'assumptions', `${s081.documents.appendix}|q11`, 'amount')).toHaveAttribute('title', '4.25');
   await expect(money(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`, 'amount')).toHaveAttribute('title', '19.125');
   await expect(row(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`).getByTestId('read-only')).toContainText('⚠ Q11');
-  // S08/4: the label rule without a split, basis r1, 50 (the only r1 row of the seed)
-  const r1 = page.locator('[data-testid^="signal-row-assumptions-"][data-testid$="|r1"]');
-  await expect(r1).toHaveCount(1);
-  await expect(r1.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
-  await expect(r1.getByTestId('read-only')).toContainText('⚠ R1');
+  // S08/4 (D-175): the label rule on the ISRC without a split carves nothing: no r1 row any more
+  await expect(page.locator('[data-testid^="signal-row-assumptions-"][data-testid$="|r1"]')).toHaveCount(0);
 });
 
 test('S20 unallocated: the pair with ISRC → register the track; the pair without ISRC stays read-only', async ({ page, request }) => {
@@ -86,7 +83,7 @@ test('S20 unallocated: the pair with ISRC → register the track; the pair witho
   await expect(row(page, 'unallocated', key)).toHaveCount(0);
   await openList(page, 'isrcsWithoutSplit');
   await expect(money(page, 'isrcsWithoutSplit', i, 'net')).toHaveAttribute('title', '7');
-  await p1(page, account(20, 1), '9 / 0 / 2 / 7');
+  await p1(page, account(20, 1), '9 / 0 / 9 / 0'); // D-175: the no-split share waits in C
   await expect(page.getByTestId(`overview-row-believe-${account(20, 1)}-${M}`).locator('[data-col="noSplit"]').getByTestId('money')).toHaveAttribute('title', '7');
   // the queue group is gone too
   await openAs(page, '/queue/unknown_pair');

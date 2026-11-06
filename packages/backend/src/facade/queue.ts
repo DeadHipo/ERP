@@ -153,6 +153,7 @@ function keyOf(
       return { kind: 'labelString', id: u?.labelName ?? '', label: u?.labelName ?? '' };
     case 'unknown_pair':
     case 'no_isrc':
+    case 'no_split':
       return {
         kind: 'pair',
         id: `${u?.isrc ?? ''}|${u?.upc ?? ''}`,

@@ -42,7 +42,7 @@ const ROWS: [number, number, number, string, string][] = [
   [8, 1, 0, M, '100 / 57.5 / 23.375 / 19.125'],
   [8, 2, 0, M, '100 / 57.5 / 23.375 / 19.125'],
   [8, 3, 0, M, '100 / 50 / 25 / 25'],
-  [8, 4, 0, M, '100 / 0 / 50 / 50'],
+  [8, 4, 0, M, '100 / 0 / 100 / 0'], // D-175: the no-split share waits in C
   [9, 1, 0, M, '100 / 49.8 / 0 / 50.2'],
   [9, 2, 0, M, '100 / 10 / 0 / 90'],
   [10, 1, 0, M, '100 / 50 / 0 / 50'],
@@ -73,9 +73,9 @@ test('P1 rows of S01–S11: A / B / C / ours exact, discrepancy 0', async ({ pag
   for (const [nn, k, a, month, abco] of ROWS) await expectP1(page, account(nn, k, a), month, abco);
   for (const [nn, k, a, label, amount] of BY_LABEL)
     await expect(overviewRow(page, 'believe', account(nn, k, a), M).getByTestId(`by-label-${label}`).getByTestId('money')).toHaveAttribute('title', amount);
-  // S08: the C breakdown by reason; S08/4: the no-split part of ours
+  // S08: the C breakdown by reason; S08/4: the no-split part (C `no_split` since D-175)
   await expect(overviewRow(page, 'believe', account(8, 1), M).getByTestId('c-reason-assumption').getByTestId('money')).toHaveAttribute('title', '23.375');
-  await expect(overviewRow(page, 'believe', account(8, 4), M).locator('[data-col="noSplit"]').getByTestId('money')).toHaveAttribute('title', '50');
+  await expect(overviewRow(page, 'believe', account(8, 4), M).locator('[data-col="noSplit"]').getByTestId('money')).toHaveAttribute('title', '100');
   // no totals row: the page shows rows only
   await expect(page.getByTestId('overview-table').locator('tfoot')).toHaveCount(0);
   expect(errors).toEqual([]);

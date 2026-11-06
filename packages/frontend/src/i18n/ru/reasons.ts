@@ -8,6 +8,7 @@ export const reasons = {
   artist_without_owner: 'у псевдонима нет владельца',
   owner_unconfirmed: 'владелец не подтверждён',
   label_unmapped: 'строка лейбла Believe не сопоставлена лейблу',
+  no_split: 'ISRC без сплита: доля лейбла не распределена',
   unknown_pair: 'пара ISRC/UPC не в каталоге',
   no_isrc: 'строка без ISRC',
   publishing_terms_unconfirmed: 'условия паблишинга без утверждённого документа',

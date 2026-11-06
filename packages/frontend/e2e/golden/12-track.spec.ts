@@ -75,7 +75,7 @@ const CASES: [string, number, number, Alloc[], string][] = [
   ['G15', 7, 1, [['R-071', '-15', 'B'], ['A-071', '-21.25', 'B'], ['B-071', '-21.25', 'B'], ['NG', '-21.25', 'B']], '-21.25'],
   ['G16', 7, 2, [['R-072', '0', 'B'], ['A-072', '0', 'B'], ['B-072', '0', 'B'], ['NG', '0', 'B']], '0'],
   ['G20', 8, 3, [['A-083', '50', 'B'], ['QQ', '25', 'C', 'assumption']], '25'],
-  ['G21', 8, 4, [['NG-084', '50', 'C', 'assumption']], '50'],
+  ['G21', 8, 4, [], '0'], // D-175: no split → no allocations, the label share waits in C no_split
   ['G34', 9, 1, [['A-091', '12.266666666666', 'B'], ['B-091', '12.266666666667', 'B'], ['C-091', '12.266666666667', 'B'], ['M-091', '13', 'B']], '50.2'],
 ];
 
@@ -326,11 +326,11 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await expect(bare.getByTestId('artist-unregistered')).toHaveAttribute('title', /Нет в реестре/);
   await expect(bare.getByRole('link')).toHaveCount(0);
   // the new visible row gets its money by a second call of its own ISRC; the full calculation is one click away
-  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '50');
+  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '0'); // D-175: no split → C
   await page.getByTestId('action-compute-all').click();
   await settled(page);
   await expect(page.getByTestId('tracks-all-money')).toBeVisible();
-  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '50');
+  await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '0'); // D-175: no split → C
   await page.getByTestId('action-visible-only').click();
   await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
   await page.getByTestId(`track-${isrc(8, 4, 1)}`).getByRole('link', { name: isrc(8, 4, 1) }).click();

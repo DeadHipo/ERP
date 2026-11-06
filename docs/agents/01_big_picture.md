@@ -27,7 +27,7 @@ A payout freezes a snapshot of that calculation.
                        label of record, the sublabel rule and ours / label_unmapped)
    2 perimeter        no ISRC ─► C no_isrc; pair not in tracks ─► C unknown_pair (nothing else runs)
    3 off the top      participations (net, top): remixer etc.; scaledNet = net − Σ top
-   4 split            artist rows × scaledNet; label share = scaledNet − Σ rows (no split: all label share)
+   4 split            artist rows × scaledNet; label share = scaledNet − Σ rows (no split: all label share, waiting in C `no_split`, D-175)
    5 carves           pool ─► artist share ─► label share ─► sublabel (a fixed order, one base per kind);
                       a carve larger than its bucket takes the bucket, the rest is a signal (unfunded)
    6 categorise       per allocation, first reason wins: assumption ─► split_unconfirmed / rule_unconfirmed

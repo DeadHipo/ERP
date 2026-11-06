@@ -93,14 +93,14 @@ describe('facade: completeness check A = B + C + our share (09, principle 11)', 
     expect((await f.signals()).unallocated.total.toFixed()).toBe('9');
   });
 
-  it('ISRC without split on the report date stays with us and is shown separately', async () => {
+  it('ISRC without split on the report date waits in C no_split (D-175) and is shown separately', async () => {
     const f = await newFacade();
     await f.modules.owners.createTrack({ title: 't', isrc: I1, upc: UPC });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '10' }]), f.testLabels['0to8']);
     const [r] = await f.reconciliation();
-    expect(r?.ourShareNoSplit.toFixed()).toBe('10');
-    expect(r?.ourShare.toFixed()).toBe('10');
+    expect([r?.ourShareNoSplit.toFixed(), r?.ourShare.toFixed(), r?.C_waiting.toFixed(), r?.C_breakdown.no_split?.toFixed(), r?.discrepancy.toFixed()]).toEqual(['10', '0', '10', '10', '0']);
     expect((await f.signals()).isrcsWithoutSplit[0]?.isrc).toBe(I1);
+    expect((await f.queue('no_split')).groups.map((g) => [g.key.kind, g.amount.toFixed()])).toEqual([['pair', '10']]);
   });
 
   it('the artist-track link and report names never decide who gets paid: only the split does', async () => {

@@ -460,10 +460,11 @@ export function reconcile(calc: Calculation, f: PeriodFilter = {}): Reconciliati
       b.ourShare = b.ourShare.add(u.labelShare);
       const label = u.ourLabelName ?? '?';
       r.ourShareByLabel[label] = (r.ourShareByLabel[label] ?? ZERO).add(u.labelShare);
-      if (u.status === 'no_split') {
-        r.ourShareNoSplit = r.ourShareNoSplit.add(u.labelShare);
-        b.ourShareNoSplit = b.ourShareNoSplit.add(u.labelShare);
-      }
+    }
+    // the label share of a unit without a split: C `no_split` since D-175 (the column stays as the no-split part)
+    if (u.labelShareCategory === 'no_split') {
+      r.ourShareNoSplit = r.ourShareNoSplit.add(u.labelShare);
+      b.ourShareNoSplit = b.ourShareNoSplit.add(u.labelShare);
     }
   }
   for (const p of calc.publishing) {

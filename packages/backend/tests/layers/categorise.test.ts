@@ -73,17 +73,10 @@ describe('layer 6: categorise (D-057, Q11, Q12, R1)', () => {
       'Echo8',
     ]);
   });
-  it('G21 (R1): a sublabel on a unit without split is an assumption', () => {
+  it('G21 (D-175): on a unit without a split the whole label share waits in C no_split; no sublabel carve (R1 is unreachable)', () => {
     const o = run({}, unit('100', { labelName: 'NoGhost Records' }));
-    expect([o.amount('NG'), o.reason('NG'), o.B, o.C, o.ours, o.state.status]).toEqual([
-      '50',
-      'assumption',
-      '0',
-      '50',
-      '50',
-      'no_split',
-    ]);
-    expect(o.state.rows[0]?.assumption).toBe('r1');
+    expect([o.amount('NG'), o.B, o.C, o.ours, o.state.status, o.state.labelShareCategory]).toEqual([undefined, '0', '100', '0', 'no_split', 'no_split']);
+    expect(o.state.rows).toEqual([]);
   });
   it('Q11 marks the label-share carves and the sublabel allocation, not the rows', () => {
     const o = run(

@@ -82,9 +82,9 @@ describe('layer 4: split (M1, M2, M3a, M6, M7, M9, M10, M28)', () => {
       '50',
     ]);
   });
-  it('no split: status no_split, the label share is the scaled net (D-029)', () => {
+  it('no split: status no_split, the label share is the scaled net and waits in C no_split (D-029, D-175)', () => {
     const o = run({}, unit('100'));
-    expect([o.state.status, o.ours]).toEqual(['no_split', '100']);
+    expect([o.state.status, o.state.labelShareCategory, o.ours, o.state.labelShare.toFixed()]).toEqual(['no_split', 'no_split', '0', '100']);
   });
   it('a row document overrides the split document for that row only', () => {
     const o = run(

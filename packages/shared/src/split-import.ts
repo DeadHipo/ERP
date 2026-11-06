@@ -4,6 +4,8 @@
 /**
  * The columns of the import file, in the order of the template; a header is matched without case and surrounding
  * spaces. `document_number` is accepted as a synonym of `document` (a document has no number: an id or the exact title).
+ * A row with an empty `pseudonym` (and no `artist_id`) and `percent` 100 is the «100 % label» row (D-175): its group is
+ * a split without rows, alone in the group.
  */
 export const SPLIT_IMPORT_COLUMNS = [
   { name: 'isrc', required: true },
@@ -38,6 +40,8 @@ export const SPLIT_IMPORT_ISSUES = {
   percent_invalid: 'error',
   date_invalid: 'error',
   row_incomplete: 'error',
+  label_only: 'info',
+  label_row_with_rows: 'error',
   date_floored: 'info',
   empty_period: 'error',
   to_on_change: 'error',

@@ -69,6 +69,8 @@ export const splitImport = {
     to_on_change: '«по» у замены не задаётся',
     split_sum_above_100: 'сумма процентов больше 100',
     our_share: 'наша доля',
+    label_only: '100 % лейблу: сплит без строк',
+    label_row_with_rows: 'строка «100 % лейблу» должна быть одна в группе',
     duplicate_artist: 'псевдоним дважды в группе',
     split_overlap: 'периоды двух новых сплитов пересекаются',
     double_participation: 'у псевдонима участие на этом ISRC',

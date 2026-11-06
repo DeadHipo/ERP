@@ -24,6 +24,8 @@ export const REASON_ACTIONS: Record<CReason, ActionEntry> = {
   // An unapproved document is approved; a rule without a document is recreated with one.
   rule_unconfirmed: { action: 'ApproveDocumentDialog', also: ['ReplaceDocumentDialog'] },
   unknown_pair: { action: 'RegisterTrackDialog' },
+  // D-175: the label share of an ISRC without a split waits until a split is entered (100 % label included)
+  no_split: { action: 'CreateSplitDialog' },
   no_isrc: { information: true, note: 'a report line without an ISRC cannot be fixed on any screen; it is a defect of the source file' },
   writer_unmapped: { action: 'MapWriterDialog' },
   publishing_terms_unconfirmed: { action: 'PublishingTermsDialog' },

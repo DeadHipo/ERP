@@ -103,6 +103,7 @@ export const catalog = {
       label_unmapped: 'строка лейбла не сопоставлена',
       no_isrc: 'нет ISRC',
       unknown_pair: 'неизвестная пара',
+      no_split: 'нет сплита: ждёт в C',
     },
     expand: 'Раскрыть',
     collapse: 'Свернуть',

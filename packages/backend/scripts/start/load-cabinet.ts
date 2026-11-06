@@ -1,7 +1,8 @@
 /**
  * D-174: the opening balances of 15.10.2026 from the owner's files. Builds the import csv (`START_IMPORT_COLUMNS`) from
- * the cabinet snapshot (`cabinet_snapshot_2026-10-15.json`: one row per nick, the publishing part from its `terms`, the
- * `missing` nicks as rows without an amount) and the approved start adjustments of `transition.json`
+ * the cabinet snapshot (`cabinet_snapshot_2026-10-15.json`: one row per nick, the whole amount in the master area
+ * (D-175: the cabinet position is one number and the November payroll of the master area carries it whole; the
+ * publishing part of the `terms` goes into the comment), the `missing` nicks as rows without an amount) and the approved start adjustments of `transition.json`
  * (`start_adjustments` with `status: approved`; a `pub_advance` adjustment reopens the advance named by
  * `reopen_advances`, found among the organization's advances by pseudonym, date and amount), writes it next to the
  * issue report under `<out>` and runs the facade import under the own label `0to8`: a preview by default, `--apply`
@@ -120,7 +121,7 @@ try {
     if (!termsSum.eq(amount)) console.warn(`terms of ${it.name} sum to ${text(termsSum)}, amount ${text(amount)}: the master part takes the difference`);
     sumAmount = sumAmount.add(amount);
     sumPub = sumPub.add(pub);
-    rows.push({ ...empty(), pseudonym: it.name, kind: 'start', master: text(amount.sub(pub)), publishing: text(pub), comment: 'cabinet 15.10' });
+    rows.push({ ...empty(), pseudonym: it.name, kind: 'start', master: text(amount), publishing: '0', comment: `cabinet 15.10 (of it publishing by the terms ${text(pub)})` });
   }
   for (const it of snapshot.missing) rows.push({ ...empty(), pseudonym: it.name, kind: 'start', missing: '1', comment: 'the cabinet answered an error: the start is not confirmed, not a zero' });
 

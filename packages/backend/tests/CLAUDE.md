@@ -82,6 +82,7 @@
   replacement byte for byte, an old snapshot still parses). `scope.test.ts` pins the balance at `asOf` = the full
   balance of a world without later files and operations. Tests where the button pays publishing pass `area: 'all'`.
   `rules-coverage.test.ts` now says «the kind is stored and fits its fields (D-173)». (after the stage: 61 files / 648 tests)
+- **Stage 2 (D-175):** a unit without a split is C `no_split` and gets no sublabel carve: `layers/split.test.ts`, `categorise.test.ts` (G21), `golden.test.ts` G21 (C 100), `facade.test.ts` (the queue group `pair`); a test world that wants the sublabel carve without artist rows gives the ISRC a split with no rows (`c.split(I(3), [])`, as `scope.test.ts` does). The split import's label row is tested in `split-import.test.ts` (`label_only`, `label_row_with_rows`, the money moving from C to ours).
 - **The start (D-174):** `start.test.ts` is the hand-computed world of the opening balances (the balance before the
   start: payable 113; after: start 72.5, the cut of units / publishing / ads / operations, a reopened advance, payable
   88.5; `asOf` at, before and after the cut; the payables, the payroll and the list carry the start; the payout and

@@ -5,12 +5,13 @@ import type { Layer } from './types';
 /**
  * Layer 4: the rows of the split in force at the report month take `q(scaledNet × percent / 100)` each (rows with
  * percent 0 are skipped); the label share is the rest by subtraction, never of the opposite sign of the unit (an
- * excess from rounding comes off the largest row, D-130). No split: status `no_split`, the label share
- * is the whole scaled net (D-029).
+ * excess from rounding comes off the largest row, D-130). No split: status `no_split`, the label share is the whole
+ * scaled net and waits in C `no_split` (D-175, the owner's decision of 2026-11-06: «показывать как нераспределено»);
+ * an earlier C reason of the label share (an unmapped label string) stays.
  */
 export const split: Layer = (s, ctx) => {
   const sp = ctx.splitAt(s.unit.isrc, reportDate(s.unit));
-  if (!sp) return { ...s, status: 'no_split' };
+  if (!sp) return { ...s, status: 'no_split', labelShareCategory: s.labelShareCategory === 'ours' ? 'no_split' : s.labelShareCategory };
   const rows = sp.shares
     .filter((sh) => !sh.percent.isZero())
     .map((sh) =>

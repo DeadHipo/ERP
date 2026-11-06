@@ -8,6 +8,7 @@ export const REASON_LABELS: Record<CReason, string> = {
   artist_without_owner: 'artist without an owner',
   owner_unconfirmed: 'owner not confirmed',
   label_unmapped: 'Believe label string not mapped to a label',
+  no_split: 'ISRC without a split: the label share waits (D-175)',
   unknown_pair: 'ISRC/UPC pair not in the catalogue',
   no_isrc: 'line without ISRC',
   publishing_terms_unconfirmed: 'publishing terms without an approved document',

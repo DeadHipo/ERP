@@ -14,7 +14,7 @@ import { SPLIT_DOCUMENT_KINDS } from '@erp/shared/document-kinds';
 import { AppError, RuleViolationError, ValidationError } from '../shared/errors';
 import { assertDate, monthOf, monthStart } from '../shared/dates';
 import { normalizeIsrc, normalizeName } from '../shared/identifiers';
-import { Decimal, sum } from '../shared/money';
+import { Decimal, sum, ZERO } from '../shared/money';
 import { parseCsv } from '../shared/csv';
 import { cellText, memoryRows, readRows, type SheetRow } from '../shared/xlsx-rows';
 import { artistIndexCache, cacheArtist, type ArtistIndexCache, type ArtistIndexEntry, type FacadeContext } from './context';
@@ -212,6 +212,8 @@ interface RowState {
   ownerAssign: boolean;
   documentId: string | null;
   group: string;
+  /** The «100 % label» row (D-175): no pseudonym, percent 100. */
+  labelOnly: boolean;
   issues: Issue[];
 }
 
@@ -307,7 +309,10 @@ function classify(
     const percentRaw = cells.percent ?? '';
     const fromRaw = cells.from ?? '';
     const toRaw = cells.to ?? '';
-    if (!isrcRaw || (!pseudonym && !cells.artist_id) || !percentRaw || !fromRaw) issues.push(issue('row_incomplete'));
+    // the «100 % label» row (D-175): no pseudonym, percent 100 → a split without rows
+    const labelOnly = !pseudonym && !cells.artist_id && !!isrcRaw && !!fromRaw && percentRaw.trim() !== '' && parsePercent(percentRaw) !== undefined && new Decimal(parsePercent(percentRaw) as string).eq(100);
+    if (labelOnly) issues.push(issue('label_only'));
+    else if (!isrcRaw || (!pseudonym && !cells.artist_id) || !percentRaw || !fromRaw) issues.push(issue('row_incomplete'));
     let isrc: string | null = null;
     if (isrcRaw) {
       const n = normalizeIsrc(isrcRaw);
@@ -435,6 +440,7 @@ function classify(
       ownerAssign,
       documentId,
       group,
+      labelOnly,
       issues,
     };
   });
@@ -484,7 +490,12 @@ function classify(
       all(issue('isrc_outside_label', other ? { book: 'other', labelId: other.labelId, labelName: other.labelName } : { book: 'none' }));
     }
     if (ctx.viewer && !ctx.viewer.mayTouch(isrc)) all(issue('label_forbidden', { reason: 'isrc' }));
-    // the rows: one artist once, the sum ≤ 100
+    // the rows: one artist once, the sum ≤ 100; a «100 % label» row is alone in its group (D-175)
+    const labelGroup = members.some((r) => r.labelOnly);
+    if (labelGroup && members.length > 1) {
+      all(issue('label_row_with_rows'));
+      continue;
+    }
     const keys = members.map((r) => r.artistKey);
     const seen = new Set<string>();
     for (const r of members) {
@@ -492,20 +503,22 @@ function classify(
       if (seen.has(r.artistKey)) r.issues.push(issue('duplicate_artist'));
       seen.add(r.artistKey);
     }
-    if (keys.some((k) => !k) || members.some((r) => r.percent === null)) continue; // nothing to classify
-    const total = sum(members.map((r) => new Decimal(r.percent as string)));
+    if (!labelGroup && (keys.some((k) => !k) || members.some((r) => r.percent === null))) continue; // nothing to classify
+    const total = labelGroup ? ZERO : sum(members.map((r) => new Decimal(r.percent as string)));
     g.ourShare = HUNDRED.sub(total).toFixed();
     if (total.gt(HUNDRED)) all(issue('split_sum_above_100', { sum: total.toFixed() }));
-    else if (total.lt(HUNDRED)) all(issue('our_share', { ourShare: g.ourShare }));
+    else if (total.lt(HUNDRED) && !labelGroup) all(issue('our_share', { ourShare: g.ourShare }));
     // the document of the split: every row names the same one; else each row keeps its own
     const docs = new Set(members.map((r) => r.documentId));
     const common = docs.size === 1 ? (members[0]?.documentId ?? null) : null;
     g.documentId = common;
-    const wanted: ModelRow[] = members.map((r) => ({
-      artistId: r.artistKey as string,
-      percent: r.percent as string,
-      documentId: common ? null : r.documentId,
-    }));
+    const wanted: ModelRow[] = labelGroup
+      ? []
+      : members.map((r) => ({
+          artistId: r.artistKey as string,
+          percent: r.percent as string,
+          documentId: common ? null : r.documentId,
+        }));
 
     const list = model.get(isrc) ?? [];
     let period: { from: string; to: string | null };

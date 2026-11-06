@@ -113,7 +113,7 @@ std('S07', 2, ['0', '0', '0', '0']);
 std('S08', 1, ['100', '57.5', '23.375', '19.125']);
 std('S08', 2, ['100', '57.5', '23.375', '19.125']);
 std('S08', 3, ['100', '50', '25', '25'], { byLabel: { Echo8: '25' }, book: '0to8' });
-std('S08', 4, ['100', '0', '50', '50'], { noSplit: '50' });
+std('S08', 4, ['100', '0', '100', '0'], { noSplit: '100' }); // D-175: no split → C no_split, no sublabel carve
 std('S09', 1, ['100', '49.8', '0', '50.2']);
 std('S09', 2, ['100', '10', '0', '90']);
 std('S10', 1, ['100', '50', '0', '50'], { byLabel: { '0to8': '50' } });
@@ -141,7 +141,7 @@ add('S26', 2, '2026-05', ['100', '50', '0', '50']);
 add('S26', 2, '2026-06', ['100', '100', '0', '0']);
 for (const m of ['2026-03', '2026-04']) add('S27', 1, m, m === '2026-03' ? ['100', '57.5', '0', '42.5'] : ['100', '57.5', '0', '42.5']);
 std('S28', 1, ['100', '50', '0', '50']);
-std('S30', 1, ['100', '0', '0', '100']);
+std('S30', 1, ['100', '0', '100', '0']); // D-175: the registered track without a split waits in C
 std('S32', 1, ['100', '50', '5', '45']);
 std('S33', 1, ['200', '50', '50', '100']);
 std('S35', 4, ['100', '50', '5', '45']);
@@ -285,7 +285,7 @@ check(
 );
 check('signals ambiguousWriters S19', sig.ambiguousWriters.map((w) => w.displayName), ['HOLDER W4']);
 check(
-  'signals assumptions: S13 Q1 40, S08/3 QQ 25, q11 4.25 and 19.125 for each of S08/1 and S08/2, S08/4 r1 50',
+  'signals assumptions: S13 Q1 40, S08/3 QQ 25, q11 4.25 and 19.125 for each of S08/1 and S08/2 (no r1 since D-175)',
   sig.assumptions.map((a) => [a.basis, a.amount.toFixed()]).sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
   [
     ['document', '25'],
@@ -294,7 +294,6 @@ check(
     ['q11', '19.125'],
     ['q11', '4.25'],
     ['q11', '4.25'],
-    ['r1', '50'],
   ].sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
 );
 

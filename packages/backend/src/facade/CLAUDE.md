@@ -124,6 +124,7 @@
   `approveDocument`, `createContract`, `updateTrack`, `setOperationDeferred`, `deactivateOperation`,
   `operationSnapshot`. The operation's own right (class, the label of the request) is decided before the route by
   `authorize`; a new record-dependent method takes a viewer and gets a case in `tests/viewer.test.ts`.
+- **No split (D-175):** `layers/split.ts` leaves the whole scaled net as the label share and marks it `labelShareCategory: 'no_split'` (C; an earlier `label_unmapped` stays); no sublabel carve runs on such a unit. `reconcile()` keeps `ourShareNoSplit` as that C part; the queue groups `no_split` by the ISRC / UPC pair. A «100 % label» split (no rows) makes the money ours: the import takes a row with an empty pseudonym and percent 100 (`label_only`; alone in its group, else `label_row_with_rows`).
 - **The split import** (`split-import.ts`, D-172): `importSplits({ path, fileName, labelId, dryRun }, viewer)` reads a csv /
   xlsx (`src/shared/csv.ts`, `src/shared/xlsx-rows.ts`; columns `SPLIT_IMPORT_COLUMNS`, ≤ 5 000 rows), groups rows by
   (ISRC, floored `from`) and classifies the groups in file order over a model of the ISRC's splits that each earlier

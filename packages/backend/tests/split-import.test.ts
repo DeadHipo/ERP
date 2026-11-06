@@ -354,3 +354,37 @@ describe('split import: the time of a full file', () => {
     expect(ms).toBeLessThanOrEqual(30_000);
   }, 120_000);
 });
+
+describe('split import: the «100 % label» row (D-175)', () => {
+  it('a row without a pseudonym and percent 100 creates a split without rows; alone in its group; a repeat is unchanged; the money is ours', async () => {
+    const f = await newFacade();
+    const L = f.testLabels['0to8'];
+    await f.modules.owners.createTrack({ title: 'label track', isrc: I1, upc: UPC });
+    await f.modules.owners.createTrack({ title: 'label track 2', isrc: I2, upc: UPC });
+    await confirmedOwner(f, 'Label Row Owner', ['Label Row Synth']);
+    const doc = await approvedAppendix(f);
+    await f.ingestBelieve(writeBelieve('2026-09', [{ isrc: I1, upc: UPC, net: '100' }, { isrc: I2, upc: UPC, net: '40' }]), L);
+    // before: both ISRCs wait in C no_split (D-175)
+    const before = (await f.reconciliation()).find((r) => r.month === '2026-09');
+    expect([before?.ourShare.toFixed(), before?.C_breakdown.no_split?.toFixed()]).toEqual(['0', '140']);
+    const p = await run(f, csv([
+      /* 2 */ { isrc: I1, percent: '100', from: '2026-09-01', document: doc.id },
+      /* 3 */ { isrc: I2, percent: '100', from: '2026-09-01', document: doc.id },
+      /* 4 */ { isrc: I2, pseudonym: 'Label Row Synth', percent: '10', from: '2026-09-01', document: doc.id },
+      /* 5 */ { isrc: I1, percent: '50', from: '2026-10-01', document: doc.id },
+    ]));
+    const row = (line: number) => p.rows.find((r) => r.line === line);
+    expect(codesOf(row(2) as { issues: { code: string }[] })).toEqual(['label_only']);
+    expect(codesOf(row(3) as { issues: { code: string }[] })).toEqual(['label_only', 'label_row_with_rows']);
+    expect(codesOf(row(5) as { issues: { code: string }[] })).toEqual(['row_incomplete']);
+    expect(p.groups.find((g) => g.isrc === I1 && g.from === '2026-09-01')).toMatchObject({ action: 'create', ourShare: '100' });
+    const applied = await run(f, csv([{ isrc: I1, percent: '100', from: '2026-09-01', document: doc.id }]), false);
+    expect(applied.applied).toBe(true);
+    const split = (await f.modules.splits.listSplits({ isrcs: [I1] }))[0];
+    expect([split?.shares, split?.documentId, split?.validFrom]).toEqual([[], doc.id, '2026-09-01']);
+    const after = (await f.reconciliation()).find((r) => r.month === '2026-09');
+    expect([after?.ourShare.toFixed(), after?.C_breakdown.no_split?.toFixed()]).toEqual(['100', '40']);
+    const again = await run(f, csv([{ isrc: I1, percent: '100', from: '2026-09-01', document: doc.id }]));
+    expect(again.groups[0]?.action).toBe('unchanged');
+  });
+});

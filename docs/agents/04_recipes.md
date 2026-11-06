@@ -466,3 +466,28 @@ script; an operator can also import a csv of `START_IMPORT_COLUMNS` on P30 «С�
 5. After the start: the reports of 2026-09 and later, the operations dated after `synced_at` (the cash registers), the
    advertising of 2026-09 and later count as before; the history of the book up to the cut is reference only
    (`OwnerBalance.start.insideStart`). The reach (`ownerReach`) is unchanged: the start is not a unit.
+
+## 17. Load a month's data after the start (September 2026, D-175)
+
+The stage 2 loads of the pack of 2026-11-06, in order; every script is a dry run without `--apply` and idempotent (a
+second apply answers `unchanged`). An `org_admin` session or `AUTH_MODE=off` on the dev stand; the stack up.
+
+1. The Believe report of the month under its label: `npx tsx packages/backend/scripts/load-believe.ts --label 0to8
+   <zip>` (the account of the file name must be registered under the label), then
+   `npx tsx packages/backend/scripts/derive-track-labels.ts data/real --apply` (recipe 11). Check the `file_totals`
+   net against the owner's figure (September: 792 134,86).
+2. The split versions of the month: a «100 % label» version (an assigned work) is a split without rows: on P28 a row with
+   an empty `pseudonym` and `percent` 100 (the class `label_only`); from the owner's `split_changes.json`:
+   `npx tsx packages/backend/scripts/stage2/load-label-splits.ts <json> --apply` (one approved document per basis group,
+   the file reference points to the pack). Rows with pseudonyms come through P28 as in recipe 13.
+3. The buyouts of the registry: `npx tsx packages/backend/scripts/stage2/load-buyouts.ts <folder 7> --apply`: a
+   `buyout` document per contract, `facade.buyout` from the signing month (the owner's answer 2: the whole seller share;
+   `buyout_overrides.json` for an explicit month), the Main prices as `buyout` operations (`external_id` = `main:<row>`).
+   Read `data/mvp-load/stage2/buyouts_report.csv`: `already_zero` (in the splits already), `pct_differs` (the registry's
+   share ≠ the row: the owner decides), `no_split_at_date`, `seller_not_in_split`, `pseudonym_ambiguous`.
+4. The owner's write-offs (publishing deducted by Main, nothing accrued): `npx tsx
+   packages/backend/scripts/stage2/load-writeoffs.ts <writeoffs.json> --apply` = `adjustment` rows of the start (master).
+5. The numbers: `npx tsx packages/backend/scripts/stage2/payroll-summary.ts --month 2026-09` (the reconciliation row
+   with the C reasons, the payroll at `asOf` with the gates, the largest payables) and `scripts/start/check-start.ts`
+   (the start still equals the cabinet). Then P9 / P10 under 0to8 with `asOf` = the month, and the csv of
+   `GET /owners/payroll?label=&asOf=&area=master`.

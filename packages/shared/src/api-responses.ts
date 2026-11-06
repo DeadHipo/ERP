@@ -27,6 +27,7 @@ export const C_REASONS = [
   'artist_without_owner',
   'owner_unconfirmed',
   'label_unmapped',
+  'no_split',
   'unknown_pair',
   'no_isrc',
   'publishing_terms_unconfirmed',
@@ -451,7 +452,7 @@ export const reconciliationRowSchema = z.object({
   C_breakdown: cBreakdown,
   ourShare: money.describe('Σ of the label shares that are ours (the layer state)'),
   ourShareByLabel: z.record(z.string(), money).describe('ourShare per our label of record (name)'),
-  ourShareNoSplit: money,
+  ourShareNoSplit: money.describe('The label share of the units without a split: in C `no_split` since D-175 (before: part of ourShare)'),
   discrepancy: money,
   fileTotal: money.nullable(),
   fileDiscrepancy: money.nullable(),
@@ -1071,7 +1072,7 @@ const shortfallSchema = z.object({
   why: z.string(),
 });
 const unitStatus = z.enum(['allocated', 'no_split', 'unknown_pair', 'no_isrc']);
-const labelShareCategory = z.enum(['ours', 'label_unmapped', 'no_isrc', 'unknown_pair']);
+const labelShareCategory = z.enum(['ours', 'label_unmapped', 'no_isrc', 'unknown_pair', 'no_split']);
 
 export const layerStateSchema = z.object({
   layer: z.string(),

@@ -20,6 +20,7 @@ async function world() {
   await c.track(I(3), UPC2, []);
   await c.split(I(1), [['A', '50']]);
   await c.split(I(2), [['B', '30']], { doc: null }); // waits in C: split_unconfirmed
+  await c.split(I(3), []); // «100 % label» (D-175: without a split the sublabel carve does not run)
   await c.sublabel('Sub One', '0to8', 'R');
   await c.load('2026-03', [
     { isrc: I(1), net: '100' },
@@ -186,8 +187,8 @@ describe('unit scope of the facade (D-161)', () => {
   it('the balance from the units of the owner reach equals the full balance (D-163)', async () => {
     const { c } = await world();
     const f = c.f;
-    // A: a split of I(1); B: a split of I(2); R: the recipient of the sublabel rule of «Sub One» (I(3) carries it) and
-    // no split, so its reach comes from the label strings alone
+    // A: a split of I(1); B: a split of I(2); R: the recipient of the sublabel rule of «Sub One» (I(3) carries it; its
+    // split has no rows), so its reach comes from the label strings alone
     const reach = async (name: string) => (await f.ownerReach(c.owners.get(name) as string)).isrcs;
     expect(await reach('A')).toEqual([I(1)]);
     expect(await reach('B')).toEqual([I(2)]);
@@ -272,6 +273,7 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     await c.split(I(1), [['A', '50']]);
     await c.part(I(1), 'P', '10', 'net', 'top');
     await c.split(I(2), [['B', '30']], { doc: null }); // waits in C: split_unconfirmed
+    await c.split(I(3), []); // «100 % label» (D-175: without a split the sublabel carve does not run)
     await c.split(I(4), [['A2', '40']]);
     await c.sublabel('Sub One', '0to8', 'R');
     await c.load('2026-03', [
@@ -349,8 +351,8 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     const b = await f.artistBalance(c.id('B'));
     expect([b.total.earned.toFixed(), b.total.waiting.toFixed(), b.period.waitingBreakdown.split_unconfirmed?.toFixed()]).toEqual(['0', '15', '15']);
     const r = await f.artistBalance(c.id('R'));
-    // the carve of the sublabel reached the recipient: 50 % of 20, waiting as an assumption (R1: I(3) has no split)
-    expect([r.total.earned.toFixed(), r.total.waiting.toFixed(), r.period.waitingBreakdown.assumption?.toFixed()]).toEqual(['0', '10', '10']);
+    // the carve of the sublabel reached the recipient: 50 % of 20 (the split of I(3) has no rows: the whole net is the label share), earned
+    expect([r.total.earned.toFixed(), r.total.waiting.toFixed(), r.period.waitingBreakdown.assumption?.toFixed()]).toEqual(['10', '0', undefined]);
     expect(Object.keys(r.byLabel)).toEqual(['0to8']);
     const p = await f.artistBalance(c.id('P'));
     expect([p.total.earned.toFixed(), p.tracks.map((t) => t.isrc)]).toEqual(['30', [I(1)]]); // 10 % of the top of 100 and 200

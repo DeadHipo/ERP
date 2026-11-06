@@ -10,7 +10,8 @@ const root = resolve(import.meta.dirname, '..', '..', '..');
 // Data directory: first CLI argument, ERP_DATA_DIR, or <repo>/data.
 const dataDir = resolve(process.argv[2] ?? process.env.ERP_DATA_DIR ?? join(root, 'data'));
 const port = Number(process.env.PORT ?? 3000);
-const threshold = Number(process.env.PAYOUT_THRESHOLD_CENTS ?? 10000);
+// D-175: the owner's default threshold is $50 (before: $100)
+const threshold = Number(process.env.PAYOUT_THRESHOLD_CENTS ?? 5000);
 
 // The modules in PostgreSQL; the Believe sources: file registry in PostgreSQL, report lines in ClickHouse
 // (settings from <repo>/.env). The data directory keeps only the original files and temporary uploads (D-121).

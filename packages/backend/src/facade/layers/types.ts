@@ -47,8 +47,8 @@ export interface Allocation {
 
 export type UnitStatus = 'allocated' | 'no_split' | 'unknown_pair' | 'no_isrc';
 
-/** What the label share of a unit is: ours, or C for a reason (unmapped label string, the perimeter). */
-export type LabelShareCategory = 'ours' | 'label_unmapped' | 'no_isrc' | 'unknown_pair';
+/** What the label share of a unit is: ours, or C for a reason (unmapped label string, the perimeter, no split: D-175). */
+export type LabelShareCategory = 'ours' | 'label_unmapped' | 'no_isrc' | 'unknown_pair' | 'no_split';
 
 /** A carve larger than its bucket takes the bucket; the rest is reported, never created as money (10 §3). */
 export interface Shortfall {

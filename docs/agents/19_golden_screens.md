@@ -25,7 +25,7 @@ arithmetic in §7), `packages/backend/tests/golden.test.ts` (how each case is se
 | B17 | one statement for the whole seed, loaded last (after every owner and alias) under the label 0to8 (D-169: its lines sit in the book 0to8, `statementsWithoutLabel` is empty), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
 | Isolation | every scenario owns its ISRCs, UPCs, accounts, owners, pseudonyms, documents. **Never asserted**: queue reason totals, signal counts, P1 totals, P3 items, queue groups keyed by a shared entity (the NoGhost rule, QQ rule, 0to8), and N3 has no `isrc` filter (a spec finds its group by key, `ownerId` or `month`) |
 | Operator | `e2e-operator` in `localStorage` before every spec; every write sends `X-Operator: e2e-operator` |
-| Payout threshold | `scripts/e2e/start.sh` sets `PAYOUT_THRESHOLD_CENTS=0` (default 10000 → `below_threshold` for G27) |
+| Payout threshold | `scripts/e2e/start.sh` sets `PAYOUT_THRESHOLD_CENTS=0` (default 5000 since D-175 → `below_threshold` for G27) |
 | Pay gate | the balance (and N4) carries `payout: { allowed, reason, amountCents }` computed by the checks of `createPayout`; the button follows it and the spec asserts the field, never a client comparison |
 | N13 figure | the approve dialog shows `waiting.amount` of `GET /documents/:id/uses` as «ждёт этого документа: X» (money waiting for this document), not "releases" |
 | Money text | `title` = the exact API string, e.g. `19.125`, `-21.25`, `12.266666666666`. Text = `formatMoney`: `Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2, roundingMode: 'halfExpand', signDisplay: 'negative' }).format(decimalString)` on the string (no float). Specs normalise any no-break space (U+00A0 or U+202F) and U+2212 to `-` before comparing. Examples: `19.125` → `19,13`; `4.165` → `4,17`; `-21.25` → `-21,25` (red); `12.266666666666` → `12,27`; `1234.567` → `1 234,57`; `999.995` → `1 000,00`; `-0.004` → `0,00` (no sign) |
@@ -117,7 +117,7 @@ not trivial; `discrepancy` is `0` on every row.
 | S08/1 | G18 | `NoGhost Records 08a` (rule 50 → NG-081); rows A, B 25; R 15 (net, top), M 13 (net, artist_pool), P 10 (bucket, label_share) | R 15, A 14.75, B 14.75, M 13 B; P 4.25 C assumption (q11), NG `19.125` C (q11); ours `19.125` | 100 / 57.5 / 23.375 / 19.125 |
 | S08/2 | G18b | `NoGhost Records 08b` → NG-082; as S08/1 plus E 10 (bucket, artist_share of A) | E `1.475` (1,48), A `13.275` (13,28); rest as S08/1 | 100 / 57.5 / 23.375 / 19.125 |
 | S08/3 | G20 | `qaraqshy records`; row A 50 | A 50 B; QQ 25 C assumption (document); ours 25 (Echo8) | 100 / 50 / 25 / 25 (Echo8 25) |
-| S08/4 | G21 | `NoGhost Records 08d` → NG-084; **no split** | NG-084 50 C assumption (r1); no_split; ours 50 | 100 / 0 / 50 / 50, `ourShareNoSplit` 50 |
+| S08/4 | G21 | `NoGhost Records 08d` → NG-084; **no split** | no allocations: the whole label share 100 C `no_split` (D-175), no sublabel carve | 100 / 0 / 100 / 0, `ourShareNoSplit` 100 (the no-split part, in C); the queue group `pair` of the ISRC under `/queue/no_split` |
 | S09/1 | G34 | rows A, B, C 16.6 (ids ascending, `Case.ordered`); M 13 (net, artist_pool) | A `12.266666666666`, B, C `12.266666666667` (12,27), M 13; ours 50.2 | 100 / 49.8 / 0 / 50.2 |
 | S09/2 | G44 | row A 10; M1–M3 13 (net, artist_pool), ids ascending | M1 `3.333333333334`, M2, M3 `3.333333333333` (3,33), A `0`; shortfall `29` | 100 / 10 / 0 / 90 |
 
@@ -266,7 +266,7 @@ registered under 0to8 by the spec): 409 `duplicate_file`. P17 (spec 29): an acco
 
 **S30 Duplicate pseudonyms (P11).** Seed: artist `DUP-301` of confirmed Owner DUP-301; a second artist `DUP-301`
 without owner; `QZTST2730101` registered, Believe artist name `DUP-301`, net 100, no split. Before: P11 group (2
-artists; isrcsWithoutSplit `QZTST2730101` `100`); P6 no_split, ours 100; P1 2730100 100 / 0 / 0 / 100. Assign owner
+artists; isrcsWithoutSplit `QZTST2730101` `100`); P6 no_split, C `no_split` 100 (D-175); P1 2730100 100 / 0 / 100 / 0. Assign owner
 to the second artist: numbers unchanged. Create split DUP-301 (first) 50 with an approved appendix: isrcsWithoutSplit
 empty; P6 DUP 50 B, ours 50; P1 100 / 50 / 0 / 50.
 

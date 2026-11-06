@@ -70,7 +70,7 @@ Use this table to grep both sides. "Doc" is the file where the term is defined.
 | отложенная выплата | deferred payout | `deferred` | Blocks new payouts of that owner |
 | кнопка «Выплата» | payout button | `facade/payouts.ts` `createPayout` | The only way to make a plain payout (D-051) |
 | снимок выплаты | payout snapshot | `createPayout` | Per artist breakdown + file hashes (D-053) |
-| порог выплаты | payout threshold | `PAYOUT_THRESHOLD_CENTS` (default 10000) | D-013 |
+| порог выплаты | payout threshold | `PAYOUT_THRESHOLD_CENTS` (default 5000 since D-175; 10000 before) | D-013, D-175 |
 | перенос данных (migration) | `migration` flag | operations | Counts without documents, never blocks (D-048) |
 
 ## Facade (doc 09)
