@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { viewerOf } from '../viewer';
 
 /** Money aggregates for the screens (D-142): payables, tracks, releases, document uses. Mounted before the owner routes. */
 export function aggregatesRouter(facade: Facade) {
@@ -25,7 +26,7 @@ export function aggregatesRouter(facade: Facade) {
   r.get('/releases/:upc', async (req, res) =>
     res.json(await facade.release(param(req, 'upc'), parse(S.releaseQuery, req.query).label)),
   );
-  r.get('/documents/:id/uses', async (req, res) => res.json(await facade.documentUses(param(req, 'id'))));
+  r.get('/documents/:id/uses', async (req, res) => res.json(await facade.documentUses(param(req, 'id'), viewerOf(res))));
 
   return r;
 }

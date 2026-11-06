@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as S from '@erp/shared/api-schemas';
 import type { Facade } from '../../facade';
 import { param, parse } from '../http';
+import { viewerOf } from '../viewer';
 
 /** Advertising expenses (D-155, D-156). */
 export function adsRouter(facade: Facade) {
@@ -31,10 +32,10 @@ export function adsRouter(facade: Facade) {
     const { label, ...f } = parse(S.adsSummaryQuery, req.query);
     res.json(await facade.adsSummary({ ...f, ...(label ? { labelId: label } : {}) }));
   });
-  r.get('/ads/:id', async (req, res) => res.json(await facade.getAd(param(req, 'id'))));
-  r.patch('/ads/:id', async (req, res) => res.json(await facade.updateAd(param(req, 'id'), parse(S.updateAdBody, req.body))));
+  r.get('/ads/:id', async (req, res) => res.json(await facade.getAd(param(req, 'id'), viewerOf(res))));
+  r.patch('/ads/:id', async (req, res) => res.json(await facade.updateAd(param(req, 'id'), parse(S.updateAdBody, req.body), viewerOf(res))));
   r.post('/ads/:id/deactivate', async (req, res) =>
-    res.json(await facade.deactivateAd(param(req, 'id'), parse(S.deactivateAdBody, req.body).reason)),
+    res.json(await facade.deactivateAd(param(req, 'id'), parse(S.deactivateAdBody, req.body).reason, viewerOf(res))),
   );
 
   return r;

@@ -1,4 +1,4 @@
-import { NotFoundError, ValidationError } from '../shared/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../shared/errors';
 import type { AdExpense, AdExpenseInput, AdScope } from '../modules/ads';
 import { ZERO } from '../shared/money';
 import { calculate, type Calculation } from './calculation';
@@ -10,6 +10,7 @@ const isrcsOf = (records: readonly { isrc: string | null }[]) =>
 import { adSummary, type AdResult, type AdStatus } from './ads';
 import type { FacadeContext } from './context';
 import { timed } from '../shared/timing';
+import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
 
 export interface AdsQuery {
   isrc?: string;
@@ -64,13 +65,23 @@ export function adsApi(ctx: FacadeContext) {
       return ads.createMany(items);
     },
 
-    /** The recovery percent, the scope (D-155) and the payer (D-169: an own label). */
-    async updateAd(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }) {
+    /**
+     * The recovery percent, the scope (D-155) and the payer (D-169: an own label). A viewer of some labels (D-171):
+     * a record its labels pay (else 403 `label_forbidden`); moving it to another payer is the administrator's (403 `forbidden`).
+     */
+    async updateAd(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all') {
+        assertViewerHolds(viewer, (await ads.get(id)).labelId);
+        if (patch.labelId !== undefined)
+          throw new ForbiddenError('Moving an expense to another payer is for the organization administrator', 'forbidden');
+      }
       if (patch.labelId !== undefined) await assertOwnLabel(patch.labelId);
       return ads.update(id, patch);
     },
 
-    async deactivateAd(id: string, reason: string) {
+    /** Deactivates a record; a viewer of some labels (D-171): one its labels pay, else 403 `label_forbidden`. */
+    async deactivateAd(id: string, reason: string, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all') assertViewerHolds(viewer, (await ads.get(id)).labelId);
       return ads.deactivate(id, reason);
     },
 
@@ -114,9 +125,10 @@ export function adsApi(ctx: FacadeContext) {
       return { count: views.length, items: views.slice(offset, offset + limit) };
     },
 
-    /** One record with its allocation (null when it is deactivated). */
-    async getAd(id: string): Promise<AdView> {
+    /** One record with its allocation (null when it is deactivated); a viewer of some labels (D-171): one its labels pay, else 404. */
+    async getAd(id: string, viewer: Viewer = ALL_VIEWER): Promise<AdView> {
       const rec = await ads.get(id);
+      if (!viewerHolds(viewer, rec.labelId)) throw new NotFoundError('Ad expense', id);
       const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: isrcsOf([rec]), publishingLines: false })));
       return viewOf(rec, calc.ads.find((r) => r.adId === id), calc.artistIndex);
     },

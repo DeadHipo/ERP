@@ -8,13 +8,14 @@ import { timed, timedSync } from '../shared/timing';
 import { parseIdList } from './aggregates';
 import type { FacadeContext } from './context';
 import type { splitsApi } from './splits';
+import { ALL_VIEWER, viewerSees, type Viewer } from './viewer';
 
 /**
  * The card and the money of one pseudonym (P12, D-165). A merged id answers for the surviving pseudonym, and everything
  * is collected by every id the pseudonym had (the splits of a merged record are not rewritten, D-095).
  */
 export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof splitsApi>) {
-  const { db, owners, splits, settlements, modules, artistBalanceWithReach, opDocIds, labelContext, viewOf } = ctx;
+  const { db, owners, splits, settlements, modules, artistBalanceWithReach, opDocIds, labelContext, viewOf, scopeOf } = ctx;
   const api = {
     /**
      * Every live pseudonym of the registry as a row without money (P11, D-167): its owner (id, name, status), how many
@@ -153,10 +154,15 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
      * The pseudonym, its owner, the ids merged into it, its tracks (the registry links and the tracks of the ISRCs of its
      * rows and participations), the contracts that name it, its split rows and participations (every id), the sublabel
      * rules where it is the recipient, and the documents all of these cite.
-     * No money (the balance is `artistBalance`).
+     * No money (the balance is `artistBalance`). A viewer of some labels (D-171) sees a pseudonym visible under one of
+     * its labels (else 404, as an unknown id), without the documents of other labels and the contracts on them.
      */
-    artistDetail(artistId: string) {
-      return db.snapshot(async () => {
+    async artistDetail(artistId: string, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all') {
+        await owners.getArtist(artistId); // an unknown id first: 404 either way
+        await scopeOf(viewer).assertArtistVisible(artistId);
+      }
+      const card = await db.snapshot(async () => {
         const idx = await owners.artistIndex();
         const entry = idx.get(artistId);
         if (!entry) throw new NotFoundError('Artist', artistId);
@@ -215,10 +221,22 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           documents,
         };
       });
+      if (viewer.kind === 'all') return card;
+      const docLabel = new Map(card.documents.map((d) => [d.id, d.labelId]));
+      return {
+        ...card,
+        contracts: card.contracts.filter((c) => viewerSees(viewer, docLabel.get(c.documentId) ?? null)),
+        documents: card.documents.filter((d) => viewerSees(viewer, d.labelId)),
+      };
     },
 
     /** The money of one pseudonym from the units of its reach (D-165); under a label its book (D-168). */
-    async artistBalance(artistId: string, f: PeriodFilter = {}, labelId?: string) {
+    async artistBalance(artistId: string, f: PeriodFilter = {}, labelId?: string, viewer: Viewer = ALL_VIEWER) {
+      // a viewer of some labels (D-171): a pseudonym visible under one of them, else 404
+      if (viewer.kind !== 'all') {
+        await owners.getArtist(artistId);
+        await scopeOf(viewer).assertArtistVisible(artistId);
+      }
       return artistBalanceWithReach(artistId, f, await viewOf(labelId));
     },
 

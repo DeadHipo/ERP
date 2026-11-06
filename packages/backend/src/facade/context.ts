@@ -13,6 +13,7 @@ import { calculate, type PeriodFilter } from './calculation';
 import { artistBalance, ownerBalance, type BalanceView } from './balance';
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
+import { viewerScope, type Viewer } from './viewer';
 import { floorToCents } from '../shared/money';
 import { stubPaymentService, type PaymentService } from './payment-service';
 import type { Db } from '../shared/pg-db';
@@ -234,6 +235,11 @@ export function createFacadeContext(
     return { artist, owner, ...money };
   }
 
+  /** What a viewer reaches (D-171): the ISRC rule and the visibility of its labels, read lazily once per call. */
+  function scopeOf(viewer: Viewer) {
+    return viewerScope({ ...modules, settlements }, viewer);
+  }
+
   /** The payout gate of a balance (N19): the very decision the payout button takes. */
   function gateOf(
     b: Pick<ReturnType<typeof ownerBalance>, 'confirmed' | 'confirmedAny' | 'blockingPayouts' | 'total'>,
@@ -270,6 +276,7 @@ export function createFacadeContext(
     assertOwnLabel,
     labelContext,
     viewOf,
+    scopeOf,
   };
 }
 

@@ -29,6 +29,7 @@ import { ownerBalance, ownerIndex } from './balance';
 import { cItems } from './queue';
 import type { FacadeContext } from './context';
 import type { splitsApi } from './splits';
+import { ALL_VIEWER, viewerHolds, viewerSees, type Viewer } from './viewer';
 
 // Money aggregates for the screens (D-142, 17 N4..N13): every one is a view of ONE calculation, grouped in JS.
 // Nothing here decides who gets what: the numbers are sums of the layers' own allocations, and the C side is the same
@@ -424,8 +425,13 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     /**
      * Where a document is used and what waits for it (N13): the records that cite it, and the category C money that
      * cites it (allocations) or that its contracts would release (`owner_unconfirmed` of the contract owners).
+     * A viewer of some labels (D-171): a document of its labels or of any label (else 404, as an unknown id); the
+     * records listed are those of the ISRC rule and its operations; `waiting` stays the document's whole.
      */
-    async documentUses(documentId: string) {
+    async documentUses(documentId: string, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all' && !viewerSees(viewer, (await owners.getDocument(documentId)).labelId))
+        throw new NotFoundError('Document', documentId);
+      const mayTouch = await ctx.scopeOf(viewer).isrcFilter();
       const calc = await calcWithOps();
       const { document, splitList, partList, labelList, ownerContracts, ops } = await db.snapshot(async () => {
         const document = await owners.getDocument(documentId);
@@ -462,19 +468,19 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       for (const p of calc.publishing)
         if (p.category === 'C' && p.reason === 'owner_unconfirmed' && p.ownerId && contractOwners.has(p.ownerId))
           add('owner_unconfirmed', p.authorAmount);
-      const splitsOf = splitList.items.filter((s) => s.documentId === documentId);
+      const splitsOf = splitList.items.filter((s) => s.documentId === documentId && mayTouch(s.isrc));
       return {
         document,
         splits: splitsOf,
-        rowsOnly: splitList.items.flatMap((s) =>
+        rowsOnly: splitList.items.filter((s) => mayTouch(s.isrc)).flatMap((s) =>
           s.shares
             .filter((x) => x.documentId === documentId)
             .map((x) => ({ splitId: s.id, isrc: s.isrc, artistId: x.artistId })),
         ),
-        participations: partList.items.filter((p) => p.documentId === documentId),
+        participations: partList.items.filter((p) => p.documentId === documentId && mayTouch(p.isrc)),
         labelRules: labelList.flatMap((l) => l.rules).filter((r) => r.documentId === documentId),
         contracts: contracts.map(({ ownerId: _o, ...c }) => c),
-        operations: ops.filter((o) => o.documentId === documentId || o.paymentProofId === documentId),
+        operations: ops.filter((o) => (o.documentId === documentId || o.paymentProofId === documentId) && viewerHolds(viewer, o.labelId)),
         waiting: { amount, cByReason: waiting },
       };
     },

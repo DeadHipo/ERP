@@ -3,6 +3,7 @@ import { assertDate, monthOf, monthStart } from '../shared/dates';
 import type { ParticipationInput } from '../modules/splits';
 import type { FacadeContext } from './context';
 import type { ShareSpec } from './context';
+import { ALL_VIEWER, assertViewerLabel, type Viewer } from './viewer';
 
 /** Entry rule (M52): a rule date is the first day of its month, the whole month goes to the new holder. */
 const floorToMonth = (d: string) => monthStart(monthOf(assertDate(d)));
@@ -25,17 +26,31 @@ function floorEnd(validFrom: string, validTo: string | null | undefined): string
 }
 
 export function splitsApi(ctx: FacadeContext) {
-  const { db, owners, splits, labels, checkSplitDocument, resolveShares } = ctx;
+  const { db, owners, splits, labels, checkSplitDocument, resolveShares, scopeOf } = ctx;
+
+  /**
+   * The rule of a viewer of some labels for a row write (D-171): every ISRC in the files of its labels or in no book
+   * (`label_forbidden` otherwise), every cited document of its labels or of any label. Read before the transaction.
+   */
+  async function checkRowWrite(viewer: Viewer, isrcs: (string | null | undefined)[], documentIds: (string | null | undefined)[]) {
+    if (viewer.kind === 'all') return;
+    const scope = scopeOf(viewer);
+    for (const isrc of isrcs) await scope.assertIsrc(isrc);
+    for (const id of new Set(documentIds.filter((x): x is string => !!x)))
+      assertViewerLabel(viewer, (await owners.getDocument(id)).labelId);
+  }
+
   const api = {
     /** New artists of the shares and the split are written in one transaction (D-121). */
-    createSplit(input: {
+    async createSplit(input: {
       isrc: string;
       validFrom: string;
       validTo?: string | null;
       shares: ShareSpec[];
       documentId?: string | null;
       note?: string | null;
-    }) {
+    }, viewer: Viewer = ALL_VIEWER) {
+      await checkRowWrite(viewer, [input.isrc], [input.documentId, ...input.shares.map((x) => x.documentId)]);
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
         const validTo = floorEnd(validFrom, input.validTo);
@@ -50,13 +65,14 @@ export function splitsApi(ctx: FacadeContext) {
         return splits.createSplit({ ...input, validFrom, validTo, shares: await build() });
       });
     },
-    changeSplit(input: {
+    async changeSplit(input: {
       isrc: string;
       from: string;
       shares: ShareSpec[];
       documentId: string;
       note?: string | null;
-    }) {
+    }, viewer: Viewer = ALL_VIEWER) {
+      await checkRowWrite(viewer, [input.isrc], [input.documentId, ...input.shares.map((x) => x.documentId)]);
       return db.transaction(async () => {
         if (!input.documentId)
           throw new RuleViolationError('A split change requires a confirming document', 'document_required');
@@ -71,11 +87,13 @@ export function splitsApi(ctx: FacadeContext) {
         return splits.changeSplit({ ...input, from, shares: await build() });
       });
     },
-    async confirmSplit(splitId: string, documentId: string) {
+    async confirmSplit(splitId: string, documentId: string, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all') await checkRowWrite(viewer, [(await splits.getSplit(splitId)).isrc], [documentId]);
       await checkSplitDocument(documentId);
       return splits.confirmSplit(splitId, documentId);
     },
-    buyout(input: { isrcs: string[]; sellerArtistId: string; effectiveFrom: string; documentId: string }) {
+    async buyout(input: { isrcs: string[]; sellerArtistId: string; effectiveFrom: string; documentId: string }, viewer: Viewer = ALL_VIEWER) {
+      await checkRowWrite(viewer, input.isrcs, [input.documentId]);
       return db.transaction(async () => {
         const doc = await owners.getDocument(input.documentId);
         if (doc.kind !== 'buyout')
@@ -89,7 +107,8 @@ export function splitsApi(ctx: FacadeContext) {
       });
     },
     /** Creates a participation; its start and end are floored to the month start (M52, D-130). */
-    createParticipation(input: ParticipationInput) {
+    async createParticipation(input: ParticipationInput, viewer: Viewer = ALL_VIEWER) {
+      await checkRowWrite(viewer, [input.isrc], [input.documentId]);
       return db.transaction(async () => {
         const validFrom = floorToMonth(input.validFrom);
         const validTo = floorEnd(validFrom, input.validTo);
@@ -108,19 +127,22 @@ export function splitsApi(ctx: FacadeContext) {
       });
     },
     /** Ends a participation; the end date is floored to the month start (D-130). */
-    closeParticipation(id: string, validTo: string) {
+    async closeParticipation(id: string, validTo: string, viewer: Viewer = ALL_VIEWER) {
+      if (viewer.kind !== 'all') await checkRowWrite(viewer, [(await splits.getParticipation(id)).isrc], []);
       return db.transaction(async () => {
         const p = await splits.getParticipation(id);
         return splits.closeParticipation(id, floorEnd(p.validFrom, validTo) ?? validTo);
       });
     },
     /** Participations with pseudonyms, owner ids and document status. */
-    listParticipations(filter: { isrc?: string; artistId?: string; limit?: number; offset?: number } = {}) {
+    async listParticipations(filter: { isrc?: string; artistId?: string; limit?: number; offset?: number } = {}, viewer: Viewer = ALL_VIEWER) {
+      // a viewer of some labels (D-171): the rows on the ISRCs of the ISRC rule
+      const mayTouch = await scopeOf(viewer).isrcFilter();
       return db.snapshot(async () => {
-        const list = await splits.listParticipations({
+        const list = (await splits.listParticipations({
           ...(filter.isrc ? { isrc: filter.isrc } : {}),
           ...(filter.artistId ? { artistId: filter.artistId } : {}),
-        });
+        })).filter((p) => mayTouch(p.isrc));
         const idx = await owners.artistIndex();
         const page =
           filter.limit === undefined && filter.offset === undefined
@@ -194,19 +216,21 @@ export function splitsApi(ctx: FacadeContext) {
       });
     },
     /** Splits with artist names and document status, for the splits page. */
-    listSplits(filter: {
+    async listSplits(filter: {
       isrc?: string;
       artistId?: string;
       limit?: number;
       offset?: number;
       /** `unconfirmed`: the document is missing or not approved. */
       status?: 'unconfirmed';
-    }) {
+    }, viewer: Viewer = ALL_VIEWER) {
+      // a viewer of some labels (D-171): the rows on the ISRCs of the ISRC rule
+      const mayTouch = await scopeOf(viewer).isrcFilter();
       return db.snapshot(async () => {
-        const list = await splits.listSplits({
+        const list = (await splits.listSplits({
           ...(filter.isrc ? { isrc: filter.isrc } : {}),
           ...(filter.artistId ? { artistId: filter.artistId } : {}),
-        });
+        })).filter((s) => mayTouch(s.isrc));
         const idx = await owners.artistIndex();
         const statuses = await owners.documentStatuses(
           list.map((s) => s.documentId).filter((d): d is string => !!d),

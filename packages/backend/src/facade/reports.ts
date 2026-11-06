@@ -6,6 +6,7 @@ import { cQueue, type QueueOptions } from './queue';
 import { periodScope, scoped, type UnitScope } from './scope';
 import { ownerReach } from './owner-scope';
 import type { CReason } from '@erp/shared/api-responses';
+import { ALL_VIEWER, type Viewer } from './viewer';
 import type { FacadeContext } from './context';
 import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
@@ -365,7 +366,12 @@ export function reportsApi(ctx: FacadeContext) {
     },
 
     /** The owner balance from the units of the owner's reach (D-163, D-164); under a label its book (D-168). */
-    async ownerBalance(ownerId: string, f: PeriodFilter = {}, labelId?: string) {
+    async ownerBalance(ownerId: string, f: PeriodFilter = {}, labelId?: string, viewer: Viewer = ALL_VIEWER) {
+      // a viewer of some labels (D-171): an owner visible under one of them, else 404
+      if (viewer.kind !== 'all') {
+        await owners.getOwner(ownerId);
+        await ctx.scopeOf(viewer).assertOwnerVisible(ownerId);
+      }
       return (await balanceWithFiles(ownerId, f, await ctx.viewOf(labelId))).balance;
     },
 

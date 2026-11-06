@@ -1,11 +1,17 @@
-import { RuleViolationError, ValidationError } from '../shared/errors';
+import { NotFoundError, RuleViolationError, ValidationError } from '../shared/errors';
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { todayIso } from '../shared/dates';
 import { type Scope } from '../modules/settlements';
 import type { FacadeContext } from './context';
+import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
 
 export function payoutsApi(ctx: FacadeContext) {
   const { db, config, owners, settlements, publishing, sources, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;
+  /** A write on an operation by id (D-171): an operation of one of the viewer's labels, else 403 `label_forbidden`. */
+  async function checkOperation(id: string, viewer: Viewer) {
+    if (viewer.kind !== 'all') assertViewerHolds(viewer, (await settlements.getOperation(id)).labelId);
+  }
+
   const api = {
     /**
      * Adjustments (deduction, credit) and recoupable payouts (advance with scope). Settlements are tied to the artist;
@@ -227,7 +233,8 @@ export function payoutsApi(ctx: FacadeContext) {
     },
 
     /** Attaches the payment proof (from the payment service) as a document; the payout then counts. */
-    attachPaymentProof(operationId: string, input: { fileRef: string; title?: string }) {
+    async attachPaymentProof(operationId: string, input: { fileRef: string; title?: string }, viewer: Viewer = ALL_VIEWER) {
+      await checkOperation(operationId, viewer);
       return db.transaction(async () => {
         const op = await settlements.getOperation(operationId);
         if (op.direction !== 'out' || !op.active || op.paymentProofId)
@@ -245,13 +252,16 @@ export function payoutsApi(ctx: FacadeContext) {
     },
 
     /** The label of an existing operation (D-168): the history before the split is marked by the operator. */
-    async setOperationLabel(operationId: string, labelId: string) {
+    async setOperationLabel(operationId: string, labelId: string, viewer: Viewer = ALL_VIEWER) {
       await assertOwnLabel(labelId);
+      await checkOperation(operationId, viewer);
+      if (viewer.kind !== 'all') assertViewerHolds(viewer, labelId);
       return settlements.setLabel(operationId, labelId);
     },
 
     /** A payout that did not arrive: a separate return operation with a confirming document (under the payout's label). */
-    returnPayout(operationId: string, input: { fileRef: string; date: string; comment: string }) {
+    async returnPayout(operationId: string, input: { fileRef: string; date: string; comment: string }, viewer: Viewer = ALL_VIEWER) {
+      await checkOperation(operationId, viewer);
       return db.transaction(async () => {
         const op = await settlements.getOperation(operationId);
         if (op.meaning !== 'payout' || !op.active || (!op.paymentProofId && !op.migration)) {
@@ -280,6 +290,30 @@ export function payoutsApi(ctx: FacadeContext) {
           labelId: op.labelId,
         });
       });
+    },
+
+    /** Defers a payout or releases it (the operation's label for a viewer of some labels, D-171). */
+    async setOperationDeferred(operationId: string, deferred: boolean, viewer: Viewer = ALL_VIEWER) {
+      await checkOperation(operationId, viewer);
+      return settlements.setDeferred(operationId, deferred);
+    },
+
+    /** Soft rollback of an operation (the operation's label for a viewer of some labels, D-171). */
+    async deactivateOperation(operationId: string, reason: string, opts: { transferFailed?: boolean } = {}, viewer: Viewer = ALL_VIEWER) {
+      await checkOperation(operationId, viewer);
+      return settlements.deactivate(operationId, reason, opts);
+    },
+
+    /**
+     * The snapshot a payout recorded (D-053). A viewer of some labels (D-171): an operation of one of its labels, else
+     * 404 as an unknown snapshot.
+     */
+    async operationSnapshot(operationId: string, viewer: Viewer = ALL_VIEWER): Promise<unknown> {
+      if (viewer.kind !== 'all') {
+        const op = await settlements.getOperation(operationId); // an unknown id: 404
+        if (!viewerHolds(viewer, op.labelId)) throw new NotFoundError('Payout snapshot', operationId);
+      }
+      return settlements.getSnapshot(operationId);
     },
   };
   return api;

@@ -42,6 +42,15 @@ describe('module boundaries (README 4)', () => {
     expect(helper).not.toMatch(/from '\.\.\/(modules|facade|orgs|auth|api)/);
   });
 
+  it('the facade never imports the API; it knows the viewer only as its own Viewer type (D-171)', () => {
+    for (const file of filesOf(join(SRC, 'facade'))) {
+      const body = readFileSync(file, 'utf8');
+      const imports = [...body.matchAll(/from '([^']+)'/g)].map((x) => x[1] as string);
+      for (const imp of imports) expect(imp, `${file} imports ${imp}`).not.toMatch(/(^|\/)(api|auth|orgs)(\/|$)/);
+      expect(body, file).not.toMatch(/\bPrincipal\b|label_manager|org_admin/);
+    }
+  });
+
   it('only src/orgs/middleware.ts reads X-Org and res.locals.org: no route or facade names the organization (D-170)', () => {
     const reader = join(SRC, 'orgs', 'middleware.ts');
     const readers = filesOf(SRC).filter((f) => /header\(\s*'x-org'|headers\[\s*'x-org'|locals\.org\b/i.test(readFileSync(f, 'utf8')));

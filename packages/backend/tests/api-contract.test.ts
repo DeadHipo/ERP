@@ -738,6 +738,17 @@ describe(`API contract (AUTH_MODE=${mode})`, () => {
       else expect(withNone, `${key} without a label`).not.toMatch(/^403|label_required/);
       expect(withOther, `${key} under another label`).toBe('403 label_forbidden');
     }
+    // the record decides (the facade's Viewer): a record of the other label reads as unknown (404), a write on it is 403
+    const adB = ((await R.post('/api/v1/ads').set('X-Operator', OPERATOR)
+      .send({ items: [{ isrc: 'QZTST2600077', month: '2026-03', amount: '1', labelId: other }] }).expect(201)).body as { created: { id: string }[] }).created[0]?.id as string;
+    const docB = ((await R.post('/api/v1/documents').set('X-Operator', OPERATOR)
+      .send({ kind: 'appendix', title: 'contract doc B', requiresApproval: true, labelId: other }).expect(201)).body as { id: string }).id;
+    const asMgr = (method: 'get' | 'post', path: string, body: object = {}) =>
+      method === 'get' ? request(app).get(`/api/v1${path}`).set('Cookie', cookie) : request(app).post(`/api/v1${path}`).set('Cookie', cookie).set('X-Operator', OPERATOR).send(body);
+    expect(answer(await asMgr('get', `/ads/${adB}`))).toBe('404 not_found');
+    expect(answer(await asMgr('post', `/ads/${adB}/deactivate`, { reason: 'x' }))).toBe('403 label_forbidden');
+    expect(answer(await asMgr('get', `/documents/${docB}/uses`))).toBe('404 not_found');
+    expect(answer(await asMgr('post', `/documents/${docB}/attach`, { fileRef: 'dummy://x.pdf' }))).toBe('403 label_forbidden');
     // the path is matched as Express matches it: another case or a trailing slash is the same operation; none = 404
     for (const path of ['/api/v1/Owners/merge', '/api/v1/owners/merge/', '/api/v1/OVERVIEW'])
       expect(answer(await request(app)[path.endsWith('OVERVIEW') ? 'get' : 'post'](path).set('Cookie', cookie).set('X-Operator', OPERATOR).send({})), path).toBe(
