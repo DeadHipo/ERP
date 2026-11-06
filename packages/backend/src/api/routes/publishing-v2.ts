@@ -1,0 +1,31 @@
+import { Router } from 'express';
+import * as S from '@erp/shared/api-schemas';
+import type { Facade } from '../../facade';
+import { param, parse } from '../http';
+import { receiveUpload, uploadLabel } from '../upload';
+
+/** Publishing v2 (D-182): the report summaries as a list of files, songwriters and songs; no owner, no money rule. */
+export function publishingV2Router(facade: Facade, opts: { tmpDir: string }) {
+  const { pubv2 } = facade.modules;
+  const r = Router();
+
+  r.get('/publishing-v2/files', async (req, res) => res.json(await pubv2.listFiles(parse(S.labelQuery, req.query).label)));
+  r.post('/publishing-v2/files', async (req, res) => {
+    const labelId = await uploadLabel(facade, req); // before the body is received (D-169)
+    const { replace } = parse(S.pubV2UploadQuery, req.query);
+    const up = await receiveUpload(req, opts.tmpDir);
+    try {
+      res.status(201).json(await pubv2.ingest({ path: up.path, fileName: up.fileName, labelId, replace: replace === '1' }));
+    } finally {
+      await up.cleanup();
+    }
+  });
+  r.post('/publishing-v2/files/:id/remove', async (req, res) => res.json(await pubv2.removeFile(param(req, 'id'))));
+  r.get('/publishing-v2/songwriters', async (req, res) =>
+    res.json(await pubv2.listSongwriters(parse(S.labelQuery, req.query).label)),
+  );
+  r.get('/publishing-v2/songwriters/:id', async (req, res) =>
+    res.json(await pubv2.songwriter(param(req, 'id'), parse(S.labelQuery, req.query).label)),
+  );
+  return r;
+}

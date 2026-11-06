@@ -25,6 +25,10 @@ export const ROUTE_PATHS = {
   labels: 'labels',
   label: 'labels/:id',
   publishing: 'publishing',
+  /** P32 (D-182): the songwriters and files of the report summaries, no owner link. */
+  publishingV2: 'publishing-v2',
+  /** P33 (D-182): one songwriter. */
+  publishingV2Songwriter: 'publishing-v2/:id',
   documents: 'documents',
   document: 'documents/:id',
   sources: 'sources',

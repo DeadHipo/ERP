@@ -604,6 +604,63 @@ export const resolveWritersSchema = z.object({
   external: z.number().int(),
 });
 
+/** Publishing v2 (D-182): the report summaries as they are, no owner, no share. */
+export const pubV2FileSchema = z.object({
+  id: z.string(),
+  labelId: z.string().describe(D.labelId),
+  fileName: z.string(),
+  sha256: z.string(),
+  source: z.enum(['b17']).describe('The report the file comes from'),
+  format: z.string().describe('Which layout was read: periods, blocks or flat'),
+  periods: z.array(z.string()).describe('The quarters of the file, like 2026-Q2'),
+  status: z.enum(['loaded', 'superseded']).describe('loaded = counted; superseded = replaced by a later file'),
+  replacedBy: z.string().nullable().describe('Id of the file that replaced this one; null = none'),
+  rowCount: z.number().int().describe('Rows read from the summary: one per songwriter, song and quarter'),
+  payable: money.describe('Sum of the rows read, USD'),
+  declaredPayable: money.nullable().describe('The total the file names itself, USD; null = it names none'),
+  difference: money.nullable().describe('payable minus declaredPayable, USD: a check of the reading; null = no declared total'),
+  uploadedAt: timestamp,
+});
+
+export const pubV2RemovedSchema = z.object({ id: z.string() });
+
+export const pubV2SongwriterSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  aliases: z.array(z.string()).describe('Every spelling of the name seen in the reports'),
+  songs: z.number().int().describe('Songs with accruals in the loaded files'),
+  periods: z.array(z.string()).describe('Quarters with accruals, like 2026-Q2'),
+  payable: money.describe('Sum payable by the reports over the loaded files, USD: what came in, not what is owed'),
+});
+
+export const pubV2SongwriterDetailSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  aliases: z.array(z.string()).describe('Every spelling of the name seen in the reports'),
+  periods: z
+    .array(
+      z.object({
+        period: z.string().describe('The quarter, like 2026-Q2'),
+        gross: money.nullable().describe('Gross by the report, USD; null = the report does not name it'),
+        withholding: money.nullable().describe('Withholding by the report, USD; null = the report does not name it'),
+        payable: money.describe('Payable by the report, USD'),
+      }),
+    )
+    .describe('The accruals of the songwriter per quarter'),
+  songs: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        payable: money.describe('Payable by the reports over all quarters, USD'),
+        periods: z
+          .array(z.object({ period: z.string().describe('The quarter, like 2026-Q2'), payable: money.describe('Payable by the report, USD') }))
+          .describe('The song per quarter'),
+      }),
+    )
+    .describe('The songs of the songwriter, largest first'),
+});
+
 export const b17UploadSchema = z.object({ statement: statementSchema, writers: resolveWritersSchema });
 
 // ---- reports ----

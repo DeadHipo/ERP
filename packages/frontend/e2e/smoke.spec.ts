@@ -100,6 +100,7 @@ const DETAIL_ROUTES = [
   '/documents/d1',
   '/ads/a1',
   '/labels/l1',
+  '/publishing-v2/s1',
   '/sources/lines',
 ];
 

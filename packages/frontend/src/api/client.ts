@@ -336,6 +336,22 @@ export const sources = {
     call('POST', '/sources/believe', { query: uploadQuery(labelId), body: fileForm(file), schema: R.sourceFileSchema }),
 };
 
+/** Publishing v2 (D-182): the report summaries, no owner link. */
+export const publishingV2 = {
+  files: (query: z.input<typeof S.labelQuery> = {}) => call('GET', '/publishing-v2/files', { query, schema: list(R.pubV2FileSchema) }),
+  upload: (file: File, labelId: string, replace: boolean) =>
+    call('POST', '/publishing-v2/files', {
+      query: { ...uploadQuery(labelId), replace: replace ? '1' : '0' },
+      body: fileForm(file),
+      schema: R.pubV2FileSchema,
+    }),
+  remove: (fileId: string) => call('POST', `/publishing-v2/files/${id(fileId)}/remove`, { schema: R.pubV2RemovedSchema }),
+  songwriters: (query: z.input<typeof S.labelQuery> = {}) =>
+    call('GET', '/publishing-v2/songwriters', { query, schema: list(R.pubV2SongwriterSchema) }),
+  songwriter: (songwriterId: string, query: z.input<typeof S.labelQuery> = {}) =>
+    call('GET', `/publishing-v2/songwriters/${id(songwriterId)}`, { query, schema: R.pubV2SongwriterDetailSchema }),
+};
+
 export const publishing = {
   /** Loaded under an own label (D-169). */
   uploadB17: (file: File, labelId: string) =>

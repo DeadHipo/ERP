@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import ExcelJS from 'exceljs';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServerApp } from '../src/api/server-app';
@@ -22,7 +23,7 @@ import { TMP } from './helpers/tmp-root';
 // other's rows. Synthetic data only.
 
 const SRC = join(process.cwd(), 'src');
-const MODULES = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'audit', 'ads'];
+const MODULES = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'pubv2', 'audit', 'ads'];
 const REPOSITORIES = [
   ...MODULES.map((m) => join(SRC, 'modules', m, 'repository.ts')),
   join(SRC, 'modules', 'sources', 'registry.ts'),
@@ -55,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(32); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
+    expect(tables.length).toBe(38); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -248,6 +249,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
     /** D-173: a B17 statement */
     statement: string;
+    pubFile: string;
+    songwriter: string;
     /** D-174: an opening balance row */
     start: string;
     /** D-176: a contract, a payee, a hold, an answer */
@@ -335,6 +338,17 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const b17 = await writeB17('Q22026', [{ writer: 'B WRITER SECRET', title: 'B Song Secret', payable: 10 }]);
     const sb17 = await as('b', request(app).post('/api/v1/publishing/b17')).query({ label: lb.id }).attach('file', b17.path, b17.fileName);
     expect(sb17.status, JSON.stringify(sb17.body)).toBe(201);
+    const pubBook = new ExcelJS.Workbook();
+    pubBook.addWorksheet('Songwriter Breakdown').addRows([
+      ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+      ['SONGWRITER: Secret Writer', 2, 0, 2],
+      ['  Secret Song', 2, 0, 2],
+    ]);
+    const pubPath = join(TMP, `scope-pubv2-${randomUUID()}.xlsx`);
+    await pubBook.xlsx.writeFile(pubPath);
+    const pubFile = await as('b', request(app).post('/api/v1/publishing-v2/files')).query({ label: lb.id }).attach('file', pubPath, 'scope_Q22026.xlsx');
+    expect(pubFile.status, JSON.stringify(pubFile.body)).toBe(201);
+    const pubWriters = (await ok('b', 'get', '/publishing-v2/songwriters')) as unknown as { id: string }[];
     const writers = (await ok('b', 'get', '/publishing/writers')) as unknown as { writerNorm: string }[];
     replaceFile = await writeB17('Q22026', [{ writer: 'A WRITER', title: 'A Song', payable: 11 }], 'scope_replace_Q22026.xlsx');
     await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
@@ -348,7 +362,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
-      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, start: stb.body.result.ids[0] as string,
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, start: stb.body.result.ids[0] as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
@@ -362,7 +376,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
     };
   };
 
@@ -425,6 +439,10 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /sources/lines': (x) => ({ query: { fileId: x.file } }),
     'GET /sources/lines/facets': (x) => ({ query: { fileId: x.file } }),
     'GET /publishing/writers': () => ({}),
+    'GET /publishing-v2/files': (x) => ({ query: { label: x.label } }),
+    'GET /publishing-v2/songwriters': (x) => ({ query: { label: x.label } }),
+    'GET /publishing-v2/songwriters/:id': (x) => ({ params: { id: x.songwriter } }),
+    'POST /publishing-v2/files/:id/remove': (x) => ({ params: { id: x.pubFile } }),
     'POST /publishing/writers/:norm/map': (x) => ({ params: { norm: x.norm }, body: { ownerId: A.owner } }),
     'POST /publishing/terms': (x) => ({ body: { ownerId: x.owner, percent: '10', validFrom: '2026-01-01' } }),
     'GET /reconciliation': () => ({}),
@@ -478,6 +496,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /owners',
     'POST /sources/believe',
     'POST /publishing/b17',
+    'POST /publishing-v2/files',
     'POST /publishing/writers/resolve',
     'POST /splits/import',
     'POST /releases/import',

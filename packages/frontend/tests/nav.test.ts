@@ -7,7 +7,7 @@ describe('nav.ts', () => {
     expect(NAV.map((s) => s.items.map((i) => i.path))).toEqual([
       ['/', '/queue', '/signals', '/questions', '/owners?view=payouts'],
       ['/tracks', '/releases', '/owners', '/artists'],
-      ['/splits', '/participations', '/labels', '/publishing', '/documents'],
+      ['/splits', '/participations', '/labels', '/publishing', '/publishing-v2', '/documents'],
       ['/sources', '/operations', '/operations/start', '/ads'],
     ]);
     expect(new Set(ALL_ITEMS.map((i) => i.id)).size).toBe(ALL_ITEMS.length);

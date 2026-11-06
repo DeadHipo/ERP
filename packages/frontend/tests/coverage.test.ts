@@ -19,8 +19,8 @@ describe('operation coverage', () => {
     expect(bad).toEqual([]);
   });
 
-  it('uses only page ids P1..P30 or shell', () => {
-    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|30)$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
+  it('uses only page ids P1..P33 or shell', () => {
+    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|3[0-3])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
     expect(bad).toEqual([]);
   });
 

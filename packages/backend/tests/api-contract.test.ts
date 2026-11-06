@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import ExcelJS from 'exceljs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createApp } from '../src/api/app';
 import { createServerApp } from '../src/api/server-app';
@@ -545,6 +546,23 @@ const OPERATOR = 'contract-test';
     expect((await refused(`/api/v1/publishing/statements/${b17.statement.id}/replace`, {}, b17Fix)).error.code).toBe('label_required');
     const b17Replaced = await call('post', '/publishing/statements/:id/replace', { params: { id: b17.statement.id }, query: { label: zero.id }, file: b17Fix, labelId: zero.id });
     expect([b17Replaced.superseded.status, b17Replaced.superseded.replacedBy, b17Replaced.statement.totalPayable]).toEqual(['superseded', b17Replaced.statement.id, '100']);
+    // publishing v2 (D-182): a report summary as a partition, the list, the removal
+    const pubV2Book = new ExcelJS.Workbook();
+    pubV2Book.addWorksheet('Songwriter Breakdown').addRows([
+      ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+      ['SONGWRITER: Writer Synthetic', 3, 1, 2],
+      ['  Song', 3, 1, 2],
+    ]);
+    const pubV2Path = tmpPath('contract-pubv2.xlsx');
+    await pubV2Book.xlsx.writeFile(pubV2Path);
+    const pubV2Upload = { path: pubV2Path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' };
+    expect((await refused('/api/v1/publishing-v2/files', {}, pubV2Upload)).error.code).toBe('label_required');
+    const pubV2File = await call('post', '/publishing-v2/files', { query: { label: zero.id }, file: pubV2Upload });
+    expect(pubV2File.payable).toBe('2');
+    expect((await call('get', '/publishing-v2/files')).map((x: { id: string }) => x.id)).toContain(pubV2File.id);
+    const pubV2Writers = await call('get', '/publishing-v2/songwriters', { query: { label: zero.id } });
+    expect((await call('get', '/publishing-v2/songwriters/:id', { params: { id: pubV2Writers[0].id } })).songs.length).toBe(1);
+    await call('post', '/publishing-v2/files/:id/remove', { params: { id: pubV2File.id } });
     // the split import (D-172): a refusal, the preview (no audit row), the apply
     const importFile = tmpPath('contract-splits.csv');
     writeFileSync(importFile, 'isrc,pseudonym,percent,from,document\nQZTST2600088,Contract Import Synth,25,2026-02-15,\n');

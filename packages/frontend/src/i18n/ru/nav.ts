@@ -21,6 +21,7 @@ export const nav = {
     participations: 'Участия',
     labels: 'Лейблы',
     publishing: 'Паблишинг',
+    publishingV2: 'Паблишинг v2',
     documents: 'Документы',
     sources: 'Отчёты',
     operations: 'Операции',

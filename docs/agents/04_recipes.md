@@ -541,3 +541,11 @@ the data of the live store, in order (every script is a dry run without `--apply
 5. The positions: P10 «Баланс» of an owner with pseudonyms of both signs shows the net («сальдо»), «К выплате: сумма
    положительных позиций» and the negative ones; the payroll's pseudonym rows carry their position. `scripts/start/check-start.ts`
    still holds (the start is per pseudonym).
+
+## 20. Load the B17 reports into publishing v2 (D-182)
+
+1. `npm run migrate:pg` (once, migration 0023).
+2. `npx tsx packages/backend/scripts/pubv2/load.ts context_data/ERP_data/publishing/raw --label 0to8` prints what each report gives; nothing is written.
+3. The same with `--apply`: the oldest quarter first, the `Updated` run last with its quarter replaced; a loaded file is skipped.
+4. Check on `/publishing-v2`: the column «Разница» of every file is near zero (the Cover of Q2 and Q3 2025 gives cents; Q4 2025 names no total). The old module and the money do not change.
+

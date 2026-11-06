@@ -33,7 +33,7 @@ export function postgresMigrations() {
  * Schemas whose tables `resetModules()` empties (every PostgreSQL module). Not `orgs` and `auth` (D-170): the test
  * organization and its users outlive a reset.
  */
-const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'audit', 'ads'];
+const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'pubv2', 'audit', 'ads'];
 
 /**
  * A private PostgreSQL database `erp_<name>` and private ClickHouse databases `believe_<name>` and `believe_<name>_stage`

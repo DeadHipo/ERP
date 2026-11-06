@@ -5,6 +5,7 @@ import { ownersRouter } from './owners';
 import { splitsRouter } from './splits';
 import { sourcesRouter } from './sources';
 import { publishingRouter } from './publishing';
+import { publishingV2Router } from './publishing-v2';
 import { reportsRouter } from './reports';
 import { settlementsRouter } from './settlements';
 import { labelsRouter } from './labels';
@@ -24,6 +25,7 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.use(splitsRouter(facade, opts));
   r.use(sourcesRouter(facade, opts));
   r.use(publishingRouter(facade, opts));
+  r.use(publishingV2Router(facade, opts));
   r.use(reportsRouter(facade));
   r.use(settlementsRouter(facade, opts));
   r.use(labelsRouter(facade));

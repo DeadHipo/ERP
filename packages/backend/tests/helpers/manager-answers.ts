@@ -101,6 +101,11 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /onboarding/organization': 'x',
   // the replacement of a B17 statement (D-173 stage 5 commit 5): approve, the org_admin's only
   'POST /publishing/statements/:id/replace': 'x',
+  'GET /publishing-v2/files': 'L',
+  'POST /publishing-v2/files': 'x',
+  'POST /publishing-v2/files/:id/remove': 'x',
+  'GET /publishing-v2/songwriters': 'L',
+  'GET /publishing-v2/songwriters/:id': 'L',
   // the forgiveness of an advance (D-173 stage 5 commit 2): pay, the org_admin's only
   'POST /settlements/operations/:id/forgive': 'x',
   // the operation import (D-173 stage 5 commit 4): pay, the org_admin's only

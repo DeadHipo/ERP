@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { testStack } from './helpers/test-sources';
 
 const SRC = join(process.cwd(), 'src');
-const MODULES = ['owners', 'splits', 'labels', 'sources', 'settlements', 'publishing', 'audit', 'ads'];
+const MODULES = ['owners', 'splits', 'labels', 'sources', 'settlements', 'publishing', 'pubv2', 'audit', 'ads'];
 
 function filesOf(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {

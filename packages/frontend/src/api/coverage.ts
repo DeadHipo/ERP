@@ -116,6 +116,11 @@ export const OPERATION_COVERAGE = {
   'POST /publishing/b17': { page: 'P19', route: '/sources', note: 'field-upload-b17 under the label of the switch, closed under «Все» (D-169)' },
   'POST /publishing/statements/:id/replace': { page: 'P19', route: '/sources', note: 'D-173: action-replace-statement-<id> on a loaded statement → ReplaceStatementDialog (the shared UploadForm field-replace-statement-file, action-replace-statement-submit) under the label of the switch; the superseded row shows chip-superseded and statement-replaced-by-<id>' },
 
+  'GET /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: the files section' },
+  'POST /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: upload-publishing-v2 under the label of the switch; 409 period_loaded asks to replace' },
+  'POST /publishing-v2/files/:id/remove': { page: 'P32', route: '/publishing-v2', note: 'D-182: action-remove-file' },
+  'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },
+  'GET /publishing-v2/songwriters/:id': { page: 'P33', route: '/publishing-v2/:id' },
   'GET /publishing/writers': { page: 'P18', route: '/publishing' },
   'POST /publishing/writers/:norm/map': { page: 'P18', route: '/publishing', note: 'action-map-writer; also the queue and the signals' },
   'POST /publishing/writers/resolve': { page: 'P18', route: '/publishing', note: 'action-resolve-writers' },

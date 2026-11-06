@@ -5,6 +5,7 @@ import type { SplitsService } from '../modules/splits';
 import type { SourcesService } from '../modules/sources';
 import type { SettlementsService } from '../modules/settlements';
 import type { PublishingService } from '../modules/publishing';
+import type { PubV2Service } from '../modules/pubv2';
 import type { AuditService } from '../modules/audit';
 import type { AdsService } from '../modules/ads';
 import { orgScope } from '../shared/org-scope';
@@ -53,6 +54,7 @@ export function openFacade(config: FacadeConfig) {
   const sources: SourcesService = config.sources;
   const settlements: SettlementsService = opened.settlements;
   const publishing: PublishingService = opened.publishing;
+  const pubv2: PubV2Service = opened.pubv2;
   const audit: AuditService = opened.audit;
   const ads: AdsService = opened.ads;
   const ctx = createFacadeContext(config, {
@@ -73,7 +75,7 @@ export function openFacade(config: FacadeConfig) {
     db,
     /** The organization every module of this facade is opened under (D-170). */
     orgId: config.orgId,
-    modules: { owners, splits, labels, sources, settlements, publishing, audit, ads },
+    modules: { owners, splits, labels, sources, settlements, publishing, pubv2, audit, ads },
 
     ...splitsPart,
     ...aggregatesApi(ctx, splitsPart),

@@ -41,9 +41,9 @@ describe('abilities (D-171)', () => {
     const count = (c: string) => Object.values(MANAGER_ANSWER).filter((v) => v === c).length;
     // D-174: + GET /settlements/start (L), POST /settlements/start/import (x), POST /settlements/start/:id/deactivate (x)
     // D-176: + GET /settlements/admission (L), six admission writes and PATCH /contracts/:id (x)
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([105, 32, 16, 7, 50]);
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([110, 35, 16, 7, 52]);
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([19, 24, 17, 14, 17, 14]);
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([19, 27, 17, 16, 17, 14]);
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {
@@ -137,7 +137,7 @@ describe('abilities (D-171)', () => {
         .map(([k]) => k)
         .sort(),
     );
-    expect(orgAllowed).toHaveLength(55); // D-174: + GET /settlements/start; D-176: + GET /settlements/admission
+    expect(orgAllowed).toHaveLength(58); // D-174: + GET /settlements/start; D-176: + GET /settlements/admission
     expect(m).toEqual(expect.arrayContaining(['GET /auth/me', 'POST /auth/password']));
     expect(m.filter((k) => k.startsWith('GET /orgs') || k.startsWith('POST /orgs'))).toEqual([]);
     // a manager without labels: no label operation

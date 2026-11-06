@@ -315,6 +315,14 @@ export const uploadLabelQuery = z.object({
     .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown, 400 label_not_own'),
 });
 
+/** The upload of a report summary (D-182): `replace=1` takes the quarters over from the loaded files of the label. */
+export const pubV2UploadQuery = uploadLabelQuery.extend({
+  replace: z
+    .enum(['0', '1'])
+    .default('0')
+    .describe('1 = the quarters already loaded under the label are replaced by this file; 0 = 409 period_loaded'),
+});
+
 /**
  * `POST /splits/import` (D-172): the own label of the import and the mode; `dryRun=1` (default) is the preview, `0` the
  * apply. The label is optional here so that a missing one is the facade's 400 `label_required`.
