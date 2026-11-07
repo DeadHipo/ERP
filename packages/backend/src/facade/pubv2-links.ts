@@ -144,11 +144,30 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     /** The candidates of one song and its confirmed ISRCs, with the titles of the catalog. */
     async pubV2SongCandidates(songId: string) {
       const song = await pubv2.getSong(songId);
-      const [{ titles, candidates }, ownerOf, decided] = await Promise.all([catalog(), ownerOfSongwriters(), links.isrcsOfSong(songId)]);
+      const [{ titles, candidates }, ownerOf, decided, all, writers] = await Promise.all([
+        catalog(),
+        ownerOfSongwriters(),
+        links.isrcsOfSong(songId),
+        links.songIsrcs(),
+        pubv2.listSongwriters(),
+      ]);
+      // D-191: the ISRCs another songwriter already linked to its song (co-authorship) come first after the owner's
+      const writerName = new Map(writers.map((w) => [w.id, w.name]));
+      const coAuthors = new Map<string, Set<string>>();
+      for (const l of all) {
+        if (l.songwriterId === song.songwriterId) continue;
+        const set = coAuthors.get(l.isrc) ?? new Set<string>();
+        set.add(writerName.get(l.songwriterId) ?? '');
+        coAuthors.set(l.isrc, set);
+      }
+      const rank = (c: { reason: string; coAuthors: string[] }) => (c.reason === 'owner' ? 0 : c.coAuthors.length > 0 ? 1 : 2);
+      const found = candidates(song.title, ownerOf.get(song.songwriterId) ?? null)
+        .map((c) => ({ ...c, coAuthors: [...(coAuthors.get(c.isrc) ?? [])].filter(Boolean).sort() }))
+        .sort((a, b) => rank(a) - rank(b) || a.isrc.localeCompare(b.isrc));
       return {
         songId,
         title: song.title,
-        candidates: candidates(song.title, ownerOf.get(song.songwriterId) ?? null),
+        candidates: found,
         isrcs: decided.map((d) => ({ isrc: d.isrc, title: titles.get(d.isrc) ?? '', source: d.source })),
       };
     },
@@ -163,18 +182,17 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       for (const isrc of isrcs) if (!titles.has(isrc)) throw new NotFoundError('Track', isrc);
       return ctx.db.transaction(async () => {
         // D-190: one ISRC under two songs of one songwriter is a mistake (a double title); under two songwriters it is
-        // co-authorship and stays allowed
+        // co-authorship and stays allowed. The unique index of D-191 keeps it in the database too.
         const wanted = new Set(isrcs);
-        const siblings = new Set(
-          (await pubv2.listSongs()).filter((s) => s.songwriterId === song.songwriterId && s.id !== songId).map((s) => s.id),
+        const clash = (await links.songIsrcs()).filter(
+          (l) => wanted.has(l.isrc) && l.songwriterId === song.songwriterId && l.songId !== songId,
         );
-        const clash = (await links.songIsrcs()).filter((l) => wanted.has(l.isrc) && siblings.has(l.songId));
         if (clash.length > 0) {
           const list = [...new Set(clash.map((l) => l.isrc))].sort().join(', ');
           throw new ConflictError(`Another song of this songwriter already has ${list}`, 'isrc_on_songwriter_song');
         }
         const rows = await links.setSongIsrcs(
-          songId,
+          { songId, songwriterId: song.songwriterId },
           isrcs.map((isrc) => ({ isrc, source: known.has(isrc) ? ('recommended' as const) : ('manual' as const) })),
           decidedBy,
         );

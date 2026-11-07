@@ -249,7 +249,15 @@ describe('the links of songs to ISRCs (D-184)', () => {
       code: 'isrc_on_songwriter_song',
     });
     expect((await f.pubV2SongCandidates(idOf('Writer Synth One', 'Song A Twice'))).isrcs).toEqual([]);
+    const hint = await f.pubV2SongCandidates(idOf('Co Writer', 'Song A'));
+    expect(hint.candidates.map((c) => [c.isrc, c.coAuthors])).toEqual([
+      [isrcs[0], ['Writer Synth One']],
+      [isrcs[1], []],
+    ]);
     expect((await f.setPubV2SongIsrcs(idOf('Co Writer', 'Song A'), [isrcs[0] as string], 'tester')).isrcs).toEqual([isrcs[0]]);
+    // the database keeps it too, past the facade (D-191)
+    const twice = { songId: idOf('Writer Synth One', 'Song A Twice'), songwriterId: songs.find((s) => s.title === 'Song A Twice')?.songwriterId as string };
+    await expect(f.modules.links.setSongIsrcs(twice, [{ isrc: isrcs[0] as string, source: 'manual' }], 'tester')).rejects.toThrow();
     await f.setPubV2SongIsrcs(idOf('Writer Synth One', 'Song A'), [isrcs[0] as string], 'tester');
   });
 });

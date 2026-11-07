@@ -8,3 +8,5 @@ makes the recommendation. A link is never set automatically. `calculate()` and t
 `publishing_terms` (D-185): the author percent of an owner, moved one to one from `publishing.pub_terms`, which stays until the calculation moves. A term is never edited: a new one closes the open one. The calculation reads it only with `PUBLISHING_SOURCE=v2`, through `facade/pubv2-source.ts`.
 
 D-188: no operation type in `publishing_terms`; a mistaken term is cancelled (`cancelled_at`, `cancelled_by`, `cancel_reason`), never deleted or edited: only the latest of its owner, the term it closed opens again. Reads skip cancelled rows.
+
+D-190, D-191: `song_isrc` carries the `songwriter_id` of the song (a song never changes its songwriter); the unique index `(org_id, songwriter_id, isrc)` keeps one ISRC under one song per songwriter. Two songwriters on one ISRC is co-authorship and allowed. A future merge of songwriters must update this column in the same transaction (and meets the index when both had the ISRC).

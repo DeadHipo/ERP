@@ -18,6 +18,8 @@ export const songwriterOwner = s.table('songwriter_owner', {
 export const songIsrc = s.table('song_isrc', {
   orgId: text('org_id').notNull(),
   songId: text('song_id').notNull(),
+  // the songwriter of the song (D-191): one ISRC under one song per songwriter
+  songwriterId: text('songwriter_id').notNull(),
   isrc: text('isrc').notNull(),
   source: text('source', { enum: ['recommended', 'manual'] }).notNull(),
   decidedBy: text('decided_by').notNull(),

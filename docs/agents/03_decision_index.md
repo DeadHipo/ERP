@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-190 by topic)
+# Decision index (D-001 … D-191 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -172,6 +172,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-188 The terms of v2 without an operation type (migration 0027), a mistaken term cancelled with a reason (only the latest, the previous one reopens), one owner's start date fixed to the effective date of the contract · in force
 - D-189 The switch to publishing v2: `PUBLISHING_SOURCE=v2`, the statements, owner-card terms and writers answered from v2, the old module refuses writes (`publishing_v2_active`) · in force
 - D-190 One ISRC under one song per songwriter (`409 isrc_on_songwriter_song`); two songwriters with one ISRC are co-authorship and allowed · in force
+- D-191 `links.song_isrc.songwriter_id` and the unique index `(org_id, songwriter_id, isrc)` (migration 0028); the candidates of a song name the co-authors who already linked the ISRC · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

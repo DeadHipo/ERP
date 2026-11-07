@@ -74,10 +74,15 @@ export function createLinksService(db: Db, org: OrgScope) {
     songIsrcs: () => repo.songIsrcs(),
     isrcsOfSong: (songId: string) => repo.isrcsOfSong(songId),
     /** The set of ISRCs of a song, as the operator left it. */
-    async setSongIsrcs(songId: string, rows: { isrc: string; source: 'recommended' | 'manual' }[], decidedBy: string) {
+    async setSongIsrcs(
+      song: { songId: string; songwriterId: string },
+      rows: { isrc: string; source: 'recommended' | 'manual' }[],
+      decidedBy: string,
+    ) {
+      const { songId, songwriterId } = song;
       const decidedAt = nowIso();
       return repo.transaction(async () => {
-        await repo.replaceSongIsrcs(songId, rows.map((r) => ({ ...r, songId, decidedBy, decidedAt })));
+        await repo.replaceSongIsrcs(songId, rows.map((r) => ({ ...r, songId, songwriterId, decidedBy, decidedAt })));
         return repo.isrcsOfSong(songId);
       });
     },

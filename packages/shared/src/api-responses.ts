@@ -757,9 +757,12 @@ export const pubV2SongCandidatesSchema = z.object({
         title: z.string(),
         artists: z.array(z.string()).describe('The pseudonyms of the open split of the track'),
         reason: z.enum(['owner', 'title']).describe('owner = a pseudonym of the linked owner is in the split; title = only the title matches'),
+        coAuthors: z
+          .array(z.string())
+          .describe('Other songwriters whose songs the operator already linked to this ISRC (co-authorship, D-191)'),
       }),
     )
-    .describe('Tracks of the catalog with this title, those of the linked owner first; a suggestion only'),
+    .describe('Tracks of the catalog with this title: the linked owner first, then those of a co-author; a suggestion only'),
   isrcs: z
     .array(
       z.object({

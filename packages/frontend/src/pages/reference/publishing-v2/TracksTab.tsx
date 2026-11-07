@@ -28,7 +28,7 @@ function IsrcDialog(props: { song: Song; onClose: () => void }) {
   useEffect(() => {
     if (!data || chosen !== null) return;
     const confirmed = data.isrcs.map((x) => x.isrc);
-    setChosen(new Set(confirmed.length > 0 ? confirmed : data.candidates.filter((c) => c.reason === 'owner').map((c) => c.isrc)));
+    setChosen(new Set(confirmed.length > 0 ? confirmed : data.candidates.filter((c) => c.reason === 'owner' || c.coAuthors.length > 0).map((c) => c.isrc)));
   }, [data, chosen]);
   const run = useAction((isrcs: string[]) => api.publishingV2.setSongIsrcs(props.song.songId, isrcs), {
     invalidate: 'all',
@@ -72,6 +72,11 @@ function IsrcDialog(props: { song: Song; onClose: () => void }) {
                     {t.candidateReason[c.reason]}
                     {c.artists.length > 0 ? ` · ${c.artists.join(', ')}` : ` · ${t.noSplit}`}
                   </span>
+                  {c.coAuthors.length > 0 ? (
+                    <span className="block text-xs text-muted" data-testid={`isrc-co-authors-${c.isrc}`}>
+                      {fmt(t.coAuthors, { names: c.coAuthors.join(', ') })}
+                    </span>
+                  ) : null}
                 </span>
               </label>
             ))}

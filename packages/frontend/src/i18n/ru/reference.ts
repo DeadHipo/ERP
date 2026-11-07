@@ -273,6 +273,7 @@ export const reference = {
     noCandidates: 'Треков с таким названием нет, введите ISRC вручную',
     noSplit: 'сплита нет',
     candidateReason: { owner: 'трек владельца', title: 'совпало название' },
+    coAuthors: 'уже у соавтора: {names}',
     candidatesCount: '{own} своих из {all}',
     linksHint: 'Рекомендация ничего не решает: связь появляется только после подтверждения. Сверху авторы без связи.',
     confirm: 'Подтвердить',
