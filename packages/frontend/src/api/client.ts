@@ -353,6 +353,8 @@ export const publishingV2 = {
   setSongIsrcs: (songId: string, isrcs: string[]) =>
     call('POST', `/publishing-v2/songs/${id(songId)}/isrcs`, { body: { isrcs }, schema: R.pubV2SongIsrcsResultSchema }),
   setTerm: (body: z.input<typeof S.pubV2TermBody>) => call('POST', '/publishing-v2/terms', { body, schema: R.pubV2TermSchema }),
+  cancelTerm: (termId: string, reason: string) =>
+    call('POST', `/publishing-v2/terms/${id(termId)}/cancel`, { body: { reason }, schema: R.pubV2TermCancelSchema }),
   link: (body: z.input<typeof S.pubV2LinkBody>) => call('POST', '/publishing-v2/links', { body, schema: R.pubV2LinkResultSchema }),
   songwriters: (query: z.input<typeof S.labelQuery> = {}) =>
     call('GET', '/publishing-v2/songwriters', { query, schema: list(R.pubV2SongwriterSchema) }),

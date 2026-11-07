@@ -567,6 +567,7 @@ const OPERATOR = 'contract-test';
     expect((await call('get', '/publishing-v2/links')).find((l: { songwriterId: string }) => l.songwriterId === pubV2Writers[0].id).link.ownerId).toBe(pubV2Owner.id);
     const pubV2Term = await call('post', '/publishing-v2/terms', { body: { ownerId: pubV2Owner.id, percent: '50', validFrom: '2026-01-01' } });
     expect(pubV2Term.percent).toBe('50');
+    expect((await call('post', '/publishing-v2/terms/:id/cancel', { params: { id: pubV2Term.id }, body: { reason: 'contract check' } })).reopened).toBeNull();
     const pubV2Songs = await call('get', '/publishing-v2/songs');
     const pubV2Song = pubV2Songs.find((x: { songwriterId: string }) => x.songwriterId === pubV2Writers[0].id);
     expect((await call('get', '/publishing-v2/songs/:id/candidates', { params: { id: pubV2Song.songId } })).isrcs).toEqual([]);

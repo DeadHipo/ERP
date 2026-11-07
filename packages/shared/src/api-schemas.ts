@@ -326,6 +326,9 @@ export const pubV2TermBody = z.object({
   documentId: z.string().nullable().optional(),
 });
 
+/** The cancellation of a mistaken term (D-188): why. */
+export const pubV2TermCancelBody = z.object({ reason: z.string().min(1) });
+
 /** The operator's decision (D-184): the whole set of ISRCs of a song; an empty list clears it. */
 export const pubV2SongIsrcsBody = z.object({ isrcs: z.array(z.string().min(1)) });
 

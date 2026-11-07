@@ -14,12 +14,18 @@ const t = ru.reference.publishingV2;
 export function TermDialog(props: {
   ownerId: string;
   ownerName: string;
-  terms: { percent: string; validFrom: string; validTo: string | null; documentId: string | null }[];
+  terms: { id: string; percent: string; validFrom: string; validTo: string | null; documentId: string | null }[];
   onClose: () => void;
 }) {
   const [percent, setPercent] = useState('');
   const [validFrom, setValidFrom] = useState('');
   const [document, setDocument] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const last = props.terms.reduce<(typeof props.terms)[number] | null>((a, x) => (a === null || x.validFrom > a.validFrom ? x : a), null);
+  const cancel = useAction((termId: string) => api.publishingV2.cancelTerm(termId, reason.trim()), {
+    invalidate: 'all',
+    success: () => t.termCancelled,
+  });
   const run = useAction(
     () => api.publishingV2.setTerm({ ownerId: props.ownerId, percent: percent.trim(), validFrom, documentId: document }),
     { invalidate: 'all', success: (r) => fmt(t.termSet, { percent: r.percent, from: r.validFrom }) },
@@ -47,7 +53,7 @@ export function TermDialog(props: {
       ) : (
         <SimpleTable testId="term-history" headers={[t.cols.percent, t.cols.from, t.cols.to]}>
           {props.terms.map((x) => (
-            <tr key={`${x.validFrom}-${x.percent}`}>
+            <tr key={x.id}>
               <Td>{x.percent}%</Td>
               <Td>{x.validFrom}</Td>
               <Td>{x.validTo ?? t.openEnded}</Td>
@@ -55,6 +61,23 @@ export function TermDialog(props: {
           ))}
         </SimpleTable>
       )}
+      {last ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+          <p className="text-xs text-muted">{t.cancelHint}</p>
+          <TextField name="term-cancel-reason" label={t.cancelReason} value={reason} onChange={setReason} />
+          <ActionButton
+            name="cancel-term"
+            op="POST /publishing-v2/terms/:id/cancel"
+            variant="secondary"
+            isPending={cancel.isPending}
+            isDisabled={reason.trim() === ''}
+            reason={t.cancelReason}
+            onPress={() => cancel.mutate(last.id, { onSuccess: props.onClose })}
+          >
+            {fmt(t.cancelTerm, {})} {last.percent}% {last.validFrom}
+          </ActionButton>
+        </div>
+      ) : null}
       <TextField name="term-percent" label={t.cols.percent} value={percent} onChange={setPercent} placeholder="50" />
       <TextField name="term-from" label={t.cols.from} type="date" value={validFrom} onChange={setValidFrom} />
       <p className="text-xs text-muted">{t.termHint}</p>

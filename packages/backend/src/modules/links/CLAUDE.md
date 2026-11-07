@@ -6,3 +6,5 @@ makes the recommendation. A link is never set automatically. `calculate()` and t
 (`tests/pubv2.test.ts`). One row per songwriter; a new decision replaces it, the `audit` module keeps the history.
 
 `publishing_terms` (D-185): the author percent of an owner, moved one to one from `publishing.pub_terms`, which stays until the calculation moves. A term is never edited: a new one closes the open one. The calculation reads it only with `PUBLISHING_SOURCE=v2`, through `facade/pubv2-source.ts`.
+
+D-188: no operation type in `publishing_terms`; a mistaken term is cancelled (`cancelled_at`, `cancelled_by`, `cancel_reason`), never deleted or edited: only the latest of its owner, the term it closed opens again. Reads skip cancelled rows.

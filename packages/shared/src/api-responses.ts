@@ -676,6 +676,7 @@ export const pubV2LinkSchema = z.object({
       terms: z
         .array(
           z.object({
+            id: z.string().describe('Id of the term'),
             percent: z.string().describe('The author percent, 0..100'),
             validFrom: date,
             validTo: date.nullable().describe('YYYY-MM-DD, exclusive; null = open-ended'),
@@ -717,10 +718,11 @@ export const pubV2TermSchema = z.object({
   validFrom: date,
   validTo: date.nullable(),
   documentId: z.string().nullable(),
-  operationType: z.string().nullable(),
   decidedBy: z.string(),
   createdAt: timestamp,
 });
+
+export const pubV2TermCancelSchema = z.object({ id: z.string(), reopened: z.string().nullable() });
 
 export const pubV2LinkResultSchema = z.object({
   songwriterId: z.string(),

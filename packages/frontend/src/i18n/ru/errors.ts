@@ -54,6 +54,7 @@ export const errors: Record<string, string> = {
   account_has_files: 'Счёт снять нельзя: у него есть загруженные файлы ({files})',
   duplicate_period: 'Отчёт за этот счёт и месяц уже загружен',
   duplicate_file: 'Этот файл уже загружен',
+  term_not_last: 'Отменить можно только последнее условие владельца',
   period_loaded: 'Этот квартал уже загружен из другого файла',
   duplicate_track: 'Трек с этим ISRC уже есть',
   split_document_set: 'У сплита уже другой документ',

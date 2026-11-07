@@ -72,6 +72,7 @@ export const audit = {
     'POST /publishing-v2/files/:id/remove': 'паблишинг v2: файл удалён',
     'POST /publishing-v2/links': 'паблишинг v2: автор связан с владельцем',
     'POST /publishing-v2/terms': 'паблишинг v2: новый процент владельца',
+    'POST /publishing-v2/terms/:id/cancel': 'паблишинг v2: условие отменено',
     'POST /publishing-v2/songs/:id/isrcs': 'паблишинг v2: ISRC песни заданы',
     'POST /settlements/operations/import': 'импорт операций из файла',
     'POST /settlements/start/import': 'импорт стартовых позиций из файла',

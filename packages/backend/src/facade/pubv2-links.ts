@@ -182,6 +182,11 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       return links.setPublishingTerm({ ...input, ownerId, decidedBy });
     },
 
+    /** A mistaken term cancelled (D-188): the term it had closed is open again. */
+    cancelPublishingTerm(id: string, by: string, reason: string) {
+      return links.cancelPublishingTerm(id, by, reason);
+    },
+
     /** Every songwriter with its link and its recommendation: the ones without a link first, largest first. */
     async pubV2Links(labelId?: string) {
       const { byId, isPerson, oldMap } = await context();
@@ -210,10 +215,10 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
         };
       };
       const decided = new Map((await links.songwriterOwners()).map((l) => [l.songwriterId, l]));
-      const termsOf = new Map<string, { percent: string; validFrom: string; validTo: string | null; documentId: string | null }[]>();
+      const termsOf = new Map<string, { id: string; percent: string; validFrom: string; validTo: string | null; documentId: string | null }[]>();
       for (const t of await links.publishingTerms()) {
         const id = await owners.resolveOwnerId(t.ownerId);
-        termsOf.set(id, [...(termsOf.get(id) ?? []), { percent: t.percent, validFrom: t.validFrom, validTo: t.validTo, documentId: t.documentId }]);
+        termsOf.set(id, [...(termsOf.get(id) ?? []), { id: t.id, percent: t.percent, validFrom: t.validFrom, validTo: t.validTo, documentId: t.documentId }]);
       }
       const rows = [];
       for (const w of await pubv2.listSongwriters(labelId)) {

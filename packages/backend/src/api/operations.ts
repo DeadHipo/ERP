@@ -1703,6 +1703,17 @@ const operations: ApiOperation[] = [
     ],
   },
   {
+    method: 'post',
+    path: '/publishing-v2/terms/:id/cancel',
+    access: 'org',
+    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
+    tag: 'publishing',
+    summary: 'Publishing v2 (D-188): cancel a mistaken term (only the latest of its owner); the term it had closed is open again; the row stays with who, when and why',
+    body: S.pubV2TermCancelBody,
+    response: R.pubV2TermCancelSchema,
+    errors: ['404 not_found: term', '409 term_not_last: a later term of the owner exists', '400 validation_error: no reason'],
+  },
+  {
     method: 'get',
     path: '/publishing-v2/songwriters',
     access: 'org',

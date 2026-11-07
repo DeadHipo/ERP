@@ -122,6 +122,7 @@ export const OPERATION_COVERAGE = {
   'GET /publishing-v2/songs': { page: 'P32', route: '/publishing-v2', note: 'D-184: the tab tracks' },
   'GET /publishing-v2/songs/:id/candidates': { page: 'P32', route: '/publishing-v2', note: 'D-184: the dialog of a song' },
   'POST /publishing-v2/songs/:id/isrcs': { page: 'P32', route: '/publishing-v2', note: 'D-184: action-isrcs-submit' },
+  'POST /publishing-v2/terms/:id/cancel': { page: 'P32', route: '/publishing-v2', note: 'D-188: action-cancel-term in the dialog «Сплит»' },
   'POST /publishing-v2/terms': { page: 'P32', route: '/publishing-v2', note: 'D-185: action-term-submit' },
   'GET /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: the tab links' },
   'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },

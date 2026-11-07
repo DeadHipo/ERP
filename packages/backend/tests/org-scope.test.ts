@@ -446,6 +446,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /publishing-v2/songs': (x) => ({ query: { label: x.label } }),
     'GET /publishing-v2/songs/:id/candidates': (x) => ({ params: { id: x.song } }),
     'POST /publishing-v2/songs/:id/isrcs': (x) => ({ params: { id: x.song }, body: { isrcs: [] } }),
+    'POST /publishing-v2/terms/:id/cancel': (x) => ({ params: { id: x.pubFile }, body: { reason: 'scope check' } }),
     'POST /publishing-v2/terms': (x) => ({ body: { ownerId: x.owner, percent: '50', validFrom: '2026-01-01' } }),
     'GET /publishing-v2/links': (x) => ({ query: { label: x.label } }),
     'POST /publishing-v2/links': (x) => ({ body: { songwriterId: x.songwriter, ownerId: x.owner } }),

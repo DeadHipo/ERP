@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgQuery, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import { publishingTerms, songIsrc, songwriterOwner } from './schema';
@@ -22,10 +22,32 @@ export function createLinksRepository(db: Db, org: OrgScope) {
           .from(songwriterOwner)
           .where(orgWhere(org, songwriterOwner, eq(songwriterOwner.songwriterId, songwriterId)))
       )[0],
+    /** The terms that count: never the cancelled ones. */
     publishingTerms: (): Promise<PublishingTermRow[]> =>
-      db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms)).orderBy(publishingTerms.validFrom),
+      db
+        .orm()
+        .select(orgFree(publishingTerms))
+        .from(publishingTerms)
+        .where(orgWhere(org, publishingTerms, isNull(publishingTerms.cancelledAt)))
+        .orderBy(publishingTerms.validFrom),
     termsOfOwner: (ownerId: string): Promise<PublishingTermRow[]> =>
-      db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms, eq(publishingTerms.ownerId, ownerId))),
+      db
+        .orm()
+        .select(orgFree(publishingTerms))
+        .from(publishingTerms)
+        .where(orgWhere(org, publishingTerms, and(eq(publishingTerms.ownerId, ownerId), isNull(publishingTerms.cancelledAt)))),
+    term: async (id: string): Promise<PublishingTermRow | undefined> =>
+      (await db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id))))[0],
+    cancelTerm: async (id: string, by: string, reason: string, at: string) => {
+      await db
+        .orm()
+        .update(publishingTerms)
+        .set({ cancelledAt: at, cancelledBy: by, cancelReason: reason })
+        .where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id)));
+    },
+    reopenTerm: async (id: string) => {
+      await db.orm().update(publishingTerms).set({ validTo: null }).where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id)));
+    },
     closeTerm: async (id: string, validTo: string) => {
       await db.orm().update(publishingTerms).set({ validTo }).where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id)));
     },

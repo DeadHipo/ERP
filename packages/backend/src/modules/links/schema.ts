@@ -2,7 +2,7 @@ import { date, numeric, pgSchema, text } from 'drizzle-orm/pg-core';
 import { isoTimestamp } from '../../shared/pg-db';
 
 // The links between modules (D-183): an operator's decisions that belong to no module, since modules do not know each
-// other. The ids are opaque text with no foreign key (D-121). The DDL is migrations/postgres/0024_links.sql, 0025_song_isrc.sql and 0026_publishing_terms.sql: change both.
+// other. The ids are opaque text with no foreign key (D-121). The DDL is migrations/postgres/0024_links.sql, 0025_song_isrc.sql, 0026_publishing_terms.sql and 0027_terms_cancel.sql: change both.
 
 const s = pgSchema('links');
 
@@ -32,8 +32,10 @@ export const publishingTerms = s.table('publishing_terms', {
   validFrom: date('valid_from', { mode: 'string' }).notNull(),
   validTo: date('valid_to', { mode: 'string' }),
   documentId: text('document_id'),
-  /** NULL = terms for any operation type; a typed term wins for a line of that type (D-128). */
-  operationType: text('operation_type'),
   decidedBy: text('decided_by').notNull(),
   createdAt: isoTimestamp('created_at').notNull(),
+  /** A cancelled term never counts (D-188); the row stays for the history. */
+  cancelledAt: isoTimestamp('cancelled_at'),
+  cancelledBy: text('cancelled_by'),
+  cancelReason: text('cancel_reason'),
 });

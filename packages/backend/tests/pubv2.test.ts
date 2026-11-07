@@ -287,6 +287,23 @@ describe('the source of the calculation (D-185)', () => {
     await expect(f.setPublishingTerm({ ownerId: owner.id, percent: '101', validFrom: '2026-06-01' }, 'tester')).rejects.toMatchObject({ code: 'validation_error' });
   });
 
+  it('a mistaken term is cancelled, not deleted: only the latest, and the term it closed is open again (D-188)', async () => {
+    const f = await newFacade();
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const first = await f.setPublishingTerm({ ownerId: owner.id, percent: '50', validFrom: '2025-01-01' }, 'tester');
+    const wrong = await f.setPublishingTerm({ ownerId: owner.id, percent: '90', validFrom: '2026-01-01' }, 'tester');
+    await expect(f.cancelPublishingTerm(first.id, 'tester', 'not the latest')).rejects.toMatchObject({ code: 'term_not_last' });
+    expect(await f.cancelPublishingTerm(wrong.id, 'tester', 'the date of the contract')).toEqual({ id: wrong.id, reopened: first.id });
+    expect((await f.modules.links.publishingTerms()).map((t) => [t.percent, t.validFrom, t.validTo])).toEqual([['50', '2025-01-01', null]]);
+    await expect(f.cancelPublishingTerm(wrong.id, 'tester', 'twice')).rejects.toMatchObject({ code: 'not_found' });
+    const again = await f.setPublishingTerm({ ownerId: owner.id, percent: '90', validFrom: '2025-12-01' }, 'tester');
+    expect((await f.modules.links.publishingTerms()).map((t) => [t.percent, t.validFrom, t.validTo])).toEqual([
+      ['50', '2025-01-01', '2025-12-01'],
+      ['90', '2025-12-01', null],
+    ]);
+    expect(again.cancelledAt).toBeNull();
+  });
+
   it('v2: the whole line goes to the linked owner with the percent of links; without a link it waits; v1 stays as it was', async () => {
     const f = await newFacade();
     const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
@@ -299,7 +316,9 @@ describe('the source of the calculation (D-185)', () => {
     const { owners, splits, labels, sources, publishing, ads, pubv2, links } = f.modules;
     const base = { db: f.db, owners, splits, labels, sources, ads };
     const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links }) });
-    const parts = v2.publishing.map((p) => [p.writerName, p.ownerId, p.payable.toFixed(), p.authorAmount.toFixed(), p.reason]);
+    const parts = v2.publishing
+      .map((p) => [p.writerName, p.ownerId, p.payable.toFixed(), p.authorAmount.toFixed(), p.reason])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     expect(parts).toEqual([
       ['Nobody Linked', null, '40', '0', 'writer_unmapped'],
       ['Writer Synth One', owner.id, '100', '90', 'owner_unconfirmed'],
