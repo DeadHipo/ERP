@@ -4,7 +4,7 @@ import type { LinksService } from '../modules/links';
 import type { PubV2Service } from '../modules/pubv2';
 import type { FacadeContext } from './context';
 
-export type RecommendationReason = 'old_map' | 'exact_name' | 'same_words';
+export type RecommendationReason = 'songs' | 'old_map' | 'exact_name' | 'same_words';
 
 /** A title without its version: `Song (Slowed)`, `Song [Live]` and `Song - Artist` are one song. */
 export const baseTitle = (title: string): string =>
@@ -88,7 +88,17 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
           };
         })
         .sort((a, b) => (a.reason === b.reason ? a.isrc.localeCompare(b.isrc) : a.reason === 'owner' ? -1 : 1));
-    return { titles, candidates };
+    /** The person-owners whose pseudonyms are in the open splits of the tracks with this title. */
+    const ownersOfTitle = (title: string) => {
+      const out = new Set<string>();
+      for (const isrc of (byTitle.get(baseTitle(title)) ?? new Map<string, string>()).keys())
+        for (const id of rows.get(isrc) ?? []) {
+          const o = owner.get(id);
+          if (o) out.add(o);
+        }
+      return out;
+    };
+    return { titles, candidates, ownersOfTitle };
   }
 
   const ownerOfSongwriters = async () => {
@@ -175,6 +185,30 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     /** Every songwriter with its link and its recommendation: the ones without a link first, largest first. */
     async pubV2Links(labelId?: string) {
       const { byId, isPerson, oldMap } = await context();
+      const { ownersOfTitle } = await catalog();
+      const songsOf = new Map<string, string[]>();
+      for (const s of await pubv2.listSongs()) songsOf.set(s.songwriterId, [...(songsOf.get(s.songwriterId) ?? []), s.title]);
+      const withTerms = new Set<string>();
+      for (const t of await links.publishingTerms()) withTerms.add(await owners.resolveOwnerId(t.ownerId));
+      /** The owners behind the songs of a songwriter: how many of its songs lead to each, the largest first. */
+      const bySongs = (songwriterId: string) => {
+        const titles = songsOf.get(songwriterId) ?? [];
+        const count = new Map<string, number>();
+        for (const title of titles) for (const o of ownersOfTitle(title)) if (isPerson(o)) count.set(o, (count.get(o) ?? 0) + 1);
+        const top = [...count.entries()].sort((a, b) => b[1] - a[1] || (byId.get(a[0])?.name ?? '').localeCompare(byId.get(b[0])?.name ?? ''));
+        const [first, second] = top;
+        const leader = first && first[1] * 2 >= titles.length && (!second || first[1] >= 2 * second[1]) ? first[0] : null;
+        return {
+          total: titles.length,
+          leader,
+          candidates: top.slice(0, 3).map(([ownerId, songs]) => ({
+            ownerId,
+            ownerName: byId.get(ownerId)?.name ?? '',
+            songs,
+            hasTerms: withTerms.has(ownerId),
+          })),
+        };
+      };
       const decided = new Map((await links.songwriterOwners()).map((l) => [l.songwriterId, l]));
       const termsOf = new Map<string, { percent: string; validFrom: string; validTo: string | null; documentId: string | null }[]>();
       for (const t of await links.publishingTerms()) {
@@ -184,7 +218,10 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       const rows = [];
       for (const w of await pubv2.listSongwriters(labelId)) {
         const link = decided.get(w.id);
-        const hint = await recommend(w.name, w.aliases, oldMap, isPerson);
+        const songs = bySongs(w.id);
+        const hint = songs.leader
+          ? { ownerId: songs.leader, reason: 'songs' as const }
+          : await recommend(w.name, w.aliases, oldMap, isPerson);
         const linkedOwner = link ? await owners.resolveOwnerId(link.ownerId) : null;
         rows.push({
           songwriterId: w.id,
@@ -201,7 +238,11 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
                   terms: termsOf.get(linkedOwner) ?? [],
                 }
               : null,
-          recommendation: hint ? { ownerId: hint.ownerId, ownerName: byId.get(hint.ownerId)?.name ?? '', reason: hint.reason } : null,
+          recommendation: hint
+            ? { ownerId: hint.ownerId, ownerName: byId.get(hint.ownerId)?.name ?? '', reason: hint.reason, hasTerms: withTerms.has(hint.ownerId) }
+            : null,
+          songs: songs.total,
+          songCandidates: songs.candidates,
         });
       }
       return [...rows.filter((r) => !r.link), ...rows.filter((r) => r.link)];

@@ -691,11 +691,23 @@ export const pubV2LinkSchema = z.object({
       ownerId: z.string().describe(D.ownerId),
       ownerName: z.string().describe(D.ownerName),
       reason: z
-        .enum(['old_map', 'exact_name', 'same_words'])
-        .describe('old_map = the writer map of the old module; exact_name = one person-owner with this name or alias; same_words = one with the same words in another order'),
+        .enum(['songs', 'old_map', 'exact_name', 'same_words'])
+        .describe('songs = the owner behind most of its songs (title → track → split → pseudonym); old_map = the writer map of the old module; exact_name = one person-owner with this name or alias; same_words = one with the same words in another order'),
+      hasTerms: z.boolean().describe('The suggested owner has a publishing term'),
     })
     .nullable()
     .describe('A suggestion only; null = none'),
+  songs: z.number().int().describe('Songs of the songwriter in the reports'),
+  songCandidates: z
+    .array(
+      z.object({
+        ownerId: z.string().describe(D.ownerId),
+        ownerName: z.string().describe(D.ownerName),
+        songs: z.number().int().describe('Songs of the songwriter whose tracks have a pseudonym of this owner in the split'),
+        hasTerms: z.boolean().describe('The owner has a publishing term'),
+      }),
+    )
+    .describe('At most three owners behind the songs, the most songs first; a suggestion only'),
 });
 
 export const pubV2TermSchema = z.object({

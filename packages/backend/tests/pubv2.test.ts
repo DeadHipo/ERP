@@ -225,6 +225,38 @@ describe('the links of songs to ISRCs (D-184)', () => {
   });
 });
 
+describe('the owners behind the songs (D-187)', () => {
+  it('suggests the owner of the pseudonym in the splits of the songs before the name', async () => {
+    const f = await newFacade();
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const byName = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const real = await f.modules.owners.createOwner({ name: 'Owner of SYNTH', kind: 'person', origin: 'test' });
+    const artist = await f.modules.owners.createArtist({ pseudonym: 'SYNTH', ownerId: real.id });
+    await f.setPublishingTerm({ ownerId: real.id, percent: '50', validFrom: '2025-01-01' }, 'tester');
+    for (const [i, title] of ['Song A (Slowed)', 'Song B'].entries()) {
+      const isrc = `QZTST260020${i}`;
+      await f.modules.owners.createTrack({ isrc, title });
+      await f.createSplit({ isrc, validFrom: '2026-01-01', shares: [{ artistId: artist.id, percent: '50' }] });
+    }
+    await f.modules.pubv2.ingest({
+      path: await workbook('songs.xlsx', {
+        'Songwriter Breakdown': [
+          ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+          ['SONGWRITER: Writer Synth One', 2, 0, 2],
+          ['  Song A', 1, 0, 1],
+          ['  Song B', 1, 0, 1],
+        ],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    const row = (await f.pubV2Links())[0];
+    expect([row?.recommendation?.ownerId, row?.recommendation?.reason, row?.recommendation?.hasTerms, row?.songs]).toEqual([real.id, 'songs', true, 2]);
+    expect(row?.songCandidates).toEqual([{ ownerId: real.id, ownerName: 'Owner of SYNTH', songs: 2, hasTerms: true }]);
+    expect(byName.id).not.toBe(real.id);
+  });
+});
+
 describe('the source of the calculation (D-185)', () => {
   const summary = async (f: Awaited<ReturnType<typeof newFacade>>, labelId: string) =>
     f.modules.pubv2.ingest({

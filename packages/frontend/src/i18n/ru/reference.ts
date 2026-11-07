@@ -281,7 +281,10 @@ export const reference = {
     notLinked: 'Не связан',
     noRecommendation: 'Нет рекомендации',
     decided: 'Решил: {by}',
+    bySongs: 'по песням {songs} из {of}',
+    songCandidates: 'Владельцы по песням автора (всего песен: {of})',
     reason: {
+      songs: 'по песням',
       old_map: 'из старого паблишинга',
       exact_name: 'совпало имя',
       same_words: 'те же слова в другом порядке',

@@ -52,6 +52,20 @@ function ChooseOwnerDialog(props: { row: Row; onClose: () => void }) {
       <div className="text-sm">
         {t.cols.name}: <b>{props.row.name}</b>
       </div>
+      {props.row.songCandidates.length > 0 ? (
+        <div className="flex flex-col gap-1" data-testid="song-candidates">
+          <div className="text-xs text-muted">{fmt(t.songCandidates, { of: props.row.songs })}</div>
+          {props.row.songCandidates.map((c) => (
+            <label key={c.ownerId} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-default/50">
+              <input type="radio" name="song-candidate" data-testid={`candidate-${c.ownerId}`} checked={owner === c.ownerId} onChange={() => setOwner(c.ownerId)} />
+              <span>
+                {c.ownerName} · {fmt(t.bySongs, { songs: c.songs, of: props.row.songs })}
+                {c.hasTerms ? '' : ` · ${t.noTermShort}`}
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       <EntityPicker name="link-owner" label={t.chooseOwner} kind="owners" value={owner} onChange={(id) => setOwner(id)} />
     </FormDialog>
   );
@@ -137,7 +151,9 @@ export function LinksTab() {
         cellRenderer: (p: { data?: Row }) => {
           const hint = p.data?.recommendation;
           if (!hint) return <span className="text-muted">{t.noRecommendation}</span>;
-          return `${hint.ownerName} · ${t.reason[hint.reason]}`;
+          const songs = p.data?.songCandidates.find((c) => c.ownerId === hint.ownerId)?.songs;
+          const detail = hint.reason === 'songs' && songs !== undefined ? fmt(t.bySongs, { songs, of: p.data?.songs ?? 0 }) : t.reason[hint.reason];
+          return `${hint.ownerName} · ${detail}${hint.hasTerms ? '' : ` · ${t.noTermShort}`}`;
         },
       },
       {

@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-186 by topic)
+# Decision index (D-001 … D-187 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -168,6 +168,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-184 The songs of publishing v2 to ISRCs: `links.song_isrc`, candidates by the title through the linked owner, the tab «Треки» of P32, the set by hand · in force · open: most candidates are title matches until owners with pseudonyms are linked
 - D-185 Publishing terms in `links.publishing_terms` (a new term closes the open one), the source of the calculation behind `PUBLISHING_SOURCE` (default `v1`), the shadow run · in force ⚠ the switch waits for the owner's cancelling of D-087 and the links to owners with terms
 - D-186 A B17 line belongs to its rights-holder, `songwriters` is not read for money (v2); the merge of owners stays without `links` · in force
+- D-187 The owner of a songwriter suggested through its songs (title → track → split → pseudonym → owner), `songCandidates` with `hasTerms` on the tab «Связи» · in force ⚠ the typed term of one owner does not apply under v2
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
