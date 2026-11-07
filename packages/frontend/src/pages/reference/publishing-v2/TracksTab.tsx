@@ -12,7 +12,7 @@ import { FormDialog } from '../../../components/FormDialog';
 import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
 import { DataGrid } from '../../../components/grid/DataGrid';
-import { TextField } from '../../../components/fields/TextField';
+import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { fmt, ru } from '../../../i18n/ru';
 import { useLabel } from '../../../lib/label';
 import { compareDecimal, formatCount } from '../../../lib/money';
@@ -24,7 +24,9 @@ type Song = z.output<typeof pubV2SongSchema>;
 function IsrcDialog(props: { song: Song; onClose: () => void }) {
   const query = useQuery(publishingV2Queries.songCandidates(props.song.songId));
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  const [manual, setManual] = useState('');
+  // D-193: ISRCs the operator found in the catalog by ISRC or title, beside the hints
+  const [added, setAdded] = useState<{ isrc: string; title: string }[]>([]);
+  const [pickerKey, setPickerKey] = useState(0);
   const data = query.data;
   useEffect(() => {
     if (!data || chosen !== null) return;
@@ -42,9 +44,16 @@ function IsrcDialog(props: { song: Song; onClose: () => void }) {
       else next.add(isrc);
       return next;
     });
-  const extra = (data?.isrcs ?? []).filter((x) => !data?.candidates.some((c) => c.isrc === x.isrc));
-  const typed = manual.trim();
-  const list = [...(chosen ?? []), ...(typed ? [typed] : [])];
+  const saved = (data?.isrcs ?? []).filter((x) => !data?.candidates.some((c) => c.isrc === x.isrc));
+  const extra = [...saved, ...added.filter((a) => !saved.some((x) => x.isrc === a.isrc) && !data?.candidates.some((c) => c.isrc === a.isrc))];
+  const add = (isrc: string | null, label: string) => {
+    if (!isrc) return;
+    if (!extra.some((x) => x.isrc === isrc) && !data?.candidates.some((c) => c.isrc === isrc))
+      setAdded((prev) => [...prev, { isrc, title: label.startsWith(`${isrc} · `) ? label.slice(isrc.length + 3) : label }]);
+    setChosen((prev) => new Set([...(prev ?? []), isrc]));
+    setPickerKey((k) => k + 1); // a fresh empty field for the next track
+  };
+  const list = [...(chosen ?? [])];
   return (
     <FormDialog
       isOpen
@@ -92,7 +101,8 @@ function IsrcDialog(props: { song: Song; onClose: () => void }) {
           </div>
         )}
       </QueryView>
-      <TextField name="isrc-manual" label={t.isrcManual} value={manual} onChange={setManual} placeholder="FR96X2569666" />
+      <EntityPicker key={pickerKey} name="isrc-add" label={t.isrcManual} kind="tracks" value={null} onChange={add} />
+      <p className="text-xs text-muted">{t.isrcManualHint}</p>
     </FormDialog>
   );
 }
