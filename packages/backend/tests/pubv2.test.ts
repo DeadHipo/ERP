@@ -6,7 +6,7 @@ import { quarterOfFileName, readB17Summary } from '../src/modules/pubv2';
 import { statementSchema } from '@erp/shared/api-responses';
 import { calculate } from '../src/facade/calculation';
 import { pubV2Source } from '../src/facade/pubv2-source';
-import { newFacade, tmpPath } from './helpers/fixtures';
+import { approvedDoc, confirmedOwner, newFacade, tmpPath } from './helpers/fixtures';
 
 // Publishing v2 (D-182): the summaries of the reports, read by the shape of a sheet. Synthetic names and amounts only.
 
@@ -352,7 +352,7 @@ describe('the source of the calculation (D-185)', () => {
 
     const { owners, splits, labels, sources, publishing, ads, pubv2, links } = f.modules;
     const base = { db: f.db, owners, splits, labels, sources, ads };
-    const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links }) });
+    const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links, owners }) });
     const parts = v2.publishing
       .map((p) => [p.writerName, p.ownerId, p.payable.toFixed(), p.authorAmount.toFixed(), p.reason])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
@@ -401,5 +401,85 @@ describe('the boundary of publishing v2 (D-182)', () => {
       ['calculation.ts', 'balance.ts', 'context.ts', 'payouts.ts', 'payroll.ts', 'owner-scope.ts'].map((f) => join(src, 'facade', f)),
     );
     for (const f of money) expect(readFileSync(f, 'utf8'), f).not.toMatch(/pubv2|modules\/links/i);
+  });
+});
+
+describe('the terms of an ISRC (D-192)', () => {
+  const I = ['QZTST2600301', 'QZTST2600302', 'QZTST2600303'];
+  const world = async () => {
+    const f = await newFacade(0, { publishingSource: 'v2' });
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const { owner } = await confirmedOwner(f, 'Writer Synth One', ['SYNTH ONE']);
+    for (const [i, t] of [[0, 'Song A'], [1, 'Song A (Slowed)'], [2, 'Song B']] as const)
+      await f.modules.owners.createTrack({ isrc: I[i] as string, title: t });
+    await f.modules.pubv2.ingest({
+      path: await workbook('isrc-terms.xlsx', {
+        'Songwriter Breakdown': [
+          ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+          ['SONGWRITER: Writer Synth One', 300, 0, 300],
+          ['  Song A', 100, 0, 100],
+          ['  Song B', 100, 0, 100],
+          ['  Song C', 100, 0, 100],
+        ],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    const doc = await approvedDoc(f, 'contract', owner.id);
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '50', validFrom: '2025-01-01', documentId: doc.id }, 'tester');
+    const songs = await f.pubV2Songs();
+    await f.linkSongwriter({ songwriterId: songs[0]?.songwriterId as string, ownerId: owner.id }, 'tester');
+    const id = (title: string) => songs.find((s) => s.title === title)?.songId as string;
+    await f.setPubV2SongIsrcs(id('Song A'), [I[0] as string, I[1] as string], 'tester');
+    await f.setPubV2SongIsrcs(id('Song B'), [I[2] as string], 'tester');
+    const money = async () =>
+      Object.fromEntries(
+        (await calculate({ ...f.modules, db: f.db, publishing: pubV2Source(f.db, f.modules.publishing, f.modules) })).publishing.map((p) => [p.workTitle, [p.percent.toFixed(), p.authorAmount.toFixed(), p.reason]]),
+      );
+    return { f, owner, doc, id, money };
+  };
+
+  it('wins over the percent of the owner from its date; a song without one keeps the owner\'s; versions that disagree wait', async () => {
+    const { f, owner, doc, id, money } = await world();
+    expect(await money()).toEqual({ 'Song A': ['50', '50', null], 'Song B': ['50', '50', null], 'Song C': ['50', '50', null] });
+
+    // a buyout of Song B from Q2 2026 (the quarter date is 2026-06-01): the seller keeps nothing
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '0', validFrom: '2026-06-01', isrc: I[2], documentId: doc.id, basis: 'buyout, the whole share' }, 'tester');
+    // the original of Song A sold for a quarter of the share, its slowed version not: the song waits
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '37.5', validFrom: '2026-01-01', isrc: I[0], documentId: doc.id }, 'tester');
+    expect(await money()).toEqual({
+      'Song A': ['50', '50', 'publishing_terms_unconfirmed'],
+      'Song B': ['0', '0', null],
+      'Song C': ['50', '50', null],
+    });
+    const rows = await f.pubV2Songs();
+    expect(rows.map((s) => [s.title, s.terms.state, s.terms.percent]).sort()).toEqual([
+      ['Song A', 'conflict', null],
+      ['Song B', 'isrc', '0'],
+      ['Song C', 'owner', '50'],
+    ]);
+
+    // both versions at one percent: the song takes it
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '37.5', validFrom: '2026-01-01', isrc: I[1], documentId: doc.id }, 'tester');
+    expect((await money())['Song A']).toEqual(['37.5', '37.5', null]);
+    const card = await f.pubV2SongCandidates(id('Song A'));
+    expect([card.terms.state, card.isrcTerms.map((t) => [t.isrc, t.percent])]).toEqual(['isrc', [[I[0], '37.5'], [I[1], '37.5']]]);
+
+    // a term of an ISRC never closes the owner's own, and is cancelled within its ISRC only
+    expect((await f.modules.links.ownerTerms()).map((t) => [t.percent, t.validTo])).toEqual([['50', null]]);
+    const later = await f.setPublishingTerm({ ownerId: owner.id, percent: '10', validFrom: '2026-09-01', isrc: I[2] }, 'tester');
+    await expect(f.setPublishingTerm({ ownerId: owner.id, percent: '5', validFrom: '2026-06-01', isrc: I[2] }, 'tester')).rejects.toMatchObject({ code: 'terms_overlap' });
+    expect(await f.cancelPublishingTerm(later.id, 'tester', 'a mistake')).toMatchObject({ id: later.id });
+    expect((await money())['Song B']).toEqual(['0', '0', null]);
+    await expect(f.setPublishingTerm({ ownerId: owner.id, percent: '0', validFrom: '2026-06-01', isrc: 'QZTST2699999' }, 'tester')).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('a term without an approved document waits like the owner\'s; the terms of another owner do not count', async () => {
+    const { f, owner, money } = await world();
+    const other = await f.modules.owners.createOwner({ name: 'Somebody Else', kind: 'person', origin: 'test' });
+    await f.setPublishingTerm({ ownerId: other.id, percent: '0', validFrom: '2025-01-01', isrc: I[2] }, 'tester');
+    expect((await money())['Song B']).toEqual(['50', '50', null]);
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '0', validFrom: '2025-01-01', isrc: I[2] }, 'tester');
+    expect((await money())['Song B']).toEqual(['0', '0', 'publishing_terms_unconfirmed']);
   });
 });

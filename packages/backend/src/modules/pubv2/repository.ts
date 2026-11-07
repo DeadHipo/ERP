@@ -106,14 +106,14 @@ export function createPubV2Repository(db: Db, org: OrgScope) {
     /** The accruals of the loaded files grouped for the calculation: label, quarter, songwriter, song. */
     linesForCalculation: async () =>
       (
-        await q<{ label_id: string; period: string; songwriter_id: string; name: string; title: string; payable: string }>(
-          `SELECT f.label_id, a.period, a.songwriter_id, w.name, s.title, SUM(a.payable_pico) AS payable
+        await q<{ label_id: string; period: string; songwriter_id: string; name: string; song_id: string; title: string; payable: string }>(
+          `SELECT f.label_id, a.period, a.songwriter_id, w.name, s.id AS song_id, s.title, SUM(a.payable_pico) AS payable
            FROM pubv2.accruals a
            JOIN pubv2.files f ON f.id = a.file_id AND f.org_id = a.org_id
            JOIN pubv2.songs s ON s.id = a.song_id AND s.org_id = a.org_id
            JOIN pubv2.songwriters w ON w.id = a.songwriter_id AND w.org_id = a.org_id
            WHERE a.org_id = $1 AND f.status = 'loaded'
-           GROUP BY f.label_id, a.period, a.songwriter_id, w.name, s.title
+           GROUP BY f.label_id, a.period, a.songwriter_id, w.name, s.id, s.title
            ORDER BY a.period, a.songwriter_id, s.title`,
         )
       ).rows,

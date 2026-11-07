@@ -34,6 +34,10 @@ export const publishingTerms = s.table('publishing_terms', {
   validFrom: date('valid_from', { mode: 'string' }).notNull(),
   validTo: date('valid_to', { mode: 'string' }),
   documentId: text('document_id'),
+  /** D-192: the track the term is about; null = the owner's own percent. */
+  isrc: text('isrc'),
+  /** D-192: what the term rests on (the contract, the share sold), free text. */
+  basis: text('basis'),
   decidedBy: text('decided_by').notNull(),
   createdAt: isoTimestamp('created_at').notNull(),
   /** A cancelled term never counts (D-188); the row stays for the history. */

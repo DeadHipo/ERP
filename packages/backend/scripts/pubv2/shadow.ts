@@ -25,7 +25,7 @@ const f = openFacade({ db: stack.db, orgId: stack.orgId, dataDir, payoutThreshol
 const { owners, splits, labels, sources, publishing, ads, pubv2, links } = f.modules;
 const base = { db: f.db, owners, splits, labels, sources, ads };
 const v1 = await calculate({ ...base, publishing });
-const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links }) });
+const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links, owners }) });
 
 interface Sum { payable: Decimal; author: Decimal; label: Decimal; b: Decimal; c: Decimal }
 const zero = (): Sum => ({ payable: new Decimal(0), author: new Decimal(0), label: new Decimal(0), b: new Decimal(0), c: new Decimal(0) });

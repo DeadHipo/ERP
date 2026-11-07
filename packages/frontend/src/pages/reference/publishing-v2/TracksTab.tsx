@@ -16,6 +16,7 @@ import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { useLabel } from '../../../lib/label';
 import { compareDecimal, formatCount } from '../../../lib/money';
+import { IsrcTermsDialog, songTermsText } from './IsrcTermsDialog';
 
 const t = ru.reference.publishingV2;
 type Song = z.output<typeof pubV2SongSchema>;
@@ -101,6 +102,7 @@ export function TracksTab() {
   const { labelId } = useLabel();
   const query = useQuery(publishingV2Queries.songs(labelId));
   const [editing, setEditing] = useState<Song | null>(null);
+  const [terms, setTerms] = useState<Song | null>(null);
   const columns = useMemo<ColDef<Song>[]>(
     () => [
       { colId: 'title', headerName: t.cols.title, minWidth: 260, valueGetter: (p) => p.data?.title },
@@ -126,6 +128,22 @@ export function TracksTab() {
       },
       { colId: 'isrcs', headerName: t.cols.isrcs, minWidth: 200, valueGetter: (p) => p.data?.isrcs.join(', ') ?? '' },
       {
+        colId: 'terms',
+        headerName: t.cols.terms,
+        minWidth: 160,
+        valueGetter: (p) => (p.data ? songTermsText(p.data.terms) : ''),
+        cellRenderer: (p: { data?: Song }) =>
+          p.data ? (
+            <span
+              data-testid={`song-terms-${p.data.songId}`}
+              data-state={p.data.terms.state}
+              className={p.data.terms.state === 'conflict' ? 'text-danger' : undefined}
+            >
+              {songTermsText(p.data.terms)}
+            </span>
+          ) : null,
+      },
+      {
         colId: 'candidates',
         headerName: t.cols.candidates,
         valueGetter: (p) => (p.data ? fmt(t.candidatesCount, { own: formatCount(p.data.ownerCandidates), all: formatCount(p.data.candidates) }) : ''),
@@ -137,9 +155,14 @@ export function TracksTab() {
         filter: false,
         cellRenderer: (p: { data?: Song }) =>
           p.data ? (
-            <ActionButton name="set-isrcs" op="POST /publishing-v2/songs/:id/isrcs" variant="secondary" onPress={() => p.data && setEditing(p.data)}>
-              {t.chooseIsrc}
-            </ActionButton>
+            <div className="flex gap-1">
+              <ActionButton name="set-isrcs" op="POST /publishing-v2/songs/:id/isrcs" variant="secondary" compact onPress={() => p.data && setEditing(p.data)}>
+                {t.chooseIsrc}
+              </ActionButton>
+              <ActionButton name="isrc-terms" op="POST /publishing-v2/terms" variant="secondary" compact onPress={() => p.data && setTerms(p.data)}>
+                {t.isrcTerm}
+              </ActionButton>
+            </div>
           ) : null,
       },
     ],
@@ -152,6 +175,7 @@ export function TracksTab() {
         {(rows) => <DataGrid rowData={rows} columnDefs={columns} getRowId={(r) => r.songId} rowTestId={(r) => `song-${r.songId}`} />}
       </QueryView>
       {editing ? <IsrcDialog song={editing} onClose={() => setEditing(null)} /> : null}
+      {terms ? <IsrcTermsDialog song={terms} onClose={() => setTerms(null)} /> : null}
     </div>
   );
 }

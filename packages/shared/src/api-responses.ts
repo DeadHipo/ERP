@@ -718,9 +718,22 @@ export const pubV2TermSchema = z.object({
   validFrom: date,
   validTo: date.nullable(),
   documentId: z.string().nullable(),
+  isrc: z.string().nullable().describe('D-192: the track of the term; null = the owner\'s own percent'),
+  basis: z.string().nullable(),
   decidedBy: z.string(),
   createdAt: timestamp,
 });
+
+/** D-192: what decides the percent of a song today. */
+export const pubV2SongTermsSchema = z
+  .object({
+    state: z
+      .enum(['owner', 'isrc', 'conflict'])
+      .describe('owner = the owner\'s own percent; isrc = a term of its ISRCs; conflict = its ISRCs disagree, the money waits'),
+    percent: z.string().nullable().describe('The percent in force today; null = none (conflict, or no term)'),
+    ownerPercent: z.string().nullable().describe('The owner\'s own percent today'),
+  })
+  .describe('The term of the song today (D-192)');
 
 export const pubV2TermCancelSchema = z.object({ id: z.string(), reopened: z.string().nullable() });
 
@@ -745,11 +758,29 @@ export const pubV2SongSchema = z.object({
   isrcs: z.array(z.string()).describe('The ISRCs the operator confirmed for the song'),
   candidates: z.number().int().describe('Tracks of the catalog with this title'),
   ownerCandidates: z.number().int().describe('Of them, tracks whose open split has a pseudonym of the linked owner'),
+  terms: pubV2SongTermsSchema,
 });
 
 export const pubV2SongCandidatesSchema = z.object({
   songId: z.string().describe('Id of the song of publishing v2'),
   title: z.string(),
+  ownerId: z.string().nullable().describe('The owner of the songwriter; null = no link yet'),
+  ownerName: z.string().nullable().describe('Name of that owner'),
+  terms: pubV2SongTermsSchema,
+  isrcTerms: z
+    .array(
+      z.object({
+        id: z.string(),
+        isrc: z.string().describe(D.isrc),
+        percent: z.string().describe('The percent of the owner on the songs of this track'),
+        validFrom: date,
+        validTo: date.nullable(),
+        documentId: z.string().nullable().describe('The document of the term; without an approved one the money waits'),
+        basis: z.string().nullable().describe('What the term rests on (the contract, the share sold)'),
+        decidedBy: z.string().describe('Who set the term'),
+      }),
+    )
+    .describe('D-192: the live terms of the owner on the confirmed ISRCs of the song, by ISRC and date'),
   candidates: z
     .array(
       z.object({

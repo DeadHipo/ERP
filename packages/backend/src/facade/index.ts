@@ -70,7 +70,7 @@ export function openFacade(config: FacadeConfig) {
     labels,
     sources,
     settlements,
-    publishing: source === 'v2' ? pubV2Source(db, publishing, { pubv2, links }) : publishing,
+    publishing: source === 'v2' ? pubV2Source(db, publishing, { pubv2, links, owners }) : publishing,
     audit,
     ads,
   });

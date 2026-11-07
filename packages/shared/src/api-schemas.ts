@@ -324,6 +324,8 @@ export const pubV2TermBody = z.object({
   percent: z.string().min(1),
   validFrom: z.string().min(1),
   documentId: z.string().nullable().optional(),
+  isrc: z.string().nullable().optional().describe('D-192: the term of one track (a buyout, special terms); absent = the owner\'s own percent'),
+  basis: z.string().nullable().optional().describe('D-192: what the term rests on (the contract, the share sold)'),
 });
 
 /** The cancellation of a mistaken term (D-188): why. */

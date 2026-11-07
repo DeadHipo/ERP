@@ -16,6 +16,12 @@ export function createLinksService(db: Db, org: OrgScope) {
     /** Every term with a canonical percent, oldest first. */
     publishingTerms: async (): Promise<PublishingTermRow[]> =>
       (await repo.publishingTerms()).map((r) => ({ ...r, percent: new Decimal(r.percent).toFixed() })),
+    /** The owners' own percents (no ISRC). */
+    ownerTerms: async (): Promise<PublishingTermRow[]> =>
+      (await repo.publishingTerms()).filter((r) => r.isrc === null).map((r) => ({ ...r, percent: new Decimal(r.percent).toFixed() })),
+    /** The terms of one track (D-192). */
+    isrcTerms: async (): Promise<PublishingTermRow[]> =>
+      (await repo.publishingTerms()).filter((r) => r.isrc !== null).map((r) => ({ ...r, percent: new Decimal(r.percent).toFixed() })),
     /**
      * A new percent from a date: a term is never edited. The open term of the owner (and operation type) gets
      * `valid_to` = the date and a new row opens; a date on or before the start of a term is `terms_overlap`.
@@ -25,13 +31,17 @@ export function createLinksService(db: Db, org: OrgScope) {
       percent: string;
       validFrom: string;
       documentId?: string | null;
+      /** D-192: the term of one track; absent = the owner's own percent. */
+      isrc?: string | null;
+      basis?: string | null;
       decidedBy: string;
     }): Promise<PublishingTermRow> {
       if (!/^\d+(\.\d+)?$/.test(input.percent) || new Decimal(input.percent).gt(100))
         throw new ValidationError(`Invalid author percent "${input.percent}"`);
       const validFrom = assertDate(input.validFrom);
       return repo.transaction(async () => {
-        const same = await repo.termsOfOwner(input.ownerId);
+        const isrc = input.isrc ?? null;
+        const same = await repo.termsOfOwner(input.ownerId, isrc);
         if (same.some((t) => t.validFrom >= validFrom))
           throw new ConflictError('Publishing terms already start on or after this date', 'terms_overlap');
         const open = same.find((t) => t.validTo === null);
@@ -43,6 +53,8 @@ export function createLinksService(db: Db, org: OrgScope) {
           validFrom,
           validTo: null,
           documentId: input.documentId ?? null,
+          isrc,
+          basis: input.basis?.trim() || null,
           decidedBy: input.decidedBy,
           createdAt: nowIso(),
           cancelledAt: null,
@@ -62,7 +74,7 @@ export function createLinksService(db: Db, org: OrgScope) {
       return repo.transaction(async () => {
         const term = await repo.term(id);
         if (!term || term.cancelledAt) throw new NotFoundError('Publishing term', id);
-        const others = (await repo.termsOfOwner(term.ownerId)).filter((t) => t.id !== id);
+        const others = (await repo.termsOfOwner(term.ownerId, term.isrc)).filter((t) => t.id !== id);
         if (others.some((t) => t.validFrom > term.validFrom))
           throw new ConflictError('Only the latest term of an owner can be cancelled', 'term_not_last');
         await repo.cancelTerm(id, by, reason.trim(), nowIso());

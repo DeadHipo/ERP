@@ -30,12 +30,23 @@ export function createLinksRepository(db: Db, org: OrgScope) {
         .from(publishingTerms)
         .where(orgWhere(org, publishingTerms, isNull(publishingTerms.cancelledAt)))
         .orderBy(publishingTerms.validFrom),
-    termsOfOwner: (ownerId: string): Promise<PublishingTermRow[]> =>
+    /** The live terms of one owner and one ISRC (null = the owner's own percent, D-192). */
+    termsOfOwner: (ownerId: string, isrc: string | null): Promise<PublishingTermRow[]> =>
       db
         .orm()
         .select(orgFree(publishingTerms))
         .from(publishingTerms)
-        .where(orgWhere(org, publishingTerms, and(eq(publishingTerms.ownerId, ownerId), isNull(publishingTerms.cancelledAt)))),
+        .where(
+          orgWhere(
+            org,
+            publishingTerms,
+            and(
+              eq(publishingTerms.ownerId, ownerId),
+              isrc === null ? isNull(publishingTerms.isrc) : eq(publishingTerms.isrc, isrc),
+              isNull(publishingTerms.cancelledAt),
+            ),
+          ),
+        ),
     term: async (id: string): Promise<PublishingTermRow | undefined> =>
       (await db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id))))[0],
     cancelTerm: async (id: string, by: string, reason: string, at: string) => {

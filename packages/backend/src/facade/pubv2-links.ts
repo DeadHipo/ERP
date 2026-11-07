@@ -4,6 +4,8 @@ import type { LinksService } from '../modules/links';
 import type { PubV2Service } from '../modules/pubv2';
 import type { PublishingService } from '../modules/publishing';
 import type { FacadeContext } from './context';
+import { monthStart, todayIso } from '../shared/dates';
+import { isrcTermOf, ownerTermAt, type IsrcTermState } from './pubv2-isrc-terms';
 
 export type RecommendationReason = 'songs' | 'old_map' | 'exact_name' | 'same_words';
 
@@ -103,6 +105,31 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     return { titles, candidates, ownersOfTitle };
   }
 
+  /** D-192: the term of each song today, through its ISRCs (the same rule as the calculation). */
+  async function songTermStates() {
+    const [isrcTerms, ownerTerms, resolve, decided] = await Promise.all([
+      links.isrcTerms(),
+      links.ownerTerms(),
+      owners.ownerResolver(),
+      links.songIsrcs(),
+    ]);
+    const isrcsOf = new Map<string, string[]>();
+    for (const l of decided) isrcsOf.set(l.songId, [...(isrcsOf.get(l.songId) ?? []), l.isrc]);
+    const date = monthStart(todayIso().slice(0, 7));
+    const view = (state: IsrcTermState, ownerId: string | null) => {
+      const own = ownerId ? (ownerTermAt(ownerTerms, ownerId, date, resolve)?.percent ?? null) : null;
+      if (state.kind === 'term') return { state: 'isrc' as const, percent: state.term.percent, ownerPercent: own };
+      if (state.kind === 'conflict') return { state: 'conflict' as const, percent: null, ownerPercent: own };
+      return { state: 'owner' as const, percent: own, ownerPercent: own };
+    };
+    return {
+      isrcTerms,
+      resolve,
+      of: (songId: string, ownerId: string | null) =>
+        view(ownerId ? isrcTermOf(isrcsOf.get(songId) ?? [], ownerId, date, isrcTerms, resolve) : { kind: 'none' }, ownerId),
+    };
+  }
+
   const ownerOfSongwriters = async () => {
     const out = new Map<string, string>();
     for (const l of await links.songwriterOwners()) out.set(l.songwriterId, await owners.resolveOwnerId(l.ownerId));
@@ -112,12 +139,13 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
   return {
     /** The songs for the tab «Треки» (D-184): the ones without an ISRC first, largest first. */
     async pubV2Songs(labelId?: string) {
-      const [{ candidates }, ownerOf, songs, decided, all] = await Promise.all([
+      const [{ candidates }, ownerOf, songs, decided, all, states] = await Promise.all([
         catalog(),
         ownerOfSongwriters(),
         pubv2.listSongs(labelId),
         links.songIsrcs(),
         owners.listOwners(),
+        songTermStates(),
       ]);
       const names = new Map(all.map((o) => [o.id, o.name]));
       const isrcs = new Map<string, string[]>();
@@ -136,6 +164,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
           isrcs: (isrcs.get(s.id) ?? []).sort(),
           candidates: found.length,
           ownerCandidates: found.filter((c) => c.reason === 'owner').length,
+          terms: states.of(s.id, ownerId),
         };
       });
       return [...rows.filter((r) => r.isrcs.length === 0), ...rows.filter((r) => r.isrcs.length > 0)];
@@ -144,13 +173,32 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     /** The candidates of one song and its confirmed ISRCs, with the titles of the catalog. */
     async pubV2SongCandidates(songId: string) {
       const song = await pubv2.getSong(songId);
-      const [{ titles, candidates }, ownerOf, decided, all, writers] = await Promise.all([
+      const [{ titles, candidates }, ownerOf, decided, all, writers, states, everyOwner] = await Promise.all([
         catalog(),
         ownerOfSongwriters(),
         links.isrcsOfSong(songId),
         links.songIsrcs(),
         pubv2.listSongwriters(),
+        songTermStates(),
+        owners.listOwners(),
       ]);
+      const ownerId = ownerOf.get(song.songwriterId) ?? null;
+      const mine = new Set(decided.map((d) => d.isrc));
+      const isrcTerms = ownerId
+        ? states.isrcTerms
+            .filter((t) => t.isrc !== null && mine.has(t.isrc) && states.resolve(t.ownerId) === ownerId)
+            .map((t) => ({
+              id: t.id,
+              isrc: t.isrc as string,
+              percent: t.percent,
+              validFrom: t.validFrom,
+              validTo: t.validTo,
+              documentId: t.documentId,
+              basis: t.basis,
+              decidedBy: t.decidedBy,
+            }))
+            .sort((a, b) => a.isrc.localeCompare(b.isrc) || a.validFrom.localeCompare(b.validFrom))
+        : [];
       // D-191: the ISRCs another songwriter already linked to its song (co-authorship) come first after the owner's
       const writerName = new Map(writers.map((w) => [w.id, w.name]));
       const coAuthors = new Map<string, Set<string>>();
@@ -167,6 +215,10 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       return {
         songId,
         title: song.title,
+        ownerId,
+        ownerName: ownerId ? (everyOwner.find((o) => o.id === ownerId)?.name ?? '') : null,
+        terms: states.of(songId, ownerId),
+        isrcTerms,
         candidates: found,
         isrcs: decided.map((d) => ({ isrc: d.isrc, title: titles.get(d.isrc) ?? '', source: d.source })),
       };
@@ -202,17 +254,20 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
 
     /** A new percent of the linked owner (D-185): the open term closes, a new one starts at the date. */
     async setPublishingTerm(
-      input: { ownerId: string; percent: string; validFrom: string; documentId?: string | null },
+      input: { ownerId: string; percent: string; validFrom: string; documentId?: string | null; isrc?: string | null; basis?: string | null },
       decidedBy: string,
     ) {
       const ownerId = await owners.resolveOwnerId(input.ownerId);
       const owner = await owners.getOwner(ownerId);
       if (owner.kind !== 'person') throw new ConflictError('Publishing goes only to a person, not to a label', 'owner_is_label');
+      // D-192: a term of one track; the ISRC must be in the catalog
+      const isrc = input.isrc ? assertIsrc(input.isrc) : null;
+      if (isrc && !(await catalog()).titles.has(isrc)) throw new NotFoundError('Track', isrc);
       if (input.documentId) {
         const d = await owners.getDocument(input.documentId);
         if (d.ownerId && d.ownerId !== ownerId) throw new ConflictError('The document belongs to another owner', 'document_owner_mismatch');
       }
-      return links.setPublishingTerm({ ...input, ownerId, decidedBy });
+      return links.setPublishingTerm({ ...input, isrc, ownerId, decidedBy });
     },
 
     /** A mistaken term cancelled (D-188): the term it had closed is open again. */
@@ -227,7 +282,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       const songsOf = new Map<string, string[]>();
       for (const s of await pubv2.listSongs()) songsOf.set(s.songwriterId, [...(songsOf.get(s.songwriterId) ?? []), s.title]);
       const withTerms = new Set<string>();
-      for (const t of await links.publishingTerms()) withTerms.add(await owners.resolveOwnerId(t.ownerId));
+      for (const t of await links.ownerTerms()) withTerms.add(await owners.resolveOwnerId(t.ownerId));
       /** The owners behind the songs of a songwriter: how many of its songs lead to each, the largest first. */
       const bySongs = (songwriterId: string) => {
         const titles = songsOf.get(songwriterId) ?? [];
@@ -249,7 +304,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       };
       const decided = new Map((await links.songwriterOwners()).map((l) => [l.songwriterId, l]));
       const termsOf = new Map<string, { id: string; percent: string; validFrom: string; validTo: string | null; documentId: string | null }[]>();
-      for (const t of await links.publishingTerms()) {
+      for (const t of await links.ownerTerms()) {
         const id = await owners.resolveOwnerId(t.ownerId);
         termsOf.set(id, [...(termsOf.get(id) ?? []), { id: t.id, percent: t.percent, validFrom: t.validFrom, validTo: t.validTo, documentId: t.documentId }]);
       }

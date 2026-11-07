@@ -10,3 +10,5 @@ makes the recommendation. A link is never set automatically. `calculate()` and t
 D-188: no operation type in `publishing_terms`; a mistaken term is cancelled (`cancelled_at`, `cancelled_by`, `cancel_reason`), never deleted or edited: only the latest of its owner, the term it closed opens again. Reads skip cancelled rows.
 
 D-190, D-191: `song_isrc` carries the `songwriter_id` of the song (a song never changes its songwriter); the unique index `(org_id, songwriter_id, isrc)` keeps one ISRC under one song per songwriter. Two songwriters on one ISRC is co-authorship and allowed. A future merge of songwriters must update this column in the same transaction (and meets the index when both had the ISRC).
+
+D-192: `publishing_terms.isrc` (null = the owner's own percent) and `basis`. A term of an ISRC has the same rules within its (owner, ISRC): a new one closes the open one, a cancel reopens the previous one; the unique start index is on `(org, owner, COALESCE(isrc, ''), valid_from)`. `ownerTerms()` / `isrcTerms()` split them; `publishingTerms()` gives both. The facade applies them in `pubv2-source.ts` through `pubv2-isrc-terms.ts`.

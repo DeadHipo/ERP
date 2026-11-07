@@ -181,6 +181,7 @@ export function createPubV2Service(db: Db, org: OrgScope, storageDir: string) {
         period: r.period,
         songwriterId: r.songwriter_id,
         songwriter: r.name,
+        songId: r.song_id,
         title: r.title,
         payablePico: BigInt(r.payable),
       }));

@@ -1695,12 +1695,13 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'approve', subject: 'publishing', scope: 'org' },
     tag: 'publishing',
-    summary: 'Publishing v2 (D-185): a new author percent of an owner from a date: the open term closes, a term is never edited',
+    summary:
+      'Publishing v2 (D-185): a new author percent of an owner from a date: the open term closes, a term is never edited. With `isrc` (D-192) the term of one track, winning over the owner\'s own on the songs linked to it',
     body: S.pubV2TermBody,
     status: 201,
     response: R.pubV2TermSchema,
     errors: [
-      '404 not_found: owner or document',
+      '404 not_found: owner, document, or an ISRC outside the catalog',
       '409 owner_is_label: the owner is a label',
       '409 document_owner_mismatch: the document belongs to another owner',
       '409 terms_overlap: a term already starts on or after this date',
