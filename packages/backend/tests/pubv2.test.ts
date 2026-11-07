@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
 import { quarterOfFileName, readB17Summary } from '../src/modules/pubv2';
+import { statementSchema } from '@erp/shared/api-responses';
 import { calculate } from '../src/facade/calculation';
 import { pubV2Source } from '../src/facade/pubv2-source';
 import { newFacade, tmpPath } from './helpers/fixtures';
@@ -324,6 +325,30 @@ describe('the source of the calculation (D-185)', () => {
       ['Writer Synth One', owner.id, '100', '90', 'owner_unconfirmed'],
     ]);
     expect((await calculate({ ...base, publishing })).publishing).toEqual([]);
+  });
+});
+
+describe('the source v2 around the calculation (D-189)', () => {
+  it('the statements, the terms of the owner card and the writers come from v2; the old module takes no writes', async () => {
+    const f = await newFacade(0, { publishingSource: 'v2' });
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    const file = await f.modules.pubv2.ingest({
+      path: await workbook('around.xlsx', {
+        'Songwriter Breakdown': [['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'], ['SONGWRITER: Writer Synth One', 2, 0, 2], ['  Song', 2, 0, 2]],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '50', validFrom: '2025-01-01' }, 'tester');
+    const b17 = (await f.sourceFiles()).b17;
+    expect(b17.map((s) => [s.id, s.status, s.totalPayable, s.labelId])).toEqual([[file.id, 'loaded', '2', label.id]]);
+    expect(statementSchema.safeParse(b17[0]).success).toBe(true);
+    expect((await f.ownerDetail(owner.id)).publishingTerms.map((t) => [t.percent, t.operationType])).toEqual([['50', null]]);
+    await expect(f.setPublishingTerms({ ownerId: owner.id, percent: '10', validFrom: '2026-01-01' })).rejects.toMatchObject({ code: 'publishing_v2_active' });
+    await expect(f.resolveWriters()).rejects.toMatchObject({ code: 'publishing_v2_active' });
+    const old = await newFacade(0, { publishingSource: 'v1' });
+    expect((await old.sourceFiles()).b17).toEqual([]);
   });
 });
 

@@ -149,7 +149,7 @@ export async function writeB17(
  * A facade on the private PostgreSQL database of this test file (D-121): the module tables and the sources are emptied
  * first, so every facade starts from nothing. Two facades of one test that must see the same data share one facade.
  */
-export async function newFacade(threshold = 0, opts: { paymentService?: PaymentService } = {}) {
+export async function newFacade(threshold = 0, opts: { paymentService?: PaymentService; publishingSource?: 'v1' | 'v2' } = {}) {
   const stack = await testStack();
   await stack.resetModules();
   const dataDir = join(TMP, `facade-${randomUUID()}`);

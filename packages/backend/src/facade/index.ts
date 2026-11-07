@@ -63,7 +63,7 @@ export function openFacade(config: FacadeConfig) {
   const ads: AdsService = opened.ads;
   // D-185: one switch of the source of the money; `calculate()` and the layers do not know it
   const source = config.publishingSource ?? (process.env.PUBLISHING_SOURCE === 'v2' ? 'v2' : 'v1');
-  const ctx = createFacadeContext(config, {
+  const ctx = createFacadeContext({ ...config, publishingSource: source }, {
     db,
     owners,
     splits,
@@ -101,7 +101,7 @@ export function openFacade(config: FacadeConfig) {
     ...operationImportApi(ctx, payoutsPart),
     ...startApi(ctx),
     ...admissionApi(ctx),
-    ...pubV2LinksApi(ctx, { pubv2, links }),
+    ...pubV2LinksApi(ctx, { pubv2, links, publishing }),
   };
 }
 

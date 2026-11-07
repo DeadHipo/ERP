@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError } from '../shared/errors';
 import { assertIsrc, normalizeName } from '../shared/identifiers';
 import type { LinksService } from '../modules/links';
 import type { PubV2Service } from '../modules/pubv2';
+import type { PublishingService } from '../modules/publishing';
 import type { FacadeContext } from './context';
 
 export type RecommendationReason = 'songs' | 'old_map' | 'exact_name' | 'same_words';
@@ -15,9 +16,10 @@ export const baseTitle = (title: string): string =>
  * person-owner with this name or alias, then one with the same words in another order. A link is written only by the
  * operator's confirmation; nothing here is set on its own.
  */
-export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; links: LinksService }) {
-  const { owners, publishing, splits } = ctx;
-  const { pubv2, links } = m;
+export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; links: LinksService; publishing: PublishingService }) {
+  const { owners, splits } = ctx;
+  // the old module itself (its writer map is a hint), never the source of the money of `ctx`
+  const { pubv2, links, publishing } = m;
 
   async function recommend(
     name: string,

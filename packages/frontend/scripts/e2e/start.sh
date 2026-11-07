@@ -2,6 +2,8 @@
 # Starts the stack for the Playwright run (one command: `npm run e2e` from the repo root):
 # checks Docker, seeds the private stores `erp_e2e` / `believe_e2e`, verifies the seed (verify-seed.ts), builds the client, serves it with the API on :3100.
 set -euo pipefail
+# D-189: the seeded stores load B17 through the old module, so the e2e API runs on the source v1
+export PUBLISHING_SOURCE=v1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$ROOT"

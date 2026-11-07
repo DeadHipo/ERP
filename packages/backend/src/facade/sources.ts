@@ -8,6 +8,11 @@ const LABEL_REQUIRED = 'Choose a label: a file is loaded under an own label (lab
 
 export function sourcesApi(ctx: FacadeContext) {
   const { db, owners, labels, sources, publishing, assertOwnLabel } = ctx;
+  /** D-189: with the source v2 the old module takes no writes: they would not reach the money. */
+  const oldPublishingClosed = () => {
+    if (ctx.config.publishingSource === 'v2')
+      throw new ConflictError('Publishing v2 is the source of the money: load and link on /publishing-v2', 'publishing_v2_active');
+  };
   /** Keeps the person-owners of a list (publishing never goes to a label). */
   async function personsOnly<T extends { id: string }>(list: T[]): Promise<T[]> {
     const kinds = await Promise.all(list.map((x) => owners.ownerKind(x.id)));
@@ -59,6 +64,7 @@ export function sourcesApi(ctx: FacadeContext) {
       input: { path: string; fileName: string; generatedAt?: string | null },
       labelId: string | undefined,
     ) {
+      oldPublishingClosed();
       const label = await api.assertUploadLabel(labelId);
       const statement = await publishing.ingestB17({ ...input, labelId: label.id });
       return { statement, writers: await api.resolveWriters() };
@@ -75,6 +81,7 @@ export function sourcesApi(ctx: FacadeContext) {
       labelId: string | undefined,
       viewer: Viewer = ALL_VIEWER,
     ) {
+      oldPublishingClosed();
       const label = await api.assertUploadLabel(labelId);
       assertViewerHolds(viewer, label.id);
       const { superseded, statement } = await publishing.replaceStatement(oldId, input, label.id);
@@ -133,8 +140,9 @@ export function sourcesApi(ctx: FacadeContext) {
      * Writer -> owner: an exact alias of one person-owner is matched; a similar name (same words in another order)
      * goes to the operator ("the same" or "new"); otherwise a new owner without documents is created.
      */
-    resolveWriters() {
-      return db.transaction(async () => {
+    async resolveWriters() {
+      oldPublishingClosed();
+      return await db.transaction(async () => {
         const out = { matched: 0, created: 0, ambiguous: 0, external: 0 };
         for (const w of await publishing.unmappedWriters()) {
           const exact = await owners.findOwnersByWriter(w.displayName);
@@ -179,8 +187,9 @@ export function sourcesApi(ctx: FacadeContext) {
     },
 
     /** Operator decision for an ambiguous writer: map to an existing person-owner or create a new owner. */
-    mapWriter(writerNorm: string, input: { ownerId?: string | null; createNew?: boolean }) {
-      return db.transaction(async () => {
+    async mapWriter(writerNorm: string, input: { ownerId?: string | null; createNew?: boolean }) {
+      oldPublishingClosed();
+      return await db.transaction(async () => {
         const w = (await publishing.listWriters()).find((x) => x.writerNorm === writerNorm);
         if (!w) throw new ValidationError(`Unknown writer ${writerNorm}`);
         if (input.ownerId) {
@@ -202,14 +211,15 @@ export function sourcesApi(ctx: FacadeContext) {
     },
 
     /** Contract terms of publishing: only for a person-owner, confirmed by that owner's document. */
-    setPublishingTerms(input: {
+    async setPublishingTerms(input: {
       ownerId: string;
       percent: string;
       validFrom: string;
       documentId?: string | null;
       operationType?: string | null;
     }) {
-      return db.transaction(async () => {
+      oldPublishingClosed();
+      return await db.transaction(async () => {
         const id = await owners.resolveOwnerId(input.ownerId);
         await owners.getOwner(id);
         if ((await owners.ownerKind(id)) !== 'person')

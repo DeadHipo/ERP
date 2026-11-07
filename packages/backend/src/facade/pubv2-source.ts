@@ -41,5 +41,38 @@ export function pubV2Source(db: Db, publishing: PublishingService, m: { pubv2: P
             }));
       return { writers, terms, lines };
     });
-  return Object.assign(Object.create(publishing) as PublishingService, { snapshotForCalculation });
+  type Statement = Awaited<ReturnType<PublishingService['listStatements']>>[number];
+  /** A file of v2 in the shape of an old statement (D-189): the payout snapshot, the sources and the overview list it. */
+  const statementOf = (f: Awaited<ReturnType<PubV2Service['listFiles']>>[number]): Statement => ({
+    id: f.id,
+    source: 'b17',
+    periods: f.periods,
+    fileName: f.fileName,
+    sha256: f.sha256,
+    generatedAt: f.uploadedAt,
+    generatedAtSource: 'upload',
+    uploadedAt: f.uploadedAt,
+    status: f.status,
+    lineCount: f.rowCount,
+    totalPayable: f.payable,
+    warnings: f.difference && f.difference !== '0' ? [`the total the file names differs by ${f.difference}`] : [],
+    labelId: f.labelId,
+    replacedBy: f.replacedBy,
+  });
+  const listStatements = async () => (await m.pubv2.listFiles()).map(statementOf);
+  const activeStatements = async () => (await listStatements()).filter((s) => s.status === 'loaded');
+  /** The terms of `links` (D-185, D-188) for the owner card. */
+  const termsOf = async (ownerIds: string[]) =>
+    (await m.links.publishingTerms())
+      .filter((t) => ownerIds.includes(t.ownerId))
+      .map(({ decidedBy: _b, cancelledAt: _c, cancelledBy: _cb, cancelReason: _r, ...t }) => ({ ...t, operationType: null }));
+  /** The songwriters of v2 with their links: nothing is ambiguous, a songwriter without a link waits. */
+  const listWriters = async () => (await snapshotForCalculation({ lines: false })).writers;
+  return Object.assign(Object.create(publishing) as PublishingService, {
+    snapshotForCalculation,
+    listStatements,
+    activeStatements,
+    termsOf,
+    listWriters,
+  });
 }
