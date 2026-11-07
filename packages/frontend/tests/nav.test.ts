@@ -40,6 +40,14 @@ describe('navFor (D-171)', () => {
     expect(ids(admin)).toEqual(['overview', 'queue', 'questions', 'users', 'claude']);
   });
 
+  it('hides the old publishing page under publishing v2 and keeps v2 (D-194)', () => {
+    const session = { isSystemAdmin: false, inOrg: true };
+    expect(ids(navFor(session, { authMode: 'off', abilities: [], publishingSource: 'v1' }))).toEqual(expect.arrayContaining(['publishing', 'publishingV2']));
+    const v2 = ids(navFor(session, { authMode: 'off', abilities: [], publishingSource: 'v2' }));
+    expect(v2).toContain('publishingV2');
+    expect(v2).not.toContain('publishing');
+  });
+
   it('gives a system administrator outside an organization the system section only', () => {
     const sys = navFor({ isSystemAdmin: true, inOrg: false }, { authMode: 'on', abilities: ['GET /orgs', 'GET /system/users'] });
     expect(ids(sys)).toEqual(['system-orgs', 'system-users']);

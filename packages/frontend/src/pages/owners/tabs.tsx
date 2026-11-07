@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Balance, OwnerDetail } from '@erp/shared/api-responses';
+import { usePublishingV2 } from '../../api/queries/auth';
 import { ownerQueries } from '../../api/queries/owners';
 import { settlementQueries } from '../../api/queries/settlements';
 import { ActionButton } from '../../components/ActionButton';
@@ -52,6 +53,7 @@ export function ArtistsTab(props: { detail: OwnerDetail }) {
  */
 export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | undefined }) {
   const [open, setOpen] = useState(false);
+  const v2 = usePublishingV2(); // D-194: the dialog writes the terms of v2
   const p = m.publishing;
   const b = m.balance;
   return (
@@ -59,7 +61,7 @@ export function PublishingTab(props: { detail: OwnerDetail; balance: Balance | u
       <Section
         title={p.terms}
         toolbar={
-          <ActionButton name="publishing-terms" op="POST /publishing/terms" variant="secondary" onPress={() => setOpen(true)}>
+          <ActionButton name="publishing-terms" op={v2 ? 'POST /publishing-v2/terms' : 'POST /publishing/terms'} variant="secondary" onPress={() => setOpen(true)}>
             {p.set}
           </ActionButton>
         }

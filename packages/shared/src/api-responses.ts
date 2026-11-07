@@ -2089,6 +2089,10 @@ export const meSchema = z.object({
   abilities: z
     .array(z.string())
     .describe('The keys `METHOD /path` of the operations the session may call, without the data (D-171): the UI closes the others'),
+  publishingSource: z
+    .enum(['v1', 'v2'])
+    .default('v1')
+    .describe('The source of the money of publishing (D-189): v2 = /publishing-v2 takes the links and terms, the old /publishing refuses writes (D-194)'),
 });
 export type Me = z.infer<typeof meSchema>;
 export const orgSchema = z.object({ id: z.string(), name: z.string(), createdAt: timestamp, createdBy: z.string() });

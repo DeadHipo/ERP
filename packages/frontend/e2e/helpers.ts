@@ -93,6 +93,7 @@ export function meMock(
     org,
     role,
     labels: o.labels ?? [],
+    publishingSource: 'v1',
     allLabels: role !== 'label_manager',
     memberships: member ? [{ orgId: org.id, orgName: org.name, role }] : [],
     support: null,

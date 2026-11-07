@@ -10,6 +10,7 @@ import type { LinksService } from '../modules/links';
 import type { AuditService } from '../modules/audit';
 import type { AdsService } from '../modules/ads';
 import { orgScope } from '../shared/org-scope';
+import { publishingSourceOf } from '../shared/publishing-source';
 import { openModules } from './modules';
 import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
@@ -62,7 +63,7 @@ export function openFacade(config: FacadeConfig) {
   const audit: AuditService = opened.audit;
   const ads: AdsService = opened.ads;
   // D-185: one switch of the source of the money; `calculate()` and the layers do not know it
-  const source = config.publishingSource ?? (process.env.PUBLISHING_SOURCE === 'v2' ? 'v2' : 'v1');
+  const source = config.publishingSource ?? publishingSourceOf();
   const ctx = createFacadeContext({ ...config, publishingSource: source }, {
     db,
     owners,

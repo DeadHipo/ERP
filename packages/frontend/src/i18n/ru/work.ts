@@ -359,6 +359,7 @@ export const actions = {
     noRule: 'Правило не найдено',
     noParticipation: 'Участие не найдено',
     noWriter: 'Автор не найден в списке B17',
+    noSongwriterV2: 'Автор «{name}» не найден в паблишинге v2: свяжите его на странице «Паблишинг v2»',
     noPseudonyms: 'у владельца нет псевдонимов',
     pickRule: 'Выберите правило',
   },

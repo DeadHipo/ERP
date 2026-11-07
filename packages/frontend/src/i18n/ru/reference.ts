@@ -364,6 +364,8 @@ export const reference = {
     subtitle: 'Какие авторы B17 связаны с какими владельцами и какие условия действуют по видам операций?',
     writers: 'Авторы выписок',
     noWriters: 'Авторов нет: загрузите выписку B17.',
+    v1Closed: 'Деньги паблишинга считаются по паблишингу v2: эта страница только для справки, изменения здесь не принимаются.',
+    v1ClosedLink: 'Перейти в «Паблишинг v2»',
     cols: { name: 'Автор', role: 'Роль', resolution: 'Сопоставление', owner: 'Владелец', actions: 'Действие' },
     role: { holder: 'правообладатель', songwriter: 'автор' },
     /** Every value of `pub_writers.resolution` the backend writes (modules/publishing: repository and service). */

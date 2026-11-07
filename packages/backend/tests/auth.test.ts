@@ -106,6 +106,7 @@ describe('the login over HTTP (D-170)', () => {
       memberships: [{ orgId, orgName: expect.any(String), role: 'org_admin' }],
       support: null,
       abilities: expect.arrayContaining(['GET /auth/me', 'POST /owners/merge', 'GET /overview']),
+      publishingSource: 'v1', // D-194: the switch of PUBLISHING_SOURCE, v1 by default
     });
     expect(res.body.abilities).not.toContain('GET /orgs'); // an organization administrator has no system operation
   });

@@ -98,6 +98,12 @@ export function createLinksService(db: Db, org: OrgScope) {
         return repo.isrcsOfSong(songId);
       });
     },
+    /**
+     * A merge of owners (D-194): the songwriters follow the survivor. The terms stay with their record, as in the old
+     * module: the calculation resolves them through the merge and the survivor's own terms win.
+     */
+    reassignOwner: (fromOwnerId: string, intoOwnerId: string) =>
+      repo.transaction(() => repo.reassignSongwriters(fromOwnerId, intoOwnerId)),
     async setSongwriterOwner(input: Omit<SongwriterOwnerRow, 'decidedAt'>): Promise<SongwriterOwnerRow> {
       await repo.setSongwriterOwner({ ...input, decidedAt: nowIso() });
       return (await repo.songwriterOwner(input.songwriterId)) as SongwriterOwnerRow;

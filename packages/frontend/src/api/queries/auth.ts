@@ -24,3 +24,8 @@ export const authQueries = {
 export function useMe() {
   return useQuery(authQueries.me());
 }
+
+/** D-194: publishing v2 is the source of the money: the links and terms are written on /publishing-v2. */
+export function usePublishingV2(): boolean {
+  return useMe().data?.publishingSource === 'v2';
+}

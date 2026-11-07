@@ -8,7 +8,11 @@ import type { OperationKey } from '../../../api/coverage';
 import { useAction } from '../../../api/queries/core';
 import { documentQueries } from '../../../api/queries/documents';
 import { labelQueries } from '../../../api/queries/labels';
-import { publishingQueries } from '../../../api/queries/publishing';
+import { usePublishingV2 } from '../../../api/queries/auth';
+import { ownerQueries } from '../../../api/queries/owners';
+import { publishingQueries, publishingV2Queries } from '../../../api/queries/publishing';
+import { ChooseOwnerDialog } from '../../reference/publishing-v2/LinksTab';
+import { TermDialog } from '../../reference/publishing-v2/TermDialog';
 import { splitQueries } from '../../../api/queries/splits';
 import { trackQueries } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
@@ -445,7 +449,26 @@ export function RegisterTrackDialog(props: { isrc: string; upc: string; title?: 
 
 // ---- writer_unmapped, ambiguousWriters ----
 
+/** D-194: under publishing v2 the songwriter is linked on its v2 dialog; the old map refuses writes. */
 export function MapWriterDialog(props: { writer: string; onClose: () => void }) {
+  return usePublishingV2() ? <LinkSongwriterDialog {...props} /> : <MapWriterDialogV1 {...props} />;
+}
+
+/** The queue names the songwriter of v2 by its name (unique per organization): its row of the links, then «Владелец автора». */
+function LinkSongwriterDialog(props: { writer: string; onClose: () => void }) {
+  const links = useQuery(publishingV2Queries.links(''));
+  const row = links.data?.find((x) => x.songwriterId === props.writer || x.name === props.writer);
+  if (row) return <ChooseOwnerDialog row={row} onClose={props.onClose} />;
+  return (
+    <FormDialog isOpen onOpenChange={(o) => (o ? null : props.onClose())} title={a.mapWriter} subtitle={ru.reasonActions.writer_unmapped}>
+      <div className="text-sm" data-testid="songwriter-v2-missing">
+        {links.data ? fmt(a.hints.noSongwriterV2, { name: props.writer }) : ru.common.loading}
+      </div>
+    </FormDialog>
+  );
+}
+
+function MapWriterDialogV1(props: { writer: string; onClose: () => void }) {
   const writers = useQuery(publishingQueries.writers());
   const w = writers.data?.find((x) => x.writerNorm === props.writer || x.displayName === props.writer);
   const [owner, setOwner] = useState<string | null>(null);
@@ -483,7 +506,17 @@ export function MapWriterDialog(props: { writer: string; onClose: () => void }) 
 
 // ---- publishing_terms_unconfirmed ----
 
+/** D-194: under publishing v2 the percent is a term of `links` (no operation type); the old terms refuse writes. */
 export function PublishingTermsDialog(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
+  return usePublishingV2() ? <OwnerTermV2Dialog {...props} /> : <PublishingTermsDialogV1 {...props} />;
+}
+
+function OwnerTermV2Dialog(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
+  const detail = useQuery(ownerQueries.detail(props.ownerId));
+  return <TermDialog ownerId={props.ownerId} ownerName={props.ownerLabel} terms={detail.data?.publishingTerms ?? []} onClose={props.onClose} />;
+}
+
+function PublishingTermsDialogV1(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
   const [percent, setPercent] = useState('');
   const [validFrom, setValidFrom] = useState('');
   const [operationType, setOperationType] = useState('');

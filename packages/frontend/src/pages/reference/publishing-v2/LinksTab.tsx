@@ -26,7 +26,7 @@ const linkAction = (name: string) => ({
   success: (r: { ownerName: string }) => fmt(t.linked, { name, owner: r.ownerName }),
 });
 
-function ChooseOwnerDialog(props: { row: Row; onClose: () => void }) {
+export function ChooseOwnerDialog(props: { row: Row; onClose: () => void }) {
   const [owner, setOwner] = useState<string | null>(props.row.link?.ownerId ?? props.row.recommendation?.ownerId ?? null);
   const run = useAction((ownerId: string) => api.publishingV2.link({ songwriterId: props.row.songwriterId, ownerId }), linkAction(props.row.name));
   return (

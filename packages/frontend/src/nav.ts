@@ -126,11 +126,13 @@ export const ORG_NAV: NavSection = {
  */
 export function navFor(
   session: { isSystemAdmin: boolean; inOrg: boolean },
-  me?: { authMode: 'on' | 'off'; abilities: readonly string[] },
+  me?: { authMode: 'on' | 'off'; abilities: readonly string[]; publishingSource?: 'v1' | 'v2' },
 ): readonly NavSection[] {
   const sections = !session.isSystemAdmin ? [...NAV, ORG_NAV] : session.inOrg ? [...NAV, ORG_NAV, SYSTEM_NAV] : [SYSTEM_NAV];
+  // D-194: under publishing v2 the old page no longer decides money: it stays reachable by its address only
+  const hidden = me?.publishingSource === 'v2' ? new Set(['publishing']) : new Set<string>();
   return sections
-    .map((s) => ({ ...s, items: s.items.filter((i) => !i.op || isAllowed(me, i.op)) }))
+    .map((s) => ({ ...s, items: s.items.filter((i) => !hidden.has(i.id) && (!i.op || isAllowed(me, i.op))) }))
     .filter((s) => s.items.length > 0);
 }
 

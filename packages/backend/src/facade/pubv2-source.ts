@@ -114,5 +114,10 @@ export function pubV2Source(
     activeStatements,
     termsOf,
     listWriters,
+    /** D-194: a merge of owners moves the links of v2 too (the old module's writers follow as before). */
+    async reassignOwner(fromOwnerId: string, intoOwnerId: string) {
+      await publishing.reassignOwner(fromOwnerId, intoOwnerId);
+      await m.links.reassignOwner(fromOwnerId, intoOwnerId);
+    },
   });
 }

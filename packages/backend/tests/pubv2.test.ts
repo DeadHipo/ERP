@@ -6,6 +6,7 @@ import { quarterOfFileName, readB17Summary } from '../src/modules/pubv2';
 import { statementSchema } from '@erp/shared/api-responses';
 import { calculate } from '../src/facade/calculation';
 import { pubV2Source } from '../src/facade/pubv2-source';
+import { ownerTermAt } from '../src/facade/pubv2-isrc-terms';
 import { approvedDoc, confirmedOwner, newFacade, tmpPath } from './helpers/fixtures';
 
 // Publishing v2 (D-182): the summaries of the reports, read by the shape of a sheet. Synthetic names and amounts only.
@@ -385,6 +386,41 @@ describe('the source v2 around the calculation (D-189)', () => {
     await expect(f.resolveWriters()).rejects.toMatchObject({ code: 'publishing_v2_active' });
     const old = await newFacade(0, { publishingSource: 'v1' });
     expect((await old.sourceFiles()).b17).toEqual([]);
+  });
+});
+
+describe('a merge of owners under v2 (D-194)', () => {
+  it('moves the songwriters of the merged owner to the survivor; the survivor\'s own term wins over the merged one', async () => {
+    const f = await newFacade(0, { publishingSource: 'v2' });
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const into = await confirmedOwner(f, 'Writer Synth Into', ['Synth Into']);
+    const stub = await f.modules.owners.createOwner({ name: 'Writer Synth Stub', kind: 'person', origin: 'test' });
+    await f.modules.pubv2.ingest({
+      path: await workbook('merge.xlsx', {
+        'Songwriter Breakdown': [['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'], ['SONGWRITER: Writer Synth Stub', 10, 0, 10], ['  Song', 10, 0, 10]],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    const row = (await f.pubV2Links()).find((l) => l.name === 'Writer Synth Stub') as { songwriterId: string };
+    await f.linkSongwriter({ songwriterId: row.songwriterId, ownerId: stub.id }, 'tester');
+    await f.setPublishingTerm({ ownerId: stub.id, percent: '30', validFrom: '2025-01-01' }, 'tester');
+    await f.setPublishingTerm({ ownerId: into.owner.id, percent: '70', validFrom: '2025-01-01' }, 'tester');
+
+    await f.mergeOwners(stub.id, into.owner.id, 'same person');
+    expect((await f.modules.links.songwriterOwners()).map((l) => [l.songwriterId, l.ownerId])).toEqual([[row.songwriterId, into.owner.id]]);
+    const lines = (await f.ownerBalance(into.owner.id)).publishing.map((p) => [p.workTitle, String(p.amount), String(p.percent)]);
+    expect(lines).toEqual([['Song', '7', '70']]); // the author's share of 10 at the survivor's percent
+  });
+
+  it('the pure choice: the survivor\'s own term first, then a merged one', () => {
+    const term = (id: string, ownerId: string, percent: string) => ({
+      id, ownerId, percent, validFrom: '2025-01-01', validTo: null, documentId: null, isrc: null, basis: null,
+      decidedBy: 't', createdAt: '2025-01-01', cancelledAt: null, cancelledBy: null, cancelReason: null,
+    });
+    const resolve = (id: string) => (id === 'stub' ? 'into' : id);
+    expect(ownerTermAt([term('a', 'stub', '30'), term('b', 'into', '70')], 'into', '2026-01-01', resolve)?.id).toBe('b');
+    expect(ownerTermAt([term('a', 'stub', '30')], 'into', '2026-01-01', resolve)?.id).toBe('a');
   });
 });
 

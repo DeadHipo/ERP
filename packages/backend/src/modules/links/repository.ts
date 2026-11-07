@@ -83,5 +83,9 @@ export function createLinksRepository(db: Db, org: OrgScope) {
         [r.songwriterId, r.ownerId, r.source, r.decidedBy, r.decidedAt],
       );
     },
+    /** D-194: a merge of owners moves the songwriters of the merged owner to the survivor. */
+    reassignSongwriters: async (fromOwnerId: string, intoOwnerId: string) => {
+      await q(`UPDATE links.songwriter_owner SET owner_id = $3 WHERE org_id = $1 AND owner_id = $2`, [fromOwnerId, intoOwnerId]);
+    },
   };
 }

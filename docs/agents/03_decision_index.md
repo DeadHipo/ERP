@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-193 by topic)
+# Decision index (D-001 … D-194 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -175,6 +175,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-191 `links.song_isrc.songwriter_id` and the unique index `(org_id, songwriter_id, isrc)` (migration 0028); the candidates of a song name the co-authors who already linked the ISRC · in force
 - D-192 A publishing term may name an ISRC (`links.publishing_terms.isrc`, `basis`): it wins over the owner's own percent on the songs of that track; versions that disagree wait; through the typed-term slot, no layer change · in force
 - D-193 The ISRC dialog of a song searches the whole catalog by ISRC or title (`field-isrc-add`); a picked track joins the list checked · in force
+- D-194 Under publishing v2 the owner / queue dialogs write to v2 (`me.publishingSource`), the old page leaves the sidebar, a merge of owners moves the v2 links · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

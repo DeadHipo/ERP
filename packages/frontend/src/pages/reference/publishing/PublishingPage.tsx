@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
 import type { publishingWriterSchema } from '@erp/shared/api-responses';
 import * as api from '../../../api/client';
+import { usePublishingV2 } from '../../../api/queries/auth';
 import { useAction } from '../../../api/queries/core';
 import { ownerQueries } from '../../../api/queries/owners';
 import { publishingQueries } from '../../../api/queries/publishing';
@@ -95,6 +97,7 @@ function TermsSection() {
 
 /** P18 «Паблишинг» `/publishing`: the writers of the B17 statements and their owners; the terms of an owner. */
 export function PublishingPage() {
+  const v2 = usePublishingV2(); // D-194: the old module takes no writes, the money is read from v2
   const query = useQuery(publishingQueries.writers());
   const names = useOwnerNames();
   const [mapping, setMapping] = useState<Writer | null>(null);
@@ -129,7 +132,7 @@ export function PublishingPage() {
     [names],
   );
   return (
-    <div data-testid="publishing-page">
+    <div data-testid="publishing-page" data-source={v2 ? 'v2' : 'v1'}>
       <PageHeader
         title={t.title}
         subtitle={t.subtitle}
@@ -139,6 +142,14 @@ export function PublishingPage() {
           </ActionButton>
         }
       />
+      {v2 ? (
+        <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm" data-testid="publishing-v1-closed">
+          {t.v1Closed}{' '}
+          <Link className="underline" to="/publishing-v2" data-testid="link-publishing-v2">
+            {t.v1ClosedLink}
+          </Link>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-6">
         <section>
           <h2 className="mb-2 text-sm font-medium">{t.writers}</h2>

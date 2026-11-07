@@ -24,7 +24,7 @@ export function isrcTermOf(
   if (isrcs.length === 0) return { kind: 'none' };
   const byIsrc = [...isrcs].sort().map((isrc) => ({
     isrc,
-    term: isrcTerms.find((t) => t.isrc === isrc && resolve(t.ownerId) === ownerId && inForce(t, date)) ?? null,
+    term: survivorFirst(isrcTerms.filter((t) => t.isrc === isrc && resolve(t.ownerId) === ownerId && inForce(t, date)), ownerId),
   }));
   const found = byIsrc.flatMap((x) => (x.term ? [x.term] : []));
   if (found.length === 0) return { kind: 'none' };
@@ -33,6 +33,12 @@ export function isrcTermOf(
   return { kind: 'conflict', byIsrc };
 }
 
+/**
+ * After a merge of owners (D-194) the terms of the merged owner count for the survivor; the survivor's own term wins,
+ * then the earliest row (the order of `links`, oldest first).
+ */
+const survivorFirst = (found: PublishingTermRow[], ownerId: string) => found.find((t) => t.ownerId === ownerId) ?? found[0] ?? null;
+
 /** The owner's own term in force at a date, if any. */
 export const ownerTermAt = (ownerTerms: PublishingTermRow[], ownerId: string, date: string, resolve: (id: string) => string) =>
-  ownerTerms.find((t) => resolve(t.ownerId) === ownerId && inForce(t, date)) ?? null;
+  survivorFirst(ownerTerms.filter((t) => resolve(t.ownerId) === ownerId && inForce(t, date)), ownerId);
