@@ -1683,7 +1683,11 @@ const operations: ApiOperation[] = [
     summary: 'Publishing v2 (D-184): the operator sets the whole set of ISRCs of a song. Money is not touched',
     body: S.pubV2SongIsrcsBody,
     response: R.pubV2SongIsrcsResultSchema,
-    errors: ['404 not_found: song, or an ISRC outside the catalog', '400 validation_error: not an ISRC'],
+    errors: [
+      '404 not_found: song, or an ISRC outside the catalog',
+      '400 validation_error: not an ISRC',
+      '409 isrc_on_songwriter_song: another song of the same songwriter has this ISRC (D-190)',
+    ],
   },
   {
     method: 'post',

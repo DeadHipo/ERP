@@ -224,6 +224,34 @@ describe('the links of songs to ISRCs (D-184)', () => {
     await expect(f.setPubV2SongIsrcs(id, ['nonsense'], 'tester')).rejects.toMatchObject({ code: 'validation_error' });
     await expect(f.setPubV2SongIsrcs('missing', [], 'tester')).rejects.toMatchObject({ code: 'not_found' });
   });
+
+  it('refuses one ISRC under two songs of one songwriter and allows it under two songwriters (D-190)', async () => {
+    const { f } = await world();
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    await f.modules.pubv2.ingest({
+      path: await workbook('isrc-2.xlsx', {
+        'Songwriter Breakdown': [
+          ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+          ['SONGWRITER: Writer Synth One', 2, 0, 2],
+          ['  Song A Twice', 2, 0, 2],
+          ['SONGWRITER: Co Writer', 1, 0, 1],
+          ['  Song A', 1, 0, 1],
+        ],
+      }),
+      fileName: '0to8_Q12026_Publishing_Statement.xlsx',
+      labelId: label.id,
+    });
+    const songs = await f.pubV2Songs();
+    const idOf = (writer: string, title: string) =>
+      songs.find((s) => s.songwriter === writer && s.title === title)?.songId as string;
+    await f.setPubV2SongIsrcs(idOf('Writer Synth One', 'Song A'), [isrcs[0] as string], 'tester');
+    await expect(f.setPubV2SongIsrcs(idOf('Writer Synth One', 'Song A Twice'), [isrcs[0] as string, isrcs[2] as string], 'tester')).rejects.toMatchObject({
+      code: 'isrc_on_songwriter_song',
+    });
+    expect((await f.pubV2SongCandidates(idOf('Writer Synth One', 'Song A Twice'))).isrcs).toEqual([]);
+    expect((await f.setPubV2SongIsrcs(idOf('Co Writer', 'Song A'), [isrcs[0] as string], 'tester')).isrcs).toEqual([isrcs[0]]);
+    await f.setPubV2SongIsrcs(idOf('Writer Synth One', 'Song A'), [isrcs[0] as string], 'tester');
+  });
 });
 
 describe('the owners behind the songs (D-187)', () => {

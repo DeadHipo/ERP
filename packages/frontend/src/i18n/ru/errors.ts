@@ -56,6 +56,7 @@ export const errors: Record<string, string> = {
   duplicate_file: 'Этот файл уже загружен',
   publishing_v2_active: 'Деньги паблишинга считаются по v2: загрузка и связи на странице «Паблишинг v2»',
   term_not_last: 'Отменить можно только последнее условие владельца',
+  isrc_on_songwriter_song: 'Этот ISRC уже связан с другой песней того же автора',
   period_loaded: 'Этот квартал уже загружен из другого файла',
   duplicate_track: 'Трек с этим ISRC уже есть',
   split_document_set: 'У сплита уже другой документ',

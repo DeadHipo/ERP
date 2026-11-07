@@ -161,12 +161,25 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       const known = new Set(candidates(song.title, ownerOf.get(song.songwriterId) ?? null).map((c) => c.isrc));
       const isrcs = [...new Set(raw.map(assertIsrc))];
       for (const isrc of isrcs) if (!titles.has(isrc)) throw new NotFoundError('Track', isrc);
-      const rows = await links.setSongIsrcs(
-        songId,
-        isrcs.map((isrc) => ({ isrc, source: known.has(isrc) ? ('recommended' as const) : ('manual' as const) })),
-        decidedBy,
-      );
-      return { songId, isrcs: rows.map((r) => r.isrc).sort() };
+      return ctx.db.transaction(async () => {
+        // D-190: one ISRC under two songs of one songwriter is a mistake (a double title); under two songwriters it is
+        // co-authorship and stays allowed
+        const wanted = new Set(isrcs);
+        const siblings = new Set(
+          (await pubv2.listSongs()).filter((s) => s.songwriterId === song.songwriterId && s.id !== songId).map((s) => s.id),
+        );
+        const clash = (await links.songIsrcs()).filter((l) => wanted.has(l.isrc) && siblings.has(l.songId));
+        if (clash.length > 0) {
+          const list = [...new Set(clash.map((l) => l.isrc))].sort().join(', ');
+          throw new ConflictError(`Another song of this songwriter already has ${list}`, 'isrc_on_songwriter_song');
+        }
+        const rows = await links.setSongIsrcs(
+          songId,
+          isrcs.map((isrc) => ({ isrc, source: known.has(isrc) ? ('recommended' as const) : ('manual' as const) })),
+          decidedBy,
+        );
+        return { songId, isrcs: rows.map((r) => r.isrc).sort() };
+      });
     },
 
     /** A new percent of the linked owner (D-185): the open term closes, a new one starts at the date. */
