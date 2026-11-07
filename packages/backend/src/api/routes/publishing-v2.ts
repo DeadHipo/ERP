@@ -39,5 +39,8 @@ export function publishingV2Router(facade: Facade, opts: { tmpDir: string }) {
   r.post('/publishing-v2/songs/:id/isrcs', async (req, res) =>
     res.json(await facade.setPubV2SongIsrcs(param(req, 'id'), parse(S.pubV2SongIsrcsBody, req.body).isrcs, res.locals.operator as string)),
   );
+  r.post('/publishing-v2/terms', async (req, res) =>
+    res.status(201).json(await facade.setPublishingTerm(parse(S.pubV2TermBody, req.body), res.locals.operator as string)),
+  );
   return r;
 }

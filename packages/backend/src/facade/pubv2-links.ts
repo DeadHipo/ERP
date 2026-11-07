@@ -157,10 +157,30 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       return { songId, isrcs: rows.map((r) => r.isrc).sort() };
     },
 
+    /** A new percent of the linked owner (D-185): the open term closes, a new one starts at the date. */
+    async setPublishingTerm(
+      input: { ownerId: string; percent: string; validFrom: string; documentId?: string | null },
+      decidedBy: string,
+    ) {
+      const ownerId = await owners.resolveOwnerId(input.ownerId);
+      const owner = await owners.getOwner(ownerId);
+      if (owner.kind !== 'person') throw new ConflictError('Publishing goes only to a person, not to a label', 'owner_is_label');
+      if (input.documentId) {
+        const d = await owners.getDocument(input.documentId);
+        if (d.ownerId && d.ownerId !== ownerId) throw new ConflictError('The document belongs to another owner', 'document_owner_mismatch');
+      }
+      return links.setPublishingTerm({ ...input, ownerId, decidedBy });
+    },
+
     /** Every songwriter with its link and its recommendation: the ones without a link first, largest first. */
     async pubV2Links(labelId?: string) {
       const { byId, isPerson, oldMap } = await context();
       const decided = new Map((await links.songwriterOwners()).map((l) => [l.songwriterId, l]));
+      const termsOf = new Map<string, { percent: string; validFrom: string; validTo: string | null; documentId: string | null }[]>();
+      for (const t of await links.publishingTerms()) {
+        const id = await owners.resolveOwnerId(t.ownerId);
+        termsOf.set(id, [...(termsOf.get(id) ?? []), { percent: t.percent, validFrom: t.validFrom, validTo: t.validTo, documentId: t.documentId }]);
+      }
       const rows = [];
       for (const w of await pubv2.listSongwriters(labelId)) {
         const link = decided.get(w.id);
@@ -178,6 +198,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
                   source: link.source,
                   decidedBy: link.decidedBy,
                   decidedAt: link.decidedAt,
+                  terms: termsOf.get(linkedOwner) ?? [],
                 }
               : null,
           recommendation: hint ? { ownerId: hint.ownerId, ownerName: byId.get(hint.ownerId)?.name ?? '', reason: hint.reason } : null,

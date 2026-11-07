@@ -16,6 +16,7 @@ import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { fmt, ru } from '../../../i18n/ru';
 import { useLabel } from '../../../lib/label';
 import { compareDecimal } from '../../../lib/money';
+import { TermDialog } from './TermDialog';
 
 const t = ru.reference.publishingV2;
 type Row = z.output<typeof pubV2LinkSchema>;
@@ -56,7 +57,7 @@ function ChooseOwnerDialog(props: { row: Row; onClose: () => void }) {
   );
 }
 
-function RowActions(props: { row: Row; onChoose: (row: Row) => void }) {
+function RowActions(props: { row: Row; onChoose: (row: Row) => void; onTerm: (row: Row) => void }) {
   const { row } = props;
   const hint = row.recommendation;
   const run = useAction((ownerId: string) => api.publishingV2.link({ songwriterId: row.songwriterId, ownerId }), linkAction(row.name));
@@ -70,6 +71,11 @@ function RowActions(props: { row: Row; onChoose: (row: Row) => void }) {
       <ActionButton name="choose-owner" op="POST /publishing-v2/links" variant="secondary" onPress={() => props.onChoose(row)}>
         {row.link ? t.change : hint ? t.other : t.choose}
       </ActionButton>
+      {row.link ? (
+        <ActionButton name="set-term" op="POST /publishing-v2/terms" variant="secondary" onPress={() => props.onTerm(row)}>
+          {t.split}
+        </ActionButton>
+      ) : null}
     </div>
   );
 }
@@ -79,6 +85,7 @@ export function LinksTab() {
   const { labelId } = useLabel();
   const query = useQuery(publishingV2Queries.links(labelId));
   const [choosing, setChoosing] = useState<Row | null>(null);
+  const [terming, setTerming] = useState<Row | null>(null);
   const columns = useMemo<ColDef<Row>[]>(
     () => [
       {
@@ -115,6 +122,14 @@ export function LinksTab() {
           ),
       },
       {
+        colId: 'percent',
+        headerName: t.cols.percent,
+        valueGetter: (p) => {
+          const open = p.data?.link?.terms.filter((x) => x.validTo === null) ?? [];
+          return open.length > 0 ? open.map((x) => `${x.percent}%`).join(', ') : p.data?.link ? t.noTermShort : '';
+        },
+      },
+      {
         colId: 'recommendation',
         headerName: t.cols.recommendation,
         minWidth: 280,
@@ -128,10 +143,10 @@ export function LinksTab() {
       {
         colId: 'actions',
         headerName: t.cols.actions,
-        minWidth: 260,
+        minWidth: 320,
         sortable: false,
         filter: false,
-        cellRenderer: (p: { data?: Row }) => (p.data ? <RowActions row={p.data} onChoose={setChoosing} /> : null),
+        cellRenderer: (p: { data?: Row }) => (p.data ? <RowActions row={p.data} onChoose={setChoosing} onTerm={setTerming} /> : null),
       },
     ],
     [],
@@ -143,6 +158,9 @@ export function LinksTab() {
         {(rows) => <DataGrid rowData={rows} columnDefs={columns} getRowId={(r) => r.songwriterId} rowTestId={(r) => `link-${r.songwriterId}`} />}
       </QueryView>
       {choosing ? <ChooseOwnerDialog row={choosing} onClose={() => setChoosing(null)} /> : null}
+      {terming?.link ? (
+        <TermDialog ownerId={terming.link.ownerId} ownerName={terming.link.ownerName} terms={terming.link.terms} onClose={() => setTerming(null)} />
+      ) : null}
     </div>
   );
 }

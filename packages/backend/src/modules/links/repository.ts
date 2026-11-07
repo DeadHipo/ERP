@@ -1,10 +1,11 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgQuery, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { songIsrc, songwriterOwner } from './schema';
+import { publishingTerms, songIsrc, songwriterOwner } from './schema';
 
 export type SongwriterOwnerRow = OrgFree<typeof songwriterOwner.$inferSelect>;
 export type SongIsrcRow = OrgFree<typeof songIsrc.$inferSelect>;
+export type PublishingTermRow = OrgFree<typeof publishingTerms.$inferSelect>;
 
 /** All SQL of the links module lives here (schema `links`); every statement is of the organization `org` (D-170). */
 export function createLinksRepository(db: Db, org: OrgScope) {
@@ -21,6 +22,16 @@ export function createLinksRepository(db: Db, org: OrgScope) {
           .from(songwriterOwner)
           .where(orgWhere(org, songwriterOwner, eq(songwriterOwner.songwriterId, songwriterId)))
       )[0],
+    publishingTerms: (): Promise<PublishingTermRow[]> =>
+      db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms)).orderBy(publishingTerms.validFrom),
+    termsOfOwner: (ownerId: string): Promise<PublishingTermRow[]> =>
+      db.orm().select(orgFree(publishingTerms)).from(publishingTerms).where(orgWhere(org, publishingTerms, eq(publishingTerms.ownerId, ownerId))),
+    closeTerm: async (id: string, validTo: string) => {
+      await db.orm().update(publishingTerms).set({ validTo }).where(orgWhere(org, publishingTerms, eq(publishingTerms.id, id)));
+    },
+    insertTerm: async (row: PublishingTermRow) => {
+      await db.orm().insert(publishingTerms).values(orgRows(org, [row]));
+    },
     songIsrcs: (): Promise<SongIsrcRow[]> => db.orm().select(orgFree(songIsrc)).from(songIsrc).where(orgWhere(org, songIsrc)),
     isrcsOfSong: (songId: string): Promise<SongIsrcRow[]> =>
       db.orm().select(orgFree(songIsrc)).from(songIsrc).where(orgWhere(org, songIsrc, eq(songIsrc.songId, songId))),

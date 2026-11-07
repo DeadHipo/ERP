@@ -318,6 +318,14 @@ export const uploadLabelQuery = z.object({
 /** The operator's decision (D-183): this songwriter of publishing v2 is this owner. */
 export const pubV2LinkBody = z.object({ songwriterId: z.string().min(1), ownerId: z.string().min(1) });
 
+/** A new percent of an owner from a date (D-185): the open term closes. */
+export const pubV2TermBody = z.object({
+  ownerId: z.string().min(1),
+  percent: z.string().min(1),
+  validFrom: z.string().min(1),
+  documentId: z.string().nullable().optional(),
+});
+
 /** The operator's decision (D-184): the whole set of ISRCs of a song; an empty list clears it. */
 export const pubV2SongIsrcsBody = z.object({ isrcs: z.array(z.string().min(1)) });
 

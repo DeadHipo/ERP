@@ -174,6 +174,18 @@ export function createPubV2Service(db: Db, org: OrgScope, storageDir: string) {
       }));
     },
 
+    /** What the calculation needs from the summaries (D-185): one row per label, quarter, songwriter and song. */
+    async linesForCalculation() {
+      return (await repo.linesForCalculation()).map((r) => ({
+        labelId: r.label_id,
+        period: r.period,
+        songwriterId: r.songwriter_id,
+        songwriter: r.name,
+        title: r.title,
+        payablePico: BigInt(r.payable),
+      }));
+    },
+
     async listSongs(labelId?: string) {
       return (await repo.songSums(labelId)).map((r) => ({
         id: r.id,

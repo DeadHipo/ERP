@@ -673,6 +673,16 @@ export const pubV2LinkSchema = z.object({
       source: z.enum(['recommended', 'manual']).describe('recommended = the operator confirmed the suggestion; manual = chose the owner'),
       decidedBy: z.string().describe('The operator who decided'),
       decidedAt: timestamp,
+      terms: z
+        .array(
+          z.object({
+            percent: z.string().describe('The author percent, 0..100'),
+            validFrom: date,
+            validTo: date.nullable().describe('YYYY-MM-DD, exclusive; null = open-ended'),
+            documentId: z.string().nullable().describe(D.documentId),
+          }),
+        )
+        .describe('The terms of the owner, oldest first; a term is never edited'),
     })
     .nullable()
     .describe('The confirmed link; null = none yet'),
@@ -686,6 +696,18 @@ export const pubV2LinkSchema = z.object({
     })
     .nullable()
     .describe('A suggestion only; null = none'),
+});
+
+export const pubV2TermSchema = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  percent: z.string(),
+  validFrom: date,
+  validTo: date.nullable(),
+  documentId: z.string().nullable(),
+  operationType: z.string().nullable(),
+  decidedBy: z.string(),
+  createdAt: timestamp,
 });
 
 export const pubV2LinkResultSchema = z.object({

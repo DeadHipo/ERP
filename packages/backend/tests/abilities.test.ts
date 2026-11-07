@@ -41,9 +41,9 @@ describe('abilities (D-171)', () => {
     const count = (c: string) => Object.values(MANAGER_ANSWER).filter((v) => v === c).length;
     // D-174: + GET /settlements/start (L), POST /settlements/start/import (x), POST /settlements/start/:id/deactivate (x)
     // D-176: + GET /settlements/admission (L), six admission writes and PATCH /contracts/:id (x)
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([115, 38, 16, 7, 54]);
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([116, 38, 16, 7, 55]);
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([19, 30, 17, 18, 17, 14]);
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([19, 30, 17, 19, 17, 14]);
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {

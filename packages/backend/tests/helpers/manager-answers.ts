@@ -107,6 +107,7 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /publishing-v2/songs': 'L',
   'GET /publishing-v2/songs/:id/candidates': 'L',
   'POST /publishing-v2/songs/:id/isrcs': 'x',
+  'POST /publishing-v2/terms': 'x',
   'GET /publishing-v2/links': 'L',
   'POST /publishing-v2/links': 'x',
   'GET /publishing-v2/songwriters': 'L',

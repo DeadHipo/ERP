@@ -550,3 +550,4 @@ the data of the live store, in order (every script is a dry run without `--apply
 4. Check on `/publishing-v2`: the column «Разница» of every file is near zero (the Cover of Q2 and Q3 2025 gives cents; Q4 2025 names no total). The old module and the money do not change.
 5. Links (D-183): the tab «Связи» of `/publishing-v2`. The recommendation is a hint: `из старого паблишинга` often means an owner made from the same B17 name, so check it before confirming.
 6. ISRCs (D-184): the tab «Треки». Link the songwriter to the real owner first: only then the dialog marks «трек владельца» and ticks those tracks.
+7. The shadow run (D-185): `npx tsx packages/backend/scripts/pubv2/shadow.ts --csv data/mvp-load/verify/pubv2-shadow.csv` (reads only). `PUBLISHING_SOURCE=v2` in `.env` switches the calculation; the default is `v1`.

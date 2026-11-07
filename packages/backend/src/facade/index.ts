@@ -15,6 +15,7 @@ import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
 import { pubV2LinksApi } from './pubv2-links';
+import { pubV2Source } from './pubv2-source';
 import { reportsApi } from './reports';
 import { ownerViewApi } from './owner-view';
 import { artistViewApi } from './artist-view';
@@ -60,6 +61,8 @@ export function openFacade(config: FacadeConfig) {
   const links: LinksService = opened.links;
   const audit: AuditService = opened.audit;
   const ads: AdsService = opened.ads;
+  // D-185: one switch of the source of the money; `calculate()` and the layers do not know it
+  const source = config.publishingSource ?? (process.env.PUBLISHING_SOURCE === 'v2' ? 'v2' : 'v1');
   const ctx = createFacadeContext(config, {
     db,
     owners,
@@ -67,7 +70,7 @@ export function openFacade(config: FacadeConfig) {
     labels,
     sources,
     settlements,
-    publishing,
+    publishing: source === 'v2' ? pubV2Source(db, publishing, { pubv2, links }) : publishing,
     audit,
     ads,
   });

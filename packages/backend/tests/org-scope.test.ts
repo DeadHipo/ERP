@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(40); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
+    expect(tables.length).toBe(41); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -446,6 +446,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /publishing-v2/songs': (x) => ({ query: { label: x.label } }),
     'GET /publishing-v2/songs/:id/candidates': (x) => ({ params: { id: x.song } }),
     'POST /publishing-v2/songs/:id/isrcs': (x) => ({ params: { id: x.song }, body: { isrcs: [] } }),
+    'POST /publishing-v2/terms': (x) => ({ body: { ownerId: x.owner, percent: '50', validFrom: '2026-01-01' } }),
     'GET /publishing-v2/links': (x) => ({ query: { label: x.label } }),
     'POST /publishing-v2/links': (x) => ({ body: { songwriterId: x.songwriter, ownerId: x.owner } }),
     'GET /publishing-v2/songwriters/:id': (x) => ({ params: { id: x.songwriter } }),

@@ -3,6 +3,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
 import { quarterOfFileName, readB17Summary } from '../src/modules/pubv2';
+import { calculate } from '../src/facade/calculation';
+import { pubV2Source } from '../src/facade/pubv2-source';
 import { newFacade, tmpPath } from './helpers/fixtures';
 
 // Publishing v2 (D-182): the summaries of the reports, read by the shape of a sheet. Synthetic names and amounts only.
@@ -220,6 +222,57 @@ describe('the links of songs to ISRCs (D-184)', () => {
     await expect(f.setPubV2SongIsrcs(id, ['QZTST2699999'], 'tester')).rejects.toMatchObject({ code: 'not_found' });
     await expect(f.setPubV2SongIsrcs(id, ['nonsense'], 'tester')).rejects.toMatchObject({ code: 'validation_error' });
     await expect(f.setPubV2SongIsrcs('missing', [], 'tester')).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('the source of the calculation (D-185)', () => {
+  const summary = async (f: Awaited<ReturnType<typeof newFacade>>, labelId: string) =>
+    f.modules.pubv2.ingest({
+      path: await workbook('source.xlsx', {
+        'Songwriter Breakdown': [
+          ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+          ['SONGWRITER: Writer Synth One', 100, 0, 100],
+          ['  Song A', 100, 0, 100],
+          ['SONGWRITER: Nobody Linked', 40, 0, 40],
+          ['  Song B', 40, 0, 40],
+        ],
+      }),
+      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
+      labelId,
+    });
+
+  it('a new term closes the open one and is never edited; an earlier date is refused', async () => {
+    const f = await newFacade();
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '50', validFrom: '2025-01-01' }, 'tester');
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '0', validFrom: '2026-04-01' }, 'tester');
+    const terms = await f.modules.links.publishingTerms();
+    expect(terms.map((t) => [t.percent, t.validFrom, t.validTo, t.decidedBy])).toEqual([
+      ['50', '2025-01-01', '2026-04-01', 'tester'],
+      ['0', '2026-04-01', null, 'tester'],
+    ]);
+    await expect(f.setPublishingTerm({ ownerId: owner.id, percent: '10', validFrom: '2026-04-01' }, 'tester')).rejects.toMatchObject({ code: 'terms_overlap' });
+    await expect(f.setPublishingTerm({ ownerId: owner.id, percent: '101', validFrom: '2026-06-01' }, 'tester')).rejects.toMatchObject({ code: 'validation_error' });
+  });
+
+  it('v2: the whole line goes to the linked owner with the percent of links; without a link it waits; v1 stays as it was', async () => {
+    const f = await newFacade();
+    const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
+    const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
+    await summary(f, label.id);
+    await f.setPublishingTerm({ ownerId: owner.id, percent: '90', validFrom: '2026-01-01' }, 'tester');
+    const row = (await f.pubV2Links()).find((l) => l.name === 'Writer Synth One') as { songwriterId: string };
+    await f.linkSongwriter({ songwriterId: row.songwriterId, ownerId: owner.id }, 'tester');
+
+    const { owners, splits, labels, sources, publishing, ads, pubv2, links } = f.modules;
+    const base = { db: f.db, owners, splits, labels, sources, ads };
+    const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links }) });
+    const parts = v2.publishing.map((p) => [p.writerName, p.ownerId, p.payable.toFixed(), p.authorAmount.toFixed(), p.reason]);
+    expect(parts).toEqual([
+      ['Nobody Linked', null, '40', '0', 'writer_unmapped'],
+      ['Writer Synth One', owner.id, '100', '90', 'owner_unconfirmed'],
+    ]);
+    expect((await calculate({ ...base, publishing })).publishing).toEqual([]);
   });
 });
 

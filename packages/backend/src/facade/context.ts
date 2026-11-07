@@ -39,6 +39,8 @@ export interface FacadeConfig {
   dataDir: string;
   /** The sources module of the same organization: Believe files in PostgreSQL + ClickHouse. The caller owns the connections and closes them. */
   sources: SourcesService;
+  /** Where the calculation reads publishing (D-185): `v1` the old module (default), `v2` the report summaries and the links. */
+  publishingSource?: 'v1' | 'v2';
   /** Payout threshold: not part of the calculation, below it the payout button is unavailable. */
   payoutThresholdCents: number;
   paymentService?: PaymentService;
