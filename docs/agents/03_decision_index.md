@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-185 by topic)
+# Decision index (D-001 … D-186 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -162,11 +162,12 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - ~~D-082 Real B17 not loaded~~ → D-083
 - D-083 Real B17 loaded into data/real · in force; ⚠ merge of writers into confirmed owners
 - D-086 Full history in data/real, writer legal names as aliases · in force (8 rights-holders: operator maps them)
-- D-087 Line belongs to our writers in `songwriters`, equal parts · in force; ⚠ equal parts until contract shares
+- D-087 Line belongs to our writers in `songwriters`, equal parts · in force for the source v1 only; *superseded by* D-186 for v2 (the line goes to its rights-holder)
 - D-182 Publishing v2: the module `pubv2` beside `publishing` (files as partitions, songwriters, songs, accruals from the report summaries; no owner, no ISRC; the money does not read it) · in force · open: links to owners and ISRC, the move of the calculation
 - D-183 The links of publishing v2: the module `links` (`songwriter_owner`, the operator's decision), recommendations in `facade/pubv2-links.ts`, the tab «Связи» of P32 · in force · open: most recommendations lead to owners made from the B17 name
 - D-184 The songs of publishing v2 to ISRCs: `links.song_isrc`, candidates by the title through the linked owner, the tab «Треки» of P32, the set by hand · in force · open: most candidates are title matches until owners with pseudonyms are linked
 - D-185 Publishing terms in `links.publishing_terms` (a new term closes the open one), the source of the calculation behind `PUBLISHING_SOURCE` (default `v1`), the shadow run · in force ⚠ the switch waits for the owner's cancelling of D-087 and the links to owners with terms
+- D-186 A B17 line belongs to its rights-holder, `songwriters` is not read for money (v2); the merge of owners stays without `links` · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
