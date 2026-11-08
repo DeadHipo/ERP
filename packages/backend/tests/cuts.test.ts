@@ -53,6 +53,15 @@ describe('the cuts (D-198): a label book at a moment', () => {
     // 07 + 08: S1 50 + 100 − A1 40 = 110, less P1 30 (the largest positive position) = 80; S2 20
     expect(balances(s1)).toEqual({ S1: '80', S2: '20' });
     expect([s1.total.toFixed(), s1.unsettled]).toEqual(['100', 2]);
+    // D-206: the state of the visible owners only (ids=, a calculation of their reach) = the same positions; an owner of
+    // no book of the label (or an unknown id) gives nothing; more than 200 ids are refused
+    await c.person('Z9');
+    const other = c.owners.get('Z9') as string;
+    const byIds = await f.cutState(c1.id, { all: true, ids: `${owner},${other}` });
+    expect(json(byIds.items)).toEqual(json((await f.cutState(c1.id, { all: true })).items.filter((i) => i.ownerId === owner)));
+    expect([byIds.total.toFixed(), byIds.unsettled]).toEqual(['100', 2]);
+    expect((await f.cutState(c1.id, { ids: other })).items).toEqual([]);
+    await expect(f.cutState(c1.id, { ids: Array.from({ length: 201 }, (_, i) => `o${i}`).join(',') })).rejects.toMatchObject({ statusCode: 400 });
     // the same number as the balance asOf the last month inside (no operation between 08-31 and 09-10)
     const asOf = (await f.ownerPayables({ label: zero, asOf: '2026-08' })).items.find((i) => i.ownerId === owner);
     expect(asOf?.payable.toFixed()).toBe('100');

@@ -2,7 +2,8 @@ import type { CutView, OperationView } from '../modules/settlements';
 import { Decimal, ZERO } from '../shared/money';
 import { calculate, type Calculation } from './calculation';
 import { scoped } from './scope';
-import { ownerReach } from './owner-scope';
+import { ownerReach, ownersReach } from './owner-scope';
+import { parseIdList } from './aggregates';
 import { ownerBalance, ownerIndex } from './balance';
 import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
 import { randomUUID } from 'node:crypto';
@@ -219,10 +220,19 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
       return { ownerId, calculatedAt: new Date().toISOString(), labels: out };
     },
 
-    /** The state of a cut: its positions (`all` = the settled ones too) and their sum. */
-    async cutState(id: string, opts: { all?: boolean } = {}) {
+    /**
+     * The state of a cut: its positions (`all` = the settled ones too) and their sum. `ids` (D-206, ≤ 200 owner ids: the
+     * visible rows of P35, as `ownerPayables({ ids })` of P9) = only those owners of the book, from a calculation of the
+     * units of their reach (D-163: the same balances); the sums are then of those owners only.
+     */
+    async cutState(id: string, opts: { all?: boolean; ids?: string } = {}) {
       const cut = await settlements.getCut(id);
-      const positions = await positionsAt(ctx, await readWorld(ctx), cut);
+      const only = opts.ids === undefined ? undefined : parseIdList(opts.ids);
+      const visible = (await ctx.labelContext(cut.labelId))?.visible.ownerIds ?? new Set<string>();
+      const asked = only ? new Set([...only].filter((o) => visible.has(o))) : visible;
+      const reach = async () => calculate(scoped(ctx.modules, { isrcs: (await ownersReach(ctx.modules, [...asked])).isrcs }), await ctx.opDocIds());
+      // no visible owner asked: nothing to calculate
+      const positions = only && asked.size === 0 ? [] : await positionsAt(ctx, await readWorld(ctx, only ? await reach() : undefined), cut, asked);
       const open = unsettledIn(positions);
       return {
         cut,

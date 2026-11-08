@@ -93,9 +93,10 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
   r.post('/settlements/operations/:id/cut', async (req, res) =>
     res.json(await facade.setOperationCut(param(req, 'id'), parse(S.setOperationCutBody, req.body).cutId, viewerOf(res))),
   );
-  r.get('/settlements/cuts/:id/state', async (req, res) =>
-    res.json(await facade.cutState(param(req, 'id'), { all: parse(S.cutStateQuery, req.query).all === 'true' })),
-  );
+  r.get('/settlements/cuts/:id/state', async (req, res) => {
+    const q = parse(S.cutStateQuery, req.query);
+    res.json(await facade.cutState(param(req, 'id'), { all: q.all === 'true', ...(q.ids === undefined ? {} : { ids: q.ids }) }));
+  });
 
   // the admission (D-176): the payee, the holds, the answers
   r.get('/settlements/admission', async (req, res) => {

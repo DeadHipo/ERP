@@ -15,6 +15,10 @@ let artistId = '';
 let adjustmentId = '';
 let cutId = '';
 
+/** P35 filtered to the S57 owner through the grid's URL filter (D-206: by pages the e2e book has more than 50 owners). */
+const cutUrl = () =>
+  `/operations/cuts/${cutId}?label=${labelOf('0to8')}&grid=${encodeURIComponent(JSON.stringify({ f: { owner: { filterType: 'text', type: 'contains', filter: 'Owner S57 e2e' } } }))}`;
+
 test('S57 a cut of the book: created under the label, its position of the owner shown', async ({ page, request }) => {
   const zero = labelOf('0to8');
   const owner = await apiPost(request, '/owners', { name: 'Owner S57 e2e', kind: 'person', force: true });
@@ -54,13 +58,14 @@ test('S57 a cut of the book: created under the label, its position of the owner 
   cutId = cut.id;
   expect(cut.masterTo).toBe('2026-06-01');
   await toastOk(page, 'Срез «S57 срез» создан');
-  await page.getByTestId(`cut-link-${cutId}`).click();
+  await expect(page.getByTestId(`cut-link-${cutId}`)).toBeVisible();
+  await openAs(page, cutUrl());
   await expect(page.getByTestId('cut-page')).toHaveAttribute('data-cut-id', cutId);
   await expect(page.getByTestId(`cut-position-${ownerId}-${artistId}`).locator('[data-col="balance"]')).toHaveAttribute('data-value', '10');
 });
 
 test('S57 «Перенести»: the position at the cut is zero, after it the balance lives on', async ({ page }) => {
-  await openAs(page, `/operations/cuts/${cutId}?label=${labelOf('0to8')}`);
+  await openAs(page, cutUrl());
   await page.getByTestId(`action-cut-transfer-${ownerId}-${artistId}`).click();
   const dialog = page.getByTestId('form-dialog');
   await expect(dialog.getByTestId('cut-transfer-line')).toContainText(PSEUDONYM);
@@ -74,7 +79,14 @@ test('S57 «Перенести»: the position at the cut is zero, after it the 
   await dialog.getByTestId('action-cut-transfer-submit').click();
   expect((await moved).status()).toBe(201);
   await toastOk(page, 'перенесено за срез');
-  await expect(page.getByTestId(`cut-position-${ownerId}-${artistId}`)).toHaveCount(0); // settled: not listed by default
+  // D-206: by pages every owner of the book is a row, its positions asked for the rows on the screen
+  await expect(page.getByTestId('cut-page')).toHaveAttribute('data-mode', 'paged');
+  await expect(page.getByTestId(`cut-position-${ownerId}-${artistId}`).locator('[data-col="balance"]')).toHaveAttribute('data-value', '0');
+  // «Посчитать все»: one full state; a settled owner is not listed until «show all»
+  await page.getByTestId('action-cut-compute-all').click();
+  await expect(page.getByTestId('cut-page')).toHaveAttribute('data-mode', 'all');
+  await expect(page.getByTestId('cut-totals')).toBeVisible();
+  await expect(page.getByTestId(`cut-owner-${ownerId}`)).toHaveCount(0);
   await page.getByTestId('field-cut-show-all').check();
   await expect(page.getByTestId(`cut-position-${ownerId}-${artistId}`).locator('[data-col="balance"]')).toHaveAttribute('data-value', '0');
 

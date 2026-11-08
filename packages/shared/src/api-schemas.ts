@@ -746,7 +746,10 @@ export const updateCutBody = z
   .refine((b) => Object.keys(b).length > 0, 'nothing to change');
 
 /** `GET /settlements/cuts/:id/state`: `all=true` lists the settled positions too. */
-export const cutStateQuery = z.object({ all: z.enum(['true', 'false']).optional().describe('true: every position; default: only |balance| ≥ 0.01') });
+export const cutStateQuery = z.object({
+  all: z.enum(['true', 'false']).optional().describe('true: every position; default: only |balance| ≥ 0.01'),
+  ids: z.string().optional().describe('Comma-separated owner ids (at most 200, D-206): only these owners of the book, calculated over the units of their reach; total and unsettled are then of them'),
+});
 
 /** `POST /settlements/operations/:id/cut`: attribute the operation to a cut of its label, or take it back (null). */
 export const setOperationCutBody = z.object({ cutId: z.string().min(1).nullable() });

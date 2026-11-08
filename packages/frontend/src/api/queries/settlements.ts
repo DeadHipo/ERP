@@ -17,6 +17,7 @@ export const settlementKeys = {
   /** The cuts (D-198): the list is no calculation; the state of a cut is a money key. */
   cuts: (labelId = '') => ['settlements', 'cuts', labelId || null] as const,
   cutState: (cutId: string, all: boolean) => ['settlements', 'cutState', cutId, all] as const,
+  cutStateOf: (cutId: string, ids: readonly string[]) => ['settlements', 'cutState', cutId, 'ids', ids.join(',')] as const,
 };
 
 export const settlementQueries = {
@@ -29,4 +30,12 @@ export const settlementQueries = {
     queryOptions({ queryKey: settlementKeys.cuts(labelId), queryFn: () => settlements.cuts(labelId ? { label: labelId } : {}), staleTime: 0 }),
   cutState: (cutId: string, all: boolean) =>
     queryOptions({ queryKey: settlementKeys.cutState(cutId, all), queryFn: () => settlements.cutState(cutId, all ? { all: 'true' } : {}), ...MONEY_QUERY }),
+  /** P35 (D-206): every position of the visible owners only; one calculation of the units of their reach. */
+  cutStateOf: (cutId: string, ids: readonly string[]) =>
+    queryOptions({
+      queryKey: settlementKeys.cutStateOf(cutId, ids),
+      queryFn: () => settlements.cutState(cutId, { all: 'true', ids: ids.join(',') }),
+      enabled: ids.length > 0,
+      ...MONEY_QUERY,
+    }),
 };

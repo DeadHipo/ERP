@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-205 by topic)
+# Decision index (D-001 … D-206 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -187,6 +187,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-203 The start of 15.10 became the cut «Кабинет 15.10» of 0to8 (`scripts/start/start-to-cut.ts`: reconciling adjustments on the cut, forgivenesses of the advances' rests at the bound, holds instead of `missing`, the rows deactivated; applied live, Δ ≤ 0.0143); a label with a cut refuses the start import (`409 start_label_has_cut`) · in force; the last 5 owners moved by D-204
 - D-204 The 5 owners left by D-203 moved to the cut with their deductions as a debt (`--deductions-as-debt`; no active start row remains); P10 shows the cuts as a block above the tabs (`OwnerCuts.tsx`), the tab «Срезы» is gone · in force
 - D-205 The start (D-174) removed: no `starts` in the balance, no `start_missing`, no P30 / start API / loaders; `settlements.opening_balances` stays an inactive archive; the opening position is the cut «Кабинет 15.10» · in force
+- D-206 P35 by pages as P9: the owners of the book without money, the positions of the visible rows from `GET /settlements/cuts/:id/state?ids=` (≤ 200, their reach); «Посчитать все» = one full state · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

@@ -1524,10 +1524,10 @@ const operations: ApiOperation[] = [
     ability: { action: 'read_money', subject: 'settlements', scope: 'org' },
     tag: 'settlements',
     summary:
-      'The state of a cut (D-198): the position of every pseudonym of the book (and the owner\'s own) at the cut — the balance of the book over the inputs before the bounds and the operations dated up to cutDate or attributed to this or an earlier cut; by default only |balance| ≥ 0.01 (all=true: every position). calculate() and the total payable are unchanged',
+      'The state of a cut (D-198): the position of every pseudonym of the book (and the owner\'s own) at the cut — the balance of the book over the inputs before the bounds and the operations dated up to cutDate or attributed to this or an earlier cut; by default only |balance| ≥ 0.01 (all=true: every position); ids= (≤ 200 owner ids, D-206) = only those owners of the book, from a calculation of the units of their reach (the visible rows of P35), total and unsettled of them. calculate() and the total payable are unchanged',
     query: S.cutStateQuery,
     response: R.cutStateSchema,
-    errors: ['404 not_found: the cut'],
+    errors: ['404 not_found: the cut', '400 validation_error: more than 200 ids'],
   },
   {
     method: 'post',
