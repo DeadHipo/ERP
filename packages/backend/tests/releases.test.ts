@@ -226,6 +226,15 @@ describe('the release registry on the stack (D-172, D-195)', () => {
     expect([a.createdAt === b.createdAt, a.updatedAt > a.createdAt]).toEqual([true, true]);
   });
 
+  it('a whole export applies in one go: 6 000 releases are more parameters than one INSERT may carry', async () => {
+    const w = await world();
+    const many: Rel[] = Array.from({ length: 6000 }, (_, n) => ({ title: `Release R-${n}`, upc: String(2000000000000 + n) }));
+    const p = await previewOf(w, many);
+    expect(p.totals).toMatchObject({ rows: 6000, create: 6000 });
+    expect(await w.f.applyReleases({ labelId: w.zero, changes: accepted(p) })).toMatchObject({ created: 6000 });
+    expect((await w.f.releaseRegistry({ label: w.zero })).items).toHaveLength(6000);
+  });
+
   it('the apply refuses a registry that moved since the preview, all or nothing', async () => {
     const w = await world();
     const { f, zero } = w;

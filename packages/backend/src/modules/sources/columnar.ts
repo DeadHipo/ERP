@@ -40,6 +40,9 @@ function unitsWhere(fileIds: string[], filter: UnitsFilter): { where: string; pa
   return { where: where.join(' AND '), params, empty };
 }
 
+/** UPCs in one ClickHouse parameter (D-195): an HTML form field of the HTTP interface has a size limit. */
+const UPC_CHUNK = 1_000;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface StageTotals {
@@ -331,16 +334,23 @@ export function createBelieveColumnar(
      */
     async isrcsOfUpcs(fileIds: string[], upcs?: string[]): Promise<{ upc: string; isrcs: string[] }[]> {
       if (fileIds.length === 0 || (upcs && upcs.length === 0)) return [];
-      // aliases differ from the column names (an alias named like a column would change the WHERE)
-      const rows = await compact<[code: string, list: string[]]>(
-        `SELECT upc AS code, arraySort(groupUniqArray(isrc)) AS list
-         FROM ${DB}.units
-         WHERE file_id IN {ids:Array(UUID)} AND isrc != '' AND upc != ''${upcs ? ' AND upc IN {upcs:Array(String)}' : ''}
-         GROUP BY upc
-         ORDER BY code`,
-        upcs ? { ids: fileIds, upcs } : { ids: fileIds },
-      );
-      return rows.map(([code, list]) => ({ upc: code, isrcs: list }));
+      const read = async (some?: string[]) => {
+        // aliases differ from the column names (an alias named like a column would change the WHERE)
+        const rows = await compact<[code: string, list: string[]]>(
+          `SELECT upc AS code, arraySort(groupUniqArray(isrc)) AS list
+           FROM ${DB}.units
+           WHERE file_id IN {ids:Array(UUID)} AND isrc != '' AND upc != ''${some ? ' AND upc IN {upcs:Array(String)}' : ''}
+           GROUP BY upc
+           ORDER BY code`,
+          some ? { ids: fileIds, upcs: some } : { ids: fileIds },
+        );
+        return rows.map(([code, list]) => ({ upc: code, isrcs: list }));
+      };
+      if (!upcs || upcs.length <= UPC_CHUNK) return read(upcs);
+      // D-195: a whole release registry (8 000 UPCs) is longer than one form field of the HTTP interface: in chunks
+      const out: { upc: string; isrcs: string[] }[] = [];
+      for (let i = 0; i < upcs.length; i += UPC_CHUNK) out.push(...(await read(upcs.slice(i, i + UPC_CHUNK))));
+      return out.sort((a, b) => (a.upc < b.upc ? -1 : a.upc > b.upc ? 1 : 0));
     },
 
     /**

@@ -37,6 +37,9 @@ const byBytes = (col: AnyColumn): SQL => sql`${col} collate "C"`;
 const containsText = (col: AnyColumn, q: string): SQL =>
   sql`lower(${col}) like ${`%${q.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`} escape '\\'`;
 
+/** Rows of the release registry in one INSERT (D-195): 14 parameters each, under the 65 535 of PostgreSQL. */
+const RELEASE_UPSERT_CHUNK = 2_000;
+
 /** All SQL of module 1 lives here (schema `owners`); every statement is of the organization `org` (D-170). */
 export function createOwnersRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
@@ -404,10 +407,13 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
               )
               .orderBy(releases.labelId, byBytes(releases.upc)),
       /** Inserts the rows or rewrites them by the key `(org, label, upc)` (the key of this organization). */
-      upsert: async (rows: OrgFree<typeof releases.$inferInsert>[]) => {
-        if (rows.length === 0) return;
+      upsert: async (all: OrgFree<typeof releases.$inferInsert>[]) => {
         const excluded = (col: string) => sql.raw(`excluded.${col}`);
-        await orm()
+        // D-195: 14 parameters a row; PostgreSQL takes at most 65 535 in one statement, so a whole export (8 000 rows)
+        // goes in chunks inside the caller's transaction
+        for (let i = 0; i < all.length; i += RELEASE_UPSERT_CHUNK) {
+          const rows = all.slice(i, i + RELEASE_UPSERT_CHUNK);
+          await orm()
           .insert(releases)
           .values(orgRows(org, rows))
           .onConflictDoUpdate({
@@ -425,6 +431,7 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
               updatedAt: excluded('updated_at'),
             },
           });
+        }
       },
     },
   };
