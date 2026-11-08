@@ -802,6 +802,15 @@ const OPERATOR = 'contract-test';
     expect(cutState.cut.id).toBe(cut.id);
     expect((await call('patch', '/settlements/cuts/:id', { params: { id: cut.id }, body: { name: 'Contract cut 2' } })).name).toBe('Contract cut 2');
     expect((await call('post', '/settlements/cuts/:id/delete', { params: { id: cut.id } })).id).toBe(cut.id);
+    // stage 2: an operation attributed to a cut and back; a transfer of a position past the cut
+    const cutB = await call('post', '/settlements/cuts', { body: { labelId: zero.id, name: 'Contract cut B', cutDate: '2026-07-25' } });
+    expect((await call('post', '/settlements/operations/:id/cut', { params: { id: adjustmentOp.id }, body: { cutId: cutB.id } })).cutId).toBe(cutB.id);
+    expect((await call('post', '/settlements/operations/:id/cut', { params: { id: adjustmentOp.id }, body: { cutId: null } })).cutId).toBeNull();
+    const transfer = await call('post', '/settlements/cuts/:id/transfer', {
+      params: { id: cutB.id },
+      body: { ownerId: owner.id, amount: '2.00', documentId: adjustBasis.id },
+    });
+    expect([transfer.atCut.cutId, transfer.after.amountCents]).toEqual([cutB.id, -200]);
     await call('get', '/settlements/operations');
     await call('get', '/settlements/operations', { query: { label: zero.id } });
     const needing = await call('get', '/settlements/operations', {

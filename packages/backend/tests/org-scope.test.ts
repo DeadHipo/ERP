@@ -505,6 +505,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'PATCH /settlements/cuts/:id': (x) => ({ params: { id: x.cut }, body: { name: 'n' } }),
     'POST /settlements/cuts/:id/delete': (x) => ({ params: { id: x.cut } }),
     'GET /settlements/cuts/:id/state': (x) => ({ params: { id: x.cut } }),
+    'POST /settlements/cuts/:id/transfer': (x) => ({ params: { id: x.cut }, body: { ownerId: x.owner, amount: '1.00', documentId: x.document } }),
+    'POST /settlements/operations/:id/cut': (x) => ({ params: { id: x.operation }, body: { cutId: x.cut } }),
     // the forgiveness (D-173): B's operation forgiven under a with a's document answers as an unknown advance
     'POST /settlements/operations/:id/forgive': (x) => ({ params: { id: x.operation }, body: { amount: '1.00', date: '2026-08-15', documentId: A.document, comment: 'c' } }),
   };

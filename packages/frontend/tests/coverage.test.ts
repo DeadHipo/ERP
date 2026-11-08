@@ -34,7 +34,7 @@ describe('operation coverage', () => {
   it('gives every refusal a reason', () => {
     const refusals = entries.flatMap(([key, e]) => ('refusal' in e ? [{ key, reason: e.refusal }] : []));
     // D-198 stages 1–3: the five cut operations wait for their screens (stage 4 removes them from here)
-    const cutsPending = ['GET /settlements/cuts', 'GET /settlements/cuts/:id/state', 'PATCH /settlements/cuts/:id', 'POST /settlements/cuts', 'POST /settlements/cuts/:id/delete'];
+    const cutsPending = ['GET /settlements/cuts', 'GET /settlements/cuts/:id/state', 'PATCH /settlements/cuts/:id', 'POST /settlements/cuts', 'POST /settlements/cuts/:id/delete', 'POST /settlements/cuts/:id/transfer', 'POST /settlements/operations/:id/cut'];
     expect(refusals.map((r) => r.key).filter((k) => !cutsPending.includes(k)).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain']);
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);
   });

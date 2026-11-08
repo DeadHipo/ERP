@@ -1118,6 +1118,7 @@ const operations: ApiOperation[] = [
       '400 writeoff_area: a write-off of an area other than publishing (D-173)',
       '422 document_required: a buyout, write-off or adjustment without a basis document (D-173)',
       '422 writeoff_exceeds: a write-off above the publishing the book has (details { available }, D-173)',
+      '404 not_found: the cut (cutId); 409 cut_label_mismatch: a cut of another label (D-198)',
     ],
   },
   {
@@ -1130,7 +1131,7 @@ const operations: ApiOperation[] = [
       'Set the label of an existing operation (the history before the split, D-168) with a reason (D-173): the label source becomes operator; the reason and the previous label (`fromLabelId`, also in the answer) go into the audit summary',
     body: S.setOperationLabelBody,
     response: R.operationSchema,
-    errors: ['400 reason_required: no reason', '400 label_not_own', '404 not_found'],
+    errors: ['400 reason_required: no reason', '400 label_not_own', '404 not_found', '409 cut_transfer_pair: a row of a transfer of a cut (D-199)'],
   },
   {
     method: 'post',
@@ -1539,7 +1540,7 @@ const operations: ApiOperation[] = [
     summary: 'Change the name, the date, the bounds or the comment of a cut (D-198); the label never changes; a new date does not re-derive the bounds (send them too); the order rule of the create',
     body: S.updateCutBody,
     response: R.cutSchema,
-    errors: ['404 not_found: the cut', '400 validation_error', '409 cut_name_taken', '409 cut_order'],
+    errors: ['404 not_found: the cut', '400 validation_error', '409 cut_name_taken', '409 cut_order', '409 cut_in_use: a new date while operations are attributed to the cut'],
   },
   {
     method: 'post',
@@ -1562,6 +1563,30 @@ const operations: ApiOperation[] = [
     query: S.cutStateQuery,
     response: R.cutStateSchema,
     errors: ['404 not_found: the cut'],
+  },
+  {
+    method: 'post',
+    path: '/settlements/cuts/:id/transfer',
+    access: 'org',
+    ability: { action: 'approve', subject: 'settlements', scope: 'org' },
+    tag: 'settlements',
+    summary:
+      'Transfer a position\'s balance at the cut to after it (D-198): two adjustments of the cut\'s label with one basis document and one external reference `cut-transfer:<uuid>` — the first attributed to the cut takes `amount` off the position there, the second (not attributed) gives it back; both are dated the day after the cut, so every later cut holds both; deactivating one deactivates both',
+    body: S.cutTransferBody,
+    status: 201,
+    response: R.cutTransferSchema,
+    errors: ['404 not_found: the cut, the owner, the pseudonym or the document', '400 transfer_zero', '422 document_required', '400 document_kind', '422 document_owner_mismatch'],
+  },
+  {
+    method: 'post',
+    path: '/settlements/operations/:id/cut',
+    access: 'org',
+    ability: { action: 'approve', subject: 'settlements', scope: 'org' },
+    tag: 'settlements',
+    summary: 'Attribute an operation to a cut of its label (D-198), e.g. a payout of the button made after the cut, or take it back (cutId null): it then enters that cut and every later one whatever its date',
+    body: S.setOperationCutBody,
+    response: R.operationSchema,
+    errors: ['404 not_found: the operation or the cut', '409 cut_label_mismatch: the cut is of another label (details { cutLabelId, labelId })', '400 operation_inactive', '409 cut_transfer_pair: a row of a transfer keeps its cut'],
   },
   // ---- the admission (D-176) ----
   {

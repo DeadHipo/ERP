@@ -103,7 +103,7 @@ export function openFacade(config: FacadeConfig) {
     ...operationImportApi(ctx, payoutsPart),
     ...startApi(ctx),
     ...admissionApi(ctx),
-    ...cutsApi(ctx),
+    ...cutsApi(ctx, payoutsPart),
     ...pubV2LinksApi(ctx, { pubv2, links, publishing }),
   };
 }

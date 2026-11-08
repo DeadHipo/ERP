@@ -3,7 +3,10 @@ import { Decimal, ZERO } from '../shared/money';
 import { calculate } from './calculation';
 import { ownerBalance, ownerIndex, startsByOwner } from './balance';
 import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
+import { randomUUID } from 'node:crypto';
+import { ValidationError } from '../shared/errors';
 import type { FacadeContext } from './context';
+import { CUT_TRANSFER, type payoutsApi } from './payouts';
 
 // The cuts (D-198): the state of a label's book at a moment, cumulative. A cut is a view of the very balance (the one
 // calculation cut by the bounds, `as-of.ts`) plus the operations attributed to it (`operations.cut_id`); nothing is
@@ -22,7 +25,7 @@ export interface CutPosition {
   balance: Decimal;
 }
 
-export function cutsApi(ctx: FacadeContext) {
+export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payoutsApi>, 'createOperation'>) {
   const { db, owners, settlements, modules, opDocIds, assertOwnLabel, labelContext } = ctx;
 
   const boundsOf = (cut: CutView, all: CutView[]): CutBounds => {
@@ -71,6 +74,37 @@ export function cutsApi(ctx: FacadeContext) {
     updateCut: (id: string, patch: { name?: string; cutDate?: string; masterTo?: string; publishingTo?: string; adsTo?: string; comment?: string }) =>
       settlements.updateCut(id, patch),
     deleteCut: (id: string) => settlements.deleteCut(id),
+
+    /**
+     * The transfer of a position's balance at the cut to after it (D-199): two adjustments of the cut's label with one
+     * basis document and one `cut-transfer:` reference, in one transaction, both dated the day after the cut (so the
+     * second is inside every later cut, as the first is). The first is attributed to the cut and takes `amount` off the
+     * position there (a positive adjustment lowers payable, D-173); the second gives it back after the cut.
+     * Deactivating one deactivates both.
+     */
+    async transferAtCut(cutId: string, input: { ownerId: string; artistId?: string | null; amount: string; documentId: string; comment?: string }) {
+      const cut = await settlements.getCut(cutId);
+      const amount = new Decimal(input.amount);
+      if (amount.isZero()) throw new ValidationError('Nothing to transfer: the amount is zero', undefined, 'transfer_zero');
+      const date = new Date(Date.parse(`${cut.cutDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      const externalRef = `${CUT_TRANSFER}${randomUUID()}`;
+      const comment = input.comment?.trim() || `Перенос на срезе «${cut.name}»`;
+      const row = (amt: Decimal, atCut: boolean) =>
+        writes.createOperation({
+          kind: 'adjustment',
+          direction: 'in',
+          amount: amt.toFixed(2),
+          ownerId: input.ownerId,
+          artistId: input.artistId ?? null,
+          documentId: input.documentId,
+          date,
+          comment,
+          labelId: cut.labelId,
+          externalRef,
+          cutId: atCut ? cut.id : null,
+        });
+      return db.transaction(async () => ({ atCut: await row(amount, true), after: await row(amount.neg(), false) }));
+    },
 
     /** The state of a cut: its positions (`all` = the settled ones too) and their sum. */
     async cutState(id: string, opts: { all?: boolean } = {}) {

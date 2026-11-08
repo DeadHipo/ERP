@@ -1658,6 +1658,7 @@ export const operationSchema = z.object({
   channel: z.string().nullable().describe('The payment channel, free text (D-173)'),
   area: z.enum(['master', 'publishing']).describe('The area of the book (D-173); the history is master').describe(D.area),
   allocation: z.record(z.string(), z.number().int()).nullable().optional().describe('A payout of the button (D-181): what it took from which position, cents by pseudonym id (\'\' = the owner\'s own); null for the history and every other kind'),
+  cutId: z.string().nullable().optional().describe('The cut the operation is attributed to (D-198); null = by its date'),
   fromLabelId: z
     .string()
     .nullable()
@@ -2541,3 +2542,8 @@ export const cutStateSchema = z.object({
   ),
 });
 export type CutState = z.infer<typeof cutStateSchema>;
+
+export const cutTransferSchema = z.object({
+  atCut: operationSchema.describe('The adjustment attributed to the cut: brings the position at the cut to zero'),
+  after: operationSchema.describe('The opposite adjustment after the cut: the balance lives on'),
+});

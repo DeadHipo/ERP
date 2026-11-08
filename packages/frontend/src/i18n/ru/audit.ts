@@ -80,6 +80,8 @@ export const audit = {
     'POST /settlements/cuts': 'создание среза',
     'PATCH /settlements/cuts/:id': 'изменение среза',
     'POST /settlements/cuts/:id/delete': 'удаление среза',
+    'POST /settlements/cuts/:id/transfer': 'перенос сальдо на срезе',
+    'POST /settlements/operations/:id/cut': 'отнесение операции к срезу',
     'POST /settlements/start/:id/deactivate': 'отключена строка старта',
     'POST /settlements/payees': 'задан получатель владельца',
     'POST /settlements/payees/:id/deactivate': 'отключён получатель владельца',

@@ -193,6 +193,9 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
     setLabel: async (id: string, labelId: string | null, labelSource: LabelSource | null) => {
       await orm().update(operations).set({ labelId, labelSource }).where(orgWhere(org, operations, eq(operations.id, id)));
     },
+    setCut: async (id: string, cutId: string | null) => {
+      await orm().update(operations).set({ cutId }).where(orgWhere(org, operations, eq(operations.id, id)));
+    },
     setLabelSource: async (id: string, labelSource: LabelSource) => {
       await orm().update(operations).set({ labelSource }).where(orgWhere(org, operations, eq(operations.id, id)));
     },

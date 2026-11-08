@@ -206,6 +206,8 @@ export interface OperationInput {
   /** A payout of the button (D-181): what it takes from which position (cents by pseudonym id, '' = the owner's own); Σ = amountCents. */
   allocation?: Record<string, number>;
   area?: 'master' | 'publishing';
+  /** The cut the operation is attributed to (D-198); the facade checks it is a cut of the operation's label. */
+  cutId?: string | null;
 }
 
 const SCOPE_KINDS: ScopeKind[] = ['any', 'master', 'publishing', 'master_publishing', 'isrcs'];
@@ -513,6 +515,7 @@ export function createSettlementsService(db: Db, org: OrgScope) {
           channel: input.channel ?? null,
           area,
           allocation: input.allocation ? JSON.stringify(input.allocation) : null,
+          cutId: input.cutId ?? null,
         });
         return view(await get(id));
       });
@@ -620,6 +623,14 @@ export function createSettlementsService(db: Db, org: OrgScope) {
       });
     },
 
+    /** Attribute an operation to a cut, or take it back (null); D-198. The facade checks the cut and the label. */
+    async setCut(id: string, cutId: string | null): Promise<OperationView> {
+      return repo.transaction(async () => {
+        await get(id);
+        await repo.setCut(id, cutId);
+        return view(await get(id));
+      });
+    },
     /** Who set the label of an operation, the label unchanged (D-173, `assign-operation-labels.ts --mark-source`). */
     async setLabelSource(id: string, source: LabelSource): Promise<void> {
       await repo.setLabelSource(id, source);
@@ -894,6 +905,11 @@ export function createSettlementsService(db: Db, org: OrgScope) {
           ...(patch.comment !== undefined ? { comment: patch.comment.trim() } : {}),
         };
         if (!next.name) throw new ValidationError('A cut needs a name');
+        // the operations attributed to the cut were placed against its moment (D-199): the moment stays
+        if (next.cutDate !== cur.cutDate) {
+          const n = await repo.countCutOperations(id);
+          if (n > 0) throw new ConflictError(`${n} operation(s) are attributed to the cut: its date stays`, 'cut_in_use', { operations: n });
+        }
         const others = (await repo.listCuts({ labelId: cur.labelId })).map(cutView).filter((c) => c.id !== id);
         if (others.some((c) => c.name === next.name)) throw new ConflictError(`The label already has a cut «${next.name}»`, 'cut_name_taken');
         assertCutOrder([...others, next]);

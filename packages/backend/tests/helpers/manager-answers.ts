@@ -135,6 +135,8 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'PATCH /settlements/cuts/:id': 'x',
   'POST /settlements/cuts/:id/delete': 'x',
   'GET /settlements/cuts/:id/state': 'x',
+  'POST /settlements/cuts/:id/transfer': 'x',
+  'POST /settlements/operations/:id/cut': 'x',
   // the payroll export (D-173 stage 5 commit 3): read_money under its own label
   'GET /owners/payroll': 'L',
 };

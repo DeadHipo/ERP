@@ -120,6 +120,10 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
   });
   r.patch('/settlements/cuts/:id', async (req, res) => res.json(await facade.updateCut(param(req, 'id'), parse(S.updateCutBody, req.body))));
   r.post('/settlements/cuts/:id/delete', async (req, res) => res.json(await facade.deleteCut(param(req, 'id'))));
+  r.post('/settlements/cuts/:id/transfer', async (req, res) => res.status(201).json(await facade.transferAtCut(param(req, 'id'), parse(S.cutTransferBody, req.body))));
+  r.post('/settlements/operations/:id/cut', async (req, res) =>
+    res.json(await facade.setOperationCut(param(req, 'id'), parse(S.setOperationCutBody, req.body).cutId, viewerOf(res))),
+  );
   r.get('/settlements/cuts/:id/state', async (req, res) =>
     res.json(await facade.cutState(param(req, 'id'), { all: parse(S.cutStateQuery, req.query).all === 'true' })),
   );

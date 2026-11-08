@@ -29,10 +29,10 @@ async function world() {
   await c.load('2026-09', [{ isrc: I(1), net: '60' }, { isrc: I(2), net: '10' }]);
   const owner = c.owners.get('S1') as string;
   const basis = await approvedDoc(f, 'advance_basis', owner);
-  await f.createOperation({ direction: 'out', amount: '30', ownerId: owner, date: '2026-08-20', comment: 'P1', migration: true, labelId: zero });
+  const p1 = await f.createOperation({ direction: 'out', amount: '30', ownerId: owner, date: '2026-08-20', comment: 'P1', migration: true, labelId: zero });
   const a1 = await f.createOperation({ direction: 'out', amount: '40', artistId: c.id('S1'), date: '2026-08-25', scope: { kind: 'any' }, documentId: basis.id, comment: 'A1', labelId: zero });
   await f.attachPaymentProof(a1.id, { fileRef: 'dummy://a1.pdf' });
-  return { c, f, zero, owner };
+  return { c, f, zero, owner, p1 };
 }
 
 const json = (x: unknown) => JSON.parse(JSON.stringify(x)) as unknown;
@@ -100,5 +100,92 @@ describe('the cuts (D-198): a label book at a moment', () => {
     ];
     expect(cutOperationsBy(ops, bounds('2026-09-10')).map((o) => o.id)).toEqual(['plain-before', 'to-c1']);
     expect(cutOperationsBy(ops, bounds('2026-10-10')).map((o) => o.id)).toEqual(['plain-before', 'to-c1', 'to-c2']);
+  });
+
+  it('stage 2: a payout made after the cut and attributed to it settles the position there, and is paid once', async () => {
+    const { c, f, zero, owner } = await world();
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-12-01' }, 'tester');
+    const before = (await f.ownerBalance(owner)).total.payable;
+    // S2 was owed 20 at C1: a migrated payout of 20 to S2 in November, attributed to C1
+    const pay = await f.createOperation({ direction: 'out', amount: '20', ownerId: owner, artistId: c.id('S2'), date: '2026-11-05', comment: 'to C1', migration: true, labelId: zero, cutId: c1.id });
+    expect(pay.cutId).toBe(c1.id);
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80' }); // S2 settled
+    expect(balances(await f.cutState(c2.id, { all: true }))).toEqual({ S1: '110', S2: '5', '': '0' }); // 20 + 5 − 20
+    expect((await f.ownerBalance(owner)).total.payable.toFixed()).toBe(before.minus(20).toFixed()); // once
+    // a cut of another label is refused; a cut with an attributed operation is not deleted
+    await expect(
+      f.createOperation({ direction: 'out', amount: '1', ownerId: owner, date: '2026-11-05', comment: 'x', migration: true, labelId: f.testLabels.Echo8, cutId: c1.id }),
+    ).rejects.toMatchObject({ code: 'cut_label_mismatch' });
+    await expect(f.deleteCut(c1.id)).rejects.toMatchObject({ code: 'cut_in_use' });
+    // taken back: by its date again (after both cuts)
+    await f.setOperationCut(pay.id, null);
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80', S2: '20' });
+    expect(balances(await f.cutState(c2.id))).toEqual({ S1: '110', S2: '5' });
+  });
+
+  it('stage 2: an operation of the history attributed to a later cut leaves the earlier one', async () => {
+    const { f, zero, p1 } = await world();
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-10-10' }, 'tester');
+    await f.setOperationCut(p1.id, c2.id);
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '110', S2: '20' }); // P1 30 no longer in C1
+    expect(balances(await f.cutState(c2.id))).toEqual({ S1: '110', S2: '25' });
+    await expect(f.setOperationCut(p1.id, 'nope')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('stage 2: a transfer moves a balance past the cut as a pair; deactivating one deactivates both', async () => {
+    const { c, f, zero, owner } = await world();
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-12-01' }, 'tester');
+    const before = (await f.ownerBalance(owner)).total.payable;
+    const basis = await approvedDoc(f, 'adjustment_basis', owner);
+    await expect(f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S1'), amount: '0', documentId: basis.id })).rejects.toMatchObject({ code: 'transfer_zero' });
+    const t = await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S1'), amount: '80', documentId: basis.id });
+    expect([t.atCut.date, t.after.date]).toEqual(['2026-09-11', '2026-09-11']); // the day after the cut
+    expect([t.atCut.kind, t.atCut.amountCents, t.atCut.cutId, t.after.amountCents, t.after.cutId]).toEqual(['adjustment', 8000, c1.id, -8000, null]);
+    expect(t.atCut.externalRef).toBe(t.after.externalRef);
+    expect(balances(await f.cutState(c1.id))).toEqual({ S2: '20' }); // S1 settled at C1
+    expect(balances(await f.cutState(c2.id))).toEqual({ S1: '110', S2: '25' }); // both rows inside C2: nothing changed there
+    expect((await f.ownerBalance(owner)).total.payable.toFixed()).toBe(before.toFixed()); // + 80 − 80
+    // the date of a cut with attributed operations stays; a row of a transfer keeps its label
+    await expect(f.updateCut(c1.id, { cutDate: '2026-09-20' })).rejects.toMatchObject({ code: 'cut_in_use' });
+    expect((await f.updateCut(c1.id, { name: 'C1 renamed' })).name).toBe('C1 renamed');
+    await expect(f.setOperationLabel(t.after.id, f.testLabels.Echo8, 'x')).rejects.toMatchObject({ code: 'cut_transfer_pair' });
+    // a row of a transfer keeps its cut
+    await expect(f.setOperationCut(t.atCut.id, null)).rejects.toMatchObject({ code: 'cut_transfer_pair' });
+    await expect(f.setOperationCut(t.after.id, c2.id)).rejects.toMatchObject({ code: 'cut_transfer_pair' });
+    await f.deactivateOperation(t.after.id, 'mistake');
+    const ops = await f.modules.settlements.listOperations({ ownerId: owner });
+    expect(ops.filter((o) => o.externalRef === t.atCut.externalRef).map((o) => o.active)).toEqual([false, false]);
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80', S2: '20' });
+  });
+
+  it('stage 2: a cut between the cut and the transfer holds both rows; a label change takes the operation out of its cut', async () => {
+    const { c, f, zero, owner, p1 } = await world();
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-09-11', masterTo: '2026-09-01' }, 'tester');
+    const basis = await approvedDoc(f, 'adjustment_basis', owner);
+    await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S2'), amount: '20', documentId: basis.id });
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80' });
+    expect(balances(await f.cutState(c2.id))).toEqual({ S1: '80', S2: '20' }); // + 20 − 20: as without the transfer
+    await f.setOperationCut(p1.id, c1.id);
+    await f.setOperationLabel(p1.id, f.testLabels.Echo8, 'moved');
+    expect((await f.modules.settlements.getOperation(p1.id)).cutId).toBeNull();
+  });
+
+  it('stage 2: a negative position (the owner owes) is carried past the cut as a debt', async () => {
+    const { c, f, zero, owner } = await world();
+    const adj = await approvedDoc(f, 'adjustment_basis', owner);
+    // an adjustment of 100 against S2 on 2026-09-01: S2 20 − 100 = −80 at C1; S1 110 − P1 30 = 80
+    await f.createOperation({ kind: 'adjustment', direction: 'in', amount: '100', ownerId: owner, artistId: c.id('S2'), date: '2026-09-01', documentId: adj.id, comment: 'debt', labelId: zero });
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-10-10' }, 'tester');
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80', S2: '-80' });
+    const before = (await f.ownerBalance(owner)).total.payable;
+    await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S2'), amount: '-80', documentId: adj.id });
+    expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80' }); // S2 settled at the cut
+    expect(balances(await f.cutState(c2.id))).toEqual({ S1: '110', S2: '-75' }); // the debt lives on: 25 − 100
+    expect((await f.ownerBalance(owner)).total.payable.toFixed()).toBe(before.toFixed());
   });
 });

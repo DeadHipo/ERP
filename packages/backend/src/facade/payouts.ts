@@ -1,4 +1,4 @@
-import { NotFoundError, RuleViolationError, ValidationError } from '../shared/errors';
+import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../shared/errors';
 import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { assertDate } from '../shared/dates';
 import { todayIso } from '../shared/dates';
@@ -18,11 +18,24 @@ import type { FacadeContext, PayoutArea } from './context';
 import { OWNER_POSITION } from './balance';
 import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
 
+/** The external reference of the two rows of a transfer of a cut (D-199): `cut-transfer:<uuid>`. */
+export const CUT_TRANSFER = 'cut-transfer:';
+
 export function payoutsApi(ctx: FacadeContext) {
   const { db, config, owners, settlements, publishing, sources, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;
   /** A write on an operation by id (D-171): an operation of one of the viewer's labels, else 403 `label_forbidden`. */
   async function checkOperation(id: string, viewer: Viewer) {
-    if (viewer.kind !== 'all') assertViewerHolds(viewer, (await settlements.getOperation(id)).labelId);
+    const op = await settlements.getOperation(id);
+    if (viewer.kind !== 'all') assertViewerHolds(viewer, op.labelId);
+    return op;
+  }
+
+  /** A cut an operation of `labelId` may be attributed to (D-198): a cut of that very label. */
+  async function assertCutOf(cutId: string, labelId: string | null) {
+    const cut = await settlements.getCut(cutId);
+    if (cut.labelId !== labelId)
+      throw new ConflictError('The cut belongs to another label than the operation', 'cut_label_mismatch', { cutLabelId: cut.labelId, labelId });
+    return cut;
   }
 
   const api = {
@@ -60,8 +73,11 @@ export function payoutsApi(ctx: FacadeContext) {
       externalRef?: string | null;
       /** The payment channel, free text (the operation import, D-173 §1.5). */
       channel?: string | null;
+      /** The cut the operation is attributed to (D-198): a cut of the operation's label. */
+      cutId?: string | null;
     }) {
       return db.transaction(async () => {
+        if (input.cutId) await assertCutOf(input.cutId, input.labelId ?? null);
         const cents = new Decimal(input.amount).mul(100);
         if (!cents.isInteger()) throw new ValidationError('Settlement amounts are whole cents');
         if (!input.labelId && !input.migration)
@@ -346,7 +362,12 @@ export function payoutsApi(ctx: FacadeContext) {
       await checkOperation(operationId, viewer);
       if (viewer.kind !== 'all') assertViewerHolds(viewer, labelId);
       return db.transaction(async () => {
-        const fromLabelId = (await settlements.getOperation(operationId)).labelId;
+        const before = await settlements.getOperation(operationId);
+        if (before.externalRef?.startsWith(CUT_TRANSFER))
+          throw new ConflictError('A row of a transfer keeps the label of its cut', 'cut_transfer_pair');
+        const fromLabelId = before.labelId;
+        // a cut belongs to one label (D-199): the operation leaves a cut of its old label
+        if (before.cutId && fromLabelId !== labelId) await settlements.setCut(operationId, null);
         return { ...(await settlements.setLabel(operationId, labelId, 'operator')), fromLabelId };
       });
     },
@@ -446,8 +467,28 @@ export function payoutsApi(ctx: FacadeContext) {
 
     /** Soft rollback of an operation (the operation's label for a viewer of some labels, D-171). */
     async deactivateOperation(operationId: string, reason: string, opts: { transferFailed?: boolean } = {}, viewer: Viewer = ALL_VIEWER) {
-      await checkOperation(operationId, viewer);
-      return settlements.deactivate(operationId, reason, opts);
+      const op = await checkOperation(operationId, viewer);
+      // a transfer of a cut (D-198) is a pair: one goes, both go
+      const pair = op.externalRef?.startsWith(CUT_TRANSFER) ? op.externalRef : null;
+      if (!pair) return settlements.deactivate(operationId, reason, opts);
+      return db.transaction(async () => {
+        const out = await settlements.deactivate(operationId, reason, opts);
+        for (const o of await settlements.listOperations({ ownerId: op.ownerId ?? undefined }))
+          if (o.id !== operationId && o.active && o.externalRef === pair) await settlements.deactivate(o.id, reason);
+        return out;
+      });
+    },
+
+    /** Attribute an operation to a cut of its label, or take it back (null); D-198. */
+    async setOperationCut(operationId: string, cutId: string | null, viewer: Viewer = ALL_VIEWER) {
+      const op = await checkOperation(operationId, viewer);
+      if (!op.active) throw new ValidationError('The operation is inactive', undefined, 'operation_inactive');
+      if (op.externalRef?.startsWith(CUT_TRANSFER))
+        throw new ConflictError('A row of a transfer keeps its cut: deactivate the transfer instead', 'cut_transfer_pair');
+      return db.transaction(async () => {
+        if (cutId) await assertCutOf(cutId, op.labelId);
+        return settlements.setCut(operationId, cutId);
+      });
     },
 
     /**

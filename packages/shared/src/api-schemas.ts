@@ -177,6 +177,7 @@ export const createOperationBody = z.object({
     .enum(['master', 'publishing'])
     .optional()
     .describe('The area of the book (D-173): master by default; a write-off is always publishing (400 writeoff_area otherwise)'),
+  cutId: z.string().nullish().describe('The cut the operation is attributed to (D-198): a cut of its label (409 cut_label_mismatch); it enters that cut and every later one whatever its date'),
 });
 
 export const createPayoutBody = z.object({
@@ -769,3 +770,15 @@ export const updateCutBody = z
 
 /** `GET /settlements/cuts/:id/state`: `all=true` lists the settled positions too. */
 export const cutStateQuery = z.object({ all: z.enum(['true', 'false']).optional().describe('true: every position; default: only |balance| ≥ 0.01') });
+
+/** `POST /settlements/operations/:id/cut`: attribute the operation to a cut of its label, or take it back (null). */
+export const setOperationCutBody = z.object({ cutId: z.string().min(1).nullable() });
+
+/** `POST /settlements/cuts/:id/transfer`: move a position's balance at the cut to after it, as two adjustments. */
+export const cutTransferBody = z.object({
+  ownerId: z.string().min(1),
+  artistId: z.string().min(1).nullish().describe("The pseudonym of the position; without it the owner's own position"),
+  amount: usd.describe('The balance to move, as the state shows it (> 0 the label owes, < 0 the owner owes)'),
+  documentId: z.string().min(1).describe('The basis document of the two adjustments (D-173); both rows are dated the day after the cut'),
+  comment: z.string().trim().max(2000).optional(),
+});
