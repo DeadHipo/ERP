@@ -2506,3 +2506,38 @@ export const payrollSchema = z.object({
   ...pageFields,
 });
 export type Payroll = z.infer<typeof payrollSchema>;
+
+// ---- the cuts (D-198) ----
+
+export const cutSchema = z.object({
+  id: z.string(),
+  labelId: z.string().describe('The book of the cut (an own label)'),
+  name: z.string(),
+  cutDate: date.describe('The moment: operations dated up to this day are inside, plus those attributed to this or an earlier cut'),
+  masterTo: date.describe('Believe: report months before this first day are inside'),
+  publishingTo: date.describe('Publishing: report months (a quarter by its last month) before this first day are inside'),
+  adsTo: date.describe('Advertising: months before this first day are inside'),
+  comment: z.string(),
+  createdAt: timestamp,
+  createdBy: z.string().describe('The operator who created the cut'),
+});
+export type Cut = z.infer<typeof cutSchema>;
+
+export const cutListSchema = z.object({ items: z.array(cutSchema) });
+
+export const cutStateSchema = z.object({
+  cut: cutSchema,
+  calculatedAt: timestamp,
+  total: money.describe('Σ of the positions of the book at the cut'),
+  unsettled: z.number().int().describe('Positions with |balance| ≥ 0.01'),
+  items: z.array(
+    z.object({
+      ownerId: z.string().describe('The owner of the position'),
+      ownerName: z.string().describe('The name of the owner'),
+      artistId: z.string().nullable().describe("The pseudonym; null = the owner's own position"),
+      pseudonym: z.string().nullable().describe("The pseudonym's name; null = the owner's own position"),
+      balance: money.describe('The position at the cut (D-181): > 0 the label owes, < 0 the owner owes; 0 = settled'),
+    }),
+  ),
+});
+export type CutState = z.infer<typeof cutStateSchema>;

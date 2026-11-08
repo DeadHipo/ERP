@@ -56,7 +56,8 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(41); // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
+    expect(tables.length).toBe(42); // D-198: + settlements.cuts (0031)
+    // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
     const def = (
@@ -259,6 +260,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     payee: string;
     hold: string;
     answer: string;
+    /** D-198: a cut of B's book */
+    cut: string;
   };
   type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown; file?: { path: string; fileName: string } };
 
@@ -366,6 +369,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string, start: stb.body.result.ids[0] as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
+      cut: (await ok('b', 'post', '/settlements/cuts', { labelId: lb.id, name: 'B cut Secret', cutDate: '2026-08-15' })).id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
       grant: (await ok('b', 'post', '/support', { login: users.sys })).id,
@@ -378,7 +382,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), start: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(),
     };
   };
 
@@ -495,6 +499,12 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /settlements/answers': (x) => ({ body: { ownerId: x.owner, due: '1.00', decision: 'pay', why: 'w', answeredBy: 'a' } }),
     'POST /settlements/answers/:id/deactivate': (x) => ({ params: { id: x.answer }, body: { reason: 'r' } }),
     'PATCH /contracts/:id': (x) => ({ params: { id: x.contract }, body: { payoutThresholdCents: 1 } }),
+    // the cuts (D-198): B's label and B's cut are unknown in A
+    'GET /settlements/cuts': (x) => ({ query: { label: x.label } }),
+    'POST /settlements/cuts': (x) => ({ body: { labelId: x.label, name: 'n', cutDate: '2026-08-15' } }),
+    'PATCH /settlements/cuts/:id': (x) => ({ params: { id: x.cut }, body: { name: 'n' } }),
+    'POST /settlements/cuts/:id/delete': (x) => ({ params: { id: x.cut } }),
+    'GET /settlements/cuts/:id/state': (x) => ({ params: { id: x.cut } }),
     // the forgiveness (D-173): B's operation forgiven under a with a's document answers as an unknown advance
     'POST /settlements/operations/:id/forgive': (x) => ({ params: { id: x.operation }, body: { amount: '1.00', date: '2026-08-15', documentId: A.document, comment: 'c' } }),
   };

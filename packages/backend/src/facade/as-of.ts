@@ -30,3 +30,38 @@ export function cutFilter(f: PeriodFilter, asOf: string | undefined): PeriodFilt
   if (asOf === undefined) return f;
   return { ...f, to: f.to !== undefined && f.to < asOf ? f.to : asOf };
 }
+
+/**
+ * The bounds of a cut (D-198): every `*To` is the first day of the first month no longer inside (a month m is inside
+ * when m < the month of the bound); `date` is the moment, `cutDateOf` the date of the cut an operation is attributed to.
+ */
+export interface CutBounds {
+  masterTo: string;
+  publishingTo: string;
+  adsTo: string;
+  date: string;
+  cutDateOf: (cutId: string) => string | undefined;
+}
+
+/** The calculation as of a cut: Believe units, publishing lines (their quarter's last month) and ads before the bounds. */
+export function cutCalculationBy(calc: Calculation, b: CutBounds): Calculation {
+  const [master, pub, ads] = [b.masterTo.slice(0, 7), b.publishingTo.slice(0, 7), b.adsTo.slice(0, 7)];
+  return {
+    ...calc,
+    units: calc.units.filter((u) => u.reportingMonth < master),
+    publishing: calc.publishing.filter((p) => p.reportMonth < pub),
+    ads: calc.ads.filter((a) => a.month < ads),
+    adPositions: new Map([...calc.adPositions].map(([owner, list]) => [owner, list.filter((a) => a.adMonth < ads)])),
+  };
+}
+
+/**
+ * The operations of a cut: one attributed to a cut is inside when that cut is not later than this one, whatever its
+ * date; any other when it is dated up to the cut's day.
+ */
+export function cutOperationsBy<T extends Pick<OperationView, 'date' | 'cutId'>>(ops: T[], b: CutBounds): T[] {
+  return ops.filter((o) => {
+    const attributed = o.cutId ? b.cutDateOf(o.cutId) : undefined;
+    return attributed !== undefined ? attributed <= b.date : o.date.slice(0, 10) <= b.date;
+  });
+}

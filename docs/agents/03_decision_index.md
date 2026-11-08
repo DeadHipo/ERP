@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-196 by topic)
+# Decision index (D-001 … D-198 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -179,6 +179,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-195 The release registry keeps no file: `POST /releases/preview` (diff, nothing written) then `/releases/preview/apply` (accepted changes, 409 `release_changed`); `released_at` with the time · in force
 - D-196 The release signals without money, from the registry and the UPCs of the label's reports: `releasesIncomplete` = count ≠ ISRCs (in the reports), `releasesUnknown` with the last month, new `releasesWithoutDate` · in force
 - D-197 Dev containers: `docker-compose.app.dev.yml` (`deps` / `api` / `web` over a bind mount, `tsx watch` and Vite HMR, `npm run dev:docker`), the Vite proxy from `API_PROXY` · in force
+- D-198 The cuts: `settlements.cuts` (label, name, `cut_date`, bounds `master_to` / `publishing_to` / `ads_to` as first days), cumulative per label; the state = the balance of the book cut by the bounds, per position; `calculate()` and payable untouched · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

@@ -129,6 +129,12 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /settlements/start': 'L',
   'POST /settlements/start/import': 'x',
   'POST /settlements/start/:id/deactivate': 'x',
+  // D-198: the cuts: a manager lists the cuts of its labels (no money); everything else the administrator only
+  'GET /settlements/cuts': 'L',
+  'POST /settlements/cuts': 'x',
+  'PATCH /settlements/cuts/:id': 'x',
+  'POST /settlements/cuts/:id/delete': 'x',
+  'GET /settlements/cuts/:id/state': 'x',
   // the payroll export (D-173 stage 5 commit 3): read_money under its own label
   'GET /owners/payroll': 'L',
 };

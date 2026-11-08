@@ -113,6 +113,17 @@ export function settlementsRouter(facade: Facade, opts: { tmpDir: string }) {
     res.json(await facade.deactivateStart(param(req, 'id'), parse(S.deactivateStartBody, req.body).reason)),
   );
 
+  // the cuts (D-198): a label's book at a moment
+  r.get('/settlements/cuts', async (req, res) => res.json({ items: await facade.listCuts(parse(S.cutListQuery, req.query).label) }));
+  r.post('/settlements/cuts', async (req, res) => {
+    res.status(201).json(await facade.createCut(parse(S.createCutBody, req.body), String(res.locals.operator)));
+  });
+  r.patch('/settlements/cuts/:id', async (req, res) => res.json(await facade.updateCut(param(req, 'id'), parse(S.updateCutBody, req.body))));
+  r.post('/settlements/cuts/:id/delete', async (req, res) => res.json(await facade.deleteCut(param(req, 'id'))));
+  r.get('/settlements/cuts/:id/state', async (req, res) =>
+    res.json(await facade.cutState(param(req, 'id'), { all: parse(S.cutStateQuery, req.query).all === 'true' })),
+  );
+
   // the admission (D-176): the payee, the holds, the answers
   r.get('/settlements/admission', async (req, res) => {
     const q = parse(S.admissionQuery, req.query);

@@ -2,13 +2,14 @@ import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { LabelSource, OperationKind } from '@erp/shared/operation-kinds';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { holds, openingBalances, operations, payees, payoutAnswers, payoutSnapshots } from './schema';
+import { cuts, holds, openingBalances, operations, payees, payoutAnswers, payoutSnapshots } from './schema';
 
 export type OperationRow = OrgFree<typeof operations.$inferSelect>;
 export type OpeningBalanceRow = OrgFree<typeof openingBalances.$inferSelect>;
 export type PayeeRow = OrgFree<typeof payees.$inferSelect>;
 export type HoldRow = OrgFree<typeof holds.$inferSelect>;
 export type PayoutAnswerRow = OrgFree<typeof payoutAnswers.$inferSelect>;
+export type CutRow = OrgFree<typeof cuts.$inferSelect>;
 
 export interface OpeningBalanceFilter {
   labelId?: string;
@@ -38,7 +39,7 @@ export interface OperationFilter {
 /** All SQL of the settlements module lives here (schema `settlements`); every statement is of the organization `org` (D-170). */
 export function createSettlementsRepository(db: Db, org: OrgScope) {
   const orm = () => db.orm();
-  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots), openingBalances: orgFree(openingBalances), payees: orgFree(payees), holds: orgFree(holds), payoutAnswers: orgFree(payoutAnswers) };
+  const C = { operations: orgFree(operations), payoutSnapshots: orgFree(payoutSnapshots), openingBalances: orgFree(openingBalances), payees: orgFree(payees), holds: orgFree(holds), payoutAnswers: orgFree(payoutAnswers), cuts: orgFree(cuts) };
   return {
     // ---- the admission (D-176): payees, holds, answers ----
     insertPayee: async (row: OrgFree<typeof payees.$inferInsert>) => {
@@ -198,6 +199,28 @@ export function createSettlementsRepository(db: Db, org: OrgScope) {
     reassignOwner: async (fromOwnerId: string, intoOwnerId: string) => {
       await orm().update(operations).set({ ownerId: intoOwnerId }).where(orgWhere(org, operations, eq(operations.ownerId, fromOwnerId)));
     },
+
+    // the cuts (D-198)
+    insertCut: async (row: OrgFree<typeof cuts.$inferInsert>) => {
+      await orm().insert(cuts).values(orgRow(org, row));
+    },
+    getCut: async (id: string): Promise<CutRow | undefined> => (await orm().select(C.cuts).from(cuts).where(orgWhere(org, cuts, eq(cuts.id, id))))[0],
+    /** By label, then date. */
+    listCuts: (f: { labelId?: string } = {}): Promise<CutRow[]> =>
+      orm()
+        .select(C.cuts)
+        .from(cuts)
+        .where(orgWhere(org, cuts, f.labelId ? eq(cuts.labelId, f.labelId) : undefined))
+        .orderBy(cuts.labelId, cuts.cutDate, cuts.id),
+    updateCut: async (id: string, set: Partial<Pick<CutRow, 'name' | 'cutDate' | 'masterTo' | 'publishingTo' | 'adsTo' | 'comment'>>) => {
+      await orm().update(cuts).set(set).where(orgWhere(org, cuts, eq(cuts.id, id)));
+    },
+    deleteCut: async (id: string) => {
+      await orm().delete(cuts).where(orgWhere(org, cuts, eq(cuts.id, id)));
+    },
+    /** The operations attributed to a cut, active or not. */
+    countCutOperations: async (cutId: string): Promise<number> =>
+      (await orm().select({ n: sql<number>`count(*)::int` }).from(operations).where(orgWhere(org, operations, eq(operations.cutId, cutId))))[0]?.n ?? 0,
 
     insertSnapshot: async (row: OrgFree<typeof payoutSnapshots.$inferInsert>) => {
       await orm().insert(payoutSnapshots).values(orgRow(org, row));

@@ -794,6 +794,14 @@ const OPERATOR = 'contract-test';
     await call('get', '/settlements/start', { query: { active: 'false' } });
     const startOff = await call('post', '/settlements/start/:id/deactivate', { params: { id: startImported.result.ids[0] as string }, body: { reason: 'contract' } });
     expect(startOff.active).toBe(false);
+    // the cuts (D-198): create, list, state, change, delete
+    const cut = await call('post', '/settlements/cuts', { body: { labelId: zero.id, name: 'Contract cut', cutDate: '2026-07-15' } });
+    expect(cut.masterTo).toBe('2026-07-01');
+    expect((await call('get', '/settlements/cuts', { query: { label: zero.id } })).items).toHaveLength(1);
+    const cutState = await call('get', '/settlements/cuts/:id/state', { params: { id: cut.id }, query: { all: 'true' } });
+    expect(cutState.cut.id).toBe(cut.id);
+    expect((await call('patch', '/settlements/cuts/:id', { params: { id: cut.id }, body: { name: 'Contract cut 2' } })).name).toBe('Contract cut 2');
+    expect((await call('post', '/settlements/cuts/:id/delete', { params: { id: cut.id } })).id).toBe(cut.id);
     await call('get', '/settlements/operations');
     await call('get', '/settlements/operations', { query: { label: zero.id } });
     const needing = await call('get', '/settlements/operations', {

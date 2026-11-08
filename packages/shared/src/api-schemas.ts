@@ -741,3 +741,31 @@ export const payrollQuery = z.object({
   sheet: z.enum(PAYROLL_SHEETS).default('payroll').describe('The sheet of the csv'),
 });
 export type PayrollQuery = z.infer<typeof payrollQuery>;
+
+// ---- the cuts (D-198): a label's book at a moment ----
+
+/** `GET /settlements/cuts`: the cuts of one book, or of every book. */
+export const cutListQuery = z.object({ label: z.string().optional().describe('Id of an own label; without it every book') });
+
+const cutBounds = {
+  masterTo: date.optional().describe('Believe: report months before this day are inside (floored to the first day of its month; default the month of cutDate)'),
+  publishingTo: date.optional().describe('Publishing: report months (a quarter by its last month) before this day are inside (default the month of cutDate)'),
+  adsTo: date.optional().describe('Advertising: months before this day are inside (default masterTo)'),
+  comment: z.string().trim().max(2000).optional(),
+};
+
+/** `POST /settlements/cuts`: a new cut of a book; the bounds default from the date. */
+export const createCutBody = z.object({
+  labelId: z.string().min(1).describe('Id of an own label: the book of the cut'),
+  name: z.string().trim().min(1).max(200),
+  cutDate: date.describe('The moment: operations dated up to this day are inside'),
+  ...cutBounds,
+});
+
+/** `PATCH /settlements/cuts/:id`: the name, the date, the bounds, the comment (the label never changes). */
+export const updateCutBody = z
+  .object({ name: z.string().trim().min(1).max(200).optional(), cutDate: date.optional(), ...cutBounds })
+  .refine((b) => Object.keys(b).length > 0, 'nothing to change');
+
+/** `GET /settlements/cuts/:id/state`: `all=true` lists the settled positions too. */
+export const cutStateQuery = z.object({ all: z.enum(['true', 'false']).optional().describe('true: every position; default: only |balance| ≥ 0.01') });

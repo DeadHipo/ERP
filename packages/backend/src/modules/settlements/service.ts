@@ -2,7 +2,7 @@ import { ConflictError, NotFoundError, RuleViolationError, ValidationError } fro
 import { assertIsrc, newId } from '../../shared/identifiers';
 import { assertDate, assertMonth, monthStart, normalizeTimestamp, nowIso } from '../../shared/dates';
 import { createSettlementsRepository } from './repository';
-import type { HoldRow, OpeningBalanceFilter, OpeningBalanceRow, OperationFilter, OperationRow, PayeeRow, PayoutAnswerRow } from './repository';
+import type { CutRow, HoldRow, OpeningBalanceFilter, OpeningBalanceRow, OperationFilter, OperationRow, PayeeRow, PayoutAnswerRow } from './repository';
 export type { OpeningBalanceFilter, OperationFilter };
 import type { Db } from '../../shared/pg-db';
 import type { OrgScope } from '../../shared/org-scope';
@@ -54,6 +54,33 @@ export interface OperationView {
   area: 'master' | 'publishing';
   /** A payout of the button (D-181): what it took from which position, cents by pseudonym id ('' = the owner's own); null for the history and every other kind. */
   allocation: Record<string, number> | null;
+  /** The cut the operation is attributed to (D-198); null = by its date. */
+  cutId: string | null;
+}
+
+/** A cut (D-198): the bounds are first days, «before this day is inside». */
+export interface CutView {
+  id: string;
+  labelId: string;
+  name: string;
+  cutDate: string;
+  masterTo: string;
+  publishingTo: string;
+  adsTo: string;
+  comment: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface CutInput {
+  labelId: string;
+  name: string;
+  cutDate: string;
+  masterTo?: string;
+  publishingTo?: string;
+  adsTo?: string;
+  comment?: string;
+  createdBy: string;
 }
 
 export type Meaning = 'payout' | 'recoupable_payout' | 'deduction' | 'credit' | 'return';
@@ -228,7 +255,25 @@ function view(o: OperationRow): OperationView {
     channel: o.channel,
     area: o.area,
     allocation: o.allocation ? (JSON.parse(o.allocation) as Record<string, number>) : null,
+    cutId: o.cutId,
   };
+}
+
+const cutView = (r: CutRow): CutView => ({ ...r });
+
+/** The first day of the month of a date (YYYY-MM-DD). */
+const firstOf = (d: string): string => `${d.slice(0, 7)}-01`;
+
+/** Cumulative cuts (D-198): a later cut of a label never has an earlier bound than an earlier one. */
+function assertCutOrder(list: CutView[]): void {
+  const sorted = [...list].sort((a, b) => a.cutDate.localeCompare(b.cutDate) || a.id.localeCompare(b.id));
+  for (let i = 1; i < sorted.length; i++) {
+    const a = sorted[i - 1] as CutView;
+    const b = sorted[i] as CutView;
+    if (a.cutDate === b.cutDate) throw new ConflictError(`Two cuts of the label on ${a.cutDate}`, 'cut_order', { cutIds: [a.id, b.id] });
+    for (const k of ['masterTo', 'publishingTo', 'adsTo'] as const)
+      if (b[k] < a[k]) throw new ConflictError(`The cut «${b.name}» has an earlier ${k} than the earlier cut «${a.name}»`, 'cut_order', { cutIds: [a.id, b.id], bound: k });
+  }
 }
 
 const payeeView = (r: PayeeRow): PayeeView => ({
@@ -797,6 +842,74 @@ export function createSettlementsService(db: Db, org: OrgScope) {
         if (!reason.trim()) throw new ValidationError('A reason is required', undefined, 'reason_required');
         await repo.setAnswerDeactivated(id, nowIso(), reason.trim());
         return answerView((await repo.getAnswer(id)) as PayoutAnswerRow);
+      });
+    },
+
+    // ---- the cuts (D-198): a label's book at a moment; the facade checks the label ----
+    async listCuts(f: { labelId?: string } = {}): Promise<CutView[]> {
+      return (await repo.listCuts(f)).map(cutView);
+    },
+    async getCut(id: string): Promise<CutView> {
+      const r = await repo.getCut(id);
+      if (!r) throw new NotFoundError('Cut', id);
+      return cutView(r);
+    },
+    /** Every bound defaults to the first day of the month of the date: the months that ended before it are inside. */
+    async createCut(input: CutInput): Promise<CutView> {
+      return repo.transaction(async () => {
+        const name = input.name.trim();
+        if (!name) throw new ValidationError('A cut needs a name');
+        const cutDate = assertDate(input.cutDate);
+        const bound = (d: string | undefined) => firstOf(assertDate(d ?? cutDate));
+        const row = {
+          id: newId(),
+          labelId: input.labelId,
+          name,
+          cutDate,
+          masterTo: bound(input.masterTo),
+          publishingTo: bound(input.publishingTo),
+          adsTo: bound(input.adsTo ?? input.masterTo),
+          comment: (input.comment ?? '').trim(),
+          createdAt: nowIso(),
+          createdBy: input.createdBy,
+        };
+        const others = (await repo.listCuts({ labelId: input.labelId })).map(cutView);
+        if (others.some((c) => c.name === name)) throw new ConflictError(`The label already has a cut «${name}»`, 'cut_name_taken');
+        assertCutOrder([...others, row]);
+        await repo.insertCut(row);
+        return cutView(row);
+      });
+    },
+    /** The name, the date, the bounds and the comment; the label never changes. */
+    async updateCut(id: string, patch: { name?: string; cutDate?: string; masterTo?: string; publishingTo?: string; adsTo?: string; comment?: string }): Promise<CutView> {
+      return repo.transaction(async () => {
+        const cur = await service.getCut(id);
+        const next: CutView = {
+          ...cur,
+          ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+          ...(patch.cutDate !== undefined ? { cutDate: assertDate(patch.cutDate) } : {}),
+          ...(patch.masterTo !== undefined ? { masterTo: firstOf(assertDate(patch.masterTo)) } : {}),
+          ...(patch.publishingTo !== undefined ? { publishingTo: firstOf(assertDate(patch.publishingTo)) } : {}),
+          ...(patch.adsTo !== undefined ? { adsTo: firstOf(assertDate(patch.adsTo)) } : {}),
+          ...(patch.comment !== undefined ? { comment: patch.comment.trim() } : {}),
+        };
+        if (!next.name) throw new ValidationError('A cut needs a name');
+        const others = (await repo.listCuts({ labelId: cur.labelId })).map(cutView).filter((c) => c.id !== id);
+        if (others.some((c) => c.name === next.name)) throw new ConflictError(`The label already has a cut «${next.name}»`, 'cut_name_taken');
+        assertCutOrder([...others, next]);
+        const { name, cutDate, masterTo, publishingTo, adsTo, comment } = next;
+        await repo.updateCut(id, { name, cutDate, masterTo, publishingTo, adsTo, comment });
+        return next;
+      });
+    },
+    /** Only a cut no operation is attributed to (active or not). */
+    async deleteCut(id: string): Promise<CutView> {
+      return repo.transaction(async () => {
+        const cur = await service.getCut(id);
+        const n = await repo.countCutOperations(id);
+        if (n > 0) throw new ConflictError(`${n} operation(s) are attributed to the cut`, 'cut_in_use', { operations: n });
+        await repo.deleteCut(id);
+        return cur;
       });
     },
 

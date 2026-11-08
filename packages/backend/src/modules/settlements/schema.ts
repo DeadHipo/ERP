@@ -43,6 +43,8 @@ export const operations = s.table('operations', {
   area: text('area', { enum: ['master', 'publishing'] }).notNull().default('master'),
   /** A payout of the button (D-181): JSON `{ "<artistId>": cents, "": cents }`, what it took from which position ('' = the owner's own). */
   allocation: text('allocation'),
+  /** The cut the operation is attributed to (D-198): it enters that cut and every later one whatever its date. */
+  cutId: text('cut_id'),
 });
 
 /**
@@ -136,4 +138,26 @@ export const payoutSnapshots = s.table('payout_snapshots', {
   createdAt: isoTimestamp('created_at').notNull(),
   /** The snapshot JSON exactly as written (text, not jsonb, so it is kept byte for byte). */
   payload: text('payload').notNull(),
+});
+
+/**
+ * The cuts (D-198): the state of a label's book at a moment, cumulative. The bounds are the first day of the first
+ * month no longer inside (like `valid_to`, D-025). DDL: migrations/postgres/0031_cuts.sql; change both.
+ */
+export const cuts = s.table('cuts', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  labelId: text('label_id').notNull(),
+  name: text('name').notNull(),
+  /** The moment: operations dated up to this day are inside. */
+  cutDate: date('cut_date', { mode: 'string' }).notNull(),
+  /** Believe: report months before this first day are inside. */
+  masterTo: date('master_to', { mode: 'string' }).notNull(),
+  /** Publishing: report months before this first day are inside. */
+  publishingTo: date('publishing_to', { mode: 'string' }).notNull(),
+  /** Advertising: months before this first day are inside. */
+  adsTo: date('ads_to', { mode: 'string' }).notNull(),
+  comment: text('comment').notNull(),
+  createdAt: isoTimestamp('created_at').notNull(),
+  createdBy: text('created_by').notNull(),
 });

@@ -33,6 +33,7 @@ import { payrollApi } from './payroll';
 import { operationImportApi } from './operation-import';
 import { startApi } from './start';
 import { admissionApi } from './admission';
+import { cutsApi } from './cuts';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -102,6 +103,7 @@ export function openFacade(config: FacadeConfig) {
     ...operationImportApi(ctx, payoutsPart),
     ...startApi(ctx),
     ...admissionApi(ctx),
+    ...cutsApi(ctx),
     ...pubV2LinksApi(ctx, { pubv2, links, publishing }),
   };
 }
