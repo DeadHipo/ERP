@@ -332,23 +332,23 @@ export function createBelieveColumnar(
      * `track_count` ISRCs are in the units), one `GROUP BY upc`; optionally of some UPCs only (an empty list = nothing).
      * Units without an ISRC or a UPC are not counted.
      */
-    async isrcsOfUpcs(fileIds: string[], upcs?: string[]): Promise<{ upc: string; isrcs: string[] }[]> {
+    async isrcsOfUpcs(fileIds: string[], upcs?: string[]): Promise<{ upc: string; isrcs: string[]; lastMonth: string }[]> {
       if (fileIds.length === 0 || (upcs && upcs.length === 0)) return [];
       const read = async (some?: string[]) => {
         // aliases differ from the column names (an alias named like a column would change the WHERE)
-        const rows = await compact<[code: string, list: string[]]>(
-          `SELECT upc AS code, arraySort(groupUniqArray(isrc)) AS list
+        const rows = await compact<[code: string, list: string[], last: string]>(
+          `SELECT upc AS code, arraySort(groupUniqArray(isrc)) AS list, toString(max(reporting_month)) AS last
            FROM ${DB}.units
            WHERE file_id IN {ids:Array(UUID)} AND isrc != '' AND upc != ''${some ? ' AND upc IN {upcs:Array(String)}' : ''}
            GROUP BY upc
            ORDER BY code`,
           some ? { ids: fileIds, upcs: some } : { ids: fileIds },
         );
-        return rows.map(([code, list]) => ({ upc: code, isrcs: list }));
+        return rows.map(([code, list, last]) => ({ upc: code, isrcs: list, lastMonth: last.slice(0, 7) }));
       };
       if (!upcs || upcs.length <= UPC_CHUNK) return read(upcs);
       // D-195: a whole release registry (8 000 UPCs) is longer than one form field of the HTTP interface: in chunks
-      const out: { upc: string; isrcs: string[] }[] = [];
+      const out: { upc: string; isrcs: string[]; lastMonth: string }[] = [];
       for (let i = 0; i < upcs.length; i += UPC_CHUNK) out.push(...(await read(upcs.slice(i, i + UPC_CHUNK))));
       return out.sort((a, b) => (a.upc < b.upc ? -1 : a.upc > b.upc ? 1 : 0));
     },

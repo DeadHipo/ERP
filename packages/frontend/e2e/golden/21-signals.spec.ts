@@ -23,10 +23,10 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 24 lists with their counts and links (D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled)', async ({ page }) => {
+test('the index lists the 25 lists with their counts and links (D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled; D-196: + releasesWithoutDate)', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(24);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(25);
   // D-173: the seed marks no label source and records no forgiveness or relabel
   await expect(page.getByTestId('signal-list-operationsDefaultLabel').getByTestId('signal-count')).toHaveText('0');
   await expect(page.getByTestId('signal-list-operationsRelabelled').getByTestId('signal-count')).toHaveText('0');

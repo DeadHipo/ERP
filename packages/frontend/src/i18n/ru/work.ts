@@ -178,6 +178,8 @@ export const signalsPage = {
     isrcsInUnits: 'ISRC в отчётах',
     registryLabel: 'Лейбл реестра',
     releaseTitle: 'Название',
+    /** D-196 */
+    reportArtist: 'Артист (отчёт)',
   },
   why: { bucket_short: 'корзины не хватает', no_source_row: 'нет строки-источника', top_above_100: 'верх больше 100 %' },
   funded: { top: 'сверху', artist_pool: 'из пула артистов', artist_share: 'из доли артиста', label_share: 'из доли лейбла' },

@@ -216,6 +216,7 @@ export const LABEL_SIGNALS = {
       />
     );
   },
+  // D-196: no money: what is missing and until when it was in the reports
   releasesUnknown: ({ data, count }: ListProps): ReactNode => {
     type R = Signals['releasesUnknown'][number];
     return (
@@ -228,9 +229,29 @@ export const LABEL_SIGNALS = {
         columns={[
           upcCol<R>((r) => r.upc),
           textCol('title', c.title, (r) => r.releaseTitle),
+          textCol('artist', c.reportArtist, (r) => r.artistName),
+          textCol('isrcs', c.isrcs, (r) => r.isrcs.join(', ')),
+          textCol('lastMonth', c.lastMonth, (r) => r.lastMonth),
           labelCol<R>('book', c.book, (r) => r.bookLabelId),
-          moneyCol('net', c.net, (r) => r.net),
           informationCol<R>('releasesUnknown'),
+        ]}
+      />
+    );
+  },
+  releasesWithoutDate: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['releasesWithoutDate'][number];
+    return (
+      <Grid<R>
+        name="releasesWithoutDate"
+        count={count}
+        rows={data.releasesWithoutDate}
+        rowKey={(r) => r.upc}
+        rowId={(r) => `${r.upc}|${r.labelId}`}
+        columns={[
+          upcCol<R>((r) => r.upc),
+          textCol('title', c.releaseTitle, (r) => r.releaseTitle),
+          labelCol<R>('label', c.registryLabel, (r) => r.labelId),
+          informationCol<R>('releasesWithoutDate'),
         ]}
       />
     );

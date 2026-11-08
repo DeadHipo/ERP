@@ -152,8 +152,12 @@ export function onboardingApi(ctx: FacadeContext) {
         if (hist.some((h) => h.labelId === labelId && h.validTo === null)) withOpen += 1;
         if (!labelAt(hist, last)) withoutLabel += 1;
       }
+      // D-196: the release signal `releasesIncomplete` of the label: in the reports, with another number of ISRCs
       const isrcsOfUpc = new Map(upcIsrcs.map((u) => [u.upc, u.isrcs.length]));
-      const incomplete = pg.registry.filter((r) => (r.trackCount ?? 0) > (isrcsOfUpc.get(r.upc) ?? 0)).length;
+      const incomplete = pg.registry.filter((r) => {
+        const seen = isrcsOfUpc.get(r.upc) ?? 0;
+        return seen > 0 && r.trackCount !== null && seen !== r.trackCount;
+      }).length;
       steps.push({
         key: 'catalog',
         state: isrcs.size > 0 && withoutLabel === 0 ? 'done' : 'todo',

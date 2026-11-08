@@ -1,9 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { ConflictError, ValidationError } from '../shared/errors';
-import { Decimal, ZERO } from '../shared/money';
 import { RELEASE_READERS, type ExportRelease, type ReleaseRowCode, type ReleaseSource, type ReleaseView } from '../modules/owners';
 import type { FacadeContext } from './context';
-import type { UnitResult } from './calculation';
 import { ALL_VIEWER, labelForbidden, viewerHolds, type Viewer } from './viewer';
 
 /**
@@ -50,6 +48,7 @@ export interface ReleasePreviewItem {
   codes: ReleaseRowCode[];
 }
 
+/** A registry release whose track count differs from the distinct ISRCs of its UPC in the label's reports (D-196). */
 export interface ReleaseIncomplete {
   upc: string;
   labelId: string;
@@ -58,59 +57,73 @@ export interface ReleaseIncomplete {
   isrcsInUnits: number;
 }
 
+/** A UPC of the label's reports that its release registry does not list (D-196): no money, what and until when. */
 export interface ReleaseUnknown {
   upc: string;
   bookLabelId: string;
   releaseTitle: string;
-  net: Decimal;
+  artistName: string;
+  isrcs: string[];
+  lastMonth: string;
+}
+
+/** A registry release without a release date (D-196). */
+export interface ReleaseWithoutDate {
+  upc: string;
+  labelId: string;
+  releaseTitle: string;
+}
+
+/** One label's side of the release signals: its registry and the UPCs of its loaded files with their ISRCs. */
+export interface ReleaseBook {
+  labelId: string;
+  registry: readonly Pick<ReleaseView, 'upc' | 'releaseTitle' | 'trackCount' | 'releasedAt'>[];
+  upcs: readonly { upc: string; isrcs: string[]; lastMonth: string }[];
 }
 
 /**
- * The two release signals (pure; D-172). `releasesIncomplete`: a registry row whose `trackCount` is larger than the
- * distinct ISRCs of its UPC in the units of the book of the same label (0 when the UPC has no unit). `releasesUnknown`:
- * the UPCs of the units of a book whose label has a non-empty registry but no row of that UPC. Over every unit given
- * (the period is not applied: a release is complete or not over all the loaded files, as the registry read says);
- * under a label the caller passes the units of its files and its registry rows.
+ * The three release signals (pure; D-172, D-196): «something is wrong», never money. A label without a registry has
+ * none (else its whole catalogue would be «unknown»). `releasesIncomplete`: a registry release whose UPC is in the
+ * reports with a number of distinct ISRCs other than its track count (a release not in the reports at all is not a
+ * signal: new or not selling). `releasesUnknown`: a UPC of the reports not in the registry. `releasesWithoutDate`: a
+ * registry row without a release date. Over every loaded file of the label (the period is not applied).
  */
 export function releaseSignals(
-  units: readonly Pick<UnitResult, 'isrc' | 'upc' | 'bookLabelId' | 'net'>[],
-  registry: readonly Pick<ReleaseView, 'labelId' | 'upc' | 'releaseTitle' | 'trackCount'>[],
-  titleOf: (isrc: string, upc: string) => string,
-): { releasesIncomplete: ReleaseIncomplete[]; releasesUnknown: ReleaseUnknown[] } {
-  const byLabel = new Map<string, Set<string>>();
-  for (const r of registry) (byLabel.get(r.labelId) ?? byLabel.set(r.labelId, new Set()).get(r.labelId))?.add(r.upc);
-  const isrcs = new Map<string, Set<string>>();
-  const unknown = new Map<string, ReleaseUnknown>();
-  for (const u of units) {
-    if (u.bookLabelId === null || u.upc === '') continue;
-    const k = `${u.bookLabelId}|${u.upc}`;
-    if (u.isrc !== '') (isrcs.get(k) ?? isrcs.set(k, new Set()).get(k))?.add(u.isrc);
-    const known = byLabel.get(u.bookLabelId);
-    if (!known || known.has(u.upc)) continue;
-    const r = unknown.get(k);
-    if (r) {
-      r.net = r.net.add(u.net);
-      if (!r.releaseTitle && u.isrc !== '') r.releaseTitle = titleOf(u.isrc, u.upc);
-    } else
-      unknown.set(k, {
+  books: readonly ReleaseBook[],
+  attrsOf: (isrc: string, upc: string) => { releaseTitle: string; artistName: string } | undefined,
+): { releasesIncomplete: ReleaseIncomplete[]; releasesUnknown: ReleaseUnknown[]; releasesWithoutDate: ReleaseWithoutDate[] } {
+  const releasesIncomplete: ReleaseIncomplete[] = [];
+  const releasesUnknown: ReleaseUnknown[] = [];
+  const releasesWithoutDate: ReleaseWithoutDate[] = [];
+  for (const b of books) {
+    if (b.registry.length === 0) continue;
+    const inReports = new Map(b.upcs.map((u) => [u.upc, u]));
+    const known = new Set(b.registry.map((r) => r.upc));
+    for (const r of b.registry) {
+      const seen = inReports.get(r.upc)?.isrcs.length ?? 0;
+      if (seen > 0 && r.trackCount !== null && seen !== r.trackCount)
+        releasesIncomplete.push({ upc: r.upc, labelId: b.labelId, title: r.releaseTitle, trackCount: r.trackCount, isrcsInUnits: seen });
+      if (r.releasedAt === null) releasesWithoutDate.push({ upc: r.upc, labelId: b.labelId, releaseTitle: r.releaseTitle });
+    }
+    for (const u of b.upcs) {
+      if (known.has(u.upc)) continue;
+      const a = u.isrcs.map((i) => attrsOf(i, u.upc)).find((x) => x !== undefined);
+      releasesUnknown.push({
         upc: u.upc,
-        bookLabelId: u.bookLabelId,
-        releaseTitle: u.isrc !== '' ? titleOf(u.isrc, u.upc) : '',
-        net: ZERO.add(u.net),
+        bookLabelId: b.labelId,
+        releaseTitle: a?.releaseTitle ?? '',
+        artistName: a?.artistName ?? '',
+        isrcs: u.isrcs,
+        lastMonth: u.lastMonth,
       });
+    }
   }
-  const releasesIncomplete = registry
-    .map((r) => ({
-      upc: r.upc,
-      labelId: r.labelId,
-      title: r.releaseTitle,
-      trackCount: r.trackCount ?? 0,
-      isrcsInUnits: isrcs.get(`${r.labelId}|${r.upc}`)?.size ?? 0,
-    }))
-    .filter((r) => r.trackCount > r.isrcsInUnits)
-    .sort((a, b) => a.labelId.localeCompare(b.labelId) || a.upc.localeCompare(b.upc));
-  const releasesUnknown = [...unknown.values()].sort((a, b) => b.net.cmp(a.net) || a.upc.localeCompare(b.upc));
-  return { releasesIncomplete, releasesUnknown };
+  const byLabelUpc = (a: { upc: string }, b: { upc: string }, la: string, lb: string) => la.localeCompare(lb) || a.upc.localeCompare(b.upc);
+  releasesIncomplete.sort((a, b) => byLabelUpc(a, b, a.labelId, b.labelId));
+  releasesWithoutDate.sort((a, b) => byLabelUpc(a, b, a.labelId, b.labelId));
+  // the ones still in the latest reports first
+  releasesUnknown.sort((a, b) => b.lastMonth.localeCompare(a.lastMonth) || byLabelUpc(a, b, a.bookLabelId, b.bookLabelId));
+  return { releasesIncomplete, releasesUnknown, releasesWithoutDate };
 }
 
 /** A registry row of the API (D-195): `releaseDate` is the day of `releasedAt`, for the readers that need only the day. */

@@ -11,7 +11,7 @@ import type { FacadeContext, PayoutArea } from './context';
 import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
 import { catalogSignals } from './catalog';
-import { releaseSignals } from './release-registry';
+import { releaseSignals, type ReleaseBook } from './release-registry';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
 export interface KpiSums {
@@ -268,7 +268,7 @@ export async function signalsFrom(
         .sort((a, b) => (a.periods[0] ?? '').localeCompare(b.periods[0] ?? '') || a.statementId.localeCompare(b.statementId));
   const { tracks, parts, unlabelled, ownerNames, history, registry, defaultLabelled, relabelled, labelOfOperation, forgivenesses } = await modules.db.snapshot(async () => ({
     tracks: await owners.listTracks(),
-    // the release registry (D-172): navigation, compared with the UPCs of the units of each book for two signals
+    // the release registry (D-172): navigation, compared with the UPCs of the label's reports for three signals (D-196)
     registry: await owners.releases.list(),
     // the label history of the ISRCs (D-172): navigation, compared with the books of the units for two signals
     history: await owners.trackLabels.list(),
@@ -293,6 +293,13 @@ export async function signalsFrom(
       ...(labelId === undefined ? {} : { labelId }),
     }),
   }));
+  // D-196: the release signals read the registry and the UPCs of the loaded files of each label with a registry, not
+  // the calculation (they tell what is wrong, never how much)
+  const releaseBooks: ReleaseBook[] = [];
+  for (const L of [...new Set(registry.map((r) => r.labelId))].filter((x) => labelId === undefined || x === labelId).sort()) {
+    const fileIds = (await sources.filesOfLabel(L)).map((x) => x.id);
+    releaseBooks.push({ labelId: L, registry: registry.filter((r) => r.labelId === L), upcs: await sources.isrcsOfUpcs(fileIds) });
+  }
   // D-173 К2: an advance whose recorded forgiveness is above the effective one (income before the date came later);
   // the full balance of each owner with a forgiveness (the recoup needs every income of the owner)
   const forgivenessReduced: {
@@ -402,12 +409,8 @@ export async function signalsFrom(
     adOutsideBook: adOutside ?? adsOutsideBook(calc.ads),
     // the catalog label of an ISRC vs the book of its units (D-172, information; under a label its units only)
     ...catalogSignals(calc.units, history, f),
-    // the release registry vs the UPCs of the units of the same book (D-172, information; under a label its units and rows)
-    ...releaseSignals(
-      calc.units,
-      labelId === undefined ? registry : registry.filter((r) => r.labelId === labelId),
-      (isrc, upc) => attrs.get(`${isrc}|${upc}`)?.releaseTitle ?? '',
-    ),
+    // the release registry vs the UPCs of the label's reports (D-172, D-196: no money; under a label its files and rows)
+    ...releaseSignals(releaseBooks, (isrc, upc) => attrs.get(`${isrc}|${upc}`)),
     // D-173: the active operations whose label is the default of the history (D-168: mixed or no units → 0to8)
     operationsDefaultLabel: defaultLabelled
       .map((o) => ({

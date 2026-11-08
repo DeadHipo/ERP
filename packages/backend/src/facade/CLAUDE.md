@@ -144,7 +144,7 @@
   months cut out. `deriveTrackLabels({ apply, isrcs })` rewrites the `files` rows; `setTrackLabel` writes an operator
   interval (same `from` = replace; `catalog_overlap`, `catalog_same_label`) and rebuilds that ISRC's `files` rows in the
   same transaction. `catalogSignals` gives `catalogOutsideAccount` / `tracksWithoutLabel`, the registry its
-  `releasesIncomplete` / `releasesUnknown`; `trackCatalog` adds the catalog label (`catalog=current`). **Never** read the
+  `releasesIncomplete` / `releasesUnknown` / `releasesWithoutDate` (D-196: no money, from the registry and `sources.isrcsOfUpcs` of the label's files, never the calculation); `trackCatalog` adds the catalog label (`catalog=current`). **Never** read the
   history or the registry from `calculation.ts`, `layers/*`, `scope.ts`, `owner-scope.ts`, `balance.ts`,
   `label-scope.ts` (`boundaries.test.ts`); `tests/catalog.test.ts` pins the money byte for byte.
 - **The onboarding checklists** (`onboarding.ts`, D-172): `labelChecklist(labelId, viewer)` reads PostgreSQL in one

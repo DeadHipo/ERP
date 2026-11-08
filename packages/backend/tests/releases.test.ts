@@ -6,7 +6,6 @@ import { calculate } from '../src/facade/calculation';
 import { releaseSignals } from '../src/facade/release-registry';
 import { labelsViewer } from '../src/facade/viewer';
 import { exportDateTime, exportUpc, parseBelieveExport } from '../src/modules/owners';
-import { Decimal } from '../src/shared/money';
 import { releaseApplySchema, releasePreviewSchema, releaseRegistrySchema, releaseSchema, releasesSchema } from '@erp/shared/api-responses';
 import { Case, I } from './helpers/golden-case';
 import { tmpPath, TMP } from './helpers/fixtures';
@@ -115,27 +114,35 @@ describe('the Believe release export reader', () => {
 // ---------------------------------------------------------------- the signals (pure)
 
 describe('the release signals', () => {
-  it('incomplete: trackCount above the distinct ISRCs of the UPC in the units of the same book; unknown: a UPC of a book whose registry lacks it', () => {
+  it('no money (D-196): a track count other than the ISRCs in the reports; a UPC of the reports not in the registry; a release without a date; a label without a registry has none', () => {
     const L = 'label-l';
     const M = 'label-m';
-    const u = (isrc: string, upc: string, book: string | null, net = '1') => ({ isrc, upc, bookLabelId: book, net: new Decimal(net) });
-    const units = [u(I(1), UPC_A, L), u(I(2), UPC_A, L), u(I(2), UPC_A, L), u(I(3), UPC_C, L, '5'), u(I(4), UPC_C, M), u(I(5), UPC_A, null)];
-    const registry = [
-      { labelId: L, upc: UPC_A, releaseTitle: 'Release R-1', trackCount: 3 },
-      { labelId: L, upc: UPC_B, releaseTitle: 'Release R-2', trackCount: 1 },
-      { labelId: M, upc: UPC_A, releaseTitle: 'Release R-1', trackCount: 0 },
-    ];
-    const s = releaseSignals(units, registry, (isrc) => `title of ${isrc}`);
+    const reg = (upc: string, releaseTitle: string, trackCount: number | null, releasedAt: string | null = '2025-03-14T00:00:00') => ({ upc, releaseTitle, trackCount, releasedAt });
+    const s = releaseSignals(
+      [
+        {
+          labelId: L,
+          registry: [reg(UPC_A, 'Release R-1', 3), reg(UPC_B, 'Release R-2', 1, null), reg(UPC_C, 'Release R-3', 1)],
+          upcs: [
+            { upc: UPC_A, isrcs: [I(1), I(2)], lastMonth: '2026-01' }, // fewer than 3
+            { upc: UPC_C, isrcs: [I(3), I(4)], lastMonth: '2026-02' }, // more than 1
+            { upc: '1000000000009', isrcs: [I(5)], lastMonth: '2026-03' }, // not in the registry
+          ],
+        },
+        // M has no registry: nothing at all, even for its unknown UPC
+        { labelId: M, registry: [], upcs: [{ upc: '1000000000008', isrcs: [I(6)], lastMonth: '2026-03' }] },
+      ],
+      (isrc) => (isrc === I(5) ? { releaseTitle: 'Release R-5', artistName: 'Synth Five' } : undefined),
+    );
+    // UPC_B is in no report: not a signal (new or not selling)
     expect(s.releasesIncomplete).toEqual([
       { upc: UPC_A, labelId: L, title: 'Release R-1', trackCount: 3, isrcsInUnits: 2 },
-      { upc: UPC_B, labelId: L, title: 'Release R-2', trackCount: 1, isrcsInUnits: 0 },
+      { upc: UPC_C, labelId: L, title: 'Release R-3', trackCount: 1, isrcsInUnits: 2 },
     ]);
-    // M has a registry without UPC_C; the book '?' and a label without a registry are never «unknown»
-    expect(s.releasesUnknown.map((x) => ({ ...x, net: x.net.toFixed() }))).toEqual([
-      { upc: UPC_C, bookLabelId: L, releaseTitle: `title of ${I(3)}`, net: '5' },
-      { upc: UPC_C, bookLabelId: M, releaseTitle: `title of ${I(4)}`, net: '1' },
+    expect(s.releasesUnknown).toEqual([
+      { upc: '1000000000009', bookLabelId: L, releaseTitle: 'Release R-5', artistName: 'Synth Five', isrcs: [I(5)], lastMonth: '2026-03' },
     ]);
-    expect(releaseSignals(units, [], () => '').releasesUnknown).toEqual([]);
+    expect(s.releasesWithoutDate).toEqual([{ upc: UPC_B, labelId: L, releaseTitle: 'Release R-2' }]);
   });
 });
 
@@ -302,24 +309,22 @@ describe('the release registry on the stack (D-172, D-195)', () => {
     const { f, zero, echo } = w;
     const before = await money(w);
     const s0 = await f.signals();
-    expect([s0.releasesIncomplete, s0.releasesUnknown]).toEqual([[], []]);
+    expect([s0.releasesIncomplete, s0.releasesUnknown, s0.releasesWithoutDate]).toEqual([[], [], []]);
     await importOf(w, BASE);
     expect(await money(w)).toBe(before);
     const s1 = await f.signals();
-    // UPC_A: 3 tracks, 2 ISRCs in the 0to8 units; UPC_B: no unit at all
-    expect(s1.releasesIncomplete).toEqual([
-      { upc: UPC_A, labelId: zero, title: 'Release R-1', trackCount: 3, isrcsInUnits: 2 },
-      { upc: UPC_B, labelId: zero, title: 'Release R-2', trackCount: 1, isrcsInUnits: 0 },
-    ]);
-    // UPC_C has units in the 0to8 book but no row in its registry; Echo8 has no registry: nothing
-    expect(s1.releasesUnknown.map((x) => [x.upc, x.bookLabelId, x.net.toFixed()])).toEqual([[UPC_C, zero, '7']]);
+    // UPC_A: 3 tracks, 2 ISRCs in the 0to8 reports; UPC_B is in no report: not a signal (D-196)
+    expect(s1.releasesIncomplete).toEqual([{ upc: UPC_A, labelId: zero, title: 'Release R-1', trackCount: 3, isrcsInUnits: 2 }]);
+    // UPC_C is in the 0to8 reports but not in its registry; Echo8 has no registry: nothing
+    expect(s1.releasesUnknown.map((x) => [x.upc, x.bookLabelId, x.isrcs, x.lastMonth])).toEqual([[UPC_C, zero, [I(3)], '2026-01']]);
+    expect(s1.releasesWithoutDate).toEqual([]);
     const counts = new Map((await f.overview()).signals.map((x) => [x.name, x.count]));
-    expect([counts.get('releasesIncomplete'), counts.get('releasesUnknown')]).toEqual([2, 1]);
+    expect([counts.get('releasesIncomplete'), counts.get('releasesUnknown'), counts.get('releasesWithoutDate')]).toEqual([1, 1, 0]);
     // under Echo8: its units and its (empty) registry only
     const sEcho = await f.signals({}, echo);
     expect([sEcho.releasesIncomplete, sEcho.releasesUnknown]).toEqual([[], []]);
     const sZero = await f.signals({}, zero);
-    expect([sZero.releasesIncomplete.length, sZero.releasesUnknown.length]).toEqual([2, 1]);
+    expect([sZero.releasesIncomplete.length, sZero.releasesUnknown.length]).toEqual([1, 1]);
   });
 
   it('GET /releases and /releases/:upc carry the registry: the label’s row under a label, every label’s under «Все»', async () => {

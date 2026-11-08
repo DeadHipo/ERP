@@ -163,7 +163,7 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
     const byUpc = await s.isrcsOfUpcs(files.map((f) => f.id));
     expect(byUpc.map((x) => x.upc)).toEqual(['3617380000001', '3617380000003']);
     expect(byUpc.flatMap((x) => x.isrcs).sort()).toEqual([I1, I3].sort());
-    expect(await s.isrcsOfUpcs(files.map((f) => f.id), ['3617380000003'])).toEqual([{ upc: '3617380000003', isrcs: [I3] }]);
+    expect(await s.isrcsOfUpcs(files.map((f) => f.id), ['3617380000003'])).toEqual([{ upc: '3617380000003', isrcs: [I3], lastMonth: '2026-08' }]); // D-196: the last reporting month of the UPC
     expect([await s.isrcsOfUpcs([]), await s.isrcsOfUpcs(files.map((f) => f.id), [])]).toEqual([[], []]);
     const fileA = (await s.listFiles()).find((f) => f.account === A) as { id: string };
     expect(await s.assignFileLabel(files[0]?.id as string, 'label-x')).toBe(false); // a label is never changed

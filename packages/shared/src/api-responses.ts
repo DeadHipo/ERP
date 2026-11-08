@@ -990,11 +990,31 @@ export const signalsSchema = z.object({
     .array(z.object({ isrc: z.string().describe(D.isrc), lastMonth: month.describe(D.lastMonth), bookLabelId: z.string().nullable().describe(D.bookLabelId), net: money.describe(D.net) }))
     .describe('ISRCs of the units without a label-history interval at their last reporting month (D-172); the operator sets it on P6'),
   releasesIncomplete: z
-    .array(z.object({ upc: z.string().describe(D.upc), labelId: z.string().describe(D.labelId), title: z.string(), trackCount: z.number().int().describe(D.trackCount), isrcsInUnits: z.number().int().describe(D.isrcsInUnits) }))
-    .describe('Releases of the registry of a label whose trackCount is larger than the distinct ISRCs of the UPC in the units of its book (D-172, information; all loaded files, the period is not applied)'),
+    .array(
+      z.object({
+        upc: z.string().describe(D.upc),
+        labelId: z.string().describe(D.labelId),
+        title: z.string().describe('The release title of the registry'),
+        trackCount: z.number().int().describe(D.trackCount),
+        isrcsInUnits: z.number().int().describe(D.isrcsInUnits),
+      }),
+    )
+    .describe('Releases of the registry of a label whose UPC is in its reports with a number of distinct ISRCs other than the track count (D-196, information; all loaded files; a release absent from the reports is not listed)'),
   releasesUnknown: z
-    .array(z.object({ upc: z.string().describe(D.upc), bookLabelId: z.string().describe(D.bookLabelId), releaseTitle: z.string().describe(D.releaseTitle), net: money.describe(D.net) }))
-    .describe('UPCs of the units of a book whose label has a release registry without that UPC (D-172, information: import a fresh export)'),
+    .array(
+      z.object({
+        upc: z.string().describe(D.upc),
+        bookLabelId: z.string().describe(D.bookLabelId),
+        releaseTitle: z.string().describe(D.releaseTitle),
+        artistName: z.string().describe('The artist string of the report'),
+        isrcs: z.array(z.string()).describe('The ISRCs of the UPC in the reports of the label'),
+        lastMonth: month.describe('The last reporting month of the UPC in the reports of the label'),
+      }),
+    )
+    .describe('UPCs of the reports of a label whose release registry does not list them (D-196, information, no money: import a fresh export); the latest first'),
+  releasesWithoutDate: z
+    .array(z.object({ upc: z.string().describe(D.upc), labelId: z.string().describe(D.labelId), releaseTitle: z.string().describe(D.releaseTitle) }))
+    .describe('Releases of the registry without a release date (D-196, information)'),
   operationsDefaultLabel: z
     .array(
       z.object({
