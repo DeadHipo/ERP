@@ -191,6 +191,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-207 The origin of an operation beside its kind (`operationOrigin` by `external_ref`: «сверка с кабинетом 15.10», «перенос на срезе») on P20 / P10 and the block «Срезы» · in force
 - D-208 The owner balance at a cut (`GET /owners/:id/balance?cut=`, the book of the cut's label, never with asOf); P10 «На срез», the payout closed at a cut · in force
 - D-209 The built app on :3001 in a container: `docker-compose.app.stage.yml` (`vite build --watch` + `tsx watch`, own `dist` volume, `npm run stage:docker`) · in force
+- D-210 The stage on `0.0.0.0:3001` (with the `AUTH_MODE` of `.env`) and one debounced loop `scripts/stage-watch.ts` (`STAGE_QUIET_MS` 5 s, `STAGE_MIN_GAP_MS` 30 s, build to a temp dir then copy) · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

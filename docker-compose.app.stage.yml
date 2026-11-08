@@ -1,6 +1,9 @@
-# Only for development (D-209): the built app on :3001, as `npm run build:client` + `PORT=3001 npm start`, rebuilt and
-# restarted on change. No HMR: `vite build --watch` rebuilds dist (reload the page), `tsx watch` restarts the API, which
-# serves that dist and /api on the same origin. dist lives in its own volume, so the host's dist (e2e) is never touched.
+# Only for development (D-209, D-210): the built app on :3001, as `npm run build:client` + `PORT=3001 npm start`, rebuilt
+# and restarted on change, but not on every save: `scripts/stage-watch.ts` waits STAGE_QUIET_MS of quiet and runs at most
+# once per STAGE_MIN_GAP_MS (reload the page after a run). The API serves that dist and /api on the same origin. dist lives
+# in its own volume, so the host's dist (e2e) is never touched.
+# The port is open on every interface (D-210) and the app runs with the AUTH_MODE of .env: with `off` anyone who reaches
+# the port reads and writes without a login.
 # On top of the three files (it uses `deps` and the node_modules volumes of docker-compose.app.dev.yml):
 #   npm run stage:docker / npm run stage:docker:logs / npm run stage:docker:down
 services:
@@ -11,9 +14,7 @@ services:
     command:
       - sh
       - -c
-      - |
-        npm run build -w @erp/frontend -- --watch &
-        exec npx tsx watch --clear-screen=false packages/backend/src/main.ts
+      - exec node --import tsx packages/backend/scripts/stage-watch.ts
     environment:
       TZ: ${TZ}
       PORT: 3001
@@ -22,6 +23,8 @@ services:
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_HTTP_PORT: 8123
       NODE_OPTIONS: --max-old-space-size=4096
+      STAGE_QUIET_MS: ${STAGE_QUIET_MS:-5000}
+      STAGE_MIN_GAP_MS: ${STAGE_MIN_GAP_MS:-30000}
     volumes:
       - .:/app
       - app_node_modules:/app/node_modules
@@ -29,7 +32,7 @@ services:
       - app_node_modules_frontend:/app/packages/frontend/node_modules
       - app_stage_dist:/app/packages/frontend/dist
     ports:
-      - '127.0.0.1:3001:3001'
+      - '0.0.0.0:3001:3001'
     depends_on:
       deps:
         condition: service_completed_successfully
