@@ -1,0 +1,43 @@
+# Only for development (D-209): the built app on :3001, as `npm run build:client` + `PORT=3001 npm start`, rebuilt and
+# restarted on change. No HMR: `vite build --watch` rebuilds dist (reload the page), `tsx watch` restarts the API, which
+# serves that dist and /api on the same origin. dist lives in its own volume, so the host's dist (e2e) is never touched.
+# On top of the three files (it uses `deps` and the node_modules volumes of docker-compose.app.dev.yml):
+#   npm run stage:docker / npm run stage:docker:logs / npm run stage:docker:down
+services:
+  stage:
+    image: node:24-alpine
+    working_dir: /app
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        npm run build -w @erp/frontend -- --watch &
+        exec npx tsx watch --clear-screen=false packages/backend/src/main.ts
+    environment:
+      TZ: ${TZ}
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_HTTP_PORT: 8123
+      NODE_OPTIONS: --max-old-space-size=4096
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+      - app_node_modules_backend:/app/packages/backend/node_modules
+      - app_node_modules_frontend:/app/packages/frontend/node_modules
+      - app_stage_dist:/app/packages/frontend/dist
+    ports:
+      - '127.0.0.1:3001:3001'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  app_stage_dist:
