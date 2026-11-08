@@ -8,6 +8,7 @@ import { statusLabel } from '../../components/StatusChip';
 import { ru } from '../../i18n/ru';
 import { centsToText } from './components/cents';
 import { Section } from './components/Fact';
+import { OriginNote } from '../operations/OriginNote';
 
 const t = ru.cuts;
 type Label = OwnerCutsData['labels'][number];
@@ -106,7 +107,7 @@ function LabelCuts(props: { label: Label; showName: boolean }) {
                     ? t.noOperations
                     : c.operations.map((o) => (
                         <div key={o.id} data-testid={`owner-cut-op-${o.id}`}>
-                          {o.date} · {statusLabel('operationKind', o.kind)} · <Money value={centsToText(o.amountCents)} />
+                          {o.date} · {statusLabel('operationKind', o.kind)} <OriginNote externalRef={o.externalRef} /> · <Money value={centsToText(o.amountCents)} />
                         </div>
                       ))}
                 </td>

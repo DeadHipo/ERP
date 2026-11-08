@@ -95,6 +95,8 @@ test('S57 «Перенести»: the position at the cut is zero, after it the 
   await expect(page.getByTestId(`owner-cut-${cutId}`)).toBeVisible();
   await expect(page.getByTestId(`owner-cut-positions-${cutId}-${artistId}`)).toHaveAttribute('data-value', '0');
   await expect(page.getByTestId(`owner-cut-operations-${cutId}`).locator('[data-testid^="owner-cut-op-"]')).toHaveCount(1);
+  // D-207: the transfer row names its origin beside its kind
+  await expect(page.getByTestId(`owner-cut-operations-${cutId}`).locator('[data-origin="cut_transfer"]')).toHaveCount(1);
   await expect(page.getByTestId(`owner-cuts-after-positions-${labelOf('0to8')}-${artistId}`)).toHaveAttribute('data-value', '10');
 });
 

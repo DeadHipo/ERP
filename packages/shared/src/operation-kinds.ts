@@ -93,3 +93,13 @@ export const isOperationKind = (k: string): k is OperationKind => (OPERATION_KIN
 
 /** The external reference of the two rows of a transfer of a cut (D-199): `cut-transfer:<uuid>`. */
 export const CUT_TRANSFER = 'cut-transfer:';
+/** The external reference of the rows of the migration of the start into the cut «Кабинет 15.10» (D-203, D-204). */
+export const START_TO_CUT = 'start-to-cut:';
+
+/** Where an operation came from, by its external reference (D-207): what the screens name beside its kind. */
+export type OperationOrigin = 'cabinet' | 'cut_transfer';
+export function operationOrigin(externalRef: string | null | undefined): OperationOrigin | null {
+  if (externalRef?.startsWith(START_TO_CUT)) return 'cabinet';
+  if (externalRef?.startsWith(CUT_TRANSFER)) return 'cut_transfer';
+  return null;
+}

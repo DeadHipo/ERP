@@ -12,6 +12,7 @@ import { useLabel } from '../../lib/label';
 import { ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { OperationActionHost, OperationButtons, type OperationAction } from './OperationActions';
+import { OriginNote } from './OriginNote';
 
 const t = ru.money.operations;
 
@@ -93,6 +94,7 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
           <span data-col="kind" data-kind={p.data.kind} className="inline-flex flex-wrap items-center gap-1 py-1" title={t.direction[p.data.direction]}>
             <StatusChip kind="operationKind" value={p.data.kind} /> <span className="text-xs text-muted">{t.directionShort[p.data.direction]}</span>
             {p.data.area === 'publishing' ? <span className="text-xs text-muted" data-col="area">{ru.operations.kind.areas.publishing}</span> : null}
+            <OriginNote externalRef={p.data.externalRef} />
           </span>
         ) : null,
     },
