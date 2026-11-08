@@ -14,7 +14,8 @@ export default defineConfig({
     port: 5173,
     host: true, // все интерфейсы: нужно для доступа с роутера (KeenDNS)
     allowedHosts: ['erp.spoki.keenetic.pro'],
-    proxy: { '/api': 'http://localhost:3000' },
+    // API_PROXY: the API address in docker-compose.app.dev.yml (http://api:3000, D-197)
+    proxy: { '/api': process.env.API_PROXY ?? 'http://localhost:3000' },
     fs: { allow: ['../..'] },
   },
   build: {

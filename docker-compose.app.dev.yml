@@ -1,0 +1,68 @@
+# Only for development (D-197): the API and the client in containers over the source on the host, restarted on change
+# (tsx watch, Vite HMR). Always on top of BOTH files: a run without docker-compose.dev.yml would see postgres with the
+# bind mount of docker-compose.yml, so this file names no database service and depends on none.
+#   npm run dev:docker            (= docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.app.dev.yml up -d deps api web)
+#   npm run dev:docker:logs / npm run dev:docker:down
+# The stack itself (postgres, clickhouse, migrations) is started as before; this file only adds the app.
+x-node: &node
+  image: node:24-alpine
+  working_dir: /app
+  environment: &node-env
+    TZ: ${TZ}
+    # inside the compose network, not the host ports of .env; .env itself is read by the app (loadEnvFile does not override)
+    DB_HOST: postgres
+    DB_PORT: 5432
+    CLICKHOUSE_HOST: clickhouse
+    CLICKHOUSE_HTTP_PORT: 8123
+  volumes:
+    - .:/app
+    # Linux builds of the dependencies (esbuild, rolldown, lightningcss), never the macOS ones of the host
+    - app_node_modules:/app/node_modules
+    - app_node_modules_backend:/app/packages/backend/node_modules
+    - app_node_modules_frontend:/app/packages/frontend/node_modules
+  logging:
+    driver: 'json-file'
+    options:
+      max-size: '10m'
+      max-file: '3'
+
+services:
+  # One-shot: npm ci into the volumes when package-lock.json changed since the last install, else nothing
+  deps:
+    <<: *node
+    restart: 'no'
+    command:
+      - sh
+      - -c
+      - |
+        sum=$$(sha256sum package-lock.json | cut -d' ' -f1)
+        if [ "$$(cat node_modules/.lock-sha 2>/dev/null)" = "$$sum" ]; then echo 'deps up to date'; exit 0; fi
+        npm ci --no-audit --no-fund && echo "$$sum" > node_modules/.lock-sha
+
+  api:
+    <<: *node
+    restart: unless-stopped
+    command: ['npm', 'run', 'dev']
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+
+  web:
+    <<: *node
+    restart: unless-stopped
+    command: ['npm', 'run', 'dev:client']
+    environment:
+      <<: *node-env
+      API_PROXY: http://api:3000
+    ports:
+      - '127.0.0.1:5173:5173'
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+
+volumes:
+  app_node_modules:
+  app_node_modules_backend:
+  app_node_modules_frontend:

@@ -25,6 +25,7 @@ Folder notes load automatically when you work there: `packages/backend/src/modul
 - `npm run lint` (eslint over the whole repo)
 - `npm run build:client` (vite build)
 - `LOG_TIMINGS=1` before `npm run dev` (or `main.ts`) prints a tree of step timings per request: balance, `calculate()`, every ClickHouse read (D-122)
+- `npm run dev:docker` (D-197): the same two in containers over the source (`docker-compose.app.dev.yml`, restarted on change; `dev:docker:logs`, `dev:docker:down`; stop them before the host `npm run dev`, same ports)
 - `npm run dev` (API on :3000 with `<repo>/data`) and `npm run dev:client` (Vite, proxies `/api`); OpenAPI at `/api/v1/openapi.json`, Swagger UI at `/api/v1/docs`
 - `npm run demo` / `npm run import:legacy`: demo mode is not maintained since the Believe move (D-112); `import:legacy` rebuilds reference data from `context_data/data/erp/data/erp.db` and needs the stack
 - `npm run mvp:load -w @erp/backend -- <step> [--apply]` (stage 4 loader, dry run by default, idempotent; steps in `scripts/mvp/load.ts`), `npx tsx packages/backend/scripts/mvp/load-b17.ts <file.xlsx>`; read-only compares `npx tsx packages/backend/scripts/mvp/compare-annex.ts` / `compare-main.ts` (reports in `data/mvp-load/verify/`), then `decompose-main.ts` (owner decomposition); recipe 9 in `docs/agents/04_recipes.md`
