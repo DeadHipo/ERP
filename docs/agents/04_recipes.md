@@ -377,7 +377,9 @@ approve, or assume (7).
 3. **Catalog**: `npx tsx packages/backend/scripts/derive-track-labels.ts --org <id>` (dry run), then `--apply`; a wrong
    interval is corrected on P6 («История лейбла»: `POST /tracks/:isrc/label { labelId, from, to? }`; the same `from`
    replaces). Releases: P7 «Импорт релизов» with the Believe release export of the account
-   (`POST /releases/import?label=<id>`, all or nothing; a repeat is `unchanged`). Signals `tracksWithoutLabel`,
+   (D-195: `POST /releases/preview?label=<id>&source=believe` gives the diff with the registry, nothing written; the
+   screen sends the checked changes to `POST /releases/preview/apply?label=<id>`, all or nothing, 409 `release_changed`
+   when the registry moved since the preview; a repeat previews as `unchanged`). Signals `tracksWithoutLabel`,
    `releasesIncomplete`, `releasesUnknown` on P21.
 4. **Splits**: download the template on P28 (from P15 «Загрузить из файла»), fill `isrc, pseudonym, percent, from`
    (+ `to, owner, document, artist_id, note`), upload: the preview (`dryRun=1`) classifies every row; fix the file until

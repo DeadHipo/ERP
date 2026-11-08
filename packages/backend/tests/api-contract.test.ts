@@ -666,9 +666,17 @@ const OPERATOR = 'contract-test';
         `"Release R-1";;"Synth Artist";SynthLabel;"2026-01-15<br />00:00:00";2;"UPC : ${UPC}";;240;23\n`,
     );
     const releaseUpload = { path: releaseFile, fileName: 'contract-releases.csv' };
-    expect((await refused('/api/v1/releases/import', {}, releaseUpload)).error.code).toBe('label_required');
-    const releasesImported = await call('post', '/releases/import', { query: { label: zero.id }, file: releaseUpload, labelId: zero.id });
-    expect([releasesImported.rows, releasesImported.inserted]).toEqual([1, 1]);
+    expect((await refused('/api/v1/releases/preview', {}, releaseUpload)).error.code).toBe('label_required');
+    const releasePreview = await call('post', '/releases/preview', { query: { label: zero.id, source: 'believe' }, file: releaseUpload });
+    expect(releasePreview.totals).toMatchObject({ rows: 1, create: 1 });
+    const releaseChanges = (releasePreview.items as { upc: string; action: string; release: unknown; before: unknown }[]).map((i) => ({
+      upc: i.upc,
+      action: i.action,
+      release: i.release,
+      before: i.before,
+    }));
+    const releasesApplied = await call('post', '/releases/preview/apply', { query: { label: zero.id }, body: { changes: releaseChanges }, labelId: zero.id });
+    expect([releasesApplied.created, releasesApplied.updated]).toEqual([1, 0]);
     const registry = await call('get', '/releases/registry', { query: { label: zero.id } });
     expect(registry.items.map((r: { upc: string }) => r.upc)).toEqual([UPC]);
     await call('get', '/releases/registry', { query: { q: 'r-1' } });
@@ -1084,10 +1092,10 @@ describe('API contract: the ability of every operation (D-171)', () => {
     }
   });
 
-  it('a preview mode (D-172) only on the three imports (splits; operations, D-173; the start, D-174), with dryRun in its query', () => {
+  it('a preview mode (D-172) only on the three imports (splits; operations, D-173; the start, D-174), with dryRun in its query; the release preview is a route of its own (D-195)', () => {
     const previews = API_OPERATIONS.filter((o) => o.preview);
-    expect(previews.map(operationKey).sort()).toEqual(['POST /settlements/operations/import', 'POST /settlements/start/import', 'POST /splits/import']);
-    for (const o of previews) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
+    expect(previews.map(operationKey).sort()).toEqual(['POST /releases/preview', 'POST /settlements/operations/import', 'POST /settlements/start/import', 'POST /splits/import']);
+    for (const o of previews.filter((x) => x.path !== '/releases/preview')) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
   });
 
   it('(d) a GET never writes, approves, pays or administers; only reading the users, the support grants and the organization checklist is admin', () => {

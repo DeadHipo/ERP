@@ -78,7 +78,8 @@ export const OPERATION_COVERAGE = {
 
   'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },
   'GET /releases/registry': { page: 'P7', route: '/releases', note: 'D-172: the view «Реестр» (?view=registry, rows registry-<labelId>-<upc>, isrcsInUnits)' },
-  'POST /releases/import': { page: 'P7', route: '/releases', note: 'D-172: action-import-releases → ReleaseImportDialog on the shared UploadForm (field-releases-file, release-import-result)' },
+  'POST /releases/preview': { page: 'P7', route: '/releases', note: 'D-195: action-import-releases → ReleaseImportDialog step 1 (field-releases-file, release-preview-totals, rows release-item-<line>)' },
+  'POST /releases/preview/apply': { page: 'P7', route: '/releases', note: 'D-195: ReleaseImportDialog step 2 (release-accept-<upc>, action-releases-apply, release-apply-result)' },
   'GET /releases/:upc': { page: 'P8', route: '/releases/:upc' },
 
   'GET /documents': { page: 'P13', route: '/documents', note: 'label= of the switch: the documents of the label and those without one, the «Лейбл» column document-label («любой» for none, D-169); also the document titles of P21 assumptions and of the approve and recreate confirmations' },

@@ -83,15 +83,22 @@ test('S48 the release registry of 0to8: import, again unchanged; P7, the registr
   await openAs(page, '/releases');
   await page.getByTestId('action-import-releases').click();
   await choose(page, 'releases-label', '0to8');
+  // D-195: step 1 previews the export, nothing written; step 2 applies the checked changes
   await page.getByTestId('field-releases-file').setInputFiles(EXPORT);
-  await page.getByTestId('action-releases-import-submit').click();
-  await toastOk(page, 'Реестр загружен');
-  const result = page.getByTestId('release-import-result');
-  await expect(result.locator('[data-col="rows"] dd')).toHaveText('1');
-  await expect(result.locator('[data-col="inserted"] dd')).toHaveText('1');
+  await page.getByTestId('action-releases-preview').click();
+  await toastOk(page, 'Сравнено');
+  const totals = page.getByTestId('release-preview-totals');
+  await expect(totals.locator('[data-col="rows"] dd')).toHaveText('1');
+  await expect(totals.locator('[data-col="create"] dd')).toHaveText('1');
+  await expect(page.getByTestId(`release-item-2`)).toHaveAttribute('data-action', 'create');
+  await expect(page.getByTestId(`release-accept-${UPC}`)).toBeChecked();
+  await page.getByTestId('action-releases-apply').click();
+  await toastOk(page, 'Реестр обновлён');
+  await expect(page.getByTestId('release-apply-result').locator('[data-col="created"] dd')).toHaveText('1');
   await page.getByTestId('field-releases-file').setInputFiles(EXPORT);
-  await page.getByTestId('action-releases-import-submit').click();
-  await expect(result.locator('[data-col="unchanged"] dd')).toHaveText('1');
+  await page.getByTestId('action-releases-preview').click();
+  await expect(totals.locator('[data-col="unchanged"] dd')).toHaveText('1');
+  await expect(page.getByTestId('action-releases-apply')).toBeDisabled();
   await page.getByTestId('form-dialog-close').click();
   // P7 under 0to8: the UPC of the files is registered
   await openAs(page, `/releases?q=${UPC}&label=${labelOf('0to8')}`);

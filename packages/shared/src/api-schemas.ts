@@ -589,6 +589,45 @@ export const assumeSplitsBody = z
 // ---- the release registry (D-172) ----
 
 /** `GET /releases/registry`: under a label its rows (`label=`), under «Все» every label's; `q` filters UPC, title, version, artist, catalog number. */
+// ---- the release registry: preview and apply (D-195) ----
+
+/** `POST /releases/preview`: the label of the registry and the reader of the file. */
+export const releasePreviewQuery = uploadLabelQuery.extend({
+  source: z.enum(['believe']).default('believe').describe('The format of the export (D-195): believe = the Believe release export'),
+});
+
+const releaseUpc = z.string().regex(/^[0-9]{8,14}$/, 'expected the digits of a UPC');
+/** The fields of one release, as the preview gives them and the apply writes them. */
+export const releaseFields = z.object({
+  releaseTitle: z.string(),
+  version: z.string().nullable(),
+  artistString: z.string().nullable(),
+  labelString: z.string().nullable(),
+  releasedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'expected YYYY-MM-DDTHH:MM:SS')
+    .nullable()
+    .describe('The release time of the export, no zone (D-195)'),
+  trackCount: z.number().int().min(0).nullable(),
+  catalogNumber: z.string().nullable(),
+  territories: z.number().int().nullable(),
+  stores: z.number().int().nullable(),
+});
+/** `POST /releases/preview/apply`: the changes of the preview the operator accepted. */
+export const releaseApplyBody = z.object({
+  changes: z
+    .array(
+      z.object({
+        upc: releaseUpc,
+        action: z.enum(['create', 'update']),
+        release: releaseFields,
+        before: releaseFields.nullable().describe('The registry row the preview saw (null for a create): a row changed since is 409 release_changed'),
+      }),
+    )
+    .min(1)
+    .max(20_000),
+});
+
 export const releaseRegistryQuery = z.object({ q: z.string().optional().describe('Text to find in the title, the artist or the UPC'), ...labelQuery.shape });
 
 // ---- the onboarding checklist (D-172) ----

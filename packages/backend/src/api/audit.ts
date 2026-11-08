@@ -155,13 +155,21 @@ export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
     },
   ],
   [
-    // the release registry import (D-172): the counts from the response; the rows are keyed by UPC, no id is created
-    'POST /releases/import',
+    // the release registry (D-195): the preview leaves no row; the apply keeps the counts and the UPCs written
+    'POST /releases/preview',
+    {
+      preview: () => true,
+      summary: () => ({}),
+      ids: () => [],
+    },
+  ],
+  [
+    'POST /releases/preview/apply',
     {
       preview: () => false,
       summary: (response: unknown) => {
         const r = asRecord(response);
-        return { fileName: r.fileName, sha256: r.sha256, rows: r.rows, inserted: r.inserted, updated: r.updated, unchanged: r.unchanged };
+        return { created: r.created, updated: r.updated, upcs: r.upcs };
       },
       ids: () => [],
     },

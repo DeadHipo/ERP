@@ -7,7 +7,7 @@ import { createAuthService } from '../auth/service';
 import type { Facade } from '../facade';
 import type { OrgFacades } from '../orgs/facades';
 import { createOrgsService, OrgNotFoundError } from '../orgs/service';
-import { errorHandler } from './http';
+import { errorHandler, jsonBody } from './http';
 import { createOrgAdminRouter } from './org-admin-router';
 import { createOrgRouter } from './org-router';
 import { requestId } from './request-id';
@@ -57,7 +57,7 @@ export function createApp(
   const app = express();
   app.use(requestId);
   app.use('/api', noStore, originGuard(config));
-  app.use(express.json({ limit: '1mb' }));
+  app.use(jsonBody());
   app.use('/api', authenticateOrSystemKey(auth, config));
   app.use(
     '/api/v1',

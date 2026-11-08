@@ -260,25 +260,28 @@ describe('D-172: the catalog tables (owners.track_labels, owners.releases)', () 
     const r = f.modules.owners.releases;
     const row = (upc: string, title: string) => ({
       upc,
-      title,
+      releaseTitle: title,
       version: null,
       artistString: 'Synthetic Artist',
       labelString: 'Test Label',
-      releaseDate: '2025-05-01',
+      releasedAt: '2025-05-01T10:30:00',
       trackCount: 2,
       catalogNumber: null,
       territories: 200,
       stores: 50,
-      fileSha256: 'a'.repeat(64),
     });
     await r.upsert(ZERO, [row('1234567890123', 'First'), row('1234567890124', 'Second')]);
     await r.upsert(ZERO, [row('1234567890123', 'First (fixed)')]);
     await r.upsert(ECHO, [row('1234567890123', 'Moved')]);
-    expect((await r.list({ labelId: ZERO })).map((x) => [x.upc, x.title, x.source])).toEqual([
-      ['1234567890123', 'First (fixed)', 'believe_export'],
-      ['1234567890124', 'Second', 'believe_export'],
+    const zero = await r.list({ labelId: ZERO });
+    expect(zero.map((x) => [x.upc, x.releaseTitle, x.releasedAt])).toEqual([
+      ['1234567890123', 'First (fixed)', '2025-05-01T10:30:00'],
+      ['1234567890124', 'Second', '2025-05-01T10:30:00'],
     ]);
-    expect((await r.list({ upcs: ['1234567890123'] })).map((x) => [x.labelId, x.title])).toEqual([
+    // D-195: a rewrite keeps the time the UPC entered the registry
+    expect((zero[0] as { createdAt: string }).createdAt <= (zero[0] as { updatedAt: string }).updatedAt).toBe(true);
+    expect((zero[0] as { createdAt: string }).createdAt).toBe((zero[1] as { createdAt: string }).createdAt);
+    expect((await r.list({ upcs: ['1234567890123'] })).map((x) => [x.labelId, x.releaseTitle])).toEqual([
       [ECHO, 'Moved'],
       [ZERO, 'First (fixed)'],
     ].sort((a, b) => ((a[0] as string) < (b[0] as string) ? -1 : 1)));
@@ -288,6 +291,6 @@ describe('D-172: the catalog tables (owners.track_labels, owners.releases)', () 
     const other = openOwnersModule(db, orgScope('org-other-d172')).service.releases;
     expect(await other.list()).toEqual([]);
     await other.upsert(ZERO, [row('1234567890123', 'Other org')]);
-    expect((await r.list({ labelId: ZERO, upcs: ['1234567890123'] }))[0]?.title).toBe('First (fixed)');
+    expect((await r.list({ labelId: ZERO, upcs: ['1234567890123'] }))[0]?.releaseTitle).toBe('First (fixed)');
   });
 });

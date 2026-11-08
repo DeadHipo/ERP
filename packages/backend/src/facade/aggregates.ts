@@ -5,6 +5,7 @@ import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
+import { registryRowOf } from './release-registry';
 import { ownersReach } from './owner-scope';
 import { artistsByIsrc, readArtistLinks, unionArtists } from './track-artists';
 
@@ -92,33 +93,19 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
   const registryByUpc = async (labelId: string | undefined, upcs?: string[]) => {
     const names = new Map((await ctx.labels.listLabels()).map((l) => [l.id, l.name]));
     const rows = await owners.releases.list({ ...(labelId === undefined ? {} : { labelId }), ...(upcs ? { upcs } : {}) });
-    const out = new Map<string, (Omit<(typeof rows)[number], 'source' | 'fileSha256'> & { labelName: string })[]>();
+    const out = new Map<string, ReturnType<typeof registryRowOf>[]>();
     for (const r of rows) {
       const list = out.get(r.upc) ?? out.set(r.upc, []).get(r.upc);
-      list?.push({
-        labelId: r.labelId,
-        labelName: names.get(r.labelId) ?? '?',
-        upc: r.upc,
-        title: r.title,
-        version: r.version,
-        artistString: r.artistString,
-        labelString: r.labelString,
-        releaseDate: r.releaseDate,
-        trackCount: r.trackCount,
-        catalogNumber: r.catalogNumber,
-        territories: r.territories,
-        stores: r.stores,
-        importedAt: r.importedAt,
-      });
+      list?.push(registryRowOf(r, names.get(r.labelId) ?? '?'));
     }
     return out;
   };
-  /** One row per UPC: the label's, or under «Все» the last imported one (then the smaller label id). */
+  /** One row per UPC: the label's, or under «Все» the last updated one (then the smaller label id). */
   const registryRows = async (labelId: string | undefined) =>
     new Map(
       [...(await registryByUpc(labelId)).entries()].map(([upc, rows]) => [
         upc,
-        [...rows].sort((a, b) => b.importedAt.localeCompare(a.importedAt) || a.labelId.localeCompare(b.labelId))[0],
+        [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.labelId.localeCompare(b.labelId))[0],
       ]),
     );
 
@@ -409,7 +396,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             splits.listParticipations(),
             readArtistLinks(owners, tracks, true),
           ]);
-          // the release registry (D-172, no money): of the label under a label, the last imported row of a UPC under «Все»
+          // the release registry (D-172, no money): of the label under a label, the last updated row of a UPC under «Все»
           const registry = await registryRows(lc?.book.id);
           return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }), registry };
         }),

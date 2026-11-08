@@ -413,18 +413,16 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
           .onConflictDoUpdate({
             target: [releases.orgId, releases.labelId, releases.upc],
             set: {
-              title: excluded('title'),
+              releaseTitle: excluded('release_title'),
               version: excluded('version'),
               artistString: excluded('artist_string'),
               labelString: excluded('label_string'),
-              releaseDate: excluded('release_date'),
+              releasedAt: excluded('released_at'),
               trackCount: excluded('track_count'),
               catalogNumber: excluded('catalog_number'),
               territories: excluded('territories'),
               stores: excluded('stores'),
-              source: excluded('source'),
-              fileSha256: excluded('file_sha256'),
-              importedAt: excluded('imported_at'),
+              updatedAt: excluded('updated_at'),
             },
           });
       },

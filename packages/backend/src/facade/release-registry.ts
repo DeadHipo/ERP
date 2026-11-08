@@ -1,38 +1,53 @@
-import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { ValidationError } from '../shared/errors';
+import { ConflictError, ValidationError } from '../shared/errors';
 import { Decimal, ZERO } from '../shared/money';
-import { parseBelieveExport, type ExportRelease, type ReleaseView } from '../modules/owners';
+import { RELEASE_READERS, type ExportRelease, type ReleaseRowCode, type ReleaseSource, type ReleaseView } from '../modules/owners';
 import type { FacadeContext } from './context';
 import type { UnitResult } from './calculation';
 import { ALL_VIEWER, labelForbidden, viewerHolds, type Viewer } from './viewer';
 
 /**
- * The release registry of a label (D-172, plan «этап4_онбординг.md» §1.5): the rows of the Believe release export,
- * keyed `(org, label, upc)`. Navigation, not money (README §1 п. 8): the calculation never reads it
- * (`boundaries.test.ts`); the money of a release stays `GET /releases/:upc` over the units. Two signals compare it with
- * the units of the label's book: `releasesIncomplete`, `releasesUnknown`.
+ * The release registry of a label (D-172, D-195): the rows of a release export, keyed `(org, label, upc)`. Navigation,
+ * not money (README §1 п. 8): the calculation never reads it (`boundaries.test.ts`); the money of a release stays
+ * `GET /releases/:upc` over the units. A new export is previewed against the registry (nothing written) and the operator
+ * applies the changes he accepts; no file is kept, the audit says who changed what. Two signals compare it with the
+ * units of the label's book: `releasesIncomplete`, `releasesUnknown`.
  */
 
-/** The fields an import compares: a row whose fields are all equal is `unchanged` and is not rewritten. */
-const FIELDS = [
-  'title',
+/** The fields of a release a preview compares and an apply writes. */
+export const RELEASE_FIELDS = [
+  'releaseTitle',
   'version',
   'artistString',
   'labelString',
-  'releaseDate',
+  'releasedAt',
   'trackCount',
   'catalogNumber',
   'territories',
   'stores',
 ] as const satisfies readonly (keyof ExportRelease & keyof ReleaseView)[];
 
-const sameRelease = (a: ExportRelease, b: ReleaseView) => FIELDS.every((k) => a[k] === b[k]);
+export type ReleaseFields = Pick<ReleaseView, (typeof RELEASE_FIELDS)[number]>;
 
-async function sha256Of(path: string): Promise<string> {
-  const h = createHash('sha256');
-  for await (const chunk of createReadStream(path)) h.update(chunk as Buffer);
-  return h.digest('hex');
+const fieldsOf = (r: ReleaseFields): ReleaseFields => {
+  const out = {} as Record<string, unknown>;
+  for (const k of RELEASE_FIELDS) out[k] = r[k];
+  return out as ReleaseFields;
+};
+const show = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+/** The fields that differ, `before` = the registry, `after` = the export. */
+const diff = (before: ReleaseFields, after: ReleaseFields) =>
+  RELEASE_FIELDS.filter((k) => before[k] !== after[k]).map((field) => ({ field, before: show(before[field]), after: show(after[field]) }));
+
+/** A row of the preview (the unchanged rows are only counted). */
+export interface ReleasePreviewItem {
+  line: number;
+  upc: string | null;
+  action: 'create' | 'update' | 'error' | 'duplicate';
+  release: ReleaseFields | null;
+  before: ReleaseFields | null;
+  changes: { field: (typeof RELEASE_FIELDS)[number]; before: string | null; after: string | null }[];
+  codes: ReleaseRowCode[];
 }
 
 export interface ReleaseIncomplete {
@@ -59,7 +74,7 @@ export interface ReleaseUnknown {
  */
 export function releaseSignals(
   units: readonly Pick<UnitResult, 'isrc' | 'upc' | 'bookLabelId' | 'net'>[],
-  registry: readonly Pick<ReleaseView, 'labelId' | 'upc' | 'title' | 'trackCount'>[],
+  registry: readonly Pick<ReleaseView, 'labelId' | 'upc' | 'releaseTitle' | 'trackCount'>[],
   titleOf: (isrc: string, upc: string) => string,
 ): { releasesIncomplete: ReleaseIncomplete[]; releasesUnknown: ReleaseUnknown[] } {
   const byLabel = new Map<string, Set<string>>();
@@ -88,7 +103,7 @@ export function releaseSignals(
     .map((r) => ({
       upc: r.upc,
       labelId: r.labelId,
-      title: r.title,
+      title: r.releaseTitle,
       trackCount: r.trackCount ?? 0,
       isrcsInUnits: isrcs.get(`${r.labelId}|${r.upc}`)?.size ?? 0,
     }))
@@ -98,47 +113,120 @@ export function releaseSignals(
   return { releasesIncomplete, releasesUnknown };
 }
 
+/** A registry row of the API (D-195): `releaseDate` is the day of `releasedAt`, for the readers that need only the day. */
+export const registryRowOf = (r: ReleaseView, labelName: string) => ({
+  labelId: r.labelId,
+  labelName,
+  upc: r.upc,
+  releaseTitle: r.releaseTitle,
+  version: r.version,
+  artistString: r.artistString,
+  labelString: r.labelString,
+  releasedAt: r.releasedAt,
+  releaseDate: r.releasedAt ? r.releasedAt.slice(0, 10) : null,
+  trackCount: r.trackCount,
+  catalogNumber: r.catalogNumber,
+  territories: r.territories,
+  stores: r.stores,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+});
+
 export function releaseRegistryApi(ctx: FacadeContext) {
   const { db, owners, sources, labels, assertOwnLabel } = ctx;
   return {
     /**
-     * Imports the Believe release export of an own label (D-172): every row is inserted or rewritten by `(org, label,
-     * upc)` in one transaction, all or nothing; a row equal to the stored one is `unchanged` and not rewritten; the UPCs
-     * of the registry that the file does not list stay (an export may be partial). `400 label_required`, `404`, `400
-     * label_not_own`, a viewer of other labels `403 label_forbidden`; the file: `400 release_import_header`, `413
-     * import_too_large`, `422 release_import_invalid` (nothing is written).
+     * The preview of a release export against the registry of an own label (D-195): nothing is written. Every line of
+     * the file is `create` (a new UPC), `update` (the fields that differ), `unchanged` (only counted), `error` (the codes
+     * of the line; a UPC whose lines disagree is an error on every line) or `duplicate` (a repeated line equal to the
+     * first: ignored). `missing` = the UPCs of the registry the file does not list: they stay. `400 label_required`,
+     * `404`, `400 label_not_own`, a viewer of other labels `403 label_forbidden`; the file: `400 release_import_header`,
+     * `413 import_too_large`.
      */
-    async importReleases(input: { path: string; fileName: string; labelId: string | undefined }, viewer: Viewer = ALL_VIEWER) {
+    async previewReleases(
+      input: { path: string; fileName: string; labelId: string | undefined; source: ReleaseSource },
+      viewer: Viewer = ALL_VIEWER,
+    ) {
       if (!input.labelId) throw new ValidationError('Choose a label: ?label=', undefined, 'label_required');
       const label = await assertOwnLabel(input.labelId);
       if (!viewerHolds(viewer, label.id)) throw labelForbidden();
-      const rows = await parseBelieveExport(createReadStream(input.path));
-      const sha256 = await sha256Of(input.path);
+      const { rows, issues } = await RELEASE_READERS[input.source](createReadStream(input.path));
+      const stored = new Map((await owners.releases.list({ labelId: label.id })).map((r) => [r.upc, r]));
+      const items: ReleasePreviewItem[] = issues.map((i) => ({ line: i.line, upc: i.upc, action: 'error', release: null, before: null, changes: [], codes: i.codes }));
+      const byUpc = new Map<string, ExportRelease[]>();
+      for (const r of rows) (byUpc.get(r.upc) ?? byUpc.set(r.upc, []).get(r.upc))?.push(r);
+      let unchanged = 0;
+      for (const [upc, lines] of byUpc) {
+        const first = lines[0] as ExportRelease;
+        const release = fieldsOf(first);
+        if (lines.some((l) => diff(release, fieldsOf(l)).length > 0)) {
+          for (const l of lines) items.push({ line: l.line, upc, action: 'error', release: fieldsOf(l), before: null, changes: [], codes: ['duplicate_upc'] });
+          continue;
+        }
+        for (const l of lines.slice(1)) items.push({ line: l.line, upc, action: 'duplicate', release, before: null, changes: [], codes: [] });
+        const s = stored.get(upc);
+        if (!s) items.push({ line: first.line, upc, action: 'create', release, before: null, changes: [], codes: [] });
+        else {
+          const before = fieldsOf(s);
+          const changes = diff(before, release);
+          if (changes.length === 0) unchanged += 1;
+          else items.push({ line: first.line, upc, action: 'update', release, before, changes, codes: [] });
+        }
+      }
+      items.sort((a, b) => a.line - b.line);
+      const listed = new Set(rows.map((r) => r.upc));
+      const missing = [...stored.values()].filter((r) => !listed.has(r.upc)).map((r) => ({ upc: r.upc, releaseTitle: r.releaseTitle }));
+      const count = (a: ReleasePreviewItem['action']) => items.filter((i) => i.action === a).length;
+      return {
+        labelId: label.id,
+        source: input.source,
+        fileName: input.fileName,
+        totals: {
+          rows: rows.length + issues.length,
+          create: count('create'),
+          update: count('update'),
+          unchanged,
+          error: count('error'),
+          duplicate: count('duplicate'),
+          missing: missing.length,
+        },
+        items,
+        missing,
+      };
+    },
+
+    /**
+     * Applies the changes of a preview the operator accepted (D-195), in one transaction, all or nothing: a `create`
+     * needs the UPC absent from the registry of the label, an `update` needs the row equal to its `before`; otherwise
+     * `409 release_changed` (`details.upcs`): the registry moved since the preview, preview again. The same refusals of
+     * the label as the preview.
+     */
+    async applyReleases(
+      input: { labelId: string | undefined; changes: { upc: string; action: 'create' | 'update'; release: ReleaseFields; before: ReleaseFields | null }[] },
+      viewer: Viewer = ALL_VIEWER,
+    ) {
+      if (!input.labelId) throw new ValidationError('Choose a label: ?label=', undefined, 'label_required');
+      const label = await assertOwnLabel(input.labelId);
+      if (!viewerHolds(viewer, label.id)) throw labelForbidden();
+      if (new Set(input.changes.map((c) => c.upc)).size !== input.changes.length)
+        throw new ValidationError('A UPC is listed twice', undefined, 'duplicate_upc');
       return db.transaction(async () => {
-        const stored = new Map(
-          (await owners.releases.list({ labelId: label.id, upcs: rows.map((r) => r.upc) })).map((r) => [r.upc, r]),
-        );
-        let inserted = 0;
-        let updated = 0;
-        const changed = rows.filter((r) => {
-          const s = stored.get(r.upc);
-          if (!s) inserted += 1;
-          else if (!sameRelease(r, s)) updated += 1;
-          else return false;
-          return true;
-        });
-        await owners.releases.upsert(
-          label.id,
-          changed.map(({ line: _line, ...r }) => ({ ...r, fileSha256: sha256 })),
-        );
+        const stored = new Map((await owners.releases.list({ labelId: label.id, upcs: input.changes.map((c) => c.upc) })).map((r) => [r.upc, r]));
+        const moved = input.changes
+          .filter((c) => {
+            const s = stored.get(c.upc);
+            if (c.action === 'create') return s !== undefined;
+            return !s || !c.before || diff(fieldsOf(s), fieldsOf(c.before)).length > 0;
+          })
+          .map((c) => c.upc);
+        if (moved.length > 0)
+          throw new ConflictError(`The registry changed since the preview: ${moved.slice(0, 20).join(', ')}`, 'release_changed', { upcs: moved });
+        await owners.releases.upsert(label.id, input.changes.map((c) => ({ upc: c.upc, ...fieldsOf(c.release) })));
         return {
           labelId: label.id,
-          fileName: input.fileName,
-          sha256,
-          rows: rows.length,
-          inserted,
-          updated,
-          unchanged: rows.length - inserted - updated,
+          created: input.changes.filter((c) => c.action === 'create').length,
+          updated: input.changes.filter((c) => c.action === 'update').length,
+          upcs: input.changes.map((c) => c.upc).sort(),
         };
       });
     },
@@ -156,7 +244,7 @@ export function releaseRegistryApi(ctx: FacadeContext) {
         (r) =>
           !needle ||
           r.upc.includes(needle) ||
-          [r.title, r.version, r.artistString, r.catalogNumber].some((v) => v?.toLowerCase().includes(needle)),
+          [r.releaseTitle, r.version, r.artistString, r.catalogNumber].some((v) => v?.toLowerCase().includes(needle)),
       );
       const names = new Map(labelList.map((l) => [l.id, l.name]));
       const counts = new Map<string, number>();
@@ -167,20 +255,8 @@ export function releaseRegistryApi(ctx: FacadeContext) {
       }
       return {
         items: shown.map((r) => ({
-          labelId: r.labelId,
-          labelName: names.get(r.labelId) ?? '?',
-          upc: r.upc,
-          title: r.title,
-          version: r.version,
-          artistString: r.artistString,
-          labelString: r.labelString,
-          releaseDate: r.releaseDate,
-          trackCount: r.trackCount,
-          catalogNumber: r.catalogNumber,
-          territories: r.territories,
-          stores: r.stores,
+          ...registryRowOf(r, names.get(r.labelId) ?? '?'),
           isrcsInUnits: counts.get(`${r.labelId}|${r.upc}`) ?? 0,
-          importedAt: r.importedAt,
         })),
       };
     },

@@ -94,6 +94,20 @@ export function createDb(pool: pg.Pool): Db {
 }
 
 /** timestamptz read as ISO 8601 UTC text ('2026-10-31T14:43:20.319Z'), the format of every timestamp in the app. */
+/**
+ * A `timestamp without time zone` as the text `YYYY-MM-DDTHH:MM:SS` (D-195: the release time of an export, which names
+ * no zone). node-postgres turns such a value into a Date of the local zone, so the local fields give it back unchanged.
+ */
+export const localTimestamp = customType<{ data: string; driverData: string | Date }>({
+  dataType: () => 'timestamp without time zone',
+  fromDriver: (v) => {
+    if (typeof v === 'string') return v.replace(' ', 'T').slice(0, 19);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}T${p(v.getHours())}:${p(v.getMinutes())}:${p(v.getSeconds())}`;
+  },
+  toDriver: (v) => v,
+});
+
 export const isoTimestamp = customType<{ data: string; driverData: string }>({
   dataType: () => 'timestamp with time zone',
   fromDriver: (v) => new Date(v).toISOString(),

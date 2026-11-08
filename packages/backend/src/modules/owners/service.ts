@@ -27,7 +27,7 @@ export type TrackLabelView = TrackLabelRow;
 export type TrackLabelSource = TrackLabelRow['source'];
 /** One row of the release registry of a label (D-172). */
 export type ReleaseView = ReleaseRow;
-export type ReleaseInput = Omit<ReleaseRow, 'labelId' | 'importedAt' | 'source'>;
+export type ReleaseInput = Omit<ReleaseRow, 'labelId' | 'createdAt' | 'updatedAt'>;
 
 /** The PostgreSQL error under a driver or Drizzle wrapper: its SQLSTATE and constraint. */
 function pgError(e: unknown): { code?: string; constraint?: string } {
@@ -1080,12 +1080,15 @@ export function createOwnersService(db: Db, org: OrgScope) {
     },
     releases: {
       list: (f: { labelId?: string; upcs?: string[] } = {}): Promise<ReleaseView[]> => repo.releases.list(f),
-      /** Inserts or rewrites the rows of one label by UPC (the UPCs not listed stay); all or nothing. */
+      /**
+       * Inserts or rewrites the rows of one label by UPC (the UPCs not listed stay); all or nothing (D-195): a new row
+       * gets `created_at`, a rewritten one keeps it and gets a new `updated_at`.
+       */
       async upsert(labelId: string, rows: ReleaseInput[]): Promise<void> {
         if (new Set(rows.map((r) => r.upc)).size !== rows.length)
           throw new ValidationError('A UPC is listed twice');
-        const importedAt = nowIso();
-        const values = rows.map((r) => ({ ...r, labelId, source: 'believe_export' as const, importedAt }));
+        const now = nowIso();
+        const values = rows.map((r) => ({ ...r, labelId, createdAt: now, updatedAt: now }));
         await repo.transaction(() => repo.releases.upsert(values)).catch(catalogRefusal);
       },
     },

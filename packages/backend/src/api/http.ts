@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { z, ZodError } from 'zod';
 import { AppError } from '../shared/errors';
 import { requestIdOf } from './request-id';
@@ -58,4 +58,15 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     `[${requestId}] ${e.name}: ${scrub(e.message)}${code !== undefined ? ` (code ${String(code)})` : ''}\n${scrub(e.stack ?? '')}`,
   );
   res.status(500).json({ error: { code: 'internal', message: 'Internal error', statusCode: 500, requestId } });
+}
+
+/**
+ * The JSON body parser of the API: 1 MB, except the paths that carry a whole accepted preview (D-195: the release
+ * changes of an export, about 8 000 rows): 20 MB.
+ */
+const LARGE_BODY_PATHS = new Set(['/api/v1/releases/preview/apply']);
+export function jsonBody() {
+  const small = express.json({ limit: '1mb' });
+  const large = express.json({ limit: '20mb' });
+  return (req: Request, res: Response, next: NextFunction) => (LARGE_BODY_PATHS.has(req.path) ? large : small)(req, res, next);
 }

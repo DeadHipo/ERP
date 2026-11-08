@@ -52,12 +52,12 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   });
   // the release registry (D-172, no money): before /releases/:upc (a static segment before the parameter)
   r.get('/releases/registry', async (req, res) => res.json(await facade.releaseRegistry(parse(S.releaseRegistryQuery, req.query))));
-  // the Believe release export of a label (D-172): the label is checked before the body is received
-  r.post('/releases/import', async (req, res) => {
-    let label: string | undefined;
+  // D-195: the preview of a release export against the registry (nothing written); the label is checked before the body
+  r.post('/releases/preview', async (req, res) => {
+    let q: { label?: string; source: 'believe' };
     try {
-      label = parse(S.uploadLabelQuery, req.query).label;
-      await facade.assertUploadLabel(label);
+      q = parse(S.releasePreviewQuery, req.query);
+      await facade.assertUploadLabel(q.label);
     } catch (e) {
       await drain(req);
       throw e;
@@ -67,10 +67,16 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
       error: () => new AppError('The release export is larger than 10 MB', 413, 'import_too_large', { maxBytes: RELEASE_IMPORT_MAX_BYTES }),
     });
     try {
-      res.status(201).json(await facade.importReleases({ path: up.path, fileName: up.fileName, labelId: label }, viewerOf(res)));
+      res.json(await facade.previewReleases({ path: up.path, fileName: up.fileName, labelId: q.label, source: q.source }, viewerOf(res)));
     } finally {
       await up.cleanup();
     }
+  });
+  // D-195: the accepted changes of a preview
+  r.post('/releases/preview/apply', async (req, res) => {
+    const q = parse(S.uploadLabelQuery, req.query);
+    const body = parse(S.releaseApplyBody, req.body);
+    res.status(201).json(await facade.applyReleases({ labelId: q.label, changes: body.changes }, viewerOf(res)));
   });
   r.get('/releases/:upc', async (req, res) =>
     res.json(await facade.release(param(req, 'upc'), parse(S.releaseQuery, req.query).label)),

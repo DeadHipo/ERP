@@ -1818,16 +1818,18 @@ const releaseRegistryRowSchema = z.object({
   labelId: z.string().describe(D.labelId),
   labelName: z.string().describe(D.labelName),
   upc: z.string().describe(D.upc),
-  title: z.string(),
-  version: z.string().nullable(),
+  releaseTitle: z.string().describe('The release title of the export'),
+  version: z.string().nullable().describe('The version of the release in the export (Slowed, Remix, …)'),
   artistString: z.string().nullable().describe('The artist text of the export (not matched against the pseudonyms)'),
   labelString: z.string().nullable().describe('The label text of the export'),
-  releaseDate: date.nullable(),
+  releasedAt: z.string().nullable().describe('The release time of the export, YYYY-MM-DDTHH:MM:SS, no zone (D-195)'),
+  releaseDate: date.nullable().describe('The day of releasedAt'),
   trackCount: z.number().int().nullable().describe(D.trackCount),
   catalogNumber: z.string().nullable().describe(D.catalogNumber),
   territories: z.number().int().nullable().describe(D.territories),
   stores: z.number().int().nullable().describe(D.stores),
-  importedAt: timestamp,
+  createdAt: timestamp.describe('When the UPC first entered the registry'),
+  updatedAt: timestamp.describe('The last change of the row'),
 });
 
 export const releasesSchema = z.object({
@@ -1842,7 +1844,7 @@ export const releasesSchema = z.object({
       registered: z.boolean().describe('The UPC is in the release registry (D-172): of the label under a label, of any label under «Все»'),
       registry: releaseRegistryRowSchema
         .nullable()
-        .describe('The registry row (D-172): of the label under a label, the last imported one under «Все»; null = not registered'),
+        .describe('The registry row (D-172): of the label under a label, the last updated one under «Все»; null = not registered'),
     }),
   ),
   ...pageFields,
@@ -2181,17 +2183,66 @@ export type AssumeResult = z.infer<typeof assumeResultSchema>;
 
 // ---- the release registry (D-172) ----
 
-/** `POST /releases/import`: the counts of the import (all or nothing; `unchanged` rows are not rewritten). */
-export const releaseImportSchema = z.object({
-  labelId: z.string().describe(D.labelId),
-  fileName: z.string(),
-  sha256: z.string(),
-  rows: z.number().int().describe('Releases in the file'),
-  inserted: z.number().int(),
-  updated: z.number().int(),
-  unchanged: z.number().int(),
+const releaseFieldsSchema = z.object({
+  releaseTitle: z.string().describe('The release title'),
+  version: z.string().nullable().describe('The version of the release'),
+  artistString: z.string().nullable().describe('The artist text'),
+  labelString: z.string().nullable().describe('The label text'),
+  releasedAt: z.string().nullable().describe('YYYY-MM-DDTHH:MM:SS, no zone'),
+  trackCount: z.number().int().nullable().describe(D.trackCount),
+  catalogNumber: z.string().nullable().describe(D.catalogNumber),
+  territories: z.number().int().nullable().describe(D.territories),
+  stores: z.number().int().nullable().describe(D.stores),
 });
-export type ReleaseImport = z.infer<typeof releaseImportSchema>;
+export const RELEASE_ROW_CODES = ['upc_invalid', 'track_count_invalid', 'date_invalid', 'duplicate_upc'] as const;
+
+/** `POST /releases/preview` (D-195): the export against the registry of the label; nothing is written. */
+export const releasePreviewSchema = z.object({
+  labelId: z.string().describe(D.labelId),
+  source: z.enum(['believe']).describe('The reader of the file'),
+  fileName: z.string().describe('The name of the uploaded file'),
+  totals: z.object({
+    rows: z.number().int().describe('Lines of the file (without the header)'),
+    create: z.number().int().describe('New UPCs'),
+    update: z.number().int().describe('UPCs whose fields differ'),
+    unchanged: z.number().int().describe('UPCs equal to the registry (not listed)'),
+    error: z.number().int().describe('Lines that cannot be applied'),
+    duplicate: z.number().int().describe('Repeated lines equal to the first (ignored)'),
+    missing: z.number().int().describe('UPCs of the registry not in the file (they stay)'),
+  }),
+  items: z.array(
+    z.object({
+      line: z.number().int().describe('The line of the file (the header is 1)'),
+      upc: z.string().nullable().describe('The UPC, null when unreadable'),
+      action: z.enum(['create', 'update', 'error', 'duplicate']).describe('What the apply would do'),
+      release: releaseFieldsSchema.nullable().describe('The fields of the file'),
+      before: releaseFieldsSchema.nullable().describe('The registry row (update only): send it back with the apply'),
+      changes: z
+        .array(
+          z.object({
+            field: z.string().describe('The field that differs'),
+            before: z.string().nullable().describe('The registry value'),
+            after: z.string().nullable().describe('The file value'),
+          }),
+        )
+        .describe('The fields that differ (update)'),
+      codes: z.array(z.enum(RELEASE_ROW_CODES)).describe('Why the line is an error'),
+    }),
+  ),
+  missing: z
+    .array(z.object({ upc: z.string().describe(D.upc), releaseTitle: z.string().describe('The release title in the registry') }))
+    .describe('The registry rows the file does not list: they stay'),
+});
+export type ReleasePreview = z.infer<typeof releasePreviewSchema>;
+
+/** `POST /releases/preview/apply` (D-195): what was written. */
+export const releaseApplySchema = z.object({
+  labelId: z.string().describe(D.labelId),
+  created: z.number().int().describe('Rows created'),
+  updated: z.number().int().describe('Rows rewritten'),
+  upcs: z.array(z.string()).describe('The UPCs written'),
+});
+export type ReleaseApply = z.infer<typeof releaseApplySchema>;
 
 /** `GET /releases/registry`: the registry rows with the distinct ISRCs of the UPC in the loaded files of the row's label. */
 export const releaseRegistrySchema = z.object({

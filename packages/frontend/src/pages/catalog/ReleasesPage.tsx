@@ -14,7 +14,7 @@ import { DataGrid } from '../../components/grid/DataGrid';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { compareDecimal } from '../../lib/money';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatLocalDateTime } from '../../lib/datetime';
 import { ru } from '../../i18n/ru';
 import { ReleaseImportDialog } from './ReleaseImportDialog';
 import { useLabel } from '../../lib/label';
@@ -53,7 +53,7 @@ export function ReleasesPage() {
         title={t.title}
         subtitle={t.subtitle}
         toolbar={
-          <ActionButton name="import-releases" write={false} op="POST /releases/import" variant="secondary" onPress={() => setImporting(true)}>
+          <ActionButton name="import-releases" write={false} op="POST /releases/preview" variant="secondary" onPress={() => setImporting(true)}>
             {t.import}
           </ActionButton>
         }
@@ -175,10 +175,15 @@ function registryColumns(): ColDef<RegistryItem>[] {
       valueGetter: (p) => p.data?.upc,
       cellRenderer: (p: { data?: RegistryItem }) => (p.data ? <EntityLink kind="upc" id={p.data.upc} /> : null),
     },
-    { colId: 'title', headerName: c.title, minWidth: 180, valueGetter: (p) => p.data?.title },
+    { colId: 'title', headerName: c.title, minWidth: 180, valueGetter: (p) => p.data?.releaseTitle },
     { colId: 'version', headerName: c.version, valueGetter: (p) => p.data?.version ?? '' },
     { colId: 'artist', headerName: c.artist, minWidth: 160, valueGetter: (p) => p.data?.artistString ?? '' },
-    { colId: 'releaseDate', headerName: c.releaseDate, valueGetter: (p) => p.data?.releaseDate ?? '' },
+    {
+      colId: 'releasedAt',
+      headerName: c.releasedAt,
+      valueGetter: (p) => p.data?.releasedAt ?? '',
+      valueFormatter: (p: { value?: string }) => formatLocalDateTime(p.value ?? null),
+    },
     {
       colId: 'trackCount',
       headerName: c.trackCount,
@@ -194,6 +199,6 @@ function registryColumns(): ColDef<RegistryItem>[] {
       cellRenderer: (p: { data?: RegistryItem }) => (p.data ? <span data-col="isrcsInUnits">{p.data.isrcsInUnits}</span> : null),
     },
     { colId: 'catalogNumber', headerName: c.catalogNumber, valueGetter: (p) => p.data?.catalogNumber ?? '' },
-    { colId: 'importedAt', headerName: c.importedAt, valueGetter: (p) => (p.data ? formatDateTime(p.data.importedAt) : '') },
+    { colId: 'updatedAt', headerName: c.updatedAt, valueGetter: (p) => (p.data ? formatDateTime(p.data.updatedAt) : '') },
   ];
 }

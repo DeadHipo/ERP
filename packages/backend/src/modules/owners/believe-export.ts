@@ -1,6 +1,6 @@
 import type { Readable } from 'node:stream';
 import { parseCsv } from '../../shared/csv';
-import { AppError, RuleViolationError, ValidationError } from '../../shared/errors';
+import { AppError, ValidationError } from '../../shared/errors';
 import { RELEASE_IMPORT_MAX_ROWS } from '@erp/shared/release-import';
 
 // The release export of Believe (D-172, plan «этап4_онбординг.md» §1.5): a csv with a BOM, `;` separators and quoted
@@ -21,27 +21,32 @@ export const RELEASE_EXPORT_COLUMNS = [
   '# of stores',
 ] as const;
 
-/** The codes of a refused row (`422 release_import_invalid`, `details.rows`). */
+/** The codes of a row the preview refuses (D-195: a row error, the other rows still preview). */
 export type ReleaseRowCode = 'upc_invalid' | 'track_count_invalid' | 'date_invalid' | 'duplicate_upc';
 
-/** One release of the export, as the registry stores it (without the label, the file hash and the import time). */
+/** One release of an export, as the registry stores it (without the label and the times of the row). */
 export interface ExportRelease {
   /** The line of the file (the header is line 1). */
   line: number;
   upc: string;
-  title: string;
+  releaseTitle: string;
   version: string | null;
   artistString: string | null;
   labelString: string | null;
-  releaseDate: string | null;
+  /** `YYYY-MM-DDTHH:MM:SS` as the export gives it (no zone); a date without a time is 00:00:00; null = no date. */
+  releasedAt: string | null;
   trackCount: number;
   catalogNumber: string | null;
   territories: number | null;
   stores: number | null;
 }
 
-/** At most this many refused rows are listed in `details.rows` (the total is `details.errors`). */
-const MAX_LISTED = 200;
+/** A line of the export that cannot be read: its codes, and the UPC when it is readable. */
+export interface ExportIssue {
+  line: number;
+  upc: string | null;
+  codes: ReleaseRowCode[];
+}
 
 const UPC_RE = /^[0-9]{8,14}$/;
 const INT_RE = /^[0-9]{1,9}$/;
@@ -57,14 +62,20 @@ export function exportUpc(cell: string | undefined): string | null {
   return UPC_RE.test(v) ? v : null;
 }
 
-/** `2022-10-31<br />00:00:00` → `2022-10-31`; empty → undefined (no date); not a calendar date → null. */
-export function exportDate(cell: string | undefined): string | null | undefined {
-  const v = (cell ?? '').split(/<br\s*\/?>/i)[0]?.trim() ?? '';
-  if (v === '') return undefined;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-  if (!m) return null;
-  const d = new Date(`${v}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v ? v : null;
+/**
+ * `2022-10-31<br />00:00:00` (also `2022-10-31 00:00`, `2022-10-31T00:00:00`, a bare date) → `2022-10-31T00:00:00`;
+ * empty → undefined (no date); not a calendar date or time → null. A zone that may follow the time is not read.
+ */
+export function exportDateTime(cell: string | undefined): string | null | undefined {
+  const parts = (cell ?? '').split(/<br\s*\/?>|T|\s+/i).map((x) => x.trim()).filter((x) => x !== '');
+  if (parts.length === 0) return undefined;
+  const [day, time = '00:00:00'] = parts as [string, string | undefined];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== day) return null;
+  const t = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(time);
+  if (!t) return null;
+  return `${day}T${t[1] as string}:${t[2] as string}:${t[3] ?? '00'}`;
 }
 
 const exportInt = (cell: string | undefined): number | null => {
@@ -73,18 +84,17 @@ const exportInt = (cell: string | undefined): number | null => {
 };
 
 /**
- * Reads the export: `400 release_import_header` without a required column (`details.missing`), `413
- * import_too_large` over `RELEASE_IMPORT_MAX_ROWS`, `422 release_import_invalid` when any row is refused (`details.rows:
- * [{ line, code }]`, first 200, `details.errors` in all): the file is taken whole or not at all. Columns not in the
- * export format are ignored (Believe may add some). An empty Version, Artist, Label, Cat. # is null; an empty date is
- * null; `# of territories` / `# of stores` that are not integers are null (information only).
+ * Reads the Believe release export (D-172, D-195): `400 release_import_header` without a required column (`details.missing`),
+ * `413 import_too_large` over `RELEASE_IMPORT_MAX_ROWS`. A row that cannot be read is an issue of its line, not a refusal
+ * of the file: the preview shows it and the other rows. Two lines of one UPC are both kept: the facade compares them.
+ * Columns not in the format are ignored. An empty Version, Artist, Label, Cat. #, date is null; `# of territories` /
+ * `# of stores` that are not integers are null (information only).
  */
-export async function parseBelieveExport(input: Readable): Promise<ExportRelease[]> {
+export async function parseBelieveExport(input: Readable): Promise<{ rows: ExportRelease[]; issues: ExportIssue[] }> {
   let index: Map<string, number> | undefined;
   let line = 0;
-  const out: ExportRelease[] = [];
-  const refused: { line: number; code: ReleaseRowCode; upc?: string }[] = [];
-  const seen = new Map<string, number>();
+  const rows: ExportRelease[] = [];
+  const issues: ExportIssue[] = [];
   for await (const record of parseCsv(input, ';')) {
     line += 1;
     if (!index) {
@@ -100,32 +110,30 @@ export async function parseBelieveExport(input: Readable): Promise<ExportRelease
       continue;
     }
     if (record.every((c) => c.trim() === '')) continue;
-    if (out.length + refused.length >= RELEASE_IMPORT_MAX_ROWS)
+    if (rows.length + issues.length >= RELEASE_IMPORT_MAX_ROWS)
       throw new AppError(`The release export has more than ${RELEASE_IMPORT_MAX_ROWS} rows`, 413, 'import_too_large', {
         maxRows: RELEASE_IMPORT_MAX_ROWS,
       });
     const cell = (c: (typeof RELEASE_EXPORT_COLUMNS)[number]) => record[index?.get(c) ?? -1];
     const upc = exportUpc(cell('UPC'));
     const trackCount = exportInt(cell('# of track'));
-    const releaseDate = exportDate(cell('Release date / Hour / Time zone'));
-    const before = refused.length;
-    if (upc === null) refused.push({ line, code: 'upc_invalid' });
-    if (trackCount === null) refused.push({ line, code: 'track_count_invalid' });
-    if (releaseDate === null) refused.push({ line, code: 'date_invalid' });
-    if (upc !== null) {
-      const first = seen.get(upc);
-      if (first !== undefined) refused.push({ line, code: 'duplicate_upc', upc });
-      else seen.set(upc, line);
+    const releasedAt = exportDateTime(cell('Release date / Hour / Time zone'));
+    const codes: ReleaseRowCode[] = [];
+    if (upc === null) codes.push('upc_invalid');
+    if (trackCount === null) codes.push('track_count_invalid');
+    if (releasedAt === null) codes.push('date_invalid');
+    if (upc === null || trackCount === null || releasedAt === null) {
+      issues.push({ line, upc, codes });
+      continue;
     }
-    if (refused.length > before || upc === null || trackCount === null || releaseDate === null) continue;
-    out.push({
+    rows.push({
       line,
       upc,
-      title: (cell('Release Title') ?? '').trim(),
+      releaseTitle: (cell('Release Title') ?? '').trim(),
       version: text(cell('Version')),
       artistString: text(cell('Artist')),
       labelString: text(cell('Label')),
-      releaseDate: releaseDate ?? null,
+      releasedAt: releasedAt ?? null,
       trackCount,
       catalogNumber: text(cell('Cat. #')),
       territories: exportInt(cell('# of territories')),
@@ -134,10 +142,9 @@ export async function parseBelieveExport(input: Readable): Promise<ExportRelease
   }
   if (!index)
     throw new ValidationError('The release export is empty', { missing: [...RELEASE_EXPORT_COLUMNS] }, 'release_import_header');
-  if (refused.length > 0)
-    throw new RuleViolationError(`${refused.length} row(s) of the release export are refused; nothing was imported`, 'release_import_invalid', {
-      rows: refused.slice(0, MAX_LISTED),
-      errors: refused.length,
-    });
-  return out;
+  return { rows, issues };
 }
+
+/** The readers of a release export by its source (D-195): a new format is a new source, the registry stays one. */
+export const RELEASE_READERS = { believe: parseBelieveExport } as const;
+export type ReleaseSource = keyof typeof RELEASE_READERS;

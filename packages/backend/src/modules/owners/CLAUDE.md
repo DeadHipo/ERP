@@ -16,9 +16,10 @@ label: `isOwnerConfirmedUnder(id, L)` and `confirmedContracts()` (`{ ownerId, la
 what a label is: the facade checks the id is an own label; the C categorisation ignores the label.
 
 Release registry (D-172, `owners.releases`, key `(org, label, upc)`): `believe-export.ts` is the pure reader of the Believe
-release export (BOM, `;`, `UPC : <digits>`, `date<br />time`; all or nothing: `release_import_header` 400,
-`release_import_invalid` 422 with `details.rows`, `import_too_large` 413); the facade (`facade/release-registry.ts`)
-writes it with `releases.upsert` and compares it with the units for the signals `releasesIncomplete` / `releasesUnknown`.
+release export (BOM, `;`, `UPC : <digits>`, `date<br />time`; D-195: rows plus the issues of bad lines, `release_import_header`
+400, `import_too_large` 413; `RELEASE_READERS` by source); the facade (`facade/release-registry.ts`) previews a file
+against the registry and applies the accepted changes with `releases.upsert` (`created_at` kept, `updated_at` new), and
+compares it with the units for the signals `releasesIncomplete` / `releasesUnknown`. No file hash: the audit keeps it.
 Navigation only: the calculation never reads it (`boundaries.test.ts`).
 
 Document kinds (D-172): the lists are `packages/shared/src/document-kinds.ts` (`DOCUMENT_KINDS`, `CONTRACT_DOCUMENT_KINDS`,

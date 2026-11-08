@@ -100,7 +100,7 @@ export const errors: Record<string, string> = {
   catalog_overlap: 'Интервал пересекает другую правку лейбла каталога этого ISRC',
   catalog_same_label: 'Замена ничего не меняет',
   release_import_header: 'Это не экспорт релизов Believe: нет нужной колонки',
-  release_import_invalid: 'Реестр не загружен: в файле есть неверные строки, ничего не записано',
+  release_changed: 'Реестр изменился после предпросмотра: загрузите файл ещё раз',
   // D-173: the replacement of a B17 statement
   replace_not_loaded: 'Заменить можно только загруженную выписку: эта уже заменена',
   replace_label_differs: 'Выписка загружена под другим лейблом: замена под этим лейблом невозможна',

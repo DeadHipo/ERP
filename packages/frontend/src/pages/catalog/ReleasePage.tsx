@@ -7,6 +7,7 @@ import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
+import { formatLocalDateTime } from '../../lib/datetime';
 import { fmt, ru } from '../../i18n/ru';
 import { useLabel } from '../../lib/label';
 import { SimpleTable, Td } from './components/MoneyTable';
@@ -46,9 +47,9 @@ export function ReleasePage() {
                     <li key={r.labelId} data-testid={`release-registry-${r.labelId}`} data-track-count={r.trackCount ?? ''}>
                       {fmt(t.registryRow, {
                         label: r.labelName,
-                        title: r.title,
+                        title: r.releaseTitle,
                         version: r.version ? ` (${r.version})` : '',
-                        date: r.releaseDate ?? '—',
+                        date: r.releasedAt ? formatLocalDateTime(r.releasedAt) : '—',
                         count: r.trackCount ?? '—',
                       })}
                       {r.trackCount !== null && r.trackCount > data.tracks.length ? (

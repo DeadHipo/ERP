@@ -508,7 +508,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /publishing-v2/files',
     'POST /publishing/writers/resolve',
     'POST /splits/import',
-    'POST /releases/import',
+    // D-195: the preview reads a file; the apply writes rows of A keyed by UPC under the label the guard checked
+    'POST /releases/preview',
+    'POST /releases/preview/apply',
     'GET /onboarding/organization',
     // D-173: the operation import creates in A from a file whose owners, pseudonyms and documents are resolved inside
     // A's facade (another organization's are owner_not_found / pseudonym_not_found rows); its `?label=` is checked by

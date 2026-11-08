@@ -245,10 +245,12 @@ export const tracks = {
     call('POST', `/tracks/${id(isrc)}/label`, { body, schema: R.trackLabelsSchema }),
 };
 
-/** The release registry of a label (D-172): the Believe release export, no money. */
+/** The release registry of a label (D-172, D-195): an export previewed against the registry, then the accepted changes applied. */
 export const releases = {
-  importFile: (file: File, labelId: string) =>
-    call('POST', '/releases/import', { query: uploadQuery(labelId), body: fileForm(file), schema: R.releaseImportSchema }),
+  preview: (file: File, labelId: string, source: z.input<typeof S.releasePreviewQuery>['source'] = 'believe') =>
+    call('POST', '/releases/preview', { query: { ...uploadQuery(labelId), source }, body: fileForm(file), schema: R.releasePreviewSchema }),
+  apply: (labelId: string, body: z.input<typeof S.releaseApplyBody>) =>
+    call('POST', '/releases/preview/apply', { query: uploadQuery(labelId), body, schema: R.releaseApplySchema }),
   registry: (query: z.input<typeof S.releaseRegistryQuery> = {}) =>
     call('GET', '/releases/registry', { query, schema: R.releaseRegistrySchema }),
 };

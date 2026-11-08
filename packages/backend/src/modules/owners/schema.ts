@@ -1,5 +1,5 @@
 import { bigint, boolean, date, integer, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
-import { isoTimestamp } from '../../shared/pg-db';
+import { isoTimestamp, localTimestamp } from '../../shared/pg-db';
 
 // Module 1: owners, artists (pseudonyms), tracks, documents and contracts.
 // The document registry lives here and is referenced by id from every other module.
@@ -125,25 +125,24 @@ export const trackLabels = s.table('track_labels', {
   createdAt: isoTimestamp('created_at').notNull(),
 });
 
-/** The release registry of a label from the Believe export (D-172, 0018), keyed `(org, label, upc)`. No money. */
+/** The release registry of a label (D-172, D-195), keyed `(org, label, upc)`: no file, no money; the audit keeps who changed it. */
 export const releases = s.table(
   'releases',
   {
     orgId: text('org_id').notNull(),
     labelId: text('label_id').notNull(),
     upc: text('upc').notNull(),
-    title: text('title').notNull(),
+    releaseTitle: text('release_title').notNull(),
     version: text('version'),
     artistString: text('artist_string'),
     labelString: text('label_string'),
-    releaseDate: date('release_date', { mode: 'string' }),
+    releasedAt: localTimestamp('released_at'),
     trackCount: integer('track_count'),
     catalogNumber: text('catalog_number'),
     territories: integer('territories'),
     stores: integer('stores'),
-    source: text('source', { enum: ['believe_export'] }).notNull(),
-    fileSha256: text('file_sha256').notNull(),
-    importedAt: isoTimestamp('imported_at').notNull(),
+    createdAt: isoTimestamp('created_at').notNull(),
+    updatedAt: isoTimestamp('updated_at').notNull(),
   },
   (t) => [primaryKey({ columns: [t.orgId, t.labelId, t.upc] })],
 );
