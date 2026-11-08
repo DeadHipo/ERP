@@ -43,6 +43,11 @@ services:
     <<: *node
     restart: unless-stopped
     command: ['npm', 'run', 'dev']
+    environment:
+      <<: *node-env
+      # the Vite proxy in the web container does not keep the browser's Host: writes from :5173 pass the CSRF rule
+      # (D-171) only as an allowed origin (D-202); this replaces an APP_ORIGIN of .env inside dev:docker
+      APP_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - '127.0.0.1:3000:3000'
     depends_on:

@@ -1,6 +1,8 @@
 import type { CutView, OperationView } from '../modules/settlements';
 import { Decimal, ZERO } from '../shared/money';
 import { calculate, type Calculation } from './calculation';
+import { scoped } from './scope';
+import { ownerReach } from './owner-scope';
 import { ownerBalance, ownerIndex, startsByOwner } from './balance';
 import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +47,15 @@ async function readWorld(ctx: Ctx, calc?: Calculation) {
 }
 type World = Awaited<ReturnType<typeof readWorld>>;
 
+/**
+ * The world of one owner: the calculation of the units of its reach only (D-163: the balance over the reach equals the
+ * full one, `tests/scope.test.ts`), so the owner's page and the transfer do not recalculate the whole catalogue.
+ */
+async function ownerWorld(ctx: Ctx, ownerId: string): Promise<World> {
+  const { isrcs } = await ownerReach(ctx.modules, ownerId); // as the owner balance (`balanceWithFiles`)
+  return readWorld(ctx, await calculate(scoped(ctx.modules, { isrcs }), await ctx.opDocIds()));
+}
+
 /** The inputs of every balance at a cut (or now, without a cut): the calculation and the operations cut by its bounds. */
 function inputsAt(w: World, cut: CutView | null) {
   const dates = new Map(w.cuts.map((c) => [c.id, c.cutDate]));
@@ -72,10 +83,10 @@ function ownerBookAt(inputs: ReturnType<typeof inputsAt>, owner: { id: string; n
 }
 
 /** Every position of the cut's book at the cut (the owners visible under its label), the settled ones too. */
-async function positionsAt(ctx: Ctx, w: World, cut: CutView): Promise<CutPosition[]> {
-  const lc = await ctx.labelContext(cut.labelId);
+async function positionsAt(ctx: Ctx, w: World, cut: CutView, visible?: Set<string>): Promise<CutPosition[]> {
+  const ownerIds = visible ?? (await ctx.labelContext(cut.labelId))?.visible.ownerIds;
   const inputs = inputsAt(w, cut);
-  const out = w.ownerList.filter((o) => lc?.visible.ownerIds.has(o.id)).flatMap((o) => ownerBookAt(inputs, o, cut.labelId).positions);
+  const out = w.ownerList.filter((o) => ownerIds?.has(o.id)).flatMap((o) => ownerBookAt(inputs, o, cut.labelId).positions);
   return out.sort((x, y) => x.ownerName.localeCompare(y.ownerName) || (x.pseudonym ?? '').localeCompare(y.pseudonym ?? ''));
 }
 
@@ -104,8 +115,10 @@ export async function unsettledCuts(ctx: Ctx, labelId?: string, calc?: Calculati
   if (cuts.length === 0) return [];
   const w = await readWorld(ctx, calc);
   const out = [];
+  const visibleOf = new Map<string, Set<string> | undefined>(); // the visibility of a label, once per label
   for (const cut of cuts) {
-    const unsettled = unsettledIn(await positionsAt(ctx, w, cut)).length;
+    if (!visibleOf.has(cut.labelId)) visibleOf.set(cut.labelId, (await ctx.labelContext(cut.labelId))?.visible.ownerIds);
+    const unsettled = unsettledIn(await positionsAt(ctx, w, cut, visibleOf.get(cut.labelId))).length;
     if (unsettled > 0) out.push({ cutId: cut.id, labelId: cut.labelId, name: cut.name, cutDate: cut.cutDate, unsettled });
   }
   return out;
@@ -160,7 +173,7 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
         });
       // the position is read inside the write transaction (one advisory lock): no write between the read and the rows
       return db.transaction(async () => {
-        const w = await readWorld(ctx);
+        const w = await ownerWorld(ctx, ownerId);
         const position = ownerBookAt(inputsAt(w, cut), owner, cut.labelId).positions.find((p) => p.artistId === (input.artistId ?? null));
         const amount = (position?.balance ?? ZERO).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
         if (amount.isZero()) throw new ValidationError('Nothing to transfer: the position at the cut is zero', undefined, 'transfer_zero');
@@ -168,14 +181,11 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
       });
     },
 
-    /** The signal of the cuts (D-200), as a method of its own. */
-    unsettledCuts: (labelId?: string) => unsettledCuts(ctx, labelId),
-
     /**
      * The cuts of one owner (D-200), the page «Срезы» of the owner: per label with cuts (one, or every label the owner
      * has a book in), per cut by date its positions at the cut, the operations attributed to it, and the movement of
      * the book since the previous cut (the difference of the two states: earned, paid, ads, the rest, payable); last,
-     * «after the last cut» = now less the last cut. One calculation.
+     * «after the last cut» = now less the last cut. One calculation of the owner's reach.
      */
     async ownerCuts(ownerIdIn: string, labelId?: string, viewer: Viewer = ALL_VIEWER) {
       if (labelId !== undefined) await assertOwnLabel(labelId);
@@ -183,7 +193,7 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
       if (viewer.kind !== 'all') await scopeOf(viewer).assertOwnerVisible(ownerId); // another label's owner: 404
       const owner = await owners.getOwner(ownerId);
       const cuts = await settlements.listCuts(labelId === undefined ? {} : { labelId });
-      const w = cuts.length === 0 ? null : await readWorld(ctx);
+      const w = cuts.length === 0 ? null : await ownerWorld(ctx, ownerId);
       const labels = [...new Set(cuts.map((c) => c.labelId))];
       const now = w ? inputsAt(w, null) : null;
       const pick = (p: CutPosition) => ({ artistId: p.artistId, pseudonym: p.pseudonym, balance: p.balance, settled: p.settled });
