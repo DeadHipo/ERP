@@ -46,6 +46,8 @@ export function ownersRouter(facade: Facade) {
     res.json(await facade.mergeOwners(b.fromId, b.intoId, b.reason));
   });
   r.get('/owners/:id', async (req, res) => res.json(await facade.ownerDetail(param(req, 'id'), viewerOf(res))));
+  // the cuts of the owner (D-200): per label, per cut its positions, attributed operations and movement
+  r.get('/owners/:id/cuts', async (req, res) => res.json(await facade.ownerCuts(param(req, 'id'), parse(S.cutListQuery, req.query).label, viewerOf(res))));
   r.get('/owners/:id/balance', async (req, res) =>
     timed(`GET /owners/${param(req, 'id')}/balance`, async () => {
       const { label, ...period } = parse(S.balanceQuery, req.query);

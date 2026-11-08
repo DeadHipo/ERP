@@ -401,6 +401,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /owners/payables': (x) => ({ query: { ids: x.owner } }),
     'GET /owners/:id': (x) => ({ params: { id: x.owner } }),
     'GET /owners/:id/balance': (x) => ({ params: { id: x.owner } }),
+    'GET /owners/:id/cuts': (x) => ({ params: { id: x.owner } }),
     'POST /owners/:id/payouts': (x) => ({ params: { id: x.owner }, body: { labelId: A.label } }),
     'GET /artists': (x) => ({ query: { label: x.label } }),
     'GET /artists/balances': (x) => ({ query: { ids: x.artist } }),

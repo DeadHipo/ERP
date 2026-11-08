@@ -11,6 +11,7 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'GET /owners/payables': 'L',
   'GET /owners/:id': 'R',
   'GET /owners/:id/balance': 'L',
+  'GET /owners/:id/cuts': 'L', // D-200: the owner's cuts under the manager's label
   'POST /owners/:id/payouts': 'x',
   'GET /artists': 'L',
   'GET /artists/balances': 'L',

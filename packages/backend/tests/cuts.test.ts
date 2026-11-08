@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { cutListSchema, cutSchema, cutStateSchema } from '@erp/shared/api-responses';
+import { cutListSchema, cutSchema, cutStateSchema, ownerCutsSchema } from '@erp/shared/api-responses';
 import { Case, I } from './helpers/golden-case';
 import { approvedDoc } from './helpers/fixtures';
+import { labelsViewer } from '../src/facade/viewer';
 import { cutOperationsBy, type CutBounds } from '../src/facade/as-of';
 
 // The cuts (D-198): the state of a label's book at a moment, cumulative, per position (D-181). A cut is a view of the
@@ -187,5 +188,50 @@ describe('the cuts (D-198): a label book at a moment', () => {
     expect(balances(await f.cutState(c1.id))).toEqual({ S1: '80' }); // S2 settled at the cut
     expect(balances(await f.cutState(c2.id))).toEqual({ S1: '110', S2: '-75' }); // the debt lives on: 25 − 100
     expect((await f.ownerBalance(owner)).total.payable.toFixed()).toBe(before.toFixed());
+  });
+
+  it('stage 3: the signal lists the cuts with a position not at zero; nothing without cuts', async () => {
+    const { c, f, zero, owner } = await world();
+    expect((await f.signals({}, zero)).cutsUnsettled).toEqual([]);
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const sg = await f.signals({}, zero);
+    expect(sg.cutsUnsettled).toEqual([{ cutId: c1.id, labelId: zero, name: 'C1', cutDate: '2026-09-10', unsettled: 2 }]);
+    expect(sg.counts.cutsUnsettled).toBe(1);
+    expect((await f.signals({}, f.testLabels.Echo8)).cutsUnsettled).toEqual([]); // another label's cuts are not its
+    expect((await f.overview()).signals.find((x) => x.name === 'cutsUnsettled')?.count).toBe(1);
+    // S1 80 and S2 20 carried past the cut: settled, the signal is gone
+    const adj = await approvedDoc(f, 'adjustment_basis', owner);
+    await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S1'), amount: '80', documentId: adj.id });
+    await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S2'), amount: '20', documentId: adj.id });
+    expect((await f.signals({}, zero)).cutsUnsettled).toEqual([]);
+  });
+
+  it("stage 3: the owner's cuts: positions, the operations of the cut and the movement between the states", async () => {
+    const { c, f, zero, owner } = await world();
+    const c1 = await f.createCut({ labelId: zero, name: 'C1', cutDate: '2026-09-10' }, 'tester');
+    const c2 = await f.createCut({ labelId: zero, name: 'C2', cutDate: '2026-10-10' }, 'tester');
+    const adj = await approvedDoc(f, 'adjustment_basis', owner);
+    const t = await f.transferAtCut(c1.id, { ownerId: owner, artistId: c.id('S2'), amount: '20', documentId: adj.id });
+    const r = await f.ownerCuts(owner);
+    expect(ownerCutsSchema.safeParse(json(r)).success).toBe(true);
+    expect(r.labels.map((l) => l.labelId)).toEqual([zero]);
+    const [s1, s2] = r.labels[0]?.cuts ?? [];
+    const pos = (ps: { pseudonym: string | null; balance: { toFixed(): string } }[]) => Object.fromEntries(ps.map((p) => [p.pseudonym ?? '', p.balance.toFixed()]));
+    const mv = (m: Record<string, { toFixed(): string }> | undefined) => Object.fromEntries(Object.entries(m ?? {}).map(([k, v]) => [k, v.toFixed()]));
+    expect([s1?.cut.id, s2?.cut.id]).toEqual([c1.id, c2.id]);
+    expect(pos(s1?.positions ?? [])).toEqual({ S1: '80', S2: '0', '': '0' });
+    expect([s1?.unsettled, s1?.operations.map((o) => o.id)]).toEqual([1, [t.atCut.id]]);
+    // to C1: earned 150 + 20, A1 recoups 40, P1 paid 30, the transfer row −20 → payable 80 (the rest −40 −20)
+    expect(mv(s1?.movement)).toEqual({ earned: '170', paid: '30', adsCharged: '0', payable: '80', other: '-60' });
+    // C1 → C2: September 30 + 5 earned, the give-back row + 20
+    expect(mv(s2?.movement)).toEqual({ earned: '35', paid: '0', adsCharged: '0', payable: '55', other: '20' });
+    expect(pos(s2?.positions ?? [])).toEqual({ S1: '110', S2: '25', '': '0' });
+    expect(mv(r.labels[0]?.after.movement)).toEqual({ earned: '0', paid: '0', adsCharged: '0', payable: '0', other: '0' });
+    // a label with a cut but nothing of the owner in it: no section
+    await f.createCut({ labelId: f.testLabels.Echo8, name: 'E1', cutDate: '2026-09-10' }, 'tester');
+    expect((await f.ownerCuts(owner)).labels.map((l) => l.labelId)).toEqual([zero]);
+    expect((await f.ownerCuts(owner, f.testLabels.Echo8)).labels).toEqual([]);
+    // a viewer of Echo8 alone does not see this owner (404, as the owner card)
+    await expect(f.ownerCuts(owner, f.testLabels.Echo8, labelsViewer([f.testLabels.Echo8]))).rejects.toMatchObject({ statusCode: 404 });
   });
 });

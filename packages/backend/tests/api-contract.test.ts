@@ -811,6 +811,9 @@ const OPERATOR = 'contract-test';
       body: { ownerId: owner.id, amount: '2.00', documentId: adjustBasis.id },
     });
     expect([transfer.atCut.cutId, transfer.after.amountCents]).toEqual([cutB.id, -200]);
+    // stage 3 (D-200): the owner's cuts and the signal
+    const ownerCuts = await call('get', '/owners/:id/cuts', { params: { id: owner.id }, query: { label: zero.id } });
+    expect(ownerCuts.labels[0]?.cuts[0]?.operations.map((o: { id: string }) => o.id)).toEqual([transfer.atCut.id]);
     await call('get', '/settlements/operations');
     await call('get', '/settlements/operations', { query: { label: zero.id } });
     const needing = await call('get', '/settlements/operations', {

@@ -1,11 +1,12 @@
-import type { CutView } from '../modules/settlements';
+import type { CutView, OperationView } from '../modules/settlements';
 import { Decimal, ZERO } from '../shared/money';
-import { calculate } from './calculation';
+import { calculate, type Calculation } from './calculation';
 import { ownerBalance, ownerIndex, startsByOwner } from './balance';
 import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '../shared/errors';
 import type { FacadeContext } from './context';
+import { ALL_VIEWER, type Viewer } from './viewer';
 import { CUT_TRANSFER, type payoutsApi } from './payouts';
 
 // The cuts (D-198): the state of a label's book at a moment, cumulative. A cut is a view of the very balance (the one
@@ -25,41 +26,90 @@ export interface CutPosition {
   balance: Decimal;
 }
 
-export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payoutsApi>, 'createOperation'>) {
-  const { db, owners, settlements, modules, opDocIds, assertOwnLabel, labelContext } = ctx;
+type Ctx = Pick<FacadeContext, 'db' | 'owners' | 'settlements' | 'modules' | 'opDocIds' | 'labelContext'>;
+type Op = OperationView;
 
-  const boundsOf = (cut: CutView, all: CutView[]): CutBounds => {
-    const dates = new Map(all.map((c) => [c.id, c.cutDate]));
-    return { masterTo: cut.masterTo, publishingTo: cut.publishingTo, adsTo: cut.adsTo, date: cut.cutDate, cutDateOf: (id) => dates.get(id) };
-  };
+/** One read for every cut: one full calculation, every operation, the starts, the cuts and the owners. */
+async function readWorld(ctx: Ctx, calc?: Calculation) {
+  const { db, owners, settlements, modules, opDocIds } = ctx;
+  const read = await db.snapshot(async () => ({
+    ownerList: await owners.listOwners(),
+    ops: await settlements.listOperations({}),
+    startRows: await settlements.listOpeningBalances({ active: true }),
+    cuts: await settlements.listCuts({}),
+  }));
+  return { ...read, calc: calc ?? (await calculate(modules, await opDocIds())) };
+}
+type World = Awaited<ReturnType<typeof readWorld>>;
 
-  /** Every position of the cut's book at the cut, the settled ones too. */
-  async function positionsAt(cut: CutView): Promise<CutPosition[]> {
-    const lc = await labelContext(cut.labelId);
-    const { list, ops, startRows, cuts } = await db.snapshot(async () => ({
-      list: (await owners.listOwners()).filter((o) => lc?.visible.ownerIds.has(o.id)),
-      ops: await settlements.listOperations({}),
-      startRows: await settlements.listOpeningBalances({ active: true }),
-      cuts: await settlements.listCuts({ labelId: cut.labelId }),
-    }));
-    const bounds = boundsOf(cut, cuts);
-    const calc = cutCalculationBy(await calculate(modules, await opDocIds()), bounds);
-    const index = ownerIndex(calc);
-    const startsOf = startsByOwner(calc, startRows);
-    const opsOf = new Map<string, typeof ops>();
-    for (const o of cutOperationsBy(ops, bounds)) if (o.ownerId) (opsOf.get(o.ownerId) ?? opsOf.set(o.ownerId, []).get(o.ownerId))?.push(o);
-    const out: CutPosition[] = [];
-    for (const o of list) {
-      const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], {}, { ...(index.get(o.id) ?? { units: [], publishing: [] }), starts: startsOf.get(o.id) ?? [] }, { labelId: cut.labelId });
-      for (const a of b.artists) {
-        const book = Object.values(a.byLabel).find((x) => x.labelId === cut.labelId);
-        if (book) out.push({ ownerId: o.id, ownerName: o.name, artistId: a.artistId, pseudonym: a.pseudonym, balance: book.position });
-      }
-      const own = Object.values(b.byLabel).find((x) => x.labelId === cut.labelId);
-      if (own) out.push({ ownerId: o.id, ownerName: o.name, artistId: null, pseudonym: null, balance: own.ownerPosition });
-    }
-    return out.sort((x, y) => x.ownerName.localeCompare(y.ownerName) || (x.pseudonym ?? '').localeCompare(y.pseudonym ?? ''));
+/** The inputs of every balance at a cut (or now, without a cut): the calculation and the operations cut by its bounds. */
+function inputsAt(w: World, cut: CutView | null) {
+  const dates = new Map(w.cuts.map((c) => [c.id, c.cutDate]));
+  const bounds: CutBounds | null = cut
+    ? { masterTo: cut.masterTo, publishingTo: cut.publishingTo, adsTo: cut.adsTo, date: cut.cutDate, cutDateOf: (id) => dates.get(id) }
+    : null;
+  const calc = bounds ? cutCalculationBy(w.calc, bounds) : w.calc;
+  const opsOf = new Map<string, Op[]>();
+  for (const o of bounds ? cutOperationsBy(w.ops, bounds) : w.ops) if (o.ownerId) (opsOf.get(o.ownerId) ?? opsOf.set(o.ownerId, []).get(o.ownerId))?.push(o);
+  return { calc, index: ownerIndex(calc), startsOf: startsByOwner(calc, w.startRows), opsOf };
+}
+
+/** One owner's book of a label from those inputs: its positions (every pseudonym with the book, and the owner's own) and the book. */
+function ownerBookAt(inputs: ReturnType<typeof inputsAt>, owner: { id: string; name: string }, labelId: string) {
+  const { calc, index, startsOf, opsOf } = inputs;
+  const b = ownerBalance(calc, owner.id, opsOf.get(owner.id) ?? [], {}, { ...(index.get(owner.id) ?? { units: [], publishing: [] }), starts: startsOf.get(owner.id) ?? [] }, { labelId });
+  const positions: CutPosition[] = [];
+  for (const a of b.artists) {
+    const book = Object.values(a.byLabel).find((x) => x.labelId === labelId);
+    if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: a.artistId, pseudonym: a.pseudonym, balance: book.position });
   }
+  const book = Object.values(b.byLabel).find((x) => x.labelId === labelId);
+  if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: null, pseudonym: null, balance: book.ownerPosition });
+  return { positions, book };
+}
+
+/** Every position of the cut's book at the cut (the owners visible under its label), the settled ones too. */
+async function positionsAt(ctx: Ctx, w: World, cut: CutView): Promise<CutPosition[]> {
+  const lc = await ctx.labelContext(cut.labelId);
+  const inputs = inputsAt(w, cut);
+  const out = w.ownerList.filter((o) => lc?.visible.ownerIds.has(o.id)).flatMap((o) => ownerBookAt(inputs, o, cut.labelId).positions);
+  return out.sort((x, y) => x.ownerName.localeCompare(y.ownerName) || (x.pseudonym ?? '').localeCompare(y.pseudonym ?? ''));
+}
+
+type Book = { earned: Decimal; paid: Decimal; adsCharged: Decimal; payable: Decimal };
+const FIELDS = ['earned', 'paid', 'adsCharged', 'payable'] as const;
+/** The movement of a book between two states (a missing book is zero): earned, paid, ads, the rest of payable, payable. */
+function movement(from: Book | undefined, to: Book | undefined) {
+  const d = Object.fromEntries(FIELDS.map((k) => [k, (to?.[k] ?? ZERO).minus(from?.[k] ?? ZERO)])) as Record<(typeof FIELDS)[number], Decimal>;
+  // the rest: what moved payable besides the income, the payouts and the ads (recoup, adjustments, credits, starts …)
+  return { ...d, other: d.payable.minus(d.earned).plus(d.paid).plus(d.adsCharged) };
+}
+
+/** Nothing of the owner in the book: every position and every field at zero (the view always names its label's book). */
+const emptyBook = (x: { positions: CutPosition[]; book: Book | undefined }) =>
+  x.positions.every((p) => p.balance.isZero()) && FIELDS.every((k) => (x.book?.[k] ?? ZERO).isZero());
+
+const unsettledIn = (positions: CutPosition[]) => positions.filter((p) => p.balance.abs().gte(CENT));
+
+/**
+ * The signal «незакрытые на срезе» (D-200): every cut (of a label, or of every label) with a position not at zero.
+ * Nothing is calculated when there is no cut; `calc` = a full calculation with the operations' documents the caller
+ * already has (the overview). The cost is cuts × visible owners × one balance.
+ */
+export async function unsettledCuts(ctx: Ctx, labelId?: string, calc?: Calculation) {
+  const cuts = await ctx.settlements.listCuts(labelId === undefined ? {} : { labelId });
+  if (cuts.length === 0) return [];
+  const w = await readWorld(ctx, calc);
+  const out = [];
+  for (const cut of cuts) {
+    const unsettled = unsettledIn(await positionsAt(ctx, w, cut)).length;
+    if (unsettled > 0) out.push({ cutId: cut.id, labelId: cut.labelId, name: cut.name, cutDate: cut.cutDate, unsettled });
+  }
+  return out;
+}
+
+export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payoutsApi>, 'createOperation'>) {
+  const { db, owners, settlements, assertOwnLabel, scopeOf } = ctx;
 
   return {
     async listCuts(labelId?: string) {
@@ -106,11 +156,53 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
       return db.transaction(async () => ({ atCut: await row(amount, true), after: await row(amount.neg(), false) }));
     },
 
+    /** The signal of the cuts (D-200), as a method of its own. */
+    unsettledCuts: (labelId?: string) => unsettledCuts(ctx, labelId),
+
+    /**
+     * The cuts of one owner (D-200), the page «Срезы» of the owner: per label with cuts (one, or every label the owner
+     * has a book in), per cut by date its positions at the cut, the operations attributed to it, and the movement of
+     * the book since the previous cut (the difference of the two states: earned, paid, ads, the rest, payable); last,
+     * «after the last cut» = now less the last cut. One calculation.
+     */
+    async ownerCuts(ownerIdIn: string, labelId?: string, viewer: Viewer = ALL_VIEWER) {
+      if (labelId !== undefined) await assertOwnLabel(labelId);
+      const ownerId = await owners.resolveOwnerId(ownerIdIn);
+      if (viewer.kind !== 'all') await scopeOf(viewer).assertOwnerVisible(ownerId); // another label's owner: 404
+      const owner = await owners.getOwner(ownerId);
+      const cuts = await settlements.listCuts(labelId === undefined ? {} : { labelId });
+      const w = cuts.length === 0 ? null : await readWorld(ctx);
+      const labels = [...new Set(cuts.map((c) => c.labelId))];
+      const now = w ? inputsAt(w, null) : null;
+      const pick = (p: CutPosition) => ({ artistId: p.artistId, pseudonym: p.pseudonym, balance: p.balance });
+      const out = [];
+      for (const L of labels) {
+        if (!w || !now) break;
+        const nowBook = ownerBookAt(now, owner, L);
+        const states = cuts.filter((c) => c.labelId === L).map((cut) => ({ cut, ...ownerBookAt(inputsAt(w, cut), owner, L) }));
+        if ([nowBook, ...states].every(emptyBook)) continue; // the owner has nothing in this book
+        let prev: Book | undefined;
+        const sections = states.map(({ cut, positions, book }) => {
+          const section = {
+            cut,
+            positions: positions.map(pick),
+            unsettled: unsettledIn(positions).length,
+            operations: w.ops.filter((o) => o.cutId === cut.id && o.ownerId === ownerId),
+            movement: movement(prev, book),
+          };
+          prev = book;
+          return section;
+        });
+        out.push({ labelId: L, cuts: sections, after: { positions: nowBook.positions.map(pick), movement: movement(prev, nowBook.book) } });
+      }
+      return { ownerId, calculatedAt: new Date().toISOString(), labels: out };
+    },
+
     /** The state of a cut: its positions (`all` = the settled ones too) and their sum. */
     async cutState(id: string, opts: { all?: boolean } = {}) {
       const cut = await settlements.getCut(id);
-      const positions = await positionsAt(cut);
-      const open = positions.filter((p) => p.balance.abs().gte(CENT));
+      const positions = await positionsAt(ctx, await readWorld(ctx), cut);
+      const open = unsettledIn(positions);
       return {
         cut,
         calculatedAt: new Date().toISOString(),

@@ -12,6 +12,7 @@ import { underLabel, type LabelVisibility } from './label-scope';
 import { adsOutsideBook, type AdOutsideBook } from './ads';
 import { catalogSignals } from './catalog';
 import { releaseSignals, type ReleaseBook } from './release-registry';
+import { unsettledCuts } from './cuts';
 
 /** The six sums of the KPI cards of P1 (D-160): the same fields as a reconciliation row, over a set of rows. */
 export interface KpiSums {
@@ -441,6 +442,11 @@ export async function signalsFrom(
   return { ...lists, counts };
 }
 
+/** The signal of the cuts (D-200) beside the others: its list and its count. */
+function withCuts<T extends { counts: Record<string, number> }>(sg: T, cutsUnsettled: Awaited<ReturnType<typeof unsettledCuts>>) {
+  return { ...sg, cutsUnsettled, counts: { ...sg.counts, cutsUnsettled: cutsUnsettled.length } };
+}
+
 export function reportsApi(ctx: FacadeContext) {
   const { owners, splits, sources, publishing, modules, balanceWithFiles } = ctx;
   const api = {
@@ -482,7 +488,7 @@ export function reportsApi(ctx: FacadeContext) {
       const scope: UnitScope = lc ? { labelIds: [lc.book.id] } : {};
       const all = await calculate(scoped(modules, scope));
       const calc = lc ? underLabel(all, lc.book.id) : all;
-      if (!lc) return signalsFrom(ctx, calc, f);
+      if (!lc) return withCuts(await signalsFrom(ctx, calc, f), await unsettledCuts(ctx));
       // the ads the label pays or whose ISRC is in its files: their income books need every unit of their ISRCs (D-169)
       const L = lc.book.id;
       const isrcs = [
@@ -500,7 +506,7 @@ export function reportsApi(ctx: FacadeContext) {
                 (r) => r.ourLabelId === L || r.incomeBookLabelId === L,
               ),
             );
-      return signalsFrom(ctx, calc, f, lc.visible, outside, L);
+      return withCuts(await signalsFrom(ctx, calc, f, lc.visible, outside, L), await unsettledCuts(ctx, L));
     },
 
     /** Everything on the overview page from ONE calculation (17 N1). */
@@ -508,7 +514,7 @@ export function reportsApi(ctx: FacadeContext) {
       const calc = await calculate(modules, await ctx.opDocIds());
       const [reconciliation, sg, statements, ownerList] = await Promise.all([
         reconciliationFrom(ctx, calc, f),
-        signalsFrom(ctx, calc, f),
+        signalsFrom(ctx, calc, f).then(async (sg) => withCuts(sg, await unsettledCuts(ctx, undefined, calc))),
         publishing.activeStatements(), // a superseded statement is not counted (D-173), as a Believe file not loaded
         owners.listOwners(),
       ]);

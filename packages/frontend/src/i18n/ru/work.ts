@@ -180,6 +180,10 @@ export const signalsPage = {
     releaseTitle: 'Название',
     /** D-196 */
     reportArtist: 'Артист (отчёт)',
+    /** D-200 */
+    cutName: 'Срез',
+    cutDate: 'Дата среза',
+    cutUnsettled: 'Позиций не в нуле',
   },
   why: { bucket_short: 'корзины не хватает', no_source_row: 'нет строки-источника', top_above_100: 'верх больше 100 %' },
   funded: { top: 'сверху', artist_pool: 'из пула артистов', artist_share: 'из доли артиста', label_share: 'из доли лейбла' },

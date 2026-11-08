@@ -41,10 +41,10 @@ describe('abilities (D-171)', () => {
     const count = (c: string) => Object.values(MANAGER_ANSWER).filter((v) => v === c).length;
     // D-174: + GET /settlements/start (L), POST /settlements/start/import (x), POST /settlements/start/:id/deactivate (x)
     // D-176: + GET /settlements/admission (L), six admission writes and PATCH /contracts/:id (x)
-    // D-198: + seven cut operations (the list L, six x)
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([125, 40, 16, 7, 62]);
+    // D-198: + seven cut operations (the list L, six x); D-200: + GET /owners/:id/cuts (L)
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([126, 41, 16, 7, 62]);
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([20, 31, 18, 25, 17, 14]); // D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([20, 32, 18, 25, 17, 14]); // D-200: + 1 read_money (the owner's cuts); D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {
@@ -138,7 +138,7 @@ describe('abilities (D-171)', () => {
         .map(([k]) => k)
         .sort(),
     );
-    expect(orgAllowed).toHaveLength(63); // D-198: + GET /settlements/cuts
+    expect(orgAllowed).toHaveLength(64); // D-198: + GET /settlements/cuts; D-200: + GET /owners/:id/cuts
     // D-174: + GET /settlements/start; D-176: + GET /settlements/admission; D-195: the release preview and apply instead of the import
     expect(m).toEqual(expect.arrayContaining(['GET /auth/me', 'POST /auth/password']));
     expect(m.filter((k) => k.startsWith('GET /orgs') || k.startsWith('POST /orgs'))).toEqual([]);

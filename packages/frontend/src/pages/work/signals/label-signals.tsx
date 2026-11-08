@@ -256,6 +256,25 @@ export const LABEL_SIGNALS = {
       />
     );
   },
+  // D-200: the cuts with a position not at zero
+  cutsUnsettled: ({ data, count }: ListProps): ReactNode => {
+    type R = Signals['cutsUnsettled'][number];
+    return (
+      <Grid<R>
+        name="cutsUnsettled"
+        count={count}
+        rows={data.cutsUnsettled}
+        rowKey={(r) => r.cutId}
+        columns={[
+          textCol('cut', c.cutName, (r) => r.name),
+          textCol('cutDate', c.cutDate, (r) => r.cutDate),
+          labelCol<R>('label', c.book, (r) => r.labelId),
+          textCol('unsettled', c.cutUnsettled, (r) => String(r.unsettled)),
+          informationCol<R>('cutsUnsettled'),
+        ]}
+      />
+    );
+  },
   // D-173: the history put under 0to8 by default (label source `default`, D-168): the operator relabels with a reason
   operationsDefaultLabel: ({ data, count, open, close }: ListProps): ReactNode => {
     type R = Signals['operationsDefaultLabel'][number];

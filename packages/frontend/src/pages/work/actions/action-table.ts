@@ -56,6 +56,7 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   releasesIncomplete: { information: true, note: 'D-196: a registry release in the reports with another number of ISRCs than # of track: information, check the release in Believe' },
   releasesUnknown: { information: true, note: 'D-196: UPCs of the reports missing from the release registry of their label: import a fresh Believe export on P7' },
   releasesWithoutDate: { information: true, note: 'D-196: a registry release without a release date: import a fresh Believe export on P7' },
+  cutsUnsettled: { information: true, note: 'D-200: a cut with a position not at zero: bring it to zero on the page of the cut (a payout attributed to the cut, an adjustment, a transfer)' },
   operationsDefaultLabel: { action: 'SetOperationLabelDialog' },
   forgivenessReduced: { information: true, note: 'advances whose recorded forgiveness is above the effective one (D-173): income before the date came later; the recoup clamps it, nothing to fix (a link to the advances of the owner)' },
   operationsRelabelled: { information: true, note: 'the number of operations relabelled by the operator (D-173): a counter, nothing to fix' },

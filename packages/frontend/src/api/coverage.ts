@@ -163,6 +163,7 @@ export const OPERATION_COVERAGE = {
   'GET /settlements/cuts/:id/state': { refusal: 'D-198 stage 1: the screens of the cuts come with stage 4' },
   'POST /settlements/cuts/:id/transfer': { refusal: 'D-198 stage 2: the screens of the cuts come with stage 4' },
   'POST /settlements/operations/:id/cut': { refusal: 'D-198 stage 2: the screens of the cuts come with stage 4' },
+  'GET /owners/:id/cuts': { refusal: 'D-200 stage 3: the screens of the cuts come with stage 4' },
   'PATCH /settlements/operations/:id': { page: 'P21', route: '/signals/:name', note: 'action-set-label of operationsWithoutLabel (D-168) and operationsDefaultLabel (D-173); also action-relabel of a P20 row; the reason is required (field-op-label-reason)' },
   'POST /settlements/operations/:id/proof': { page: 'P20', route: '/operations', note: 'action-proof; shared with P10' },
   'POST /settlements/operations/:id/deferred': { page: 'P20', route: '/operations', note: 'action-deferred; shared with P10' },

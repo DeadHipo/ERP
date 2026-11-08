@@ -24,6 +24,7 @@ export const signals = {
   releasesIncomplete: 'Состав релиза не совпадает с отчётами',
   releasesUnknown: 'Релиз из отчётов не найден в реестре',
   releasesWithoutDate: 'У релиза нет даты',
+  cutsUnsettled: 'Незакрытые на срезе',
   operationsDefaultLabel: 'Операции с лейблом по умолчанию',
   forgivenessReduced: 'Прощение аванса уменьшено расчётом',
   operationsRelabelled: 'Операции со сменённым лейблом',

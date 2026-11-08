@@ -440,6 +440,18 @@ const operations: ApiOperation[] = [
   },
   {
     method: 'get',
+    path: '/owners/:id/cuts',
+    access: 'org',
+    ability: { action: 'read_money', subject: 'owners', scope: 'label' },
+    tag: 'owners',
+    summary:
+      'The cuts of an owner (D-200): per label with cuts (label=, or every label the owner has a book in), per cut by date its positions at the cut (D-181), the operations of the owner attributed to it and the movement of the book since the previous cut (earned, paid, ads, the rest, payable); last «after the last cut» = now less the last cut. calculate() and payable are unchanged',
+    query: S.cutListQuery,
+    response: R.ownerCutsSchema,
+    errors: ['404 not_found: the owner or the label', '400 label_not_own'],
+  },
+  {
+    method: 'get',
     path: '/owners/:id/balance',
     explain: true,
     access: 'org',

@@ -1015,6 +1015,17 @@ export const signalsSchema = z.object({
   releasesWithoutDate: z
     .array(z.object({ upc: z.string().describe(D.upc), labelId: z.string().describe(D.labelId), releaseTitle: z.string().describe(D.releaseTitle) }))
     .describe('Releases of the registry without a release date (D-196, information)'),
+  cutsUnsettled: z
+    .array(
+      z.object({
+        cutId: z.string().describe('The cut'),
+        labelId: z.string().describe(D.labelId),
+        name: z.string().describe('The name of the cut'),
+        cutDate: date.describe('The moment of the cut'),
+        unsettled: z.number().int().describe('Positions of the book with |balance| ≥ 0.01 at the cut'),
+      }),
+    )
+    .describe('Cuts of a label (D-198) with a position not at zero (D-200): bring it to zero by operations attributed to the cut or a transfer'),
   operationsDefaultLabel: z
     .array(
       z.object({
@@ -2547,3 +2558,42 @@ export const cutTransferSchema = z.object({
   atCut: operationSchema.describe('The adjustment attributed to the cut: brings the position at the cut to zero'),
   after: operationSchema.describe('The opposite adjustment after the cut: the balance lives on'),
 });
+
+const cutMovementSchema = z
+  .object({
+    earned: money.describe('Earned in the book between the two states'),
+    paid: money.describe('Paid between the two states'),
+    adsCharged: money.describe('Advertising charged between the two states'),
+    other: money.describe('The rest of the payable change: recoup, adjustments, credits, returns, start…'),
+    payable: money.describe('The change of payable of the book'),
+  })
+  .describe('The movement of the book since the previous cut (the first: since the beginning)');
+const cutOwnerPositionSchema = z.object({
+  artistId: z.string().nullable().describe("The pseudonym; null = the owner's own position"),
+  pseudonym: z.string().nullable().describe("The pseudonym's name; null = the owner's own position"),
+  balance: money.describe('The position (D-181): > 0 the label owes, < 0 the owner owes'),
+});
+
+/** `GET /owners/:id/cuts` (D-200). */
+export const ownerCutsSchema = z.object({
+  ownerId: z.string().describe(D.ownerId),
+  calculatedAt: timestamp,
+  labels: z.array(
+    z.object({
+      labelId: z.string().describe(D.labelId),
+      cuts: z.array(
+        z.object({
+          cut: cutSchema,
+          positions: z.array(cutOwnerPositionSchema).describe("The owner's positions at the cut"),
+          unsettled: z.number().int().describe('Positions with |balance| ≥ 0.01'),
+          operations: z.array(operationSchema).describe('The operations of the owner attributed to this cut'),
+          movement: cutMovementSchema,
+        }),
+      ),
+      after: z
+        .object({ positions: z.array(cutOwnerPositionSchema).describe("The owner's positions now"), movement: cutMovementSchema })
+        .describe('After the last cut: now less the last cut'),
+    }),
+  ),
+});
+export type OwnerCuts = z.infer<typeof ownerCutsSchema>;
