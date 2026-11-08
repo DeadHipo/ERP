@@ -18,12 +18,14 @@ import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { SimpleTable, Td } from '../owners/components/Fact';
 import { SetOperationLabelDialog } from '../work/actions/label-dialogs';
+import { CutField } from './cuts/CutField';
+import { CUT_TRANSFER } from '@erp/shared/operation-kinds';
 import { ForgiveDialog } from './ForgiveDialog';
 
 const t = ru.money.actions;
 
 /** The dialog of one row action, opened by the grid (P10 Операции and P20 share it). */
-export type OperationAction = { action: 'proof' | 'deactivate' | 'return' | 'snapshot' | 'forgive' | 'relabel'; op: Operation };
+export type OperationAction = { action: 'proof' | 'deactivate' | 'return' | 'snapshot' | 'forgive' | 'relabel' | 'cut'; op: Operation };
 
 const amountText = (op: Operation) => formatMoney(centsToText(op.amountCents));
 const opLine = (op: Operation) =>
@@ -67,6 +69,12 @@ export function OperationButtons(props: { op: Operation; open: (a: OperationActi
           {ru.operations.forgive.action}
         </ActionButton>
       ) : null}
+      {/* D-199: an active operation of a label goes to a cut of it; a row of a transfer keeps its cut */}
+      {op.active && op.labelId && !op.externalRef?.startsWith(CUT_TRANSFER) ? (
+        <ActionButton name={`op-cut-${op.id}`} op="POST /settlements/operations/:id/cut" variant="secondary" compact onPress={() => props.open({ action: 'cut', op })}>
+          {ru.cuts.rowAction}
+        </ActionButton>
+      ) : null}
       {relabel ? (
         <ActionButton name="relabel" op="PATCH /settlements/operations/:id" variant="secondary" compact onPress={() => props.open({ action: 'relabel', op })}>
           {ru.operations.relabel.action}
@@ -101,6 +109,8 @@ export function OperationActionHost(props: { active: OperationAction; onClose: (
       return <ForgiveDialog advance={op} onClose={props.onClose} />;
     case 'relabel':
       return <SetOperationLabelDialog operationId={op.id} currentLabel={op.labelName} onClose={props.onClose} />;
+    case 'cut':
+      return <SetCutDialog op={op} onClose={props.onClose} />;
   }
 }
 
@@ -283,6 +293,35 @@ function SnapshotDialog(props: { op: Operation; onClose: () => void }) {
           )}
         </QueryView>
       </div>
+    </FormDialog>
+  );
+}
+
+/** «Срез» of an operation (D-199): a cut of its label, or none (by its date). */
+function SetCutDialog(props: { op: Operation; onClose: () => void }) {
+  const [cutId, setCutId] = useState(props.op.cutId ?? '');
+  const cuts = useQuery({ ...settlementQueries.cuts(props.op.labelId ?? ''), enabled: props.op.labelId !== null });
+  const none = cuts.isSuccess && cuts.data.items.length === 0;
+  const run = useAction(() => api.settlements.setOperationCut(props.op.id, { cutId: cutId || null }), { invalidate: 'all', success: () => ru.cuts.setDone });
+  return (
+    <FormDialog
+      isOpen
+      onOpenChange={(o) => (o ? null : props.onClose())}
+      title={ru.cuts.setTitle}
+      subtitle={ru.cuts.setSubtitle}
+      footer={
+        <ActionButton name="op-cut-submit" op="POST /settlements/operations/:id/cut" isDisabled={none} reason={ru.cuts.noCuts} isPending={run.isPending} onPress={() => run.mutate(undefined, { onSuccess: () => props.onClose() })}>
+          {ru.cuts.setSubmit}
+        </ActionButton>
+      }
+    >
+      {none ? (
+        <p className="text-sm text-muted" data-testid="op-cut-none">
+          {ru.cuts.noCuts}
+        </p>
+      ) : (
+        <CutField name="op-cut" labelId={props.op.labelId ?? ''} value={cutId} onChange={setCutId} />
+      )}
     </FormDialog>
   );
 }

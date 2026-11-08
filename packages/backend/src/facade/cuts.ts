@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { ValidationError } from '../shared/errors';
 import type { FacadeContext } from './context';
 import { ALL_VIEWER, type Viewer } from './viewer';
-import { CUT_TRANSFER, type payoutsApi } from './payouts';
+import type { payoutsApi } from './payouts';
+import { CUT_TRANSFER } from '@erp/shared/operation-kinds';
 
 // The cuts (D-198): the state of a label's book at a moment, cumulative. A cut is a view of the very balance (the one
 // calculation cut by the bounds, `as-of.ts`) plus the operations attributed to it (`operations.cut_id`); nothing is
@@ -24,6 +25,8 @@ export interface CutPosition {
   artistId: string | null;
   pseudonym: string | null;
   balance: Decimal;
+  /** |balance| < 0.01: nothing to bring to zero (the client never compares money). */
+  settled: boolean;
 }
 
 type Ctx = Pick<FacadeContext, 'db' | 'owners' | 'settlements' | 'modules' | 'opDocIds' | 'labelContext'>;
@@ -61,10 +64,10 @@ function ownerBookAt(inputs: ReturnType<typeof inputsAt>, owner: { id: string; n
   const positions: CutPosition[] = [];
   for (const a of b.artists) {
     const book = Object.values(a.byLabel).find((x) => x.labelId === labelId);
-    if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: a.artistId, pseudonym: a.pseudonym, balance: book.position });
+    if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: a.artistId, pseudonym: a.pseudonym, balance: book.position, settled: book.position.abs().lt(CENT) });
   }
   const book = Object.values(b.byLabel).find((x) => x.labelId === labelId);
-  if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: null, pseudonym: null, balance: book.ownerPosition });
+  if (book) positions.push({ ownerId: owner.id, ownerName: owner.name, artistId: null, pseudonym: null, balance: book.ownerPosition, settled: book.ownerPosition.abs().lt(CENT) });
   return { positions, book };
 }
 
@@ -89,7 +92,7 @@ function movement(from: Book | undefined, to: Book | undefined) {
 const emptyBook = (x: { positions: CutPosition[]; book: Book | undefined }) =>
   x.positions.every((p) => p.balance.isZero()) && FIELDS.every((k) => (x.book?.[k] ?? ZERO).isZero());
 
-const unsettledIn = (positions: CutPosition[]) => positions.filter((p) => p.balance.abs().gte(CENT));
+const unsettledIn = (positions: CutPosition[]) => positions.filter((p) => !p.settled);
 
 /**
  * The signal «незакрытые на срезе» (D-200): every cut (of a label, or of every label) with a position not at zero.
@@ -126,16 +129,18 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
     deleteCut: (id: string) => settlements.deleteCut(id),
 
     /**
-     * The transfer of a position's balance at the cut to after it (D-199): two adjustments of the cut's label with one
+     * The transfer of a position's balance at the cut to after it (D-199): the backend reads the position at the cut and
+     * moves it whole (in cents), two adjustments of the cut's label with one
      * basis document and one `cut-transfer:` reference, in one transaction, both dated the day after the cut (so the
      * second is inside every later cut, as the first is). The first is attributed to the cut and takes `amount` off the
      * position there (a positive adjustment lowers payable, D-173); the second gives it back after the cut.
      * Deactivating one deactivates both.
      */
-    async transferAtCut(cutId: string, input: { ownerId: string; artistId?: string | null; amount: string; documentId: string; comment?: string }) {
+    async transferAtCut(cutId: string, input: { ownerId: string; artistId?: string | null; documentId: string; comment?: string }) {
       const cut = await settlements.getCut(cutId);
-      const amount = new Decimal(input.amount);
-      if (amount.isZero()) throw new ValidationError('Nothing to transfer: the amount is zero', undefined, 'transfer_zero');
+      // the amount is the position at the cut in whole cents (a sub-cent rest is settled already, |balance| < 0.01)
+      const ownerId = await owners.resolveOwnerId(input.ownerId);
+      const owner = await owners.getOwner(ownerId);
       const date = new Date(Date.parse(`${cut.cutDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
       const externalRef = `${CUT_TRANSFER}${randomUUID()}`;
       const comment = input.comment?.trim() || `Перенос на срезе «${cut.name}»`;
@@ -144,7 +149,7 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
           kind: 'adjustment',
           direction: 'in',
           amount: amt.toFixed(2),
-          ownerId: input.ownerId,
+          ownerId,
           artistId: input.artistId ?? null,
           documentId: input.documentId,
           date,
@@ -153,7 +158,14 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
           externalRef,
           cutId: atCut ? cut.id : null,
         });
-      return db.transaction(async () => ({ atCut: await row(amount, true), after: await row(amount.neg(), false) }));
+      // the position is read inside the write transaction (one advisory lock): no write between the read and the rows
+      return db.transaction(async () => {
+        const w = await readWorld(ctx);
+        const position = ownerBookAt(inputsAt(w, cut), owner, cut.labelId).positions.find((p) => p.artistId === (input.artistId ?? null));
+        const amount = (position?.balance ?? ZERO).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        if (amount.isZero()) throw new ValidationError('Nothing to transfer: the position at the cut is zero', undefined, 'transfer_zero');
+        return { atCut: await row(amount, true), after: await row(amount.neg(), false) };
+      });
     },
 
     /** The signal of the cuts (D-200), as a method of its own. */
@@ -174,7 +186,7 @@ export function cutsApi(ctx: FacadeContext, writes: Pick<ReturnType<typeof payou
       const w = cuts.length === 0 ? null : await readWorld(ctx);
       const labels = [...new Set(cuts.map((c) => c.labelId))];
       const now = w ? inputsAt(w, null) : null;
-      const pick = (p: CutPosition) => ({ artistId: p.artistId, pseudonym: p.pseudonym, balance: p.balance });
+      const pick = (p: CutPosition) => ({ artistId: p.artistId, pseudonym: p.pseudonym, balance: p.balance, settled: p.settled });
       const out = [];
       for (const L of labels) {
         if (!w || !now) break;

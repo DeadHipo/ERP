@@ -266,7 +266,17 @@ export const LABEL_SIGNALS = {
         rows={data.cutsUnsettled}
         rowKey={(r) => r.cutId}
         columns={[
-          textCol('cut', c.cutName, (r) => r.name),
+          {
+            colId: 'cut',
+            headerName: c.cutName,
+            valueGetter: (p) => p.data?.name ?? '',
+            cellRenderer: (p: { data?: R }) =>
+              p.data ? (
+                <Link to={`/operations/cuts/${encodeURIComponent(p.data.cutId)}`} className="text-accent underline" data-testid={`signal-cut-${p.data.cutId}`}>
+                  {p.data.name}
+                </Link>
+              ) : null,
+          },
           textCol('cutDate', c.cutDate, (r) => r.cutDate),
           labelCol<R>('label', c.book, (r) => r.labelId),
           textCol('unsettled', c.cutUnsettled, (r) => String(r.unsettled)),

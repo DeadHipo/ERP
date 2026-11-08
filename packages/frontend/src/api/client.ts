@@ -212,6 +212,9 @@ export const owners = {
     download('/owners/payroll', { ...query, format: 'csv' }, 'payroll.csv'),
   payout: (ownerId: string, body: z.input<typeof S.createPayoutBody> = {}) =>
     call('POST', `/owners/${id(ownerId)}/payouts`, { body, schema: R.operationSchema }),
+  /** The cuts of the owner (D-200): per label, per cut its positions, attributed operations and movement. */
+  cuts: (ownerId: string, query: z.input<typeof S.cutListQuery> = {}) =>
+    call('GET', `/owners/${id(ownerId)}/cuts`, { query, schema: R.ownerCutsSchema }),
 };
 
 export const artists = {
@@ -437,6 +440,18 @@ export const settlements = {
     }),
   deactivateStart: (rowId: string, body: z.input<typeof S.deactivateStartBody>) =>
     call('POST', `/settlements/start/${id(rowId)}/deactivate`, { body, schema: R.openingBalanceSchema }),
+  /** The cuts of a book (D-198, P34/P35). */
+  cuts: (query: z.input<typeof S.cutListQuery> = {}) => call('GET', '/settlements/cuts', { query, schema: R.cutListSchema }),
+  createCut: (body: z.input<typeof S.createCutBody>) => call('POST', '/settlements/cuts', { body, schema: R.cutSchema }),
+  updateCut: (cutId: string, body: z.input<typeof S.updateCutBody>) => call('PATCH', `/settlements/cuts/${id(cutId)}`, { body, schema: R.cutSchema }),
+  deleteCut: (cutId: string) => call('POST', `/settlements/cuts/${id(cutId)}/delete`, { schema: R.cutSchema }),
+  cutState: (cutId: string, query: z.input<typeof S.cutStateQuery> = {}) =>
+    call('GET', `/settlements/cuts/${id(cutId)}/state`, { query, schema: R.cutStateSchema }),
+  transferAtCut: (cutId: string, body: z.input<typeof S.cutTransferBody>) =>
+    call('POST', `/settlements/cuts/${id(cutId)}/transfer`, { body, schema: R.cutTransferSchema }),
+  /** Attribute an operation to a cut of its label, or take it back (D-199). */
+  setOperationCut: (operationId: string, body: z.input<typeof S.setOperationCutBody>) =>
+    call('POST', `/settlements/operations/${id(operationId)}/cut`, { body, schema: R.operationSchema }),
   /** The admission (D-176): the payee, the holds and the answers of a book or of one owner. */
   admission: (query: z.input<typeof S.admissionQuery> = {}) => call('GET', '/settlements/admission', { query, schema: R.admissionListSchema }),
   setPayee: (body: z.input<typeof S.setPayeeBody>) => call('POST', '/settlements/payees', { body, schema: R.payeeSchema }),

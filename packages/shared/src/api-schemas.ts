@@ -778,7 +778,6 @@ export const setOperationCutBody = z.object({ cutId: z.string().min(1).nullable(
 export const cutTransferBody = z.object({
   ownerId: z.string().min(1),
   artistId: z.string().min(1).nullish().describe("The pseudonym of the position; without it the owner's own position"),
-  amount: usd.describe('The balance to move, as the state shows it (> 0 the label owes, < 0 the owner owes)'),
   documentId: z.string().min(1).describe('The basis document of the two adjustments (D-173); both rows are dated the day after the cut'),
   comment: z.string().trim().max(2000).optional(),
 });

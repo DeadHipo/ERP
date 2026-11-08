@@ -90,3 +90,6 @@ export function kindOf(o: { direction: 'in' | 'out'; amountCents: number; scope?
 }
 
 export const isOperationKind = (k: string): k is OperationKind => (OPERATION_KINDS as readonly string[]).includes(k);
+
+/** The external reference of the two rows of a transfer of a cut (D-199): `cut-transfer:<uuid>`. */
+export const CUT_TRANSFER = 'cut-transfer:';

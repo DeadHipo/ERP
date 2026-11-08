@@ -21,12 +21,16 @@ export const ownerKeys = {
   payablesOf: (ids: readonly string[], period: QueryPeriod = {}, labelId = '') =>
     ['owners', 'payables', 'ids', ids.join(','), period, labelId || null] as const,
   audit: (entityId: string) => ['audit', 'entity', entityId] as const,
+  /** The cuts of the owner (D-200): a money key. */
+  cuts: (ownerId: string, labelId = '') => ['owners', 'cuts', ownerId, labelId || null] as const,
 };
 
 export const ownerQueries = {
   list: (labelId = '') => queryOptions({ queryKey: ownerKeys.list(labelId), queryFn: () => api.owners.list(labelQuery(labelId)) }),
   detail: (ownerId: string) =>
     queryOptions({ queryKey: ownerKeys.detail(ownerId), queryFn: () => api.owners.get(ownerId) }),
+  cuts: (ownerId: string, labelId = '') =>
+    queryOptions({ queryKey: ownerKeys.cuts(ownerId, labelId), queryFn: () => api.owners.cuts(ownerId, labelQuery(labelId)), ...MONEY_QUERY }),
   balance: (ownerId: string, period: QueryPeriod = {}, labelId = '') =>
     queryOptions({
       queryKey: ownerKeys.balance(ownerId, period, labelId),

@@ -1587,7 +1587,7 @@ const operations: ApiOperation[] = [
     body: S.cutTransferBody,
     status: 201,
     response: R.cutTransferSchema,
-    errors: ['404 not_found: the cut, the owner, the pseudonym or the document', '400 transfer_zero', '422 document_required', '400 document_kind', '422 document_owner_mismatch'],
+    errors: ['404 not_found: the cut, the owner, the pseudonym or the document', '400 transfer_zero: the position at the cut is zero', '422 document_required', '400 document_kind', '422 document_owner_mismatch'],
   },
   {
     method: 'post',

@@ -10,6 +10,7 @@ import {
   KIND_WITH_SCOPE,
   kindOf,
   type OperationKind,
+  CUT_TRANSFER,
 } from '@erp/shared/operation-kinds';
 
 /** The kinds that go to an owner (no pseudonym needed) and need a basis document (D-173 §1.1). */
@@ -17,9 +18,6 @@ const OWNER_DOCUMENT_KINDS: readonly OperationKind[] = ['buyout', 'writeoff', 'a
 import type { FacadeContext, PayoutArea } from './context';
 import { OWNER_POSITION } from './balance';
 import { ALL_VIEWER, assertViewerHolds, viewerHolds, type Viewer } from './viewer';
-
-/** The external reference of the two rows of a transfer of a cut (D-199): `cut-transfer:<uuid>`. */
-export const CUT_TRANSFER = 'cut-transfer:';
 
 export function payoutsApi(ctx: FacadeContext) {
   const { db, config, owners, settlements, publishing, sources, payments, blockingPayoutsOf, balanceWithFiles, assertOwnLabel } = ctx;

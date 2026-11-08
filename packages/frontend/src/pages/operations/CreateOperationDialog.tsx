@@ -15,6 +15,7 @@ import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
 import { formatMoney } from '../../lib/money';
 import { LabelField, useLabelChoice } from '../../components/fields/LabelField';
+import { CutField } from './cuts/CutField';
 import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
 import { centsToText } from '../owners/components/cents';
@@ -53,6 +54,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
   const [doc, setDoc] = useState<ReadyDocument | null>(null);
   const [proof, setProof] = useState<{ id: string; label: string } | null>(null);
   const [comment, setComment] = useState('');
+  const [cutId, setCutId] = useState('');
   const [confirm, setConfirm] = useState(false);
   // the operation belongs to an own label (D-168): the switch of the header is the default
   const { labelId, setLabelId, labelName } = useLabelChoice();
@@ -84,6 +86,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
         comment: comment.trim(),
         labelId,
         area: bookArea,
+        ...(cutId ? { cutId } : {}),
       }),
     {
       invalidate: 'all',
@@ -177,7 +180,17 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           />
         ) : null}
         <DateField name="op-date" label={t.date} value={date} onChange={setDate} isRequired />
-        <LabelField name="op-label" label={t.label} value={labelId} onChange={setLabelId} isRequired />
+        <LabelField
+          name="op-label"
+          label={t.label}
+          value={labelId}
+          onChange={(v) => {
+            setLabelId(v);
+            setCutId('');
+          }}
+          isRequired
+        />
+        <CutField name="op-cut" labelId={labelId} value={cutId} onChange={setCutId} />
         {kind === 'writeoff' ? (
           <div className="text-sm" data-testid="op-area-fixed">
             {k.area}: {k.areas.publishing}

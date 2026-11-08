@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import type { ColDef } from 'ag-grid-community';
 import type { Operation } from '@erp/shared/api-responses';
@@ -6,6 +7,8 @@ import { Money } from '../../components/Money';
 import { StatusChip, statusLabel } from '../../components/StatusChip';
 import { DataGrid } from '../../components/grid/DataGrid';
 import { OperatorNotice } from '../../components/ActionButton';
+import { settlementQueries } from '../../api/queries/settlements';
+import { useLabel } from '../../lib/label';
 import { ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { OperationActionHost, OperationButtons, type OperationAction } from './OperationActions';
@@ -115,6 +118,13 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
         ) : null,
     },
     {
+      colId: 'cut',
+      headerName: ru.cuts.cols.name,
+      minWidth: 90,
+      valueGetter: (p) => p.data?.cutId ?? '',
+      cellRenderer: (p: P) => (p.data?.cutId ? <CutName id={p.data.cutId} /> : null),
+    },
+    {
       colId: 'labelSource',
       headerName: ru.operations.labelSource.col,
       minWidth: 110,
@@ -161,4 +171,16 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
     { colId: 'comment', headerName: c.comment, minWidth: 140, tooltipValueGetter: (p) => p.data?.comment, valueGetter: (p) => p.data?.comment },
   ];
   return cols.filter((x): x is ColDef<Operation> => x !== null);
+}
+
+/** The name of the cut an operation is attributed to (D-199), from the list of the cuts (no calculation). */
+function CutName(props: { id: string }) {
+  const { labelId } = useLabel(); // a manager reads the cuts of its label only
+  const cuts = useQuery(settlementQueries.cuts(labelId));
+  const cut = cuts.data?.items.find((c) => c.id === props.id);
+  return (
+    <span data-col="cut" data-cut-id={props.id}>
+      {cut ? `${cut.name} · ${cut.cutDate}` : props.id}
+    </span>
+  );
 }

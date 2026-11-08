@@ -63,6 +63,7 @@ export const money = {
       publishing: 'Паблишинг',
       operations: 'Операции',
       admission: 'Допуск',
+      cuts: 'Срезы',
       history: 'История',
     },
   },

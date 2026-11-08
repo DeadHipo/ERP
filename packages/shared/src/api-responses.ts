@@ -2548,7 +2548,8 @@ export const cutStateSchema = z.object({
       ownerName: z.string().describe('The name of the owner'),
       artistId: z.string().nullable().describe("The pseudonym; null = the owner's own position"),
       pseudonym: z.string().nullable().describe("The pseudonym's name; null = the owner's own position"),
-      balance: money.describe('The position at the cut (D-181): > 0 the label owes, < 0 the owner owes; 0 = settled'),
+      balance: money.describe('The position at the cut (D-181): > 0 the label owes, < 0 the owner owes'),
+      settled: z.boolean().describe('|balance| < 0.01: nothing to bring to zero'),
     }),
   ),
 });
@@ -2572,6 +2573,7 @@ const cutOwnerPositionSchema = z.object({
   artistId: z.string().nullable().describe("The pseudonym; null = the owner's own position"),
   pseudonym: z.string().nullable().describe("The pseudonym's name; null = the owner's own position"),
   balance: money.describe('The position (D-181): > 0 the label owes, < 0 the owner owes'),
+  settled: z.boolean().describe('|balance| < 0.01'),
 });
 
 /** `GET /owners/:id/cuts` (D-200). */

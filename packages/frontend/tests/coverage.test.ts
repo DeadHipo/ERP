@@ -19,8 +19,8 @@ describe('operation coverage', () => {
     expect(bad).toEqual([]);
   });
 
-  it('uses only page ids P1..P33 or shell', () => {
-    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|3[0-3])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
+  it('uses only page ids P1..P35 or shell', () => {
+    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|3[0-5])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
     expect(bad).toEqual([]);
   });
 
@@ -33,9 +33,7 @@ describe('operation coverage', () => {
 
   it('gives every refusal a reason', () => {
     const refusals = entries.flatMap(([key, e]) => ('refusal' in e ? [{ key, reason: e.refusal }] : []));
-    // D-198 stages 1–3: the five cut operations wait for their screens (stage 4 removes them from here)
-    const cutsPending = ['GET /settlements/cuts', 'GET /settlements/cuts/:id/state', 'PATCH /settlements/cuts/:id', 'POST /settlements/cuts', 'POST /settlements/cuts/:id/delete', 'POST /settlements/cuts/:id/transfer', 'POST /settlements/operations/:id/cut', 'GET /owners/:id/cuts'];
-    expect(refusals.map((r) => r.key).filter((k) => !cutsPending.includes(k)).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain']);
+    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain']);
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);
   });
 });
