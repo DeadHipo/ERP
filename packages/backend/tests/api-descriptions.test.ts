@@ -64,7 +64,7 @@ describe('the meaning of the fields of the reads (D-178)', () => {
     const doc = buildOpenApiDocument();
     const balance = doc.paths?.['/owners/{id}/balance']?.get?.description ?? '';
     expect(balance).toContain('Owner balance');
-    expect(balance).toContain('- total.payable: start + earned');
+    expect(balance).toContain('- total.payable: earned − recouped');
     expect(balance).toContain('- period.received: A of the period');
     const owners = doc.paths?.['/owners']?.get?.description ?? '';
     expect(owners).not.toContain('Response fields');

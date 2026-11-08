@@ -443,31 +443,17 @@ replace a real statement without it.
    `writer_unmapped`), `scripts/check-label-books.ts`, and the owners whose publishing moved (`compare-reference`
    without `--strict`, recipe 11 step 8, prints them).
 
-## 16. Load the start of 15.10.2026 (the opening balances, D-174)
+## 16. The opening position of 15.10.2026 (the cut «Кабинет 15.10», D-198, D-203…D-205)
 
-The cabinet position of every pseudonym replaces the recalculated history of the book of 0to8 up to 2026-08. The
-owner's files (`cabinet_snapshot_2026-10-15.json`, `transition.json`, in the pack of 2026-11-06) are converted by the
-script; an operator can also import a csv of `START_IMPORT_COLUMNS` on P30 «Старт 15.10». An `org_admin` session
-(`pay`) or `AUTH_MODE=off` on the dev stand.
+The start of D-174 (P30, `scripts/start/*`, `settlements.opening_balances`) was moved into the cut «Кабинет 15.10» of
+0to8 and its code removed (D-205; the loaders are in the git history, the table is an inactive archive). The opening
+position of a pseudonym is its history of the book up to the cut plus a reconciling `adjustment` attributed to the cut.
 
-1. Preview: `npx tsx packages/backend/scripts/start/load-cabinet.ts <snapshot.json> <transition.json>`: writes
-   `data/mvp-load/start/start_<cutoff>.csv` (a row per nick: `master = amount − publishing`, `publishing` from the
-   `terms`; the `missing` nicks as rows without an amount; the approved `start_adjustments` as `adjustment` rows, a
-   `pub_advance` one with `operation_ref` = the advance found by pseudonym, date and amount) and prints the classes:
-   `pseudonym_not_found`, `artist_without_owner`, `pseudonym_ambiguous`, the warning `no_contract_for_label`.
-2. Give the nicks an owner: `--create-owners` creates a person owner named after every pseudonym without one and the
-   unknown nicks themselves (`origin: 'start'`); the ambiguous nicks (two live pseudonyms of one name) stay errors:
-   resolve them on P11 «Дубликаты» (merge or rename), then import their rows from `start_issues.csv` on P30.
-3. Apply: `--skip-errors --apply` writes the rows without an error in one transaction (`start_<cutoff>_clean.csv`); a
-   second run answers every row `unchanged`. A wrong row is deactivated on P30 with a reason, never deleted; a
-   correction is a new `adjustment` row (P30 import, `kind = adjustment`, its `basis`).
-4. Check: `npx tsx packages/backend/scripts/start/check-start.ts [--cutoff 2026-08]`: one `ownerPayables` under 0to8
-   at `asOf = cutoff`; every owner with rows must have `payable = Σ rows` and a `missing` row the gate
-   `start_missing`; it exits 1 and lists the owners that differ. Then P10 of an owner shows `balance-start`, the cut and
-   the rows; the payroll `GET /owners/payroll?label=<0to8>&asOf=2026-08` has payable = start on every row.
-5. After the start: the reports of 2026-09 and later, the operations dated after `synced_at` (the cash registers), the
-   advertising of 2026-09 and later count as before; the history of the book up to the cut is reference only
-   (`OwnerBalance.start.insideStart`). The reach (`ownerReach`) is unchanged: the start is not a unit.
+- A pseudonym found later (an ambiguous nick resolved on P11): an `adjustment_basis` document of 0to8 and an
+  `adjustment` on P20 with «Отнести к срезу» = «Кабинет 15.10» (a negative amount raises the position); check on P35
+  that the position at the cut equals the cabinet.
+- What moves the cut: late data of months ≤ 2026-08, a document approved for them, an operation dated ≤ 15.10 changed;
+  the signal «Незакрытые на срезе» and P35 show it, a transfer or an operation on the cut settles it.
 
 ## 17. Load a month's data after the start (September 2026, D-175)
 
@@ -487,16 +473,16 @@ second apply answers `unchanged`). An `org_admin` session or `AUTH_MODE=off` on 
    `buyout_overrides.json` for an explicit month), the Main prices as `buyout` operations (`external_id` = `main:<row>`).
    Read `data/mvp-load/stage2/buyouts_report.csv`: `already_zero` (in the splits already), `pct_differs` (the registry's
    share ≠ the row: the owner decides), `no_split_at_date`, `seller_not_in_split`, `pseudonym_ambiguous`.
-4. The owner's write-offs (publishing deducted by Main, nothing accrued): `npx tsx
-   packages/backend/scripts/stage2/load-writeoffs.ts <writeoffs.json> --apply` = `adjustment` rows of the start (master).
+4. The owner's write-offs were `adjustment` rows of the start (`stage2/load-writeoffs.ts`, removed by D-205 with the
+   start; their amounts live in the reconciling adjustments of the cut «Кабинет 15.10»).
 5. The numbers: `npx tsx packages/backend/scripts/stage2/payroll-summary.ts --month 2026-09` (the reconciliation row
-   with the C reasons, the payroll at `asOf` with the gates, the largest payables) and `scripts/start/check-start.ts`
-   (the start still equals the cabinet). Then P9 / P10 under 0to8 with `asOf` = the month, and the csv of
+   with the C reasons, the payroll at `asOf` with the gates, the largest payables) and P35 of the cut «Кабинет 15.10»
+   (the positions at the cut still equal the cabinet). Then P9 / P10 under 0to8 with `asOf` = the month, and the csv of
    `GET /owners/payroll?label=&asOf=&area=master`.
 
 ## 18. The admission to the payout (payees, holds, answers, the contract threshold, D-176)
 
-The gate of the payout (the button, P9, P10, the payroll) follows the owner's module 17: contract → start → nothing to
+The gate of the payout (the button, P9, P10, the payroll) follows the owner's module 17: contract → nothing to
 pay → the threshold (the contract's, else $50) → a hold → a payout without a proof → no payee → the first payout without
 an answer «pay» → ready. The checks «no payee» / «needs an answer» are on from the first payee row of the organization.
 
@@ -541,8 +527,7 @@ the data of the live store, in order (every script is a dry run without `--apply
 4. The ASCAP money outside the start: `npx tsx packages/backend/scripts/stage3/load-ascap-supplement.ts "<…>/ASCAP_доплата_артистам_2026-11-06.csv" --apply`
    (group А «начислить» as `credit` operations dated 2026-11-06; `ascap_left.csv` lists what waits for the owner).
 5. The positions: P10 «Баланс» of an owner with pseudonyms of both signs shows the net («сальдо»), «К выплате: сумма
-   положительных позиций» and the negative ones; the payroll's pseudonym rows carry their position. `scripts/start/check-start.ts`
-   still holds (the start is per pseudonym).
+   положительных позиций» and the negative ones; the payroll's pseudonym rows carry their position.
 
 ## 20. Load the B17 reports into publishing v2 (D-182)
 

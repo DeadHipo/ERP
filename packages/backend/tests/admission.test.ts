@@ -45,7 +45,6 @@ describe('the admission (D-176): the gate', () => {
     expect(payoutGate({ ...base, admission: { ...adm, active: false, hasPayee: false, hadPayout: false } }).allowed).toBe(true);
     expect(payoutGate({ ...base, payableCents: 0, admission: { ...adm, held: true } }).reason).toBe('nothing_to_pay');
     expect(payoutGate({ ...base, confirmed: false, admission: { ...adm, held: true } }).reason).toBe('no_contract_for_label');
-    expect(payoutGate({ ...base, startMissing: true, admission: { ...adm, held: true } }).reason).toBe('start_missing');
   });
 
   it('without a payee row the world pays as before; the first payee turns no_payee and needs_answer on; an answer for the amount lets the first payout through', async () => {

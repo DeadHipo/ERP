@@ -9,7 +9,6 @@ import {
   ChatBubbleLeftRightIcon,
   ClockIcon,
   DocumentTextIcon,
-  FlagIcon,
   ScissorsIcon,
   FolderOpenIcon,
   MegaphoneIcon,
@@ -91,7 +90,6 @@ export const NAV: readonly NavSection[] = [
     items: [
       { id: 'sources', label: items.sources, icon: ArchiveBoxIcon, path: '/sources', op: 'GET /sources/files' },
       { id: 'operations', label: items.operations, icon: FolderOpenIcon, path: '/operations', op: 'GET /settlements/operations' },
-      { id: 'start', label: items.start, icon: FlagIcon, path: '/operations/start', op: 'GET /settlements/start' },
       { id: 'cuts', label: items.cuts, icon: ScissorsIcon, path: '/operations/cuts', op: 'GET /settlements/cuts' },
       { id: 'ads', label: items.ads, icon: MegaphoneIcon, path: '/ads', op: 'GET /ads' },
     ],

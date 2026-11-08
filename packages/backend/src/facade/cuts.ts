@@ -3,7 +3,7 @@ import { Decimal, ZERO } from '../shared/money';
 import { calculate, type Calculation } from './calculation';
 import { scoped } from './scope';
 import { ownerReach } from './owner-scope';
-import { ownerBalance, ownerIndex, startsByOwner } from './balance';
+import { ownerBalance, ownerIndex } from './balance';
 import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '../shared/errors';
@@ -34,13 +34,12 @@ export interface CutPosition {
 type Ctx = Pick<FacadeContext, 'db' | 'owners' | 'settlements' | 'modules' | 'opDocIds' | 'labelContext'>;
 type Op = OperationView;
 
-/** One read for every cut: one full calculation, every operation, the starts, the cuts and the owners. */
+/** One read for every cut: one full calculation, every operation, the cuts and the owners. */
 async function readWorld(ctx: Ctx, calc?: Calculation) {
   const { db, owners, settlements, modules, opDocIds } = ctx;
   const read = await db.snapshot(async () => ({
     ownerList: await owners.listOwners(),
     ops: await settlements.listOperations({}),
-    startRows: await settlements.listOpeningBalances({ active: true }),
     cuts: await settlements.listCuts({}),
   }));
   return { ...read, calc: calc ?? (await calculate(modules, await opDocIds())) };
@@ -65,13 +64,13 @@ function inputsAt(w: World, cut: CutView | null) {
   const calc = bounds ? cutCalculationBy(w.calc, bounds) : w.calc;
   const opsOf = new Map<string, Op[]>();
   for (const o of bounds ? cutOperationsBy(w.ops, bounds) : w.ops) if (o.ownerId) (opsOf.get(o.ownerId) ?? opsOf.set(o.ownerId, []).get(o.ownerId))?.push(o);
-  return { calc, index: ownerIndex(calc), startsOf: startsByOwner(calc, w.startRows), opsOf };
+  return { calc, index: ownerIndex(calc), opsOf };
 }
 
 /** One owner's book of a label from those inputs: its positions (every pseudonym with the book, and the owner's own) and the book. */
 function ownerBookAt(inputs: ReturnType<typeof inputsAt>, owner: { id: string; name: string }, labelId: string) {
-  const { calc, index, startsOf, opsOf } = inputs;
-  const b = ownerBalance(calc, owner.id, opsOf.get(owner.id) ?? [], {}, { ...(index.get(owner.id) ?? { units: [], publishing: [] }), starts: startsOf.get(owner.id) ?? [] }, { labelId });
+  const { calc, index, opsOf } = inputs;
+  const b = ownerBalance(calc, owner.id, opsOf.get(owner.id) ?? [], {}, index.get(owner.id) ?? { units: [], publishing: [] }, { labelId });
   const positions: CutPosition[] = [];
   for (const a of b.artists) {
     const book = Object.values(a.byLabel).find((x) => x.labelId === labelId);
@@ -95,7 +94,7 @@ const FIELDS = ['earned', 'paid', 'adsCharged', 'payable'] as const;
 /** The movement of a book between two states (a missing book is zero): earned, paid, ads, the rest of payable, payable. */
 function movement(from: Book | undefined, to: Book | undefined) {
   const d = Object.fromEntries(FIELDS.map((k) => [k, (to?.[k] ?? ZERO).minus(from?.[k] ?? ZERO)])) as Record<(typeof FIELDS)[number], Decimal>;
-  // the rest: what moved payable besides the income, the payouts and the ads (recoup, adjustments, credits, starts …)
+  // the rest: what moved payable besides the income, the payouts and the ads (recoup, adjustments, credits …)
   return { ...d, other: d.payable.minus(d.earned).plus(d.paid).plus(d.adsCharged) };
 }
 

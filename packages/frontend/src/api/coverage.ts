@@ -153,9 +153,6 @@ export const OPERATION_COVERAGE = {
   'POST /settlements/answers': { page: 'P10', route: '/owners/:id', note: 'D-176: action-create-answer → AnswerDialog (field-answer-due, field-answer-decision, field-answer-why, field-answer-about, field-answer-by, action-answer-submit)' },
   'POST /settlements/answers/:id/deactivate': { page: 'P10', route: '/owners/:id', note: 'D-176: action-deactivate-answer-<id> → ReasonDialog' },
   'PATCH /contracts/:id': { page: 'P10', route: '/owners/:id', note: 'D-176: action-set-threshold → ThresholdDialog (field-threshold-contract, field-threshold-cents, action-threshold-submit) on the tab «Допуск»' },
-  'GET /settlements/start': { page: 'P30', route: '/operations/start', note: 'D-174: the opening balances of the book of the switch (start-grid, rows start-row-<id>); under «Все» every book' },
-  'POST /settlements/start/import': { page: 'P30', route: '/operations/start', note: 'D-174: dryRun=1 = action-start-import-preview (field-start-import-file on the shared UploadForm, field-start-cutoff, field-start-synced-at, field-start-basis), dryRun=0 = action-start-import-apply (closed while errors > 0); the template is a Blob of START_IMPORT_COLUMNS' },
-  'POST /settlements/start/:id/deactivate': { page: 'P30', route: '/operations/start', note: 'D-174: action-start-deactivate-<id> → field-start-deactivate-reason, action-start-deactivate-submit' },
   'GET /settlements/cuts': { page: 'P34', route: '/operations/cuts', note: 'D-198: cuts-page, rows cut-<id> with cut-link-<id>; also the field op-cut of the operation dialogs (CutField) and the column «Срез» of P20' },
   'POST /settlements/cuts': { page: 'P34', route: '/operations/cuts', note: 'action-create-cut → field-cut-name, field-cut-date, field-cut-master-to|publishing-to|ads-to, field-cut-comment, action-cut-submit; closed under «Все»' },
   'PATCH /settlements/cuts/:id': { page: 'P34', route: '/operations/cuts', note: 'action-cut-edit-<id> → the same dialog, only what changed is sent' },
@@ -190,4 +187,5 @@ export type OperationKey = keyof typeof OPERATION_COVERAGE;
 export const PAGES_WITHOUT_OPERATIONS: Record<string, string> = {
   P3: 'the open questions are the static list OPEN_QUESTIONS of @erp/shared/open-questions',
   P4: 'revision 1 had a payouts page; it is the payouts view of P9 (/owners?view=payouts), one question and one endpoint',
+  P30: 'D-174 had the page «Старт 15.10» (the opening balances); D-205 removed it: the start is the cut «Кабинет 15.10» (P34 / P35)',
 };

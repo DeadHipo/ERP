@@ -70,7 +70,6 @@ export const status = {
     payout_blocked: 'есть выплата без подтверждения',
     nothing_to_pay: 'нечего выплачивать',
     below_threshold: 'ниже порога',
-    start_missing: 'старт без суммы',
     hold: 'холд',
     no_payee: 'нет получателя',
     needs_answer: 'нужен ответ',

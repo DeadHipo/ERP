@@ -263,11 +263,10 @@ export class Case {
       for (const k of ['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'payable'] as const)
         expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
       // D-173: the new fields add up too; payable is the formula of D-173 in every book; Σ areas = the book
-      for (const k of ['buyouts', 'forgiven', 'writtenOff', 'adjustments', 'start'] as const)
+      for (const k of ['buyouts', 'forgiven', 'writtenOff', 'adjustments'] as const)
         expect(sum(books.map((x) => x[k])), `Σ books ${k} of ${name}`).toBe(b.total[k].toFixed());
       for (const [label, x] of [...Object.entries(b.byLabel), ['total', b.total] as const]) {
-        // D-174: the start is added last; without one the formula is the one of D-173
-        const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff).add(x.start);
+        const formula = x.earned.sub(x.recouped).sub(x.paid).sub(x.adsCharged).add(x.returns).add(x.credits).add(x.adjustments).sub(x.writtenOff);
         expect(x.payable.toFixed(), `payable of ${name} ${label}`).toBe(formula.toFixed());
         // D-181: what is paid = Σ of the positive positions of the pseudonyms and of the owner's own; never below 0,
         // never above the formula when nothing is negative, and equal to max(formula, 0) when no position is negative
@@ -275,7 +274,7 @@ export class Case {
         if (!x.payableNegative) expect(x.payableShown.toFixed(), `payableShown of ${name} ${label}`).toBe(Decimal.max(formula, 0).toFixed());
         expect(x.byArea.master.payableShown.add(x.byArea.publishing.payableShown).gte(x.payableShown), `Σ areas shown ≥ shown of ${name} ${label}`).toBe(true);
         expect(x.byArea.master.ownerPosition.add(x.byArea.publishing.ownerPosition).toFixed(), `Σ areas ownerPosition of ${name} ${label}`).toBe(x.ownerPosition.toFixed());
-        for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'start', 'payable'] as const)
+        for (const k of ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const)
           expect(x.byArea.master[k].add(x.byArea.publishing[k]).toFixed(), `Σ areas ${k} of ${name} ${label}`).toBe(x[k].toFixed());
       }
       for (const p of b.positions) {

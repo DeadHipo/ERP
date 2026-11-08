@@ -778,22 +778,7 @@ const OPERATOR = 'contract-test';
     expect([opsPreview.applied, opsPreview.totals.create]).toEqual([false, 1]);
     const opsImported = await call('post', '/settlements/operations/import', { query: { label: zero.id, dryRun: '0' }, file: opsUpload, labelId: zero.id });
     expect(opsImported.result.operationIds).toHaveLength(1);
-    // the opening balances (D-174): a preview, an apply, the list of the book, a soft rollback
-    const startFile = tmpPath('contract-start.csv');
-    writeFileSync(startFile, 'pseudonym;master;publishing\nSynth One;12.5;0\n');
-    const startUpload = { path: startFile, fileName: 'contract-start.csv' };
-    const startQuery = { label: zero.id, cutoff: '2026-06', syncedAt: '2026-07-01T00:00:00Z', basis: 'contract snapshot' };
-    expect((await refused('/api/v1/settlements/start/import', { cutoff: '2026-06', syncedAt: '2026-07-01T00:00:00Z' }, startUpload)).error.code).toBe('label_required');
-    const startPreview = await call('post', '/settlements/start/import', { query: startQuery, file: startUpload });
-    expect([startPreview.applied, startPreview.totals.create, startPreview.totals.master]).toEqual([false, 1, '12.5']);
-    const startImported = await call('post', '/settlements/start/import', { query: { ...startQuery, dryRun: '0' }, file: startUpload, labelId: zero.id });
-    expect(startImported.result.ids).toHaveLength(1);
     await call('get', '/settlements/admission', { query: { label: zero.id } });
-    const startList = await call('get', '/settlements/start', { query: { label: zero.id } });
-    expect(startList.totals.starts).toBe(1);
-    await call('get', '/settlements/start', { query: { active: 'false' } });
-    const startOff = await call('post', '/settlements/start/:id/deactivate', { params: { id: startImported.result.ids[0] as string }, body: { reason: 'contract' } });
-    expect(startOff.active).toBe(false);
     // the cuts (D-198): create, list, state, change, delete
     const cut = await call('post', '/settlements/cuts', { body: { labelId: zero.id, name: 'Contract cut', cutDate: '2026-07-15' } });
     expect(cut.masterTo).toBe('2026-07-01');
@@ -1114,7 +1099,7 @@ describe('API contract: the ability of every operation (D-171)', () => {
 
   it('a preview mode (D-172) only on the three imports (splits; operations, D-173; the start, D-174), with dryRun in its query; the release preview is a route of its own (D-195)', () => {
     const previews = API_OPERATIONS.filter((o) => o.preview);
-    expect(previews.map(operationKey).sort()).toEqual(['POST /releases/preview', 'POST /settlements/operations/import', 'POST /settlements/start/import', 'POST /splits/import']);
+    expect(previews.map(operationKey).sort()).toEqual(['POST /releases/preview', 'POST /settlements/operations/import', 'POST /splits/import']);
     for (const o of previews.filter((x) => x.path !== '/releases/preview')) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
   });
 

@@ -25,7 +25,6 @@ export const nav = {
     documents: 'Документы',
     sources: 'Отчёты',
     operations: 'Операции',
-    start: 'Старт 15.10',
     cuts: 'Срезы',
     ads: 'Реклама',
     systemOrgs: 'Организации',

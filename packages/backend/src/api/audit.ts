@@ -80,34 +80,6 @@ export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
   }
 > = new Map([
   [
-    'POST /settlements/start/import',
-    {
-      preview: (query: Record<string, unknown>) => query.dryRun !== '0',
-      summary: (response: unknown) => {
-        const r = asRecord(response);
-        const t = asRecord(r.totals);
-        return {
-          fileName: r.fileName,
-          sha256: r.sha256,
-          cutoffMonth: r.cutoffMonth,
-          syncedAt: r.syncedAt,
-          rows: t.rows,
-          create: t.create,
-          unchanged: t.unchanged,
-          starts: t.starts,
-          adjustments: t.adjustments,
-          missing: t.missing,
-          master: t.master,
-          publishing: t.publishing,
-        };
-      },
-      ids: (response: unknown) => {
-        const result = asRecord(asRecord(response).result);
-        return Array.isArray(result.ids) ? (result.ids as string[]) : [];
-      },
-    },
-  ],
-  [
     'POST /splits/import',
     {
       preview: (query: Record<string, unknown>) => query.dryRun !== '0',

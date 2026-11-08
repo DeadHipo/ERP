@@ -82,8 +82,6 @@ export async function labelVisibility(
     if (o.artistId) artistIds.add(canon(o.artistId));
     if (o.ownerId) ownerIds.add(o.ownerId);
   }
-  // D-174: a pseudonym with an opening balance row in the book belongs to it, split or no split
-  for (const r of await settlements.listOpeningBalances({ labelId: book.id, active: true })) artistIds.add(canon(r.artistId));
   for (const id of artistIds) {
     const owner = idx.get(id)?.ownerId;
     if (owner) ownerIds.add(owner);

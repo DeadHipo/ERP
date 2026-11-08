@@ -12,7 +12,7 @@ import { type AdsService } from '../modules/ads';
 import { artistReach, ownerReach } from './owner-scope';
 import { scoped } from './scope';
 import { calculate, type PeriodFilter } from './calculation';
-import { artistBalance, ownerBalance, startsOfOwner, type BalanceView } from './balance';
+import { artistBalance, ownerBalance, type BalanceView } from './balance';
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
@@ -249,15 +249,13 @@ export function createFacadeContext(
     const reach = await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`);
     const full = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
     const calc = cutCalculation(full, opts.asOf);
-    // the owner, its operations and the opening balances of its pseudonyms (D-174) in the same snapshot (inside a
-    // payout: the same write transaction)
-    const { owner, operations, starts, rows, active, thresholds } = await timed(
-      'pg snapshot: owner + operations + starts + admission',
+    // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
+    const { owner, operations, rows, active, thresholds } = await timed(
+      'pg snapshot: owner + operations + admission',
       () =>
         db.snapshot(async () => ({
           owner: await owners.getOwner(id),
           operations: await settlements.listOperations({ ownerId: id }),
-          starts: startsOfOwner(calc, id, await settlements.listOpeningBalances({ active: true })),
           // the admission of the owner (D-176): its payee, holds and answers, the thresholds of the contracts
           rows: {
             payee: (await settlements.listPayees({ ownerId: id, active: true }))[0] ?? null,
@@ -267,11 +265,11 @@ export function createFacadeContext(
           active: (await settlements.listPayees({})).length > 0,
           thresholds: contractThresholds(await owners.approvedContracts(), view?.labelId),
         })),
-      (r) => `${r.operations.length} operations, ${r.starts.length} start rows`,
+      (r) => `${r.operations.length} operations`,
     );
     // `confirmedAny` is the gate's input only, never in the answer (D-169)
     const { confirmedAny, ...balance } = timedSync('ownerBalance (JS)', () =>
-      ownerBalance(calc, id, cutOperations(operations, opts.asOf), cutFilter(f, opts.asOf), { starts }, view),
+      ownerBalance(calc, id, cutOperations(operations, opts.asOf), cutFilter(f, opts.asOf), {}, view),
     );
     // the payouts the owner had are those of the cut (`asOf`): a payout after it does not count
     const admission = admissionOf(rows, { active, thresholdCents: thresholds.get(id) ?? null, labelId: view?.labelId, operations: cutOperations(operations, opts.asOf) });
@@ -300,18 +298,17 @@ export function createFacadeContext(
     const docIds = await timed('settlements.allOperations (document ids)', opDocIds, (r) => `${r.length} ids`);
     const reach = await timed('artistReach', () => artistReach(modules, entry.id), (r) => `${r.isrcs.length} ISRCs`);
     const calc = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
-    const { artist, owner, operations, starts } = await timed(
-      'pg snapshot: artist + owner + operations + starts',
+    const { artist, owner, operations } = await timed(
+      'pg snapshot: artist + owner + operations',
       () =>
         db.snapshot(async () => ({
           artist: await owners.getArtist(entry.id),
           owner: entry.ownerId ? await owners.getOwner(entry.ownerId) : null,
           operations: entry.ownerId ? await settlements.listOperations({ ownerId: entry.ownerId }) : [],
-          starts: entry.ownerId ? startsOfOwner(calc, entry.ownerId, await settlements.listOpeningBalances({ active: true })) : [],
         })),
       (r) => `${r.operations.length} operations`,
     );
-    const money = timedSync('artistBalance (JS)', () => artistBalance(calc, entry.id, operations, f, { owner: { starts } }, view));
+    const money = timedSync('artistBalance (JS)', () => artistBalance(calc, entry.id, operations, f, {}, view));
     return { artist, owner, ...money };
   }
 
@@ -333,7 +330,6 @@ export function createFacadeContext(
     return payoutGate({
       confirmed: b.confirmed,
       confirmedAny: b.confirmedAny,
-      startMissing: b.total.startMissing,
       blocking: b.blockingPayouts,
       payableCents: floorToCents(payable),
       thresholdCents: config.payoutThresholdCents,

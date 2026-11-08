@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { writeFileSync } from 'node:fs';
-import { START_IMPORT_COLUMNS } from '@erp/shared/start-import';
 import { payoutSnapshotSchema } from '@erp/shared/api-responses';
 import { Case, I } from './helpers/golden-case';
-import { approvedDoc, tmpPath, writeB17 } from './helpers/fixtures';
+import { approvedDoc, writeB17 } from './helpers/fixtures';
 import { OWNER_POSITION } from '../src/facade/balance';
 
 // D-181: the position per pseudonym (the owner's rule «ники не сальдируются»): the owner is paid Σ of the positive
@@ -12,17 +10,7 @@ import { OWNER_POSITION } from '../src/facade/balance';
 // A payout of the button records what it took from which position (`allocation`); a payout without one is shared to
 // the positive positions, the largest first. Hand-computed, synthetic names.
 
-const HEADER = START_IMPORT_COLUMNS.map((c) => c.name);
-type Row = Partial<Record<(typeof HEADER)[number], string>>;
-function csv(rows: Row[], name = 'start.csv') {
-  const text = [HEADER.join(';'), ...rows.map((r) => HEADER.map((h) => r[h as keyof Row] ?? '').join(';'))].join('\r\n') + '\r\n';
-  const path = tmpPath(name);
-  writeFileSync(path, '﻿' + text);
-  return { path, fileName: name };
-}
-const CUT = { cutoff: '2026-02', syncedAt: '2026-02-28T12:00:00.000Z', basis: 'cabinet synth' };
-
-/** Owner O with pseudonyms P (I(1) 50 %) and N; starts under 0to8: P +50, N −30; a unit I(1) 100 of 2026-03 → P earns 50. */
+/** Owner O with pseudonyms P (I(1) 50 %) and N; adjustments under 0to8 (D-205, before: the start of D-174): P +50, N −30; a unit I(1) 100 of 2026-03 → P earns 50. */
 async function world() {
   const c = await Case.start();
   const f = c.f;
@@ -31,7 +19,11 @@ async function world() {
   await c.second('N', 'P');
   await c.track(I(1));
   await c.split(I(1), [['P', '50']]);
-  await f.importStart({ ...csv([{ pseudonym: 'P', master: '50' }, { pseudonym: 'N', master: '-30' }]), labelId: zero, dryRun: false, ...CUT });
+  // an adjustment lowers the position by its amount (D-173): −50 gives P +50, +30 gives N −30
+  const owner = c.owners.get('P') as string;
+  const basis = await approvedDoc(f, 'adjustment_basis', owner);
+  for (const [nick, amount] of [['P', '-50.00'], ['N', '30.00']] as const)
+    await f.createOperation({ kind: 'adjustment', direction: 'in', amount, ownerId: owner, artistId: c.id(nick), date: '2026-02-28', documentId: basis.id, comment: 'opening position', labelId: zero });
   await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
   return { c, f, zero, owner: c.owners.get('P') as string };
 }
@@ -40,12 +32,12 @@ describe('the position per pseudonym (D-181)', () => {
   it('a negative pseudonym does not offset a positive one: payable is the net, payableShown Σ of the positive positions, the gate pays the latter', async () => {
     const { c, f, owner, zero } = await world();
     const b = await f.ownerBalance(owner);
-    expect(b.total.start.toFixed()).toBe('20');
+    expect(b.total.adjustments.toFixed()).toBe('20');
     expect(b.total.earned.toFixed()).toBe('50');
     expect(b.total.payable.toFixed()).toBe('70'); // 20 + 50: the formula, the net of the positions
     const p = b.artists.find((a) => a.pseudonym === 'P') as (typeof b.artists)[number];
     const n = b.artists.find((a) => a.pseudonym === 'N') as (typeof b.artists)[number];
-    expect(p.position.toFixed()).toBe('100'); // 50 start + 50 earned
+    expect(p.position.toFixed()).toBe('100'); // 50 opening + 50 earned
     expect(n.position.toFixed()).toBe('-30');
     expect(n.positionNegative).toBe(true);
     expect(b.total.payableShown.toFixed()).toBe('100'); // only the positive position

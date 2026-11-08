@@ -429,17 +429,6 @@ export const settlements = {
       body: fileForm(file),
       schema: R.operationImportSchema,
     }),
-  /** The opening balances of a book (D-174, P30): the rows with their pseudonyms and sums; `active` false lists the deactivated too. */
-  startList: (query: z.input<typeof S.startListQuery> = {}) => call('GET', '/settlements/start', { query, schema: R.startListSchema }),
-  /** The import of the opening balances (D-174, P30): `dryRun` true = the preview (nothing written), false = the apply (all or nothing). */
-  importStart: (file: File, q: { labelId: string; cutoff: string; syncedAt: string; basis?: string }, dryRun: boolean) =>
-    call('POST', '/settlements/start/import', {
-      query: { label: q.labelId, cutoff: q.cutoff, syncedAt: q.syncedAt, dryRun: dryRun ? '1' : '0', ...(q.basis ? { basis: q.basis } : {}) } satisfies z.input<typeof S.startImportQuery>,
-      body: fileForm(file),
-      schema: R.startImportSchema,
-    }),
-  deactivateStart: (rowId: string, body: z.input<typeof S.deactivateStartBody>) =>
-    call('POST', `/settlements/start/${id(rowId)}/deactivate`, { body, schema: R.openingBalanceSchema }),
   /** The cuts of a book (D-198, P34/P35). */
   cuts: (query: z.input<typeof S.cutListQuery> = {}) => call('GET', '/settlements/cuts', { query, schema: R.cutListSchema }),
   createCut: (body: z.input<typeof S.createCutBody>) => call('POST', '/settlements/cuts', { body, schema: R.cutSchema }),

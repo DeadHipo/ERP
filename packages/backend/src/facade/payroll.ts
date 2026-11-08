@@ -2,7 +2,7 @@ import { centsToDecimal, Decimal, ZERO } from '../shared/money';
 import { ValidationError } from '../shared/errors';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, reconcile } from './calculation';
-import { classifyOperation, ownerBalance, ownerIndex, startsByOwner } from './balance';
+import { classifyOperation, ownerBalance, ownerIndex } from './balance';
 import { cutCalculation, cutFilter, cutOperations } from './as-of';
 import type { FacadeContext, PayoutArea } from './context';
 import { ALL_VIEWER, assertViewerHolds, type Viewer } from './viewer';
@@ -15,7 +15,7 @@ import { admissionIndex, admissionOf, contractThresholds } from './admission';
 
 export type PayrollSheet = 'payroll' | 'waiting' | 'buyouts' | 'control';
 
-const MONEY = ['start', 'earned', 'recouped', 'unrecouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'forgiven', 'writtenOff', 'adjustments'] as const;
+const MONEY = ['earned', 'recouped', 'unrecouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'forgiven', 'writtenOff', 'adjustments'] as const;
 type MoneyKey = (typeof MONEY)[number];
 type Money = Record<MoneyKey, Decimal>;
 const zeroMoney = (): Money => Object.fromEntries(MONEY.map((k) => [k, ZERO])) as Money;
@@ -134,21 +134,19 @@ export function payrollApi(ctx: FacadeContext) {
       const asOf = opts.asOf;
       const lc = await labelContext(labelId);
       const visible = lc?.visible.ownerIds ?? new Set<string>();
-      const { list, ops, contracts, relabelled, startRows, admission } = await db.snapshot(async () => {
+      const { list, ops, contracts, relabelled, admission } = await db.snapshot(async () => {
         const contracts = await owners.approvedContracts();
         return {
           list: (await owners.listOwners()).filter((o) => visible.has(o.id)),
           ops: await settlements.listOperations({}),
           contracts,
           relabelled: await audit.relabelledOperations(),
-          startRows: await settlements.listOpeningBalances({ active: true }),
           // the admission (D-176): the payee, holds and answers of every owner, the contract thresholds under the label
           admission: await admissionIndex(settlements, contractThresholds(contracts, labelId)),
         };
       });
       const full = await calculate(modules, await opDocIds());
       const calc = cutCalculation(full, asOf);
-      const startsOf = startsByOwner(calc, startRows);
       const cut = cutOperations(ops, asOf);
       const f = cutFilter({}, asOf);
       const index = ownerIndex(calc);
@@ -176,7 +174,7 @@ export function payrollApi(ctx: FacadeContext) {
       const owners_ = [...list].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       const nameOf = new Map(list.map((o) => [o.id, o.name]));
       for (const o of owners_) {
-        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], f, { ...(index.get(o.id) ?? { units: [], publishing: [] }), starts: startsOf.get(o.id) ?? [] }, view);
+        const b = ownerBalance(calc, o.id, opsOf.get(o.id) ?? [], f, index.get(o.id) ?? { units: [], publishing: [] }, view);
         const t = b.total;
         const pick = (k: Exclude<MoneyKey, 'unrecouped' | 'forgiven'>) => (area === 'all' ? t[k] : t.byArea[area][k]);
         const contract = contractOf.get(o.id) ?? null;
@@ -189,7 +187,6 @@ export function payrollApi(ctx: FacadeContext) {
         };
         // the total of the area
         const total: Money = {
-          start: pick('start'),
           earned: pick('earned'),
           recouped: pick('recouped'),
           unrecouped: area === 'publishing' ? ZERO : sum(b.positions.map((p) => p.remaining)),
@@ -212,8 +209,6 @@ export function payrollApi(ctx: FacadeContext) {
         if (area !== 'publishing')
           for (const a of b.artists) {
             const m = zeroMoney();
-            // the opening balance of the pseudonym (D-174): on its row, the area's part of it
-            m.start = area === 'master' ? sum((b.start?.rows ?? []).filter((r) => r.artistId === a.artistId).map((r) => centsToDecimal(r.masterCents))) : a.start;
             m.earned = a.earned;
             m.recouped = a.recoupedFromMaster;
             m.unrecouped = a.unrecouped;

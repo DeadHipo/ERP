@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { apiPost, labelOf, openAs, OPERATOR, settled, toastOk } from '../helpers';
+import { apiPost, labelOf, openAs, settled, toastOk } from '../helpers';
 
-// S56 (19 §4, D-176): the admission of P10 with a synthetic owner of its own (a contract, a start of 12.5 under 0to8, no
-// income). Before any payee row the gate is «allowed»; the first payee of the organization turns the checks on: the
+// S56 (19 §4, D-176): the admission of P10 with a synthetic owner of its own (a contract, an opening adjustment of 12.5 under
+// 0to8, no income). Before any payee row the gate is «allowed»; the first payee of the organization turns the checks on: the
 // first payout needs an answer for its amount; a hold closes the payout and its release opens it; the threshold of the
 // contract wins over the default; a deactivated payee is «no payee». The seed's own scenarios paid before this file.
 
@@ -22,7 +22,7 @@ async function reason(page: Page, text: string) {
   await page.getByTestId('action-admission-reason-submit').click();
 }
 
-test('S56 an owner with a contract and a start: the gate is allowed while the organization has no payee', async ({ page, request }) => {
+test('S56 an owner with a contract and an opening position: the gate is allowed while the organization has no payee', async ({ page, request }) => {
   const owner = await apiPost(request, '/owners', { name: 'Owner S56 e2e', kind: 'person', force: true });
   expect(owner.status).toBe(201);
   ownerId = (owner.body as { id: string }).id;
@@ -33,11 +33,21 @@ test('S56 an owner with a contract and a start: the gate is allowed while the or
   expect((await apiPost(request, `/documents/${(doc.body as { id: string }).id}/approve`, {})).status).toBe(200);
   const contract = await apiPost(request, '/contracts', { ownerId, documentId: (doc.body as { id: string }).id, artistIds: [(artist.body as { id: string }).id] });
   expect(contract.status).toBe(201);
-  const start = await request.post(`/api/v1/settlements/start/import?label=${labelOf('0to8')}&cutoff=2026-06&syncedAt=2026-07-01T00:00:00Z&dryRun=0&basis=e2e`, {
-    headers: { 'X-Operator': OPERATOR },
-    multipart: { file: { name: 'start-s56.csv', mimeType: 'text/csv', buffer: Buffer.from(`pseudonym;master\n${PSEUDONYM};12.5\n`) } },
+  // the opening position of 12.5: an adjustment of −12.5 under 0to8 (D-205; it was a start row of D-174)
+  const basis = await apiPost(request, '/documents', { kind: 'adjustment_basis', title: 'S56 basis', ownerId, fileRef: 'dummy://s56-basis.pdf', requiresApproval: false, labelId: labelOf('0to8') });
+  expect(basis.status).toBe(201);
+  const opening = await apiPost(request, '/settlements/operations', {
+    kind: 'adjustment',
+    direction: 'in',
+    amount: '-12.50',
+    ownerId,
+    artistId: (artist.body as { id: string }).id,
+    date: '2026-07-01',
+    documentId: (basis.body as { id: string }).id,
+    comment: 'S56 opening position',
+    labelId: labelOf('0to8'),
   });
-  expect(start.status()).toBe(201);
+  expect(opening.status).toBe(201);
   await openAdmission(page);
   await expect(page.getByTestId('admission-tab')).toHaveAttribute('data-active', 'false');
   await expect(page.getByTestId('admission-inactive')).toBeVisible();

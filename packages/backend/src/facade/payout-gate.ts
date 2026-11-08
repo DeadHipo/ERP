@@ -23,8 +23,7 @@ export interface Admission {
 /**
  * The one decision "may this owner be paid now" (17 N19). `createPayout` throws the code of `reason`, the balance
  * and the payables list show the same object, so the button and the screen cannot disagree. The order (D-176, the
- * owner's module 17): the owner's contract (owner confirmed; under a label one with that label or none, D-169), the
- * start without an amount (D-174), nothing to pay and the threshold («вне ведомости»), a hold, a payout without a
+ * owner's module 17): the owner's contract (owner confirmed; under a label one with that label or none, D-169), nothing to pay and the threshold («вне ведомости»), a hold, a payout without a
  * proof, no payee, the first payout without an answer («нужен ответ»: an active answer for exactly this amount lets it
  * through), ready. `amountCents` is the payable amount floored to whole cents, never negative: what the button would pay.
  */
@@ -32,7 +31,6 @@ export function payoutGate(input: {
   confirmed: boolean;
   /** An approved contract of any label; defaults to `confirmed`. */
   confirmedAny?: boolean;
-  startMissing?: boolean;
   blocking: string[];
   payableCents: number;
   thresholdCents: number;
@@ -48,7 +46,6 @@ export function payoutGate(input: {
   const threshold = a?.thresholdCents ?? input.thresholdCents;
   if (!(input.confirmedAny ?? input.confirmed)) return deny('owner_not_confirmed');
   if (!input.confirmed) return deny('no_contract_for_label');
-  if (input.startMissing) return deny('start_missing');
   if (input.payableCents <= 0) return deny('nothing_to_pay');
   if (input.payableCents < threshold) return deny('below_threshold');
   if (a?.held) return deny('hold');

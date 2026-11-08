@@ -8,7 +8,7 @@ describe('nav.ts', () => {
       ['/', '/queue', '/signals', '/questions', '/owners?view=payouts'],
       ['/tracks', '/releases', '/owners', '/artists'],
       ['/splits', '/participations', '/labels', '/publishing', '/publishing-v2', '/documents'],
-      ['/sources', '/operations', '/operations/start', '/operations/cuts', '/ads'],
+      ['/sources', '/operations', '/operations/cuts', '/ads'],
     ]);
     expect(new Set(ALL_ITEMS.map((i) => i.id)).size).toBe(ALL_ITEMS.length);
   });

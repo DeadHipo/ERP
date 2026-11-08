@@ -690,29 +690,6 @@ export const createAnswerBody = z.object({
 export const reasonBody = z.object({ reason: z.string().trim().min(1).max(2000) });
 export const contractThresholdBody = z.object({ payoutThresholdCents: z.number().int().min(0).nullable() });
 
-// ---- the opening balances (D-174): the start of 15.10.2026 ----
-
-/** `GET /settlements/start`: the rows of one book (`label=`), or every book without it; `active=false` lists the inactive too. */
-export const startListQuery = z.object({
-  ...pageQuery.shape,
-  label: z.string().optional().describe('Id of an own label: the book; without it every book'),
-  active: z.enum(['true', 'false']).optional().describe('true (default): only the active rows; false: every row, the deactivated included'),
-});
-
-/** `POST /settlements/start/import`: the book, the cut month and the synchronisation moment (checked before the body), the preview flag, a default basis. */
-export const startImportQuery = z.object({
-  ...uploadLabelQuery.shape,
-  cutoff: month.describe('The last report month inside the start (YYYY-MM)'),
-  syncedAt: z
-    .string()
-    .min(10)
-    .describe('The boundary of the movements, ISO 8601 with a zone (operations of the book dated up to its UTC day are inside the start)'),
-  dryRun: z.enum(['0', '1']).default('1').describe('1 = preview (nothing is written, no audit row), 0 = apply (all or nothing)'),
-  basis: z.string().trim().max(2000).optional().describe('The basis of the rows without a `basis` cell (the snapshot file and its sha256, the decision)'),
-});
-
-/** `POST /settlements/start/:id/deactivate`: the soft rollback of a row. */
-export const deactivateStartBody = z.object({ reason: z.string().trim().min(1).max(2000) });
 
 // ---- the payroll stage: asOf, the area, the payroll export (D-173) ----
 

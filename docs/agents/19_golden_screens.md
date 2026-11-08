@@ -514,18 +514,10 @@ the apply closed with `import-blocked-reason`. The corrected file (two payouts 1
 → apply 201 (two operation ids), `operation-import-result`; the same file again: unchanged 2, create 0,
 `issue-unchanged` (info), the apply closed «применять нечего»; P20 `?kind=payout` two rows; P10 paid 12.5.
 
-**S55 (P30 opening balances, `45-start`)** an owner of its own (`Owner S55 e2e` with the pseudonym `S55 Start e2e`,
-by API, no income). Under «Все» P30 (the sidebar `nav-start`) lists every book and the import is closed. Under 0to8 the
-cut 2026-06 / 2026-07-01T00:00:00Z / «e2e snapshot»: a file of 2 rows: line 2 `create`, line 3 (an unknown pseudonym)
-`issue-pseudonym_not_found` error, the apply closed with `import-blocked-reason`. The corrected file (one start 12.5 / 0):
-create 1, starts 1 → apply 201 (one row id), `start-import-result`, the row `start-row-<id>` with `data-kind` start and
-`data-artist-id`, `start-totals` starts 1; the same file again: unchanged 1, `issue-unchanged` (info), the apply closed.
-P10 of the owner: `balance-start` 12.5, earned 0, payable 12.5, `start-cut-0to8` `data-cutoff` 2026-06, the row in
-`start-rows`, `by-label-0to8` `[data-col=start]` 12.5. The deactivation with the reason «e2e rollback»: the row leaves the
-active list, `field-start-show-inactive` shows it with `data-active` false; P10 payable 0 and no `balance-start`.
+**S55** (P30 «Старт 15.10», `45-start`) was removed with the start by D-205.
 
 **S56 (P10 admission, `46-admission`)** an owner of its own (`Owner S56 e2e`, the pseudonym `S56 Admit e2e`, an approved
-contract, a start of 12.5 under 0to8 by the API, no income). The tab «Допуск»: `admission-tab` `data-active` false,
+contract, an opening `adjustment` of −12.5 under 0to8 by the API (D-205; before: a start row), no income). The tab «Допуск»: `admission-tab` `data-active` false,
 `admission-inactive`, the gate `data-reason` '' (allowed), `payee-none`, `holds-none`. The first payee of the
 organization (`PayeeDialog`: tipalti, ref `e2e-56`): `data-active` true, `payee-<id>` `data-channel` tipalti, the gate
 `needs_answer`; the answer dialog pre-fills `12.50`; after the answer the gate is ''. A hold (`HoldDialog`, decision):
@@ -640,7 +632,6 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 42 | `42-payroll.spec.ts` | S52 (the payroll csv and json of 0to8, the area, `asOf` on P9 / P10) | reads |
 | 43 | `43-operation-import.spec.ts` | S53 (P29: classes, apply, replay) | acts (A: `Owner S53 e2e` with two migrated payouts) |
 | 44 | `44-b17-replace.spec.ts` | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
-| 45 | `45-start.spec.ts` | S55 (P30: the list, the preview classes, the apply, P10 with the start, the deactivation) | acts (A: `Owner S55 e2e` with one start row, deactivated at the end) |
 | 46 | `46-admission.spec.ts` | S56 (P10 «Допуск»: the payee turns the admission on, the answer, the hold, the threshold, no payee) | acts (A: `Owner S56 e2e`; the first payee row of the organization: the admission is on from here) |
 | 48 | `48-cuts.spec.ts` | S57 (P34 / P35: a cut, the transfer, the owner's tab «Срезы», an operation attributed from its row, the delete refused) | acts (A: `Owner S57 e2e` with an adjustment and a transfer; one cut of 0to8 stays) |
 | – | `smoke.spec.ts` | the shell (the sidebar = `navFor` of `me.abilities`: an `org_admin` sees every section and «Организация»), the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders (also `/users`) | reads |

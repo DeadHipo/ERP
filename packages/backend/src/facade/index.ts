@@ -31,7 +31,6 @@ import { releaseRegistryApi } from './release-registry';
 import { onboardingApi } from './onboarding';
 import { payrollApi } from './payroll';
 import { operationImportApi } from './operation-import';
-import { startApi } from './start';
 import { admissionApi } from './admission';
 import { cutsApi } from './cuts';
 
@@ -101,7 +100,6 @@ export function openFacade(config: FacadeConfig) {
     ...onboardingApi(ctx),
     ...payrollApi(ctx),
     ...operationImportApi(ctx, payoutsPart),
-    ...startApi(ctx),
     ...admissionApi(ctx),
     ...cutsApi(ctx, payoutsPart),
     ...pubV2LinksApi(ctx, { pubv2, links, publishing }),

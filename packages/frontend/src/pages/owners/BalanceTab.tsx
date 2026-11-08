@@ -16,7 +16,6 @@ import { Money } from '../../components/Money';
 import { SelectField } from '../../components/fields/SelectField';
 import { formatMoney } from '../../lib/money';
 import { useWriteLabel } from '../../lib/label';
-import { useOwnLabels } from '../../components/LabelSwitch';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from './components/cents';
 import { Fact, Section, SimpleTable, Td } from './components/Fact';
@@ -59,7 +58,6 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title={t.formula} testId="balance-formula">
-          {b.total.start !== undefined && b.start ? <Fact testId="balance-start" label={k.start} value={b.total.start} /> : null}
           <Fact testId="balance-earned" label={t.earned} value={b.total.earned} />
           <Fact testId="balance-recouped" label={t.recouped} value={b.total.recouped} />
           <Fact testId="balance-adsCharged" label={ru.ads.balance.adsCharged} value={b.total.adsCharged} />
@@ -71,11 +69,6 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
           <Fact testId="balance-payable" label={t.payable} value={b.total.payable} />
           {b.total.ownerPosition !== undefined ? <Fact testId="balance-ownerPosition" label={t.ownerPosition} value={b.total.ownerPosition} /> : null}
           <Fact testId="balance-payableShown" label={t.payableShown} value={b.total.payableShown} strong />
-          {b.total.startMissing ? (
-            <div data-testid="start-missing" className="rounded-lg border border-warning/40 bg-warning/5 p-2 text-sm">
-              {ru.operations.start.balance.missing}
-            </div>
-          ) : null}
           {b.total.payableNegative ? (
             <div data-testid="payable-negative" className="rounded-lg border border-danger/40 bg-danger/5 p-2 text-sm text-danger">
               {t.negative}
@@ -220,55 +213,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
         )}
       </Section>
       <AdsSection balance={b} />
-      {b.start ? <StartSection start={b.start} /> : null}
     </div>
-  );
-}
-
-/** P10 Старт (D-174): the cut of every book, the start rows of the owner's pseudonyms and what the cut removed (reference only). */
-function StartSection(props: { start: NonNullable<Balance['start']> }) {
-  const s = props.start;
-  const st = ru.operations.start;
-  const own = useOwnLabels();
-  const nameOf = (id: string | null) => (id ? (own.find((l) => l.id === id)?.name ?? id) : t.unmappedLabel);
-  return (
-    <Section title={st.balance.title} testId="balance-start-section">
-      <ul className="list-disc pl-5 text-sm" data-testid="start-cuts">
-        {s.cuts.map((c) => (
-          <li key={c.labelId ?? ''} data-testid={`start-cut-${nameOf(c.labelId)}`} data-cutoff={c.cutoffMonth} data-synced-day={c.syncedDay}>
-            {fmt(st.balance.cut, { label: nameOf(c.labelId), cutoff: c.cutoffMonth, day: c.syncedDay })}
-          </li>
-        ))}
-      </ul>
-      <SimpleTable head={[st.cols.pseudonym, st.cols.kind, st.cols.master, st.cols.publishing, st.cols.missing, st.cols.basis]} testId="start-rows">
-        {s.rows.map((r) => (
-          <tr key={r.id} data-testid={`start-row-${r.id}`} data-kind={r.kind} data-artist-id={r.artistId}>
-            <Td>
-              <EntityLink kind="artist" id={r.artistId} label={r.pseudonym} />
-            </Td>
-            <Td col="kind">{st.kinds[r.kind]}</Td>
-            <Td col="master">
-              <Money value={centsToText(r.masterCents)} />
-            </Td>
-            <Td col="publishing">
-              <Money value={centsToText(r.publishingCents)} />
-            </Td>
-            <Td col="missing">{r.missing ? '✓' : ''}</Td>
-            <Td col="basis">{r.basis}</Td>
-          </tr>
-        ))}
-      </SimpleTable>
-      <p className="text-xs text-muted" data-testid="start-inside">
-        {fmt(st.balance.inside, {
-          earned: formatMoney(s.insideStart.earned),
-          waiting: formatMoney(s.insideStart.waiting),
-          paid: formatMoney(s.insideStart.paid),
-          advances: formatMoney(s.insideStart.advances),
-          adsCharged: formatMoney(s.insideStart.adsCharged),
-          operations: s.insideStart.operations,
-        })}
-      </p>
-    </Section>
   );
 }
 
@@ -277,11 +222,11 @@ export function LabelBooks(props: { books: Balance['byLabel'] }) {
   const c = t.bookCols;
   return (
     <Section title={t.byLabel} testId="by-label">
-      <SimpleTable head={[c.label, k.start, c.earned, c.waiting, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable, t.payableShown]}>
+      <SimpleTable head={[c.label, c.earned, c.waiting, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable, t.payableShown]}>
         {Object.entries(props.books).map(([label, v]) => (
-          <tr key={label} data-testid={`by-label-${label}`} data-label-id={v.labelId ?? ''} data-start-missing={String(v.startMissing ?? false)}>
+          <tr key={label} data-testid={`by-label-${label}`} data-label-id={v.labelId ?? ''}>
             <Td>{label === '?' ? t.unmappedLabel : label}</Td>
-            {(['start', 'earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable', 'payableShown'] as const).map((f) => (
+            {(['earned', 'waiting', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable', 'payableShown'] as const).map((f) => (
               <Td key={f} col={f}>
                 <Money value={v[f]} />
               </Td>
@@ -296,10 +241,10 @@ export function LabelBooks(props: { books: Balance['byLabel'] }) {
 /** The two areas of the book (D-173): Σ = the book field by field; the payout button pays one area (master by default). */
 function AreaBooks(props: { areas: NonNullable<Balance['total']['byArea']> }) {
   const c = t.bookCols;
-  const fields = ['start', 'earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const;
+  const fields = ['earned', 'recouped', 'adsCharged', 'paid', 'returns', 'credits', 'buyouts', 'writtenOff', 'adjustments', 'payable'] as const;
   return (
     <Section title={k.byArea} testId="balance-by-area">
-      <SimpleTable head={[k.area, k.start, c.earned, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable]}>
+      <SimpleTable head={[k.area, c.earned, c.recouped, c.adsCharged, c.paid, c.returns, c.credits, k.buyouts, k.writtenOff, k.adjustments, c.payable]}>
         {(['master', 'publishing'] as const).map((area) => (
           <tr key={area} data-testid={`balance-area-${area}`}>
             <Td>{ru.operations.kind.areas[area]}</Td>

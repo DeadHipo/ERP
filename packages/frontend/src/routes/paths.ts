@@ -36,8 +36,6 @@ export const ROUTE_PATHS = {
   operations: 'operations',
   /** P29 (D-173): entered from P20 only, no sidebar item (as P28). */
   operationImport: 'operations/import',
-  /** P30 (D-174): the opening balances of a book, their import with a preview. */
-  start: 'operations/start',
   /** P34, P35 (D-198): the cuts of a book, one cut with its positions. */
   cuts: 'operations/cuts',
   cut: 'operations/cuts/:id',

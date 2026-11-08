@@ -43,10 +43,10 @@ try {
   for (const [k, g] of [...gates].sort((a, b) => b[1].n - a[1].n)) console.log(`  gate ${k}: ${g.n} owners, Σ payable ${g.sum.toFixed(2)}`);
   const positive = totals.filter((r) => (r.payable ?? ZERO).gt(0));
   const negative = totals.filter((r) => (r.payable ?? ZERO).lt(0));
-  console.log(`  positive ${positive.length} (Σ ${sum(positive.map((r) => r.payable as Decimal)).toFixed(2)}), negative ${negative.length} (Σ ${sum(negative.map((r) => r.payable as Decimal)).toFixed(2)}), start Σ ${sum(totals.map((r) => r.start)).toFixed(2)}, earned Σ ${sum(totals.map((r) => r.earned)).toFixed(2)}`);
+  console.log(`  positive ${positive.length} (Σ ${sum(positive.map((r) => r.payable as Decimal)).toFixed(2)}), negative ${negative.length} (Σ ${sum(negative.map((r) => r.payable as Decimal)).toFixed(2)}), earned Σ ${sum(totals.map((r) => r.earned)).toFixed(2)}`);
   console.log('  largest payables:');
   for (const r of [...positive].sort((a, b) => (b.payable as Decimal).cmp(a.payable as Decimal)).slice(0, 12))
-    console.log(`    ${r.ownerName.slice(0, 30).padEnd(30)} payable ${(r.payable as Decimal).toFixed(2).padStart(12)} start ${r.start.toFixed(2).padStart(12)} earned ${r.earned.toFixed(2).padStart(10)} gate ${r.gate?.allowed ? 'ok' : r.gate?.reason}`);
+    console.log(`    ${r.ownerName.slice(0, 30).padEnd(30)} payable ${(r.payable as Decimal).toFixed(2).padStart(12)} earned ${r.earned.toFixed(2).padStart(10)} gate ${r.gate?.allowed ? 'ok' : r.gate?.reason}`);
   console.log(`  waiting rows ${p.waiting.length}: Σ ${sum(p.waiting.map((w) => w.amount)).toFixed(2)}; buyouts ${p.buyouts.length}`);
 } finally {
   await stack.close();
