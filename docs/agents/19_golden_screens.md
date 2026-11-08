@@ -538,7 +538,7 @@ The admission of the e2e organization stays on after this file (the seed's own p
 adjustment of −10 dated 2026-05-01 under 0to8 on an approved `adjustment_basis` by the API: the position +10). P34 from
 `nav-cuts`: `action-create-cut` «S57 срез» on 2026-06-15 (the answer's `masterTo` 2026-06-01); P35 `cut-position-<owner>-<artist>`
 `[data-col=balance]` `data-value` 10. «Перенести» with a new document (`field-cut-transfer-document`): the row leaves the
-default list, with `field-cut-show-all` its balance is 0; P10 `?tab=cuts`: `owner-cut-positions-<cut>-<artist>` 0, one
+default list, with `field-cut-show-all` its balance is 0; P10 block «Срезы» (D-204): `owner-cut-positions-<cut>-<artist>` 0, one
 `owner-cut-op-*`, `owner-cuts-after-positions-<label>-<artist>` 10. P20: `action-op-cut-<adjustment>` → `field-op-cut`
 «S57 срез · 2026-06-15» → the row's `[data-col=cut]` `data-cut-id`; the delete of the cut answers the toast `cut_in_use`.
 The cut stays in the e2e organization (its signal `cutsUnsettled` counts the seeded positions of 0to8).

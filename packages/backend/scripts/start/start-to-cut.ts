@@ -19,7 +19,10 @@
  * The forgiveness is written through the settlements module, not `forgiveAdvance`: its check `forgiveness_exceeds`
  * reads the unrecouped part now, and the migration forgives the part at the bound (a migration-only bypass, D-203).
  *
- *   npx tsx packages/backend/scripts/start/start-to-cut.ts [--label 0to8] [--cut «Кабинет 15.10»] [--apply] [--org <id>] [dataDir]
+ * `--deductions-as-debt` (D-204) migrates those owners too: the deduction is not forgiven and stays a debt recouped
+ * from the later income (the simulation still requires the positions at the cut and now to stay).
+ *
+ *   npx tsx packages/backend/scripts/start/start-to-cut.ts [--label 0to8] [--cut «Кабинет 15.10»] [--deductions-as-debt] [--apply] [--org <id>] [dataDir]
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -42,6 +45,8 @@ const opt = (name: string) => {
 const labelName = opt('--label') ?? '0to8';
 const cutName = opt('--cut') ?? 'Кабинет 15.10';
 const apply = args.includes('--apply');
+/** The owner's decision of 2026-11-08 (D-204): a deduction left unrecouped stays a debt beyond the cabinet; its owner migrates too. */
+const deductionsAsDebt = args.includes('--deductions-as-debt');
 const dataDirArg = args.filter((a, i) => !a.startsWith('--') && !VALUED.includes(args[i - 1] ?? ''))[0];
 const root = resolve(import.meta.dirname, '..', '..', '..', '..');
 const dataDir = resolve(dataDirArg ?? join(root, 'data'));
@@ -188,7 +193,7 @@ try {
     }
     // a position of another kind left unrecouped (a deduction) cannot be forgiven (D-173: an advance only): the owner
     // stays on the start until the operator decides (the start works per owner, a mixed label is fine)
-    if (mine.others.length > 0) {
+    if (mine.others.length > 0 && !deductionsAsDebt) {
       exempt.push(...mine.others);
       exemptOwners.add(ownerId);
       continue;
@@ -226,7 +231,7 @@ try {
   console.log(`owners to migrate: ${plans.length} (with a missing row: ${plans.filter((p) => p.missing).length})`);
   console.log(`reconciling adjustments: ${adjustments.length} (publishing ${adjustments.filter((a) => a.area === 'publishing').length}), Σ ${sum(adjustments.map((a) => a.amount)).toFixed(2)}, Σ|·| ${sum(adjustments.map((a) => a.amount.abs())).toFixed(2)}; by |amount| ${buckets.join(', ')}`);
   console.log(`forgivenesses of the advances inside the start: ${forgivenesses.length}, Σ ${sum(forgivenesses.map((x) => x.amount)).toFixed(2)}`);
-  console.log(`owners left on the start (a deduction unrecouped at the bound, no forgiveness for it): ${exemptOwners.size}`);
+  console.log(`owners left on the start (a deduction unrecouped at the bound, no forgiveness for it): ${exemptOwners.size}${deductionsAsDebt ? ' (--deductions-as-debt: they migrate, the deductions stay a debt)' : ''}`);
   for (const o of exempt) console.log(`  ${o}`);
   console.log(`simulation: the largest move of a position ${worst.toFixed()}; out of the tolerance ${TOLERANCE.toFixed(2)}: ${diffs.length - 1} lines (start-to-cut-diffs.csv)`);
   if (plans.length === 0) {

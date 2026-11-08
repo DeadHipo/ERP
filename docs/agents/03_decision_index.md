@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-203 by topic)
+# Decision index (D-001 … D-204 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -181,10 +181,11 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-197 Dev containers: `docker-compose.app.dev.yml` (`deps` / `api` / `web` over a bind mount, `tsx watch` and Vite HMR, `npm run dev:docker`), the Vite proxy from `API_PROXY` · in force
 - D-198 The cuts: `settlements.cuts` (label, name, `cut_date`, bounds `master_to` / `publishing_to` / `ads_to` as first days), cumulative per label; the state = the balance of the book cut by the bounds, per position; `calculate()` and payable untouched · in force
 - D-199 Cuts stage 2: `operations.cut_id` (a cut of the operation's label, set at creation or by `POST /settlements/operations/:id/cut`); the transfer = two `adjustment` rows with `cut-transfer:<uuid>`, deactivated together · in force
-- D-200 Cuts stage 3: the signal `cutsUnsettled` (cuts with a position not at zero, information) and `GET /owners/:id/cuts` (positions, attributed operations, movement between the states) · in force
-- D-201 Cuts stage 4: P34 «Срезы», P35 «Срез» (the transfer), the column and row action «Срез» on P20, «Отнести к срезу» in «Операция», the tab «Срезы» on P10 · in force
+- D-200 Cuts stage 3: the signal `cutsUnsettled` (cuts with a position not at zero, information) and `GET /owners/:id/cuts` (positions, attributed operations, movement between the states) · in force; *refined by* D-204 (the owner's cuts are a block above the tabs of P10, not a tab)
+- D-201 Cuts stage 4: P34 «Срезы», P35 «Срез» (the transfer), the column and row action «Срез» on P20, «Отнести к срезу» in «Операция», the tab «Срезы» on P10 · in force; *refined by* D-204 (the owner's cuts are a block above the tabs of P10, not a tab)
 - D-202 The owner's cuts and the transfer calculate the owner's reach only; the cut signal reads the label visibility once per label; `APP_ORIGIN` for the dev:docker `api` (writes from :5173) · in force
-- D-203 The start of 15.10 became the cut «Кабинет 15.10» of 0to8 (`scripts/start/start-to-cut.ts`: reconciling adjustments on the cut, forgivenesses of the advances' rests at the bound, holds instead of `missing`, the rows deactivated; applied live, Δ ≤ 0.0143); a label with a cut refuses the start import (`409 start_label_has_cut`) · in force; ⚠ the 5 owners left on the start with an unrecouped deduction
+- D-203 The start of 15.10 became the cut «Кабинет 15.10» of 0to8 (`scripts/start/start-to-cut.ts`: reconciling adjustments on the cut, forgivenesses of the advances' rests at the bound, holds instead of `missing`, the rows deactivated; applied live, Δ ≤ 0.0143); a label with a cut refuses the start import (`409 start_label_has_cut`) · in force; the last 5 owners moved by D-204
+- D-204 The 5 owners left by D-203 moved to the cut with their deductions as a debt (`--deductions-as-debt`; no active start row remains); P10 shows the cuts as a block above the tabs (`OwnerCuts.tsx`), the tab «Срезы» is gone · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
@@ -275,7 +276,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-098 README §5 coverage: every rule has a test · D-099, D-100, D-101 Pages and last review items
 
 ## Waiting for the product owner (do not change silently)
-D-203 (the 5 owners left on the start), D-174 О1–О2 (the 16 ambiguous nicks, the 14 buyout-price corrections, the ISRC split of the start of a bought-out artist),
+D-174 О1–О2 (the 16 ambiguous nicks, the 14 buyout-price corrections, the ISRC split of the start of a bought-out artist),
 D-018, D-032 (stored fields), D-035, D-041 (only the Q2 2026 «Updated» run; the mechanism is D-173), D-043, D-045, D-049 ("largest"), D-068 (override),
 D-083 (writer merge), D-087 (equal parts), D-096 (company payee). Cross-module open questions: `docs/98_*.md`
 (M2, M5, M7, M8, M10…M13); module 1: `docs/99_*.md`.

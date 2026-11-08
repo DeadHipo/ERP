@@ -1,4 +1,4 @@
-/** P34 «Срезы», P35 «Срез», the owner's tab «Срезы» and the field «Отнести к срезу» (D-198…D-200). */
+/** P34 «Срезы», P35 «Срез», the block «Срезы» of the owner page and the field «Отнести к срезу» (D-198…D-200). */
 export const cuts = {
   title: 'Срезы',
   subtitle: 'Состояние книги лейбла на момент: всё, что было до среза. Позиции на срезе сводят в ноль операциями, отнесёнными к срезу, или переносом.',
@@ -57,13 +57,13 @@ export const cuts = {
   transferDocTitle: 'Перенос на срезе',
   transferSubmit: 'Перенести',
   transferred: 'Сальдо {amount} перенесено за срез',
-  // the owner's tab
-  tabEmpty: 'У владельца нет позиций в книгах со срезами.',
+  // the block «Срезы» of the owner page
+  loadError: 'Срезы владельца не загрузились: обновите страницу.',
   after: 'После последнего среза',
   operations: 'Операции, отнесённые к срезу',
   noOperations: 'нет',
-  movement: 'Движение от прошлого среза',
-  movementFirst: 'Движение с начала',
+  movement: 'Движение за период',
+  movementHint: 'У первого среза — с начала, у следующих — от прошлого среза, в последней колонке — после последнего среза',
   movementCols: { earned: 'заработано', paid: 'выплачено', adsCharged: 'реклама', other: 'прочее', payable: 'изменение сальдо' },
   // the field and the row action
   field: 'Отнести к срезу',

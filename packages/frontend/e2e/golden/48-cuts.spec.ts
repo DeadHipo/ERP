@@ -3,7 +3,7 @@ import { apiPost, choose, confirm, labelOf, openAs, toastOk } from '../helpers';
 
 // S57 (D-198…D-200): the cuts P34 / P35 under 0to8 with a synthetic owner of its own. An adjustment of −10 (an
 // approved basis) gives its pseudonym a position of +10; a cut on 2026-06-15 shows it; «Перенести» moves it past the
-// cut (two adjustments with one new document): the position at the cut is 0, after it 10; the owner's tab «Срезы»
+// cut (two adjustments with one new document): the position at the cut is 0, after it 10; the block «Срезы» of the owner page
 // says so; the original adjustment is attributed to the cut from its row on P20; the cut with operations is not
 // deleted. Nothing seeded changes but the cut itself.
 
@@ -78,11 +78,11 @@ test('S57 «Перенести»: the position at the cut is zero, after it the 
   await page.getByTestId('field-cut-show-all').check();
   await expect(page.getByTestId(`cut-position-${ownerId}-${artistId}`).locator('[data-col="balance"]')).toHaveAttribute('data-value', '0');
 
-  // the owner's tab «Срезы»: 0 at the cut, the transfer row attributed to it, 10 after the last cut
-  await openAs(page, `/owners/${ownerId}?tab=cuts&label=${labelOf('0to8')}`);
-  const section = page.getByTestId(`owner-cut-${cutId}`);
-  await expect(section.getByTestId(`owner-cut-positions-${cutId}-${artistId}`)).toHaveAttribute('data-value', '0');
-  await expect(section.locator('[data-testid^="owner-cut-op-"]')).toHaveCount(1);
+  // the block «Срезы» of the owner page (D-204): 0 at the cut, the transfer row attributed to it, 10 after the last cut
+  await openAs(page, `/owners/${ownerId}?label=${labelOf('0to8')}`);
+  await expect(page.getByTestId(`owner-cut-${cutId}`)).toBeVisible();
+  await expect(page.getByTestId(`owner-cut-positions-${cutId}-${artistId}`)).toHaveAttribute('data-value', '0');
+  await expect(page.getByTestId(`owner-cut-operations-${cutId}`).locator('[data-testid^="owner-cut-op-"]')).toHaveCount(1);
   await expect(page.getByTestId(`owner-cuts-after-positions-${labelOf('0to8')}-${artistId}`)).toHaveAttribute('data-value', '10');
 });
 
