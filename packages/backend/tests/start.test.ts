@@ -268,5 +268,9 @@ describe('the opening balances (D-174): the import classes and the refusals', ()
     await expect(f.listStart({}, echoViewer)).rejects.toMatchObject({ code: 'label_required' });
     expect((await f.listStart({ labelId: f.testLabels.Echo8 }, echoViewer)).rows).toEqual([]);
     expect((await f.listStart({})).rows).toHaveLength(3);
+    // D-203: a label with a cut takes no start row (the cuts replace the start), the preview included
+    await f.createCut({ labelId: zero, name: 'C', cutDate: '2026-10-15' }, 'test');
+    await expect(run()).rejects.toMatchObject({ statusCode: 409, code: 'start_label_has_cut' });
+    await expect(run(undefined, false)).rejects.toMatchObject({ code: 'start_label_has_cut' });
   });
 });

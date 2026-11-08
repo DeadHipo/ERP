@@ -1505,6 +1505,7 @@ const operations: ApiOperation[] = [
       '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
       '413 import_too_large: more than 5000 rows or 10 MB',
       '422 import_invalid: the apply with error rows (details { rows: [{ line, code }] (first 200), errors }) or a refusal while writing (details { line, cause }); nothing is written',
+      '409 start_label_has_cut: the label has cuts (D-203): its opening position is an adjustment attributed to a cut',
     ],
   },
   {

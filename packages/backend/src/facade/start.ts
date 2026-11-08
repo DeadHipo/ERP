@@ -9,7 +9,7 @@ import {
   type StartImportIssueCode,
 } from '@erp/shared/start-import';
 import type { OpeningBalanceView, OperationView } from '../modules/settlements';
-import { AppError, RuleViolationError, ValidationError } from '../shared/errors';
+import { AppError, ConflictError, RuleViolationError, ValidationError } from '../shared/errors';
 import { assertMonth, normalizeTimestamp } from '../shared/dates';
 import { normalizeName } from '../shared/identifiers';
 import { centsToDecimal, decimalToCents, Decimal, ZERO } from '../shared/money';
@@ -351,6 +351,10 @@ export function startApi(ctx: FacadeContext) {
     }) {
       if (!input.labelId) throw new ValidationError(LABEL_REQUIRED, undefined, 'label_required');
       const label = await assertOwnLabel(input.labelId);
+      // D-203: the cuts replace the start; a start row in a label with a cut would put the whole owner's book up to the
+      // cut back inside a start, the reconciling adjustments of the migration included
+      if ((await settlements.listCuts({ labelId: label.id })).length > 0)
+        throw new ConflictError('The label has cuts: its opening position is an adjustment attributed to a cut, not a start row', 'start_label_has_cut');
       const cutoff = assertMonth(input.cutoff);
       const syncedAt = normalizeTimestamp(input.syncedAt);
       if (syncedAt.slice(0, 7) < cutoff) throw new ValidationError('The synchronisation is not before the cut month', undefined, 'synced_before_cutoff');
