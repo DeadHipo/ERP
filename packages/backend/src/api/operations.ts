@@ -457,9 +457,10 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read_money', subject: 'owners', scope: 'label' },
     tag: 'owners',
-    summary: 'Owner balance: earned, recouped, paid, payable, with the book of every label; under a label (`label=`) the book of that label alone (D-168); asOf: the cut at the end of a month, area: the gate of an area only (D-173)',
+    summary: 'Owner balance: earned, recouped, paid, payable, with the book of every label; under a label (`label=`) the book of that label alone (D-168); asOf: the cut at the end of a month, area: the gate of an area only (D-173); cut: the balance at a cut of a label (D-208, the book of its label; the payout is always of today)',
     query: S.balanceQuery,
     response: R.balanceSchema,
+    errors: ['404 not_found: the owner or the cut', '400 cut_with_as_of: cut and asOf together (D-208)', '409 cut_label_mismatch: label= is not the label of the cut (D-208)'],
   },
   {
     method: 'post',

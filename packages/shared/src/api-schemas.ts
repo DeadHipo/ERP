@@ -704,7 +704,11 @@ const readArea = z
   .describe('The area of the payout gate (D-173): without it all (the book); master / publishing: the gate pays min(payable of the area, payable of the book); the money fields stay the book');
 
 /** `GET /owners/:id/balance` (D-173): the label period query with `asOf` and the area of the gate. */
-export const balanceQuery = labelPeriodQuery.extend({ ...asOfShape, area: readArea });
+export const balanceQuery = labelPeriodQuery.extend({
+  ...asOfShape,
+  area: readArea,
+  cut: z.string().optional().describe('Id of a cut (D-208): the balance at that cut, the book of its label (its bounds, the operations up to its date or attributed to it); never with asOf'),
+});
 /** `GET /owners/payables` (D-173): with `asOf` and the area of the gate (the money fields of a row stay the book, FIX-7). */
 export const payablesAsOfQuery = payablesQuery.extend({ ...asOfShape, area: readArea });
 

@@ -302,7 +302,7 @@ function PayButton(props: { ownerId: string; balance: Balance; period: BalancePe
   const [open, setOpen] = useState(false);
   const [area, setArea] = useState<Area>('master');
   const { labelId, closed, reason } = useWriteLabel();
-  const cut = props.period.asOf !== undefined;
+  const cut = props.period.asOf !== undefined || props.period.cut !== undefined; // D-208: at a cut too
   // the gate of the chosen area: the same call with `area` (the money fields stay the book), only while the dialog is open
   // (the button is closed under a cut, so the period has no `asOf` here)
   const gate = useQuery({ ...ownerQueries.balance(props.ownerId, { ...props.period, area }, labelId), enabled: open && labelId !== '' });
@@ -339,7 +339,9 @@ function PayButton(props: { ownerId: string; balance: Balance; period: BalancePe
           closed || b.label === null
             ? reason
             : cut
-              ? ru.operations.asOf.payClosed
+              ? props.period.cut !== undefined
+                ? ru.cuts.picker.payClosed
+                : ru.operations.asOf.payClosed
               : b.payout.reason
                 ? ru.status.payoutGate[b.payout.reason]
                 : undefined

@@ -1,5 +1,5 @@
 import { monthOf } from '../shared/dates';
-import type { OperationView } from '../modules/settlements';
+import type { CutView, OperationView } from '../modules/settlements';
 import type { Calculation, PeriodFilter } from './calculation';
 
 // The cut `asOf` (D-173 §3.3): the inputs of `ownerBalance()` as of the end of a month, made from ONE full calculation.
@@ -64,4 +64,10 @@ export function cutOperationsBy<T extends Pick<OperationView, 'date' | 'cutId'>>
     const attributed = o.cutId ? b.cutDateOf(o.cutId) : undefined;
     return attributed !== undefined ? attributed <= b.date : o.date.slice(0, 10) <= b.date;
   });
+}
+
+/** The bounds of a cut (D-198) with the dates of every cut of its label (an operation attributed to a cut is inside this one when that cut is not later). */
+export function cutBoundsOf(cut: CutView, cuts: readonly CutView[]): CutBounds {
+  const dates = new Map(cuts.map((c) => [c.id, c.cutDate]));
+  return { masterTo: cut.masterTo, publishingTo: cut.publishingTo, adsTo: cut.adsTo, date: cut.cutDate, cutDateOf: (id) => dates.get(id) };
 }

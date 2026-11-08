@@ -5,7 +5,7 @@ import { type OwnersService } from '../modules/owners';
 import { type SplitsService } from '../modules/splits';
 import { type LabelsService } from '../modules/labels';
 import type { SourcesService } from '../modules/sources';
-import { type SettlementsService } from '../modules/settlements';
+import { type CutView, type OperationView, type SettlementsService } from '../modules/settlements';
 import { type PublishingService } from '../modules/publishing';
 import { type AuditService } from '../modules/audit';
 import { type AdsService } from '../modules/ads';
@@ -15,7 +15,7 @@ import { calculate, type PeriodFilter } from './calculation';
 import { artistBalance, ownerBalance, type BalanceView } from './balance';
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
 import { payoutGate } from './payout-gate';
-import { cutCalculation, cutFilter, cutOperations } from './as-of';
+import { cutBoundsOf, cutCalculation, cutCalculationBy, cutFilter, cutOperations, cutOperationsBy } from './as-of';
 import { admissionOf, contractThresholds, type AdmissionRows } from './admission';
 import type { Admission } from './payout-gate';
 import { viewerScope, type Viewer } from './viewer';
@@ -234,8 +234,11 @@ export function createFacadeContext(
      * D-173: `asOf` cuts the inputs of the balance at the end of a month (`as-of.ts`; the payout never passes it);
      * `area` decides the gate only (without it: the book).
      */
-    opts: { asOf?: string; area?: PayoutArea } = {},
+    opts: { asOf?: string; area?: PayoutArea; cut?: { cut: CutView; cuts: readonly CutView[] } } = {},
   ) {
+    // D-208: the balance at a cut of the view's label: its bounds and the operations up to it or attributed to it
+    const bounds = opts.cut ? cutBoundsOf(opts.cut.cut, opts.cut.cuts) : null;
+    const opsAt = (ops: OperationView[]) => (bounds ? cutOperationsBy(ops, bounds) : cutOperations(ops, opts.asOf));
     const id = await timed('owners.resolveOwnerId + getOwner', async () => {
       const id = await owners.resolveOwnerId(ownerId);
       await owners.getOwner(id);
@@ -248,7 +251,7 @@ export function createFacadeContext(
     );
     const reach = await timed('ownerReach', () => ownerReach(modules, id), (r) => `${r.isrcs.length} ISRCs`);
     const full = await timed('calculate', () => calculate(scoped(modules, { isrcs: reach.isrcs }), docIds));
-    const calc = cutCalculation(full, opts.asOf);
+    const calc = bounds ? cutCalculationBy(full, bounds) : cutCalculation(full, opts.asOf);
     // the owner and its operations in the same snapshot (inside a payout: the same write transaction)
     const { owner, operations, rows, active, thresholds } = await timed(
       'pg snapshot: owner + operations + admission',
@@ -269,10 +272,10 @@ export function createFacadeContext(
     );
     // `confirmedAny` is the gate's input only, never in the answer (D-169)
     const { confirmedAny, ...balance } = timedSync('ownerBalance (JS)', () =>
-      ownerBalance(calc, id, cutOperations(operations, opts.asOf), cutFilter(f, opts.asOf), {}, view),
+      ownerBalance(calc, id, opsAt(operations), cutFilter(f, opts.asOf), {}, view),
     );
     // the payouts the owner had are those of the cut (`asOf`): a payout after it does not count
-    const admission = admissionOf(rows, { active, thresholdCents: thresholds.get(id) ?? null, labelId: view?.labelId, operations: cutOperations(operations, opts.asOf) });
+    const admission = admissionOf(rows, { active, thresholdCents: thresholds.get(id) ?? null, labelId: view?.labelId, operations: opsAt(operations) });
     return {
       files: calc.believeFiles,
       balance: {

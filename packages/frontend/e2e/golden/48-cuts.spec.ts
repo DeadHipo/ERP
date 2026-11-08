@@ -97,6 +97,13 @@ test('S57 «Перенести»: the position at the cut is zero, after it the 
   await expect(page.getByTestId(`owner-cut-operations-${cutId}`).locator('[data-testid^="owner-cut-op-"]')).toHaveCount(1);
   // D-207: the transfer row names its origin beside its kind
   await expect(page.getByTestId(`owner-cut-operations-${cutId}`).locator('[data-origin="cut_transfer"]')).toHaveCount(1);
+  // D-208: «На срез»: the balance of the owner at the cut (the position 0 there), the payout closed; back to now
+  await choose(page, 'balance-cut', 'S57 срез · 2026-06-15');
+  await expect(page.getByTestId('balance-at-cut')).toHaveAttribute('data-cut-id', cutId);
+  await expect(page).toHaveURL(new RegExp(`cut=${cutId}`));
+  await expect(page.getByTestId('action-pay')).toBeDisabled();
+  await page.getByTestId('action-balance-now').click();
+  await expect(page.getByTestId('balance-at-cut')).toHaveCount(0);
   await expect(page.getByTestId(`owner-cuts-after-positions-${labelOf('0to8')}-${artistId}`)).toHaveAttribute('data-value', '10');
 });
 

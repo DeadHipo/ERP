@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ownerQueries } from '../../api/queries/owners';
 import { ActionButton } from '../../components/ActionButton';
@@ -18,6 +18,8 @@ import { OwnerCuts } from './OwnerCuts';
 import { DocumentsTab } from './DocumentsTab';
 import { MergeOwnerDialog } from '../work/actions/dialogs';
 import { AsOfField, asOfQuery, useAsOf } from './components/AsOfField';
+import { CutPicker, useCutParam } from './components/CutPicker';
+import { settlementQueries } from '../../api/queries/settlements';
 import { PeriodBar } from './components/PeriodBar';
 import { ArtistsTab, HistoryTab, OperationsTab, PublishingTab } from './tabs';
 
@@ -36,8 +38,35 @@ export function OwnerPage() {
   const detail = useQuery(ownerQueries.detail(id));
   // the cut at the end of a month (D-173): an input of the same one money call
   const [asOf] = useAsOf();
-  const moneyPeriod = { ...period, ...asOfQuery(asOf) };
-  const balance = useQuery(ownerQueries.balance(id, moneyPeriod, labelId));
+  // the balance at a cut (D-208): instead of `asOf`, the book of the cut's label; one of the two at a time
+  const [cutId, setCutId] = useCutParam();
+  const cuts = useQuery(settlementQueries.cuts(labelId));
+  const cut = cuts.data?.items.find((c) => c.id === cutId);
+  useEffect(() => {
+    if (asOf && cutId) setCutId('');
+    // a month chosen: the cut goes (the picker clears the month itself)
+  }, [asOf]);
+  useEffect(() => {
+    if (cutId && cuts.data && !cut) setCutId('');
+    // another label (or a deleted cut): the cut of the old one goes
+  }, [cuts.data, cut]);
+  // a cut is read only once it is known to be of the label in view (else a switch would ask the old cut: 409)
+  const moneyPeriod = cut ? { ...period, cut: cut.id } : { ...period, ...asOfQuery(asOf) };
+  const balance = useQuery({ ...ownerQueries.balance(id, moneyPeriod, labelId), enabled: !cutId || cuts.data !== undefined });
+  // the cut and the month in one URL update (two updates in a row: the second would restore the first's parameter)
+  const [, setParams] = useSearchParams();
+  const chooseCut = (v: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v) {
+          next.set('cut', v);
+          next.delete('asOf');
+        } else next.delete('cut');
+        return next;
+      },
+      { replace: true },
+    );
   const [merging, setMerging] = useState(false);
   useBreadcrumbLabel(detail.data?.owner.name);
   return (
@@ -66,8 +95,21 @@ export function OwnerPage() {
                 <div className="flex flex-wrap items-end gap-2">
                   <PeriodBar period={period} onApply={setPeriod} />
                   <AsOfField />
+                  <CutPicker
+                    labelId={labelId}
+                    value={cutId}
+                    onChange={chooseCut}
+                  />
                 </div>
               </div>
+              {cut ? (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-accent/40 bg-accent/5 p-3 text-sm" data-testid="balance-at-cut" data-cut-id={cut.id}>
+                  <span>{fmt(ru.cuts.picker.active, { name: cut.name, date: cut.cutDate, master: cut.masterTo, pub: cut.publishingTo, ads: cut.adsTo })}</span>
+                  <button type="button" className="text-accent hover:underline" data-testid="action-balance-now" onClick={() => setCutId('')}>
+                    {ru.cuts.picker.back}
+                  </button>
+                </div>
+              ) : null}
               <OwnerCuts ownerId={d.owner.id} labelId={labelId} />
               <EntityCard
                 title={<span data-testid="owner-name">{d.owner.name}</span>}

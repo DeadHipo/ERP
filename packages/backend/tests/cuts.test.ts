@@ -62,6 +62,14 @@ describe('the cuts (D-198): a label book at a moment', () => {
     expect([byIds.total.toFixed(), byIds.unsettled]).toEqual(['100', 2]);
     expect((await f.cutState(c1.id, { ids: other })).items).toEqual([]);
     await expect(f.cutState(c1.id, { ids: Array.from({ length: 201 }, (_, i) => `o${i}`).join(',') })).rejects.toMatchObject({ statusCode: 400 });
+    // D-208: the owner balance at the cut = the positions of the cut; the book of its label; never with asOf, never another label
+    const atCut = await f.ownerBalance(owner, { cut: c1.id });
+    expect(atCut.label?.id).toBe(zero);
+    expect(Object.fromEntries(atCut.artists.map((a) => [a.pseudonym, a.position.toFixed()]))).toEqual({ S1: '80', S2: '20' });
+    expect(atCut.total.payable.toFixed()).toBe('100');
+    expect(atCut.total.earned.toFixed()).toBe('170'); // 07 + 08: 50 + 100 + 20
+    await expect(f.ownerBalance(owner, { cut: c1.id, asOf: '2026-08' })).rejects.toMatchObject({ code: 'cut_with_as_of' });
+    await expect(f.ownerBalance(owner, { cut: c1.id }, f.testLabels.Echo8)).rejects.toMatchObject({ code: 'cut_label_mismatch' });
     // the same number as the balance asOf the last month inside (no operation between 08-31 and 09-10)
     const asOf = (await f.ownerPayables({ label: zero, asOf: '2026-08' })).items.find((i) => i.ownerId === owner);
     expect(asOf?.payable.toFixed()).toBe('100');

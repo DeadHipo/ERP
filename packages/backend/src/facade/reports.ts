@@ -1,3 +1,4 @@
+import { ConflictError, NotFoundError, ValidationError } from '../shared/errors';
 import { Decimal, ZERO } from '../shared/money';
 import { inMonthRange } from '../shared/dates';
 import { assertIsrc } from '../shared/identifiers';
@@ -458,7 +459,7 @@ export function reportsApi(ctx: FacadeContext) {
     /** The owner balance from the units of the owner's reach (D-163, D-164); under a label its book (D-168). */
     async ownerBalance(
       ownerId: string,
-      f: PeriodFilter & { asOf?: string; area?: PayoutArea } = {},
+      f: PeriodFilter & { asOf?: string; area?: PayoutArea; cut?: string } = {},
       labelId?: string,
       viewer: Viewer = ALL_VIEWER,
     ) {
@@ -468,8 +469,17 @@ export function reportsApi(ctx: FacadeContext) {
         await ctx.scopeOf(viewer).assertOwnerVisible(ownerId);
       }
       // D-173: `asOf` cuts the inputs, `area` decides the gate only
-      const { asOf, area, ...period } = f;
-      return (await balanceWithFiles(ownerId, period, await ctx.viewOf(labelId), { asOf, area })).balance;
+      const { asOf, area, cut: cutId, ...period } = f;
+      if (cutId === undefined) return (await balanceWithFiles(ownerId, period, await ctx.viewOf(labelId), { asOf, area })).balance;
+      // D-208: the balance at a cut: the book of the cut's label (a label of the view must be the same), never with asOf
+      if (asOf !== undefined) throw new ValidationError('A balance is either at a cut or at the end of a month, not both', undefined, 'cut_with_as_of');
+      const cut = await ctx.settlements.getCut(cutId);
+      // a viewer of some labels (D-171): a cut of another label reads as unknown
+      if (viewer.kind !== 'all' && !viewer.labelIds.includes(cut.labelId)) throw new NotFoundError('Cut', cutId);
+      if (labelId !== undefined && labelId !== cut.labelId)
+        throw new ConflictError('The cut belongs to another label than the view', 'cut_label_mismatch', { cutLabelId: cut.labelId, labelId });
+      const cuts = await ctx.settlements.listCuts({ labelId: cut.labelId });
+      return (await balanceWithFiles(ownerId, period, await ctx.viewOf(cut.labelId), { area, cut: { cut, cuts } })).balance;
     },
 
     /** The reach of an owner (D-163): its pseudonyms and the ISRCs their money can come from. */

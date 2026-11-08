@@ -5,7 +5,7 @@ import { scoped } from './scope';
 import { ownerReach, ownersReach } from './owner-scope';
 import { parseIdList } from './aggregates';
 import { ownerBalance, ownerIndex } from './balance';
-import { cutCalculationBy, cutOperationsBy, type CutBounds } from './as-of';
+import { cutBoundsOf, cutCalculationBy, cutOperationsBy } from './as-of';
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '../shared/errors';
 import type { FacadeContext } from './context';
@@ -58,10 +58,7 @@ async function ownerWorld(ctx: Ctx, ownerId: string): Promise<World> {
 
 /** The inputs of every balance at a cut (or now, without a cut): the calculation and the operations cut by its bounds. */
 function inputsAt(w: World, cut: CutView | null) {
-  const dates = new Map(w.cuts.map((c) => [c.id, c.cutDate]));
-  const bounds: CutBounds | null = cut
-    ? { masterTo: cut.masterTo, publishingTo: cut.publishingTo, adsTo: cut.adsTo, date: cut.cutDate, cutDateOf: (id) => dates.get(id) }
-    : null;
+  const bounds = cut ? cutBoundsOf(cut, w.cuts) : null;
   const calc = bounds ? cutCalculationBy(w.calc, bounds) : w.calc;
   const opsOf = new Map<string, Op[]>();
   for (const o of bounds ? cutOperationsBy(w.ops, bounds) : w.ops) if (o.ownerId) (opsOf.get(o.ownerId) ?? opsOf.set(o.ownerId, []).get(o.ownerId))?.push(o);

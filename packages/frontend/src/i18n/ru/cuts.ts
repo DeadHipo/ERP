@@ -55,6 +55,15 @@ export const cuts = {
   allMoney: 'Один расчёт по всей книге',
   cols2: { positions: 'Позиции на срезе', open: 'Не в нуле' },
   notFound: 'Срез не найден',
+  /** D-208: the balance of P10 at a cut. */
+  picker: {
+    field: 'На срез',
+    now: '— сейчас —',
+    hint: 'Баланс владельца на момент среза: отчёты до границ среза, операции по его дату и отнесённые к нему; статусы документов — сегодняшние',
+    active: 'Баланс на срез «{name}» ({date}): данные Believe до {master}, паблишинг до {pub}, реклама до {ads}; операции по {date} и отнесённые к срезу.',
+    back: 'Вернуться к текущему балансу',
+    payClosed: 'выплата считается по текущему балансу: уберите срез',
+  },
   /** D-207: the origin of an operation beside its kind (by its external reference). */
   origin: {
     cabinet: 'сверка с кабинетом 15.10',
