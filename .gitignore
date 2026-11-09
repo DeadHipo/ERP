@@ -26,3 +26,7 @@ packages/frontend/playwright-report/
 packages/frontend/e2e/.auth/
 
 packages/frontend/e2e/.seed-keys.json
+
+# local editor and Claude Code settings, worktrees
+.claude/
+.vscode/
