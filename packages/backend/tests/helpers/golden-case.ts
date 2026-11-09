@@ -15,6 +15,8 @@ import {
 // owners, pseudonyms, tracks, splits and one Believe/B17 load per call. Shared by golden.test.ts and the e2e seed
 // scenarios (scripts/e2e). Synthetic data only.
 export const UPC = '1234567890123';
+/** D-209: a release with no known track: a line without an ISRC of it stays C `no_isrc` (a line of `UPC` would be spread over its tracks). */
+export const UPC_NO_TRACKS = '1234567890999';
 export const I = (n: number) => `QZTST26000${String(n).padStart(2, '0')}`;
 export const ACC1 = '1052428';
 export const ACC2 = '1055956';
@@ -166,7 +168,7 @@ export class Case {
         month,
         rows.map((r) => ({
           isrc: r.isrc,
-          upc: r.upc ?? UPC,
+          upc: r.upc ?? (r.isrc === '' ? UPC_NO_TRACKS : UPC),
           net: r.net,
           labelName: r.label ?? 'Test Label',
         })),

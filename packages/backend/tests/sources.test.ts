@@ -154,7 +154,7 @@ describe('Believe loading (README 5: line key, summing, duplicates, sha256)', ()
     const loaded = await f.ingestBelieve(
       writeBelieve('2026-07', [
         { isrc: ISRC, upc: UPC, net: '-0.5', quantity: -1 },
-        { isrc: '', upc: UPC, net: '3', platform: 'iTunes', salesType: 'Download' },
+        { isrc: '', upc: '1234567890999', net: '3', platform: 'iTunes', salesType: 'Download' }, // D-209: a release with no known track
       ]), f.testLabels['0to8'],
     );
     expect(loaded.netTotal).toBe('2.5');

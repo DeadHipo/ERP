@@ -20,6 +20,11 @@ The account comes from the registry per file.
   facade's unit scope, D-161). `SourceUnit.labelId` is the label of the unit's file (the map file → label, beside the
   account). `filesOfLabel(L)` / `isrcsOfFiles(fileIds)` give the book and the catalogue of a label; `isrcsOfLabelAliases`
   (with `columnar.labelStrings` / `isrcsOfLabelStrings`) stays for the reach of sublabel-rule recipients (D-163).
+- **Album lines (D-211):** `snapshot()` spreads every unit with a UPC and no ISRC over the tracks of its release
+  (`album-lines.ts`, `spreadAlbumLines`: weights = each track's cumulative net up to the line's month in the same label
+  book, equal when ≤ 0, pico residue to the largest |weight|). A narrowed read (`isrcs`) reads the album lines of its
+  releases and keeps only its ISRCs; a release with no known track stays as it is. Test fixtures without an ISRC use
+  `UPC_NO_TRACKS` (`golden-case.ts`).
 - **The label of a file** (D-169, R7): `source_files.label_id` (the own label the file was uploaded under) and
   `uploaded_by` (the operator) are written at load and never change; the module treats the label as opaque text and
   knows nothing about accounts. `assignFileLabel(fileId, labelId)` sets it only where it is NULL (the script

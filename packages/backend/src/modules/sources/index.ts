@@ -11,3 +11,4 @@ export {
   type LinesTotal,
 } from './columnar';
 export { createSourceFilesRegistry, type SourceFilesRegistry, type SourceFileRecord } from './registry';
+export { spreadAlbumLines } from './album-lines';

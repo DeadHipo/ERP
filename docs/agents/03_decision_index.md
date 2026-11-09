@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-208 by topic)
+# Decision index (D-001 … D-211 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -130,7 +130,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-033 Duplicates and the original file · in force
 - D-034 Upload robustness (serialized per module) · in force (plus one advisory lock over all writes, D-121); *refined by* D-170 (serialized per module **and** organization; between processes the per-organization index `source_files_scope` decides)
 - D-170 The file registry per organization (`createSourceFilesRegistry(pool, org)`; `source_files_scope` / `source_files_sha` keep their names with `org_id` first, so `409 duplicate_period` / `duplicate_file` are per organization); files in `<dataDir>/orgs/<id>/files/sources`, upload `tmp` per organization; ClickHouse untouched (reads start from the organization's `loaded` files) · in force
-- ⚠ D-035 Lines without ISRC and negative lines (M10)
+- ⚠ D-035 Lines without ISRC and negative lines (M10); lines without ISRC decided by D-211, negative lines still open
 - D-036 Unit of calculation · in force
 - D-037 Performance target · historical (measurements: D-111)
 - D-038 Other accounts and sources · in force
@@ -192,6 +192,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-208 The owner balance at a cut (`GET /owners/:id/balance?cut=`, the book of the cut's label, never with asOf); P10 «На срез», the payout closed at a cut · in force
 - D-209 The built app on :3001 in a container: `docker-compose.app.stage.yml` (`vite build --watch` + `tsx watch`, own `dist` volume, `npm run stage:docker`) · in force
 - D-210 The stage on `0.0.0.0:3001` (with the `AUTH_MODE` of `.env`) and one debounced loop `scripts/stage-watch.ts` (`STAGE_QUIET_MS` 5 s, `STAGE_MIN_GAP_MS` 30 s, build to a temp dir then copy) · in force
+- D-211 Album lines (UPC, no ISRC) spread in `sources.snapshot()` over the tracks of the release by cumulative net up to the month (equal when ≤ 0, exact in pico); a release without tracks stays in C · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

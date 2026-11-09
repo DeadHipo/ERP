@@ -54,7 +54,7 @@ async function loadJuly(f: TestFacade) {
       { isrc: I3, upc: UPC, net: '50' },
       { isrc: 'QZTST2699999', upc: '999', net: '7', artistName: 'A1' }, // unknown pair, artist name matches but must not be used
       { isrc: 'QZTST2688888', upc: UPC, net: '3' }, // known? no: pair not in module 1
-      { isrc: '', upc: UPC, net: '2', platform: 'iTunes', salesType: 'Download' },
+      { isrc: '', upc: '1234567890999', net: '2', platform: 'iTunes', salesType: 'Download' }, // D-209: a release with no known track
     ]), f.testLabels['0to8'],
   );
 }

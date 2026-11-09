@@ -5,6 +5,7 @@ import { parsePico, picoToString } from '../../shared/money';
 import { timed, timedSync } from '../../shared/timing';
 import type { BelieveColumnar, LinesFacets, LinesSort, LineRow, LinesTotal, UnitsFilter } from './columnar';
 import { createBelieveLoader, type LoadInput } from './loader';
+import { spreadAlbumLines } from './album-lines';
 import type { SourceFileRecord, SourceFilesRegistry } from './registry';
 
 /** Unit of calculation: ISRC + UPC + report month (+ sales month for the sales-date filter). */
@@ -205,25 +206,55 @@ export function createSourcesService(deps: SourcesDeps) {
           ),
         (r) => `${r.length} units`,
       );
-      return timedSync('map units (parsePico)', () => ({
-        files: files.map(({ id, sha256, reportingMonth, fileName }) => ({
-          id,
-          sha256,
-          reportingMonth,
-          fileName,
-        })),
-        units: rows.map((r) => ({
-          source: 'believe',
-          account: accountOf.get(r.fileId) as string,
-          isrc: r.isrc,
-          upc: r.upc,
-          reportingMonth: r.reportingMonth,
-          salesMonth: r.salesMonth,
-          labelName: r.labelName,
-          labelId: labelOf.get(r.fileId) ?? null,
-          netPico: parsePico(r.net),
-        })),
-      }));
+      const toUnit = (r: (typeof rows)[number]): SourceUnit => ({
+        source: 'believe',
+        account: accountOf.get(r.fileId) as string,
+        isrc: r.isrc,
+        upc: r.upc,
+        reportingMonth: r.reportingMonth,
+        salesMonth: r.salesMonth,
+        labelName: r.labelName,
+        labelId: labelOf.get(r.fileId) ?? null,
+        netPico: parsePico(r.net),
+      });
+      let units = timedSync('map units (parsePico)', () => rows.map(toUnit));
+      // D-209: a line of a release without an ISRC (an album download) is spread over the tracks of its release. The
+      // weights need every track of the release in every loaded file and every earlier month, so the releases are read
+      // whole; a read narrowed to some ISRCs takes the album lines of their releases (within its files and months) and
+      // keeps only its ISRCs, so it equals the same ISRCs of the whole read (D-161, D-163).
+      const narrowed = filter.isrcs !== undefined;
+      const upcs = [...new Set(units.filter((u) => u.upc !== '' && (narrowed || u.isrc === '')).map((u) => u.upc))];
+      if (upcs.length > 0) {
+        const releaseRows = await timed(
+          'clickhouse: units of the releases of album lines',
+          () => columnar.units(files.map((f) => f.id), { upcs }),
+          (r) => `${r.length} units`,
+        );
+        const release = releaseRows.map(toUnit);
+        const inRead = new Set(read.map((f) => f.id));
+        const month = (u: SourceUnit) => ((unitsFilter.basis ?? 'report') === 'report' ? u.reportingMonth : u.salesMonth).slice(0, 7);
+        const albums = narrowed
+          ? release.filter(
+              (u, i) =>
+                u.isrc === '' &&
+                inRead.has((releaseRows[i] as (typeof releaseRows)[number]).fileId) &&
+                (!unitsFilter.from || month(u) >= unitsFilter.from) &&
+                (!unitsFilter.to || month(u) <= unitsFilter.to),
+            )
+          : [];
+        // a narrowed read may hold album lines itself (a reach by label strings asks the ISRC ''): they come again in
+        // `albums`, read whole with their release, so the read's own are dropped
+        const own = narrowed ? units.filter((u) => !(u.isrc === '' && u.upc !== '')) : units;
+        units = spreadAlbumLines([...own, ...albums], release);
+        if (narrowed) {
+          const wanted = new Set(filter.isrcs);
+          units = units.filter((u) => wanted.has(u.isrc));
+        }
+      }
+      return {
+        files: files.map(({ id, sha256, reportingMonth, fileName }) => ({ id, sha256, reportingMonth, fileName })),
+        units,
+      };
     },
 
     /** Units grouped by ISRC + UPC + report month + sales month, optionally filtered by month range. */

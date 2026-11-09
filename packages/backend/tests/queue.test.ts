@@ -124,7 +124,7 @@ describe('C queue', () => {
 
     // G30: the perimeter, keyed by the pair
     expect(groups('no_isrc')).toEqual([
-      { kind: 'pair', id: '|1234567890123', label: '(без ISRC) / 1234567890123', amount: '2' },
+      { kind: 'pair', id: '|1234567890999', label: '(без ISRC) / 1234567890999', amount: '2' },
     ]);
     expect(groups('unknown_pair')).toEqual([
       { kind: 'pair', id: `${I(9)}|1234567890123`, label: `${I(9)} / 1234567890123`, amount: '7' },
