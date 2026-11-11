@@ -5,10 +5,10 @@ consents and restrictions, assets, monthly receipts, monthly label share, and th
 It does not change the ERP and writes nothing to the databases. It is not part of `npm test`.
 
 ```
-python3 packages/backend/scripts/build-catalog-registries-v7.py
+python3 packages/backend/scripts/build-catalog-registries-v11.py
 ```
 
-It needs the stack up (ClickHouse and PostgreSQL from `.env`), Python with `openpyxl`, and the git-ignored
+It needs the stack up (ClickHouse and PostgreSQL from `.env`), Python with `openpyxl` and `python-docx`, and the git-ignored
 `context_data/` folder. The workbook and the log go to `context_data/contract_index/` and are never committed:
 they hold party names. Two runs on the same inputs give the same bytes.
 
@@ -54,3 +54,40 @@ text is cached by sha256 in `contract_index/texts_dd_pack.jsonl`); owner decisio
 
 The sheet "Проверка привязок" lists every ISRC × participant × document with the fragment of PDF text that
 proves it. Snippets have e-mail addresses and long numbers removed.
+
+## v11 (2026-11-10, brief «ТЗ v11 — сверка с договорами»)
+
+The inputs of the brief live in `contract_index/ТЗ v10+v11 — разработчику 2026-11-10/`. v11 reads:
+
+- the contract index re-extracted on 2026-11-09 (`contract_index/reindex_2026-11-09`, pypdf 6.4.0, 1233 PDF)
+  and three agreements signed in PandaDoc without a PDF (`тексты_без_PDF/`, the API text);
+- `05_не_покрывает.csv` (documents that name a recording but grant nothing for it) and
+  `06_все_документы_имена.csv` (every document under its exact data-room name: the book uses these names);
+- owner decisions `v11` in the decisions file: titles whose versions are not tied to an ISRC, rows kept as in v9
+  until the owner answers (read from the v9 internal book), documents held back because they are not in 06.
+
+Matching rules added: ISRC with hyphens and spaces, zero-width marks removed, Sped Up = Speed Up, the catalogue tail
+« - artist» and «(feat. X)» dropped, a Russian title compared with its Latin spelling, a version that the table
+layout moved past the duration. A version (Slowed, Sped Up, Instrumental…) is its own recording: the base title
+does not name it. A row with 0% ownership and 0% royalty names nothing. An assignment to FZ from a person covers
+the recordings it names. An agreement under another number is not an edition of an earlier one.
+
+It also writes `Schedules 1-6 — draft from Annex 14 v11 <date>.docx` from the template of the brief
+(`catalog_schedules_docx_v11.py`: fields and table markers filled, red marking removed, text checked against the
+template and the original), `schedules_fields.json`, the Appendix extract, `изменения_v9_v11.csv` and
+`отклонения_02_v11.csv` (every ISRC of 02 whose document did not land in its package, with the reason).
+
+## v12 (2026-11-11, owner's answer on v11)
+
+`build-catalog-registries-v12.py` (with `catalog_registers_en_v12.py`, `catalog_schedules_docx_v12.py`). Changes:
+
+- Believe writes the track title without its version in `track`; that base title no longer stands for the version.
+  A version is named only by its marker (Slowed, Sped Up…) or its ISRC; the nine owner titles of v11 item 7 keep
+  «version not tied to ISRC».
+- Sch2B: a contributor or sample licence is the basis only for its own party and only where it names the recording
+  (guarantee 6.6.1); otherwise «credited only in another party's agreement» or «registered split only».
+- Inputs from `contract_index/Ответ по v11 — разработчику 2026-11-11/06 Ответ по v11 — приложения/`: the Raiden
+  text from the PandaDoc API, the map «PDF of the second space → PandaDoc id», the owner's lists for the checks.
+- Owner decisions `v12` in the decisions file: copies of data-room documents under another name, documents outside
+  PandaDoc accepted as listed, recordings confirmed by the owner's own PDF check, Eiden XII not naming five versions.
+- The sent book writes US$ amounts with a thousands separator and «1 recording».
