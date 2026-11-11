@@ -72,6 +72,18 @@ export const overview = {
     noAccount: 'счёт с таким номером в периоде не найден',
     filtered: 'по фильтру счёта',
     empty: 'за период нет ни одной строки',
+    /** D-214: the four cards month by month. */
+    months: {
+      details: 'подробно: по месяцам',
+      hide: 'свернуть',
+      title: 'По месяцам',
+      hint: 'все источники и счета месяца вместе',
+      filteredHint: 'по всем счетам: фильтр счёта сюда не применяется',
+      month: 'Месяц',
+      noSplit: 'без сплита (в C)',
+      discrepancy: 'Расхождение',
+      total: 'Итого',
+    },
   },
 } as const;
 

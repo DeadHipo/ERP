@@ -192,7 +192,7 @@ const zeroSums = { received: '0', notOurs: '0', waiting: '0', ourShare: '0', our
 const emptyOverview = {
   calculatedAt: '2026-11-03T00:00:00.000Z',
   reconciliation: [],
-  totals: { all: zeroSums, bySource: { believe: zeroSums, b17: zeroSums }, byAccount: [], byLabel: {} },
+  totals: { all: zeroSums, bySource: { believe: zeroSums, b17: zeroSums }, byAccount: [], byLabel: {}, byMonth: [] },
   queue: [],
   signals: [],
   files: { believe: 0, b17: 0 },

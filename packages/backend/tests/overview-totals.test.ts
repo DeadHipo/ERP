@@ -61,6 +61,11 @@ describe('overviewTotals (D-160)', () => {
       waiting: '23.375',
       ourShareNoSplit: '25',
     });
+    // D-214: per month, every source and account of the month together, ascending
+    expect(t.byMonth.map(({ month, ...s }) => [month, text(s)])).toEqual([
+      ['2026-03', { received: '167.000000000001', notOurs: '86.5', waiting: '30.375', ourShare: '50.125000000001', ourShareNoSplit: '0', discrepancy: '0' }],
+      ['2026-04', { received: '50', notOurs: '25', waiting: '0', ourShare: '25', ourShareNoSplit: '25', discrepancy: '0' }],
+    ]);
   });
 
   it('carries a non-zero discrepancy into the totals and gives zeros for no rows', () => {

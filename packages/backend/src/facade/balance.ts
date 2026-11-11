@@ -3,6 +3,7 @@ import { inMonthRange, monthOf } from '../shared/dates';
 import { BLOCKING_KINDS } from '@erp/shared/operation-kinds';
 import type { IncomeItem, OperationView, Position } from '../modules/settlements';
 import { recoup } from './layers/recoup';
+import type { Allocation } from './layers/types';
 import {
   pubInPeriod,
   unitInPeriod,
@@ -181,7 +182,11 @@ export interface OwnerBalance {
     otherParticipants: Decimal;
     ourShare: Decimal;
     earnedMaster: Decimal;
+    /** D-212: earnedMaster by the layer that allocated it (Σ = earnedMaster). */
+    earnedMasterByLayer: Record<AllocationLayer, Decimal>;
     earnedPublishing: Decimal;
+    /** D-213: the same income month by month (the month of the basis; publishing by its report month), ascending. */
+    byMonth: PeriodMonth[];
     paid: Decimal;
     advancesPaid: Decimal;
     recouped: Decimal;
@@ -375,10 +380,52 @@ interface PeriodAcc {
   otherParticipants: Decimal;
   ourShare: Decimal;
   earnedMaster: Decimal;
+  earnedMasterByLayer: Record<AllocationLayer, Decimal>;
   earnedPublishing: Decimal;
+  byMonth: Map<string, MonthAcc>;
   paid: Decimal;
   advancesPaid: Decimal;
   recouped: Decimal;
+}
+type AllocationLayer = Allocation['layer'];
+const ALLOCATION_LAYERS: readonly AllocationLayer[] = ['split', 'top', 'carve', 'sublabel'];
+const newLayers = (): Record<AllocationLayer, Decimal> => ({ split: ZERO, top: ZERO, carve: ZERO, sublabel: ZERO });
+interface MonthAcc {
+  earnedMasterByLayer: Record<AllocationLayer, Decimal>;
+  earnedPublishing: Decimal;
+  waiting: Decimal;
+}
+/** One month of the period's income (D-213). */
+export interface PeriodMonth {
+  month: string;
+  earnedMaster: Decimal;
+  earnedMasterByLayer: Record<AllocationLayer, Decimal>;
+  earnedPublishing: Decimal;
+  waiting: Decimal;
+}
+const monthOfPeriod = (p: PeriodAcc, month: string): MonthAcc => {
+  let m = p.byMonth.get(month);
+  if (!m) p.byMonth.set(month, (m = { earnedMasterByLayer: newLayers(), earnedPublishing: ZERO, waiting: ZERO }));
+  return m;
+};
+/** The months of the selected books, summed field by field, ascending. */
+function periodMonths(periods: PeriodAcc[]): PeriodMonth[] {
+  const sum = new Map<string, MonthAcc>();
+  for (const p of periods)
+    for (const [month, m] of p.byMonth) {
+      let acc = sum.get(month);
+      if (!acc) sum.set(month, (acc = { earnedMasterByLayer: newLayers(), earnedPublishing: ZERO, waiting: ZERO }));
+      for (const l of ALLOCATION_LAYERS) acc.earnedMasterByLayer[l] = acc.earnedMasterByLayer[l].add(m.earnedMasterByLayer[l]);
+      acc.earnedPublishing = acc.earnedPublishing.add(m.earnedPublishing);
+      acc.waiting = acc.waiting.add(m.waiting);
+    }
+  return [...sum.entries()]
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([month, m]) => ({
+      month,
+      earnedMaster: sumOver([...ALLOCATION_LAYERS], (l) => m.earnedMasterByLayer[l]),
+      ...m,
+    }));
 }
 const newPeriod = (): PeriodAcc => ({
   received: ZERO,
@@ -388,7 +435,9 @@ const newPeriod = (): PeriodAcc => ({
   otherParticipants: ZERO,
   ourShare: ZERO,
   earnedMaster: ZERO,
+  earnedMasterByLayer: newLayers(),
   earnedPublishing: ZERO,
+  byMonth: new Map(),
   paid: ZERO,
   advancesPaid: ZERO,
   recouped: ZERO,
@@ -500,6 +549,7 @@ export function ownerBalance(
     const book = books.of(key);
     const period = periods.of(key);
     const inP = unitInPeriod(u, f);
+    const unitMonth = (f.basis ?? 'report') === 'sales' ? u.salesMonth : u.reportingMonth;
     if (inP) {
       period.received = period.received.add(u.net);
       period.ourShare = period.ourShare.add(u.ours);
@@ -538,6 +588,9 @@ export function ownerBalance(
           itemInPeriod.add(id);
           period.notOurs = period.notOurs.add(a.amount);
           period.earnedMaster = period.earnedMaster.add(a.amount);
+          period.earnedMasterByLayer[a.layer] = period.earnedMasterByLayer[a.layer].add(a.amount);
+          const m = monthOfPeriod(period, unitMonth);
+          m.earnedMasterByLayer[a.layer] = m.earnedMasterByLayer[a.layer].add(a.amount);
           if (artist) artist.earned = artist.earned.add(a.amount);
           if (t) t.amount = t.amount.add(a.amount);
         }
@@ -546,6 +599,8 @@ export function ownerBalance(
         if (inP) {
           period.waiting = period.waiting.add(a.amount);
           addBreakdown(period.waitingBreakdown, a.reason as CReason, a.amount);
+          const m = monthOfPeriod(period, unitMonth);
+          m.waiting = m.waiting.add(a.amount);
           if (artist) artist.waiting = artist.waiting.add(a.amount);
           if (t) t.waiting = t.waiting.add(a.amount);
         }
@@ -588,12 +643,16 @@ export function ownerBalance(
         itemInPeriod.add(id);
         period.notOurs = period.notOurs.add(p.authorAmount);
         period.earnedPublishing = period.earnedPublishing.add(p.authorAmount);
+        const m = monthOfPeriod(period, p.reportMonth);
+        m.earnedPublishing = m.earnedPublishing.add(p.authorAmount);
       }
     } else {
       book.waiting = book.waiting.add(p.authorAmount);
       if (inP) {
         period.waiting = period.waiting.add(p.authorAmount);
         addBreakdown(period.waitingBreakdown, p.reason as CReason, p.authorAmount);
+        const m = monthOfPeriod(period, p.reportMonth);
+        m.waiting = m.waiting.add(p.authorAmount);
       }
     }
     if (inP) {
@@ -947,7 +1006,11 @@ export function ownerBalance(
       otherParticipants: per((p) => p.otherParticipants),
       ourShare: per((p) => p.ourShare),
       earnedMaster: per((p) => p.earnedMaster),
+      earnedMasterByLayer: Object.fromEntries(
+        ALLOCATION_LAYERS.map((l) => [l, per((p) => p.earnedMasterByLayer[l])]),
+      ) as Record<AllocationLayer, Decimal>,
       earnedPublishing: per((p) => p.earnedPublishing),
+      byMonth: periodMonths(selectedPeriods),
       paid: per((p) => p.paid),
       advancesPaid: per((p) => p.advancesPaid),
       recouped: per((p) => p.recouped),

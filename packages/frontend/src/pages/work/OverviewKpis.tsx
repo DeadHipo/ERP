@@ -27,6 +27,7 @@ const hintOf = (pick: KpiPick): string | undefined =>
  */
 export function OverviewKpis(props: { data: Overview | undefined; loading: boolean; account: string }) {
   const [open, setOpen] = useState<KpiMetric | null>(null);
+  const [monthsOpen, setMonthsOpen] = useState(false);
   const pick = props.data ? pickTotals(props.data.totals, props.account) : null;
   const sums = pick && (pick.kind === 'all' || pick.kind === 'account') ? pick.sums : null;
   const muted = props.data !== undefined && props.data.reconciliation.length === 0;
@@ -68,7 +69,74 @@ export function OverviewKpis(props: { data: Overview | undefined; loading: boole
       {opened && props.data && pick ? (
         <Breakdown data={props.data} metric={opened.metric} label={opened.text.label} account={props.account} pick={pick} />
       ) : null}
+      {props.data ? (
+        <div className="col-span-full flex flex-col gap-2">
+          <button
+            type="button"
+            className="self-start text-sm text-accent hover:underline"
+            data-testid="action-kpi-months"
+            aria-expanded={monthsOpen}
+            onClick={() => setMonthsOpen((o) => !o)}
+          >
+            {monthsOpen ? t.months.hide : t.months.details}
+          </button>
+          {monthsOpen ? <KpiMonths totals={props.data.totals} account={props.account} /> : null}
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+const MONTH_COLS = ['received', 'notOurs', 'waiting', 'ourShare', 'ourShareNoSplit', 'discrepancy'] as const;
+
+/** D-214: the four cards month by month (the backend's `totals.byMonth`; the total row is `totals.all`). */
+function KpiMonths(props: { totals: Overview['totals']; account: string }) {
+  const m = t.months;
+  const head = [m.month, t.received.label, t.confirmed.label, t.waiting.label, t.ours.label, m.noSplit, m.discrepancy];
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3.5" data-testid="kpi-months">
+      <div className="mb-2 flex flex-wrap items-baseline gap-2 text-sm">
+        <span className="font-medium">{m.title}</span>
+        <span className="text-xs text-muted">· {props.account !== '' ? m.filteredHint : m.hint}</span>
+      </div>
+      {props.totals.byMonth.length === 0 ? (
+        <p className="text-sm text-muted">{t.empty}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted">
+              <tr>
+                {head.map((h) => (
+                  <th key={h} className="px-2 py-1 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {props.totals.byMonth.map((row) => (
+                <tr key={row.month} data-testid={`kpi-month-${row.month}`} className="border-t border-border">
+                  <td className="px-2 py-1" data-col="month">{row.month}</td>
+                  {MONTH_COLS.map((k) => (
+                    <td key={k} className="px-2 py-1" data-col={k}>
+                      <Money value={row[k]} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr data-testid="kpi-month-total" className="border-t border-border font-medium">
+                <td className="px-2 py-1" data-col="month">{m.total}</td>
+                {MONTH_COLS.map((k) => (
+                  <td key={k} className="px-2 py-1" data-col={k}>
+                    <Money value={props.totals.all[k]} />
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1118,6 +1118,9 @@ export const overviewSchema = z.object({
       bySource: z.object({ believe: kpiSumsSchema, b17: kpiSumsSchema }),
       byAccount: z.array(kpiSumsSchema.extend({ source: z.enum(['believe', 'b17']).describe(D.source), account: z.string().describe(D.account) })),
       byLabel: z.record(z.string(), kpiSumsSchema).describe("The same sums per book (by name, '?' = without a label): the label a file or statement was loaded under, D-168, D-169"),
+      byMonth: z
+        .array(kpiSumsSchema.extend({ month: z.string().describe('YYYY-MM: the month of the reconciliation rows') }))
+        .describe('D-214: the same sums per month of the rows (every source and account together), ascending; Σ months = all'),
     })
     .describe('The KPI cards of P1 over the reconciliation rows of the period: all, per source, per source × account, per label (D-160, D-168)'),
   queue: z.array(
@@ -1296,6 +1299,32 @@ export const balanceSchema = z.object({
       otherParticipants: money.describe('What other owners were allocated on the same units'),
       ourShare: money.describe('The share of the label on the same units and publishing lines'),
       earnedMaster: money.describe('Confirmed income of the period from master (Believe)'),
+      earnedMasterByLayer: z
+        .object({
+          split: money.describe('From the rows of the main split'),
+          top: money.describe('From participations off the top'),
+          carve: money.describe('From participations carved out of a share (artist pool, artist share, label share)'),
+          sublabel: money.describe('From a sublabel rule'),
+        })
+        .describe('D-212: earnedMaster by the layer that allocated it; the sum is earnedMaster'),
+      byMonth: z
+        .array(
+          z.object({
+            month: z.string().describe('YYYY-MM: the report or sales month of the basis; publishing by the report month of its statement'),
+            earnedMaster: money.describe('Confirmed master income of the month'),
+            earnedMasterByLayer: z
+              .object({
+                split: money.describe('From the rows of the main split'),
+                top: money.describe('From participations off the top'),
+                carve: money.describe('From participations carved out of a share'),
+                sublabel: money.describe('From a sublabel rule'),
+              })
+              .describe('earnedMaster of the month by layer'),
+            earnedPublishing: money.describe('Confirmed publishing income of the month'),
+            waiting: money.describe('C of the month'),
+          }),
+        )
+        .describe('D-213: the income of the period month by month, ascending; Σ months = the period fields'),
       earnedPublishing: money.describe('Confirmed income of the period from publishing (B17)'),
       paid: money.describe('Counted payouts dated in the period'),
       advancesPaid: money.describe('Counted advances dated in the period'),

@@ -41,9 +41,83 @@ function operationText(op: Operation | undefined, id: string): string {
 
 const pendingWhy = (why: string) => (Object.hasOwn(t.pendingWhy, why) ? t.pendingWhy[why] : undefined) ?? why;
 
+const LAYERS = ['split', 'top', 'carve', 'sublabel'] as const;
+
+/**
+ * D-212: the money of the requested period, the master income by the layer that allocated it (the backend's sums: the
+ * split rows, participations off the top, carved participations, the sublabel rule).
+ */
+function PeriodBlock(props: { period: Balance['period']; expanded: boolean; onToggle: () => void }) {
+  const p = props.period;
+  const pb = t.periodBlock;
+  const range =
+    p.from === null && p.to === null
+      ? pb.allTime
+      : fmt(pb.range, { from: p.from ?? '…', to: p.to ?? '…', basis: p.basis === 'sales' ? t.sales : t.report });
+  const toolbar = (
+    <span className="flex items-center gap-3 text-xs">
+      <span className="text-muted" data-testid="balance-period-range">{range}</span>
+      <button type="button" className="text-accent hover:underline" data-testid="action-period-details" aria-expanded={props.expanded} onClick={props.onToggle}>
+        {props.expanded ? pb.hide : pb.details}
+      </button>
+    </span>
+  );
+  return (
+    <Section title={pb.title} testId="balance-period" toolbar={toolbar}>
+      <Fact testId="balance-period-earnedMaster" label={pb.earnedMaster} value={p.earnedMaster} strong />
+      <div className="pl-4 text-sm">
+        {LAYERS.map((l) => (
+          <Fact key={l} testId={`balance-period-layer-${l}`} label={pb.layers[l]} value={p.earnedMasterByLayer[l]} />
+        ))}
+      </div>
+      <Fact testId="balance-period-earnedPublishing" label={pb.earnedPublishing} value={p.earnedPublishing} />
+      <Fact testId="balance-period-waiting" label={pb.waiting} value={p.waiting} />
+      <Fact testId="balance-period-paid" label={pb.paid} value={p.paid} />
+    </Section>
+  );
+}
+
+/** D-213: the income of the period month by month (the backend's rows; the total row is the period fields). */
+function PeriodMonths(props: { period: Balance['period'] }) {
+  const p = props.period;
+  const pb = t.periodBlock;
+  const c = pb.cols;
+  return (
+    <Section title={pb.byMonth} testId="balance-period-months" toolbar={<span className="text-xs text-muted">{fmt(pb.byMonthHint, { basis: p.basis === 'sales' ? t.sales : t.report })}</span>}>
+      {p.byMonth.length === 0 ? (
+        <span className="text-sm text-muted" data-testid="balance-period-months-empty">{pb.byMonthEmpty}</span>
+      ) : (
+        <SimpleTable head={[c.month, c.earnedMaster, c.split, c.top, c.carve, c.sublabel, c.earnedPublishing, c.waiting]}>
+          {p.byMonth.map((m) => (
+            <tr key={m.month} data-testid={`balance-period-month-${m.month}`}>
+              <Td col="month">{m.month}</Td>
+              <Td col="earnedMaster"><Money value={m.earnedMaster} /></Td>
+              {LAYERS.map((l) => (
+                <Td key={l} col={l}><Money value={m.earnedMasterByLayer[l]} /></Td>
+              ))}
+              <Td col="earnedPublishing"><Money value={m.earnedPublishing} /></Td>
+              <Td col="waiting"><Money value={m.waiting} /></Td>
+            </tr>
+          ))}
+          <tr data-testid="balance-period-month-total" className="font-medium">
+            <Td col="month">{pb.total}</Td>
+            <Td col="earnedMaster"><Money value={p.earnedMaster} /></Td>
+            {LAYERS.map((l) => (
+              <Td key={l} col={l}><Money value={p.earnedMasterByLayer[l]} /></Td>
+            ))}
+            <Td col="earnedPublishing"><Money value={p.earnedPublishing} /></Td>
+            <Td col="waiting"><Money value={p.waiting} /></Td>
+          </tr>
+        </SimpleTable>
+      )}
+    </Section>
+  );
+}
+
 /** P10 Баланс: the formula as fields, the gate and the payout button, waiting by reason, by label, per pseudonym and ISRC, positions. */
 export function BalanceTab(props: { ownerId: string; balance: Balance; period: BalancePeriod }) {
   const b = props.balance;
+  const [monthsOpen, setMonthsOpen] = useState(false);
   const waiting = (Object.entries(b.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
   // The blocking and pending operations are named by their date, meaning, amount and pseudonym (the owner's operations
   // list, the same cached query as the Операции tab; not a money call), never by their id.
@@ -118,6 +192,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
         </Section>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
+        <PeriodBlock period={b.period} expanded={monthsOpen} onToggle={() => setMonthsOpen((o) => !o)} />
         <Section title={t.waitingByReason} testId="waiting-by-reason">
           {waiting.length === 0 ? (
             <span className="text-sm text-muted">{t.waitingEmpty}</span>
@@ -134,8 +209,9 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
             </ul>
           )}
         </Section>
-        <LabelBooks books={b.byLabel} />
       </div>
+      {monthsOpen ? <PeriodMonths period={b.period} /> : null}
+      <LabelBooks books={b.byLabel} />
       {b.total.byArea ? <AreaBooks areas={b.total.byArea} /> : null}
       <Section title={t.artists} testId="balance-artists">
         <SimpleTable head={[t.pseudonym, t.isrc, t.net, t.earned, t.waiting, ru.money.owners.cols.recouped, t.unrecouped, t.position]}>

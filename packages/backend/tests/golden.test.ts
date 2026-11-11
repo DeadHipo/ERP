@@ -781,6 +781,45 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G62 (D-212): the period income of an owner by layer: split row, top, carve, sublabel rule', async () => {
+    const c = await Case.start();
+    await c.person('A', 'B');
+    await c.sublabel('NoGhost Records', '0to8', 'A');
+    for (const n of [1, 2, 3, 4]) await c.track(I(n));
+    await c.split(I(1), [['A', '50']]);
+    await c.split(I(2), [['B', '50']]);
+    await c.part(I(2), 'A', '15', 'net', 'top');
+    await c.split(I(3), [['B', '50']]);
+    await c.part(I(3), 'A', '10', 'bucket', 'label_share');
+    await c.split(I(4), [['B', '50']]);
+    await c.load('2026-03', [
+      { isrc: I(1), net: '100' },
+      { isrc: I(2), net: '100' },
+      { isrc: I(3), net: '100' },
+      { isrc: I(4), net: '100', label: 'NoGhost Records' },
+    ]);
+    await c.load('2026-04', [{ isrc: I(1), net: '20' }]);
+    const text = (b: Awaited<ReturnType<Case['balance']>>) => ({
+      earnedMaster: b.period.earnedMaster.toFixed(),
+      byLayer: Object.fromEntries(Object.entries(b.period.earnedMasterByLayer).map(([k, v]) => [k, v.toFixed()])),
+    });
+    // March: row 50 of 100; top 15 of 100; label share 50 × 10 % = 5; NoGhost half of the label share 50 = 25
+    const march = await c.f.ownerBalance(c.owners.get('A') as string, { from: '2026-03', to: '2026-03' });
+    expect(text(march)).toEqual({ earnedMaster: '95', byLayer: { split: '50', top: '15', carve: '5', sublabel: '25' } });
+    // all time: April adds the row 10 of 20
+    const all = await c.balance('A');
+    expect(text(all)).toEqual({ earnedMaster: '105', byLayer: { split: '60', top: '15', carve: '5', sublabel: '25' } });
+    // D-213: month by month; the months add up to the period
+    const months = (b: Awaited<ReturnType<Case['balance']>>) =>
+      b.period.byMonth.map((m) => [m.month, m.earnedMaster.toFixed(), ...['split', 'top', 'carve', 'sublabel'].map((l) => m.earnedMasterByLayer[l as 'split'].toFixed())]);
+    expect(months(all)).toEqual([
+      ['2026-03', '95', '50', '15', '5', '25'],
+      ['2026-04', '10', '10', '0', '0', '0'],
+    ]);
+    expect(months(march)).toEqual([['2026-03', '95', '50', '15', '5', '25']]);
+    await c.verify();
+  });
+
   it('G35: two label-share carves from one base', async () => {
     const c = await single(async (c) => {
       await c.person('A', 'P1', 'P2');

@@ -53,8 +53,11 @@ export function overviewTotals(rows: readonly Reconciliation[]) {
   const bySource = { believe: zeroSums(), b17: zeroSums() };
   const byAccount = new Map<string, { source: 'believe' | 'b17'; account: string; sums: KpiSums }>();
   const byLabel = new Map<string, KpiSums>();
+  const byMonth = new Map<string, KpiSums>();
   for (const r of rows) {
     all = addRow(all, r);
+    // D-214: the same sums per month of the rows (every source and account of the month together)
+    byMonth.set(r.month, addRow(byMonth.get(r.month) ?? zeroSums(), r));
     bySource[r.source] = addRow(bySource[r.source], r);
     const k = `${r.source}|${r.account}`;
     const a = byAccount.get(k) ?? { source: r.source, account: r.account, sums: zeroSums() };
@@ -79,6 +82,7 @@ export function overviewTotals(rows: readonly Reconciliation[]) {
       .sort((a, b) => (a.source !== b.source ? (a.source < b.source ? -1 : 1) : a.account < b.account ? -1 : a.account > b.account ? 1 : 0))
       .map(({ source, account, sums }) => ({ source, account, ...sums })),
     byLabel: Object.fromEntries([...byLabel.entries()].sort(([a], [b]) => (a === '?' ? 1 : b === '?' ? -1 : a.localeCompare(b)))),
+    byMonth: [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, sums]) => ({ month, ...sums })),
   };
 }
 

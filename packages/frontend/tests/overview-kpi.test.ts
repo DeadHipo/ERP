@@ -23,6 +23,7 @@ const totals: KpiTotals = {
     { source: 'believe', account: '2701101', ...sums('57', '25', '7', '25') },
   ],
   byLabel: {},
+  byMonth: [],
 };
 
 describe('pickTotals (D-160)', () => {
