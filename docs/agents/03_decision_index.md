@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-214 by topic)
+# Decision index (D-001 … D-215 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -196,6 +196,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-212 The owner balance gives the period's master income by layer (`period.earnedMasterByLayer`: split, top, carve, sublabel; Σ = `earnedMaster`); P10 block «За период» · in force
 - D-213 The owner balance gives the period's income month by month (`period.byMonth`: master by layer, publishing by statement report month, waiting); P10 «подробно» opens the month table · in force
 - D-214 The overview totals per month (`totals.byMonth`, every source and account of the month, Σ = `all`); P1 «подробно: по месяцам» under the cards · in force
+- D-215 The owners' contracts from final_index that ERP lacked (15 contracts, 2 owner merges; `scripts/stage3/add-index-contracts.ts`, dry run by default) · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
