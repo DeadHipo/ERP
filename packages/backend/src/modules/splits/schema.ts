@@ -1,4 +1,4 @@
-import { date, numeric, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
+import { boolean, date, numeric, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Splits per track (ISRC) with validity periods. Only artist and MC shares are stored; our share is the remainder.
@@ -27,6 +27,8 @@ export const splitShares = s.table(
     artistId: text('artist_id').notNull(),
     percent: numeric('percent', { precision: 9, scale: 6 }).notNull(),
     documentId: text('document_id'),
+    /** D-216 (migration 0032): an MC row keeps its percent but does not bear pool carves of other MCs. */
+    isMc: boolean('is_mc').notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.splitId, t.artistId] })],
 );

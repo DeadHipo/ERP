@@ -17,6 +17,8 @@ export const SPLIT_IMPORT_COLUMNS = [
   { name: 'document', required: false },
   { name: 'artist_id', required: false },
   { name: 'note', required: false },
+  /** D-216: the MC mark of the row: `mc`, `1`, `yes`, `да`, `true`, `x` = MC; empty, `0`, `no`, `нет`, `false` = not. */
+  { name: 'mc', required: false },
 ] as const;
 export type SplitImportColumn = (typeof SPLIT_IMPORT_COLUMNS)[number]['name'];
 
@@ -38,6 +40,7 @@ export type ImportSeverity = 'error' | 'warning' | 'info';
 export const SPLIT_IMPORT_ISSUES = {
   isrc_invalid: 'error',
   percent_invalid: 'error',
+  mc_invalid: 'error',
   date_invalid: 'error',
   row_incomplete: 'error',
   label_only: 'info',

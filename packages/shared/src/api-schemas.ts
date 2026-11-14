@@ -111,6 +111,7 @@ export const shareSpec = z
     newArtistPseudonym: z.string().optional(),
     percent,
     documentId: z.string().nullish(),
+    isMc: z.boolean().optional().describe('D-216: an MC row: it keeps its percent but does not bear the pool carves of other MCs (default false)'),
   })
   .refine((s) => !!s.artistId || !!s.newArtistPseudonym, 'artistId or newArtistPseudonym is required');
 

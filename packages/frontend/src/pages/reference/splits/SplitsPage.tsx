@@ -81,13 +81,14 @@ export function SplitsPage() {
         colId: 'shares',
         headerName: t.cols.shares,
         minWidth: 260,
-        valueGetter: (p) => p.data?.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', '),
+        valueGetter: (p) => p.data?.shares.map((s) => `${s.pseudonym} ${s.percent} %${s.isMc ? ` ${t.mc}` : ''}`).join(', '),
         cellRenderer: (p: { data?: SplitListItem }) =>
           p.data
             ? p.data.shares.map((s, i) => (
                 <span key={s.artistId}>
                   {i > 0 ? ', ' : ''}
                   <EntityLink kind="artist" id={s.artistId} label={s.pseudonym} /> {s.percent} %
+                  {s.isMc ? <span data-testid={`split-mc-${s.artistId}`}> {t.mc}</span> : null}
                 </span>
               ))
             : null,

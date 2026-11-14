@@ -12,6 +12,16 @@ export interface ShareInput {
   percent: string;
   /** The row's own document: overrides the split's document for this row only (D-126). */
   documentId?: string | null;
+  /** D-216: an MC row does not bear the pool carves of other MCs (default false). */
+  isMc?: boolean;
+}
+
+/** A validated row of a split. */
+export interface ParsedShare {
+  artistId: string;
+  percent: Decimal;
+  documentId: string | null;
+  isMc: boolean;
 }
 
 export type ParticipationBase = 'net' | 'bucket';
@@ -67,7 +77,7 @@ export interface SplitView {
   documentId: string | null;
   origin: string;
   note: string | null;
-  shares: { artistId: string; percent: string; documentId: string | null }[];
+  shares: { artistId: string; percent: string; documentId: string | null; isMc: boolean }[];
   /** Our share is never stored: 100 minus the sum of artist and MC shares. */
   ourShare: string;
 }
@@ -75,7 +85,8 @@ export interface SplitView {
 export interface SplitAtDate {
   splitId: string;
   documentId: string | null;
-  shares: { artistId: string; percent: Decimal; documentId: string | null }[];
+  /** `isMc` (D-216): absent = not an MC row. */
+  shares: { artistId: string; percent: Decimal; documentId: string | null; isMc?: boolean }[];
   ourShare: Decimal;
 }
 
@@ -91,15 +102,13 @@ function parsePercent(raw: string): Decimal {
 }
 
 /** Validates shares: each 0..100, no artist twice, the sum not above 100 (our share cannot be negative). */
-export function validateShares(
-  shares: ShareInput[],
-): { artistId: string; percent: Decimal; documentId: string | null }[] {
+export function validateShares(shares: ShareInput[]): ParsedShare[] {
   const seen = new Set<string>();
   const parsed = shares.map((s) => {
     if (!s.artistId) throw new ValidationError('Share without artist');
     if (seen.has(s.artistId)) throw new ValidationError(`Artist ${s.artistId} appears twice in one split`);
     seen.add(s.artistId);
-    return { artistId: s.artistId, percent: parsePercent(s.percent), documentId: s.documentId ?? null };
+    return { artistId: s.artistId, percent: parsePercent(s.percent), documentId: s.documentId ?? null, isMc: s.isMc === true };
   });
   const total = sum(parsed.map((p) => p.percent));
   if (total.gt(HUNDRED)) {
@@ -132,7 +141,7 @@ export function createSplitsService(db: Db, org: OrgScope) {
       documentId: s.documentId,
       origin: s.origin,
       note: s.note,
-      shares: own.map((x) => ({ artistId: x.artistId, percent: x.percent, documentId: x.documentId })),
+      shares: own.map((x) => ({ artistId: x.artistId, percent: x.percent, documentId: x.documentId, isMc: x.isMc })),
       ourShare: HUNDRED.sub(sum(own.map((x) => new Decimal(x.percent)))).toFixed(),
     };
   }
@@ -177,7 +186,7 @@ export function createSplitsService(db: Db, org: OrgScope) {
     isrc: string;
     validFrom: IsoDate;
     validTo: IsoDate | null;
-    shares: { artistId: string; percent: Decimal; documentId: string | null }[];
+    shares: ParsedShare[];
     documentId: string | null;
     origin: string;
     note?: string | null;
@@ -199,6 +208,7 @@ export function createSplitsService(db: Db, org: OrgScope) {
         artistId: s.artistId,
         percent: s.percent.toFixed(),
         documentId: s.documentId,
+        isMc: s.isMc,
       })),
     );
     return id;
@@ -359,8 +369,9 @@ export function createSplitsService(db: Db, org: OrgScope) {
             const next = shares.map((x) => ({
               artistId: x.artistId,
               percent: sellerIds.has(x.artistId) ? '0' : x.percent,
-              // the other rows keep their own documents (an assumption row stays one, D-127)
+              // the other rows keep their own documents (an assumption row stays one, D-127) and their MC mark (D-216)
               documentId: x.documentId,
+              isMc: x.isMc,
             }));
             changed.push(
               await service.changeSplit({
@@ -587,13 +598,10 @@ export function createSplitsService(db: Db, org: OrgScope) {
         list.push(s);
         byIsrc.set(s.isrc, list);
       }
-      const sharesBySplit = new Map<
-        string,
-        { artistId: string; percent: Decimal; documentId: string | null }[]
-      >();
+      const sharesBySplit = new Map<string, SplitAtDate['shares']>();
       for (const sh of allShares) {
         const list = sharesBySplit.get(sh.splitId) ?? [];
-        list.push({ artistId: sh.artistId, percent: new Decimal(sh.percent), documentId: sh.documentId });
+        list.push({ artistId: sh.artistId, percent: new Decimal(sh.percent), documentId: sh.documentId, isMc: sh.isMc });
         sharesBySplit.set(sh.splitId, list);
       }
       const cache = new Map<string, SplitAtDate | undefined>();

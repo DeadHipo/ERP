@@ -6,7 +6,7 @@ import { saveCsv } from '../../../../lib/download';
 
 const EXAMPLE: Record<string, string>[] = [
   { isrc: 'QZTST2600001', pseudonym: 'Example Artist', percent: '40', from: '2026-01-01', owner: 'Example Owner', note: 'example' },
-  { isrc: 'QZTST2600001', pseudonym: 'Example Guest', percent: '20', from: '2026-01-01', note: 'example' },
+  { isrc: 'QZTST2600001', pseudonym: 'Example Guest', percent: '20', from: '2026-01-01', note: 'example', mc: 'mc' },
 ];
 
 /** The text of the template: the header of every column, then the example rows (`;`-free, comma-separated). */

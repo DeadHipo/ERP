@@ -8,7 +8,8 @@ both" (`double_participation`, checked from both sides), and computes no money. 
 is never stored.
 
 Storage: schema `splits`, `migrations/postgres/0002_splits.sql` and `0008_participations.sql` (tables `splits`,
-`split_shares` with `document_id`, `participations`), Drizzle tables in `schema.ts` (change both); all SQL in
+`split_shares` with `document_id` and `is_mc` (D-216, migration 0032: an MC row does not bear the pool carves of other
+MCs; a buyout keeps the marks), `participations`), Drizzle tables in `schema.ts` (change both); all SQL in
 `repository.ts`. Dates are floored to the month start by the facade, not here (D-126).
 
 Two deletes exist for the migration loader only (`scripts/mvp`, D-137): `deleteEmptySplits(ids)` removes splits whose

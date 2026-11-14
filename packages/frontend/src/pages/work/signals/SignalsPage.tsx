@@ -234,6 +234,28 @@ function renderList(name: Exclude<SignalName, LabelSignalName>, data: Signals, c
         />
       );
     }
+    case 'mcRowBearsCarve': {
+      type R = Signals['mcRowBearsCarve'][number];
+      return (
+        <Grid<R>
+          name={name}
+          count={count}
+          rows={data.mcRowBearsCarve}
+          rowKey={(r) => `${r.isrc}|${r.month}|${r.artistId}`}
+          columns={[
+            isrcCol((r) => r.isrc),
+            pseudonymCol<R>(),
+            textCol('month', c.month, (r) => r.month),
+            textCol('carveRecipients', c.carveRecipients, (r) => r.carveRecipients.join(', ')),
+            actionCol((r) => [
+              <Link key="rules" to={`/tracks/${encodeURIComponent(r.isrc)}?tab=rules`} className="text-xs text-accent hover:underline">
+                {t.toRules}
+              </Link>,
+            ]),
+          ]}
+        />
+      );
+    }
     case 'ruleRecipientIsRow': {
       type R = Signals['ruleRecipientIsRow'][number];
       return (

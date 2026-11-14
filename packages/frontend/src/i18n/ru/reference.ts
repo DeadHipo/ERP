@@ -166,6 +166,8 @@ export const reference = {
     next: 'Вперёд',
     clearArtist: 'сбросить псевдоним',
     cols: { isrc: 'ISRC', period: 'Период', document: 'Документ', shares: 'Строки', ourShare: 'Наше, %', origin: 'Источник', actions: 'Действия' },
+    /** D-216: the MC mark after a row. */
+    mc: 'MC',
     create: 'Создать сплит',
     createPick: 'Для какого ISRC?',
     createPickSubtitle: 'Выберите трек, затем заполните строки сплита.',

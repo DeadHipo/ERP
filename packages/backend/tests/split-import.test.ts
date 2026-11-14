@@ -16,9 +16,9 @@ const I2 = 'QZTST2600102';
 const I3 = 'QZTST2600103';
 const I4 = 'QZTST2600104';
 const UPC = '1234567890123';
-const HEADER = ['isrc', 'pseudonym', 'percent', 'from', 'to', 'owner', 'document', 'artist_id', 'note'];
+const HEADER: string[] = ['isrc', 'pseudonym', 'percent', 'from', 'to', 'owner', 'document', 'artist_id', 'note'];
 
-type Row = Partial<Record<(typeof HEADER)[number], string>>;
+type Row = Partial<Record<string, string>>;
 
 function csv(rows: Row[], opts: { delimiter?: string; bom?: boolean; header?: string[] } = {}) {
   const d = opts.delimiter ?? ',';
@@ -386,5 +386,42 @@ describe('split import: the «100 % label» row (D-175)', () => {
     expect([after?.ourShare.toFixed(), after?.C_breakdown.no_split?.toFixed()]).toEqual(['100', '40']);
     const again = await run(f, csv([{ isrc: I1, percent: '100', from: '2026-09-01', document: doc.id }]));
     expect(again.groups[0]?.action).toBe('unchanged');
+  });
+});
+
+describe('split import: the MC column (D-216)', () => {
+  const MC_HEADER = [...HEADER, 'mc'];
+  it('marks rows MC, a changed mark is a change (not «unchanged»), an unknown value is mc_invalid', async () => {
+    const f = await newFacade();
+    const appendix = await approvedAppendix(f);
+    const first = await run(
+      f,
+      csv(
+        [
+          { isrc: I1, pseudonym: 'Mc Artist One', percent: '25', from: '2026-01-01', document: appendix.id },
+          { isrc: I1, pseudonym: 'Mc Guest Synth', percent: '10', from: '2026-01-01', document: appendix.id, mc: 'mc' },
+        ],
+        { header: MC_HEADER },
+      ),
+      false,
+    );
+    expect(first.totals).toMatchObject({ create: 1, errors: 0 });
+    const split = (await f.listSplits({ isrc: I1 })).items[0];
+    const mark = (s: typeof split) => s?.shares.map((x) => x.isMc).sort();
+    expect(mark(split)).toEqual([false, true]);
+    // the same rows, the guest now without the mark: a change, not «unchanged»
+    const second = await run(
+      f,
+      csv(
+        [
+          { isrc: I1, pseudonym: 'Mc Artist One', percent: '25', from: '2026-03-01', document: appendix.id },
+          { isrc: I1, pseudonym: 'Mc Guest Synth', percent: '10', from: '2026-03-01', document: appendix.id, mc: 'нет' },
+        ],
+        { header: MC_HEADER },
+      ),
+    );
+    expect(second.groups[0]?.action).toBe('change');
+    const bad = await run(f, csv([{ isrc: I2, pseudonym: 'Mc Artist One', percent: '25', from: '2026-01-01', mc: 'maybe' }], { header: MC_HEADER }));
+    expect(codesOf(bad.rows[0] as { issues: { code: string }[] })).toContain('mc_invalid');
   });
 });

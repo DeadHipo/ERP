@@ -53,6 +53,8 @@ export interface ShareSpec {
   percent: string;
   /** The row's own document (overrides the split's document for this row, D-126). */
   documentId?: string | null;
+  /** D-216: an MC row (does not bear the pool carves of other MCs). */
+  isMc?: boolean;
 }
 
 /** One entry of `owners.artistIndex()`: every artist id (merged ones too) → the surviving artist and its owner. */
@@ -177,10 +179,10 @@ export function createFacadeContext(
         throw new ValidationError('Each share needs an artistId or a newArtistPseudonym');
     }
     return async () => {
-      const out: { artistId: string; percent: string; documentId: string | null }[] = [];
+      const out: { artistId: string; percent: string; documentId: string | null; isMc: boolean }[] = [];
       for (const s of shares) {
         if (s.artistId) {
-          out.push({ artistId: canon(s.artistId), percent: s.percent, documentId: s.documentId ?? null });
+          out.push({ artistId: canon(s.artistId), percent: s.percent, documentId: s.documentId ?? null, isMc: s.isMc === true });
           continue;
         }
         const created = await owners.createArtist({
@@ -189,7 +191,7 @@ export function createFacadeContext(
           origin: 'split',
         });
         if (cache) cacheArtist(cache, created);
-        out.push({ artistId: created.id, percent: s.percent, documentId: s.documentId ?? null });
+        out.push({ artistId: created.id, percent: s.percent, documentId: s.documentId ?? null, isMc: s.isMc === true });
       }
       return out;
     };

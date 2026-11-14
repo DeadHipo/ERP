@@ -120,6 +120,34 @@ export async function reconciliationFrom(
   });
 }
 
+/** A pseudonym named like an MC («MC …», «Mc …»): the hint of D-216, never a rule of the money. */
+const MC_NAME = /^mc(\s|[._-]|$)/i;
+
+/**
+ * D-216: split rows without the MC mark whose pseudonym is named like an MC, on units where a pool carve was taken
+ * from the rows: such a row bears the carve of another MC. Information: the operator marks the row MC (a new split
+ * version) or leaves it. One read of the split index for the ISRCs of those units.
+ */
+async function mcRowsBearingCarves(
+  splits: FacadeContext['splits'],
+  carved: Map<string, { isrc: string; month: string; recipients: Set<string> }>,
+  pseudonymOf: (id: string) => string,
+) {
+  if (carved.size === 0) return [];
+  const index = await splits.index({ isrcs: [...new Set([...carved.values()].map((c) => c.isrc))] });
+  const out: { isrc: string; month: string; artistId: string; pseudonym: string; carveRecipients: string[] }[] = [];
+  for (const c of carved.values()) {
+    const sp = index.at(c.isrc, `${c.month}-01`);
+    for (const sh of sp?.shares ?? []) {
+      if (sh.isMc === true || sh.percent.isZero()) continue;
+      const pseudonym = pseudonymOf(sh.artistId);
+      if (!MC_NAME.test(pseudonym)) continue;
+      out.push({ isrc: c.isrc, month: c.month, artistId: sh.artistId, pseudonym, carveRecipients: [...c.recipients].sort() });
+    }
+  }
+  return out.sort((a, b) => a.isrc.localeCompare(b.isrc) || a.month.localeCompare(b.month) || a.pseudonym.localeCompare(b.pseudonym));
+}
+
 /**
  * Signals of one calculation (the lists are complete; `counts` is the full length of each list, the route applies the
  * limit). Needs the sources, owners, splits and publishing modules for the lists that are not in the calculation.
@@ -166,6 +194,8 @@ export async function signalsFrom(
     { isrc: string; artistId: string; pseudonym: string; month: string }
   >();
   const twoRows = new Map<string, { isrc: string; ownerId: string; month: string; pseudonyms: string[] }>();
+  // D-216: units with a pool carve; their split rows are read once after the loop
+  const poolCarved = new Map<string, { isrc: string; month: string; recipients: Set<string> }>();
   const pseudonymOf = (id: string) => calc.artistIndex.get(id)?.pseudonym ?? '?';
   let noIsrc = ZERO;
   for (const u of calc.units) {
@@ -222,6 +252,13 @@ export async function signalsFrom(
           month: u.reportingMonth,
         });
     }
+    for (const a of u.allocations)
+      if (a.layer === 'carve' && a.kind === 'artist_pool' && !a.amount.isZero()) {
+        const k = `${u.isrc}|${u.reportingMonth}`;
+        const r = poolCarved.get(k) ?? { isrc: u.isrc, month: u.reportingMonth, recipients: new Set<string>() };
+        r.recipients.add(pseudonymOf(a.artistId));
+        poolCarved.set(k, r);
+      }
     const byOwner = new Map<string, Set<string>>();
     for (const a of rows)
       if (a.ownerId) byOwner.set(a.ownerId, (byOwner.get(a.ownerId) ?? new Set<string>()).add(a.artistId));
@@ -377,6 +414,7 @@ export async function signalsFrom(
     ruleRecipientIsRow: [...recipientRows.values()].sort(
       (a, b) => a.isrc.localeCompare(b.isrc) || a.month.localeCompare(b.month),
     ),
+    mcRowBearsCarve: await mcRowsBearingCarves(splits, poolCarved, pseudonymOf),
     twoRowsOneOwner: [...twoRows.values()].sort(
       (a, b) => a.isrc.localeCompare(b.isrc) || a.month.localeCompare(b.month),
     ),

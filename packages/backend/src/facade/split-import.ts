@@ -31,6 +31,10 @@ const HUNDRED = new Decimal(100);
 const LABEL_REQUIRED = 'Choose the own label of the import: ?label=';
 
 type Issue = { code: SplitImportIssueCode; severity: 'error' | 'warning' | 'info'; details?: Record<string, unknown> };
+/** D-216: the values of the `mc` column. */
+const MC_TRUE = new Set(['mc', '1', 'yes', 'да', 'true', 'x', '+']);
+const MC_FALSE = new Set(['0', 'no', 'нет', 'false', '-']);
+
 const issue = (code: SplitImportIssueCode, details?: Record<string, unknown>): Issue => ({
   code,
   severity: SPLIT_IMPORT_ISSUES[code],
@@ -187,6 +191,8 @@ interface ModelRow {
   artistId: string;
   percent: string;
   documentId: string | null;
+  /** D-216: the MC mark of the row. */
+  isMc?: boolean;
 }
 interface ModelSplit {
   from: string;
@@ -211,6 +217,8 @@ interface RowState {
   owner: { kind: 'found'; id: string } | { kind: 'new'; norm: string; name: string } | null;
   ownerAssign: boolean;
   documentId: string | null;
+  /** D-216: the `mc` column. */
+  isMc: boolean;
   group: string;
   /** The «100 % label» row (D-175): no pseudonym, percent 100. */
   labelOnly: boolean;
@@ -321,6 +329,9 @@ function classify(
     }
     const percent = percentRaw ? (parsePercent(percentRaw) ?? null) : null;
     if (percentRaw && percent === null) issues.push(issue('percent_invalid'));
+    const mcRaw = (cells.mc ?? '').trim().toLowerCase();
+    const isMc = MC_TRUE.has(mcRaw);
+    if (mcRaw && !isMc && !MC_FALSE.has(mcRaw)) issues.push(issue('mc_invalid', { value: cells.mc }));
     const fromFloored = fromRaw ? (floorDate(fromRaw) ?? null) : null;
     const toFloored = toRaw ? (floorDate(toRaw) ?? null) : null;
     if ((fromRaw && !fromFloored) || (toRaw && !toFloored)) issues.push(issue('date_invalid'));
@@ -439,6 +450,7 @@ function classify(
       owner,
       ownerAssign,
       documentId,
+      isMc,
       group,
       labelOnly,
       issues,
@@ -518,6 +530,7 @@ function classify(
           artistId: r.artistKey as string,
           percent: r.percent as string,
           documentId: common ? null : r.documentId,
+          isMc: r.isMc,
         }));
 
     const list = model.get(isrc) ?? [];
@@ -532,7 +545,9 @@ function classify(
     } else if (
       current &&
       current.rows.length === wanted.length &&
-      wanted.every((x) => current.rows.some((y) => y.artistId === x.artistId && new Decimal(y.percent).eq(x.percent)))
+      wanted.every((x) =>
+        current.rows.some((y) => y.artistId === x.artistId && new Decimal(y.percent).eq(x.percent) && (y.isMc ?? false) === (x.isMc ?? false)),
+      )
     ) {
       intended = 'unchanged';
       period = { from, to: current.to };
@@ -622,7 +637,7 @@ export function splitImportApi(ctx: FacadeContext, writes: Pick<ReturnType<typeo
         validFrom: s.validFrom,
         validTo: s.validTo,
         documentId: s.documentId,
-        shares: s.shares.map((x) => ({ artistId: x.artistId, percent: x.percent, documentId: x.documentId })),
+        shares: s.shares.map((x) => ({ artistId: x.artistId, percent: x.percent, documentId: x.documentId, isMc: x.isMc })),
       })),
       participations: parts.map((p) => ({ id: p.id, isrc: p.isrc, artistId: p.artistId, validFrom: p.validFrom, validTo: p.validTo })),
     };
@@ -773,7 +788,7 @@ export function splitImportApi(ctx: FacadeContext, writes: Pick<ReturnType<typeo
             }
             if (g.action !== 'create' && g.action !== 'change') continue;
             const shares = [];
-            for (const s of g.shares) shares.push({ artistId: await artistOf(s.artistId), percent: s.percent, documentId: s.documentId });
+            for (const s of g.shares) shares.push({ artistId: await artistOf(s.artistId), percent: s.percent, documentId: s.documentId, isMc: s.isMc === true });
             const written =
               g.action === 'create'
                 ? await writes.createSplit(

@@ -39,6 +39,7 @@ export function reportsRouter(facade: Facade) {
       sublabelWithoutRule: cut(s.sublabelWithoutRule),
       ruleRecipientIsRow: cut(s.ruleRecipientIsRow),
       twoRowsOneOwner: cut(s.twoRowsOneOwner),
+      mcRowBearsCarve: cut(s.mcRowBearsCarve),
       tracksWithNote: cut(s.tracksWithNote),
       participantsWithoutOwner: cut(s.participantsWithoutOwner),
       assumptions: cut(s.assumptions),

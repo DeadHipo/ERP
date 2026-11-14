@@ -29,7 +29,8 @@ export interface SplitSpec {
   to?: string;
   doc?: string | null;
   /** [artist, percent, own document] */
-  shares: [string, string, (string | null)?][];
+  /** [artist, percent, row document?, 'mc'? (D-216: an MC row, does not bear pool carves)] */
+  shares: [string, string, (string | null)?, 'mc'?][];
 }
 
 export interface PartSpec {
@@ -138,10 +139,11 @@ export function makeContext(w: World = {}): LayerContext {
     splitAt(isrc, date): SplitAtDate | undefined {
       const s = (w.splits?.[isrc] ?? []).find((x) => covers(x.from, x.to, date));
       if (!s) return undefined;
-      const shares = s.shares.map(([artistId, p, doc]) => ({
+      const shares = s.shares.map(([artistId, p, doc, mc]) => ({
         artistId,
         percent: new Decimal(p),
         documentId: doc ?? null,
+        ...(mc === 'mc' ? { isMc: true } : {}),
       }));
       return {
         splitId: s.id ?? `split-${isrc}-${s.from ?? 'start'}`,

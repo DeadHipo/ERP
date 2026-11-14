@@ -34,6 +34,7 @@ const D = {
   isrc: 'The ISRC of the recording: splits and money are per ISRC',
   upc: 'The UPC of the release',
   documentId: 'The document that confirms this record; null = none',
+  isMc: 'D-216: an MC row: it keeps its percent but does not bear the pool carves of other MCs',
   documentStatus: 'not_attached | not_approved | approved | missing: only approved confirms money',
   ruleId: 'Id of the split, participation or label rule',
   reportingMonth: 'The month of the report: splits are chosen by it',
@@ -332,7 +333,7 @@ export const splitSchema = z.object({
   documentId: z.string().nullable().describe(D.documentId),
   origin: z.string().describe(D.origin),
   note: z.string().nullable(),
-  shares: z.array(z.object({ artistId: z.string().describe(D.artistId), percent: z.string().describe('The share of net'), documentId: z.string().nullable().describe(D.documentId) })).describe('The artist rows; a row without an approved document waits'),
+  shares: z.array(z.object({ artistId: z.string().describe(D.artistId), percent: z.string().describe('The share of net'), documentId: z.string().nullable().describe(D.documentId), isMc: z.boolean().describe(D.isMc) })).describe('The artist rows; a row without an approved document waits'),
   ourShare: z.string().describe('100 minus the sum of the shares: the percent of the label; never stored'),
 });
 
@@ -401,6 +402,7 @@ export const splitListItemSchema = splitSchema.extend({
       artistId: z.string().describe(D.artistId),
       percent: z.string().describe('The share of net'),
       documentId: z.string().nullable().describe(D.documentId),
+      isMc: z.boolean().describe(D.isMc),
       pseudonym: z.string().describe(D.pseudonym),
       ownerId: z.string().nullable().describe(D.ownerId),
     }),
@@ -875,6 +877,17 @@ export const signalsSchema = z.object({
   ruleRecipientIsRow: z
     .array(z.object({ isrc: z.string().describe(D.isrc), artistId: z.string().describe(D.artistId), pseudonym: z.string().describe(D.pseudonym), month }))
     .describe('The sublabel rule recipient also has a split row on the same unit: the double-pay shape'),
+  mcRowBearsCarve: z
+    .array(
+      z.object({
+        isrc: z.string().describe(D.isrc),
+        month,
+        artistId: z.string().describe(D.artistId),
+        pseudonym: z.string().describe(D.pseudonym),
+        carveRecipients: z.array(z.string()).describe('The pseudonyms whose pool carve this row bears'),
+      }),
+    )
+    .describe('D-216: a split row named like an MC, without the MC mark, bears the pool carve of another MC on the unit (information)'),
   twoRowsOneOwner: z
     .array(z.object({ isrc: z.string().describe(D.isrc), ownerId: z.string().describe(D.ownerId), month, pseudonyms: z.array(z.string()) }))
     .describe('Two split rows of one ISRC-month belong to pseudonyms of the same owner (information only)'),

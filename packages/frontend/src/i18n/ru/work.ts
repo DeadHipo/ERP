@@ -163,6 +163,7 @@ export const signalsPage = {
     label: 'Строка лейбла',
     pseudonym: 'Псевдоним',
     pseudonyms: 'Псевдонимы',
+    carveRecipients: 'Чей вырез несёт',
     owner: 'Владелец',
     note: 'Заметка',
     trackTitle: 'Название',

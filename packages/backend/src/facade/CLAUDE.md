@@ -15,7 +15,9 @@
   per source, account and month, `ourShare` = Σ label share of the units where it is ours (D-127).
 - `layers/` holds the master money as pure functions (no storage, own tests in `tests/layers/`). The order is the list
   `MASTER_LAYERS` in `layers/index.ts`: label of record → perimeter → off the top → split → carves (pool, artist share,
-  label share, sublabel, in `carve.ts`) → categorise (10 §3). Exactness: quantise every amount to 12 decimals right
+  label share, sublabel, in `carve.ts`) → categorise (10 §3). The pool kind is taken pro rata only from the split rows
+  without the MC mark of the split in force (D-216, `bearingRows`; all rows when every row is marked; no marks = the
+  old answer). Exactness: quantise every amount to 12 decimals right
   after its multiplication (`layers/exact.ts`: `q`, `pct`), get every remainder by subtraction, distribute pro rata /
   scale-downs with `distribute` (residue to the largest absolute amount, a tie: first by id). When percents sum to
   exactly 100 the rounded amounts may exceed their base by a few pico: `capToBase` / `distributeCapped` take the excess

@@ -173,6 +173,9 @@ export const catalog = {
     shares: 'Строки',
     ourShare: 'Наше',
     rowDocument: 'свой документ',
+    /** D-216: the MC mark of a split row. */
+    mc: 'MC',
+    mcHint: 'строка MC: получает свой процент, но не несёт вырезы других MC',
     pseudonym: 'Псевдоним',
     percent: '%',
     base: 'База',
@@ -206,6 +209,7 @@ export const catalog = {
       addRow: '+ строка',
       removeRow: 'убрать',
       dropDocument: 'без своего документа',
+      mc: 'MC (не несёт вырезы других MC)',
     },
     bases: { net: 'от получено (net)', bucket: 'от корзины (bucket)' },
     documentOptional: 'Документ сплита (необязательно: без него деньги ждут в C)',

@@ -9,6 +9,7 @@ export const signals = {
   labelUnmapped: 'Строки лейбла без сопоставления',
   sublabelWithoutRule: 'Сублейблы без правила',
   ruleRecipientIsRow: 'Получатель правила также в строках сплита',
+  mcRowBearsCarve: 'Строка MC без пометки несёт вырез другого MC',
   twoRowsOneOwner: 'Две строки одного владельца',
   tracksWithNote: 'Треки с заметкой',
   participantsWithoutOwner: 'Участники без владельца',

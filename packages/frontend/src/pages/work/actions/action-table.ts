@@ -41,6 +41,7 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   labelUnmapped: { action: 'LabelAliasDialog', also: ['SublabelRuleDialog'] },
   sublabelWithoutRule: { action: 'SetRuleDialog' },
   ruleRecipientIsRow: { action: 'CloseRuleDialog' },
+  mcRowBearsCarve: { information: true, note: 'a row named like an MC without the MC mark bears the pool carve of another MC (D-216): mark it MC in a new split version on the track page' },
   twoRowsOneOwner: { information: true, note: 'two split rows of one owner on a unit: shown for the head, no action' },
   tracksWithNote: { action: 'NoteDialog' },
   participantsWithoutOwner: { action: 'AssignOwnerDialog' },

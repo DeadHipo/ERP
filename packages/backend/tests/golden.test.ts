@@ -820,6 +820,40 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
+  it('G63 (D-216): an MC row of the split does not bear the pool carve; a new version from a month keeps the history', async () => {
+    const c = await Case.start();
+    await c.person('A', 'B', 'Mc MO', 'K');
+    await c.track(I(1));
+    // history: no marks; from 2026-04 the same rows with MO marked MC
+    await c.split(I(1), [['A', '24.8'], ['B', '24.8'], ['Mc MO', '10']], { to: '2026-04-01' });
+    await c.f.createSplit({
+      isrc: I(1),
+      validFrom: '2026-04-01',
+      shares: [
+        { artistId: c.id('A'), percent: '24.8' },
+        { artistId: c.id('B'), percent: '24.8' },
+        { artistId: c.id('Mc MO'), percent: '10', isMc: true },
+      ],
+      documentId: c.appendix,
+    });
+    await c.part(I(1), 'K', '10', 'net', 'artist_pool');
+    await c.load('2026-03', [{ isrc: I(1), net: '100' }]);
+    await c.load('2026-04', [{ isrc: I(1), net: '100' }]);
+    // March (no mark): pro rata over 24.8 / 24.8 / 10 → 10 × 24.8 / 59.6 = 4.161073825503 off A
+    const march = (await c.amounts(I(1), '2026-03')).amounts;
+    // the residue of the pro rata goes to the larger of two equal rows, a tie by id (random here): compare A and B as a pair
+    expect([march.A, march.B].sort()).toEqual(['20.638926174496', '20.638926174497']);
+    expect([march['Mc MO'], march.K]).toEqual(['8.322147651007', '10']);
+    // April (MO marked MC): A and B bear 5 each, MO keeps its 10
+    expect((await c.amounts(I(1), '2026-04')).amounts).toEqual({ A: '19.8', B: '19.8', 'Mc MO': '10', K: '10' });
+    const listed = await c.f.listSplits({ isrc: I(1) });
+    expect(listed.items.flatMap((s) => s.shares.filter((x) => x.isMc).map((x) => `${s.validFrom}:${c.names.get(x.artistId)}`))).toEqual(['2026-04-01:Mc MO']);
+    // the signal: in March the unmarked «Mc MO» bore the carve of K; in April it is marked
+    const sg = await c.f.signals();
+    expect(sg.mcRowBearsCarve.map((r) => [r.month, r.pseudonym, r.carveRecipients.join(',')])).toEqual([['2026-03', 'Mc MO', 'K']]);
+    await c.verify();
+  });
+
   it('G35: two label-share carves from one base', async () => {
     const c = await single(async (c) => {
       await c.person('A', 'P1', 'P2');

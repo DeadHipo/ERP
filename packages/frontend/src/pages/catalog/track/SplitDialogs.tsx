@@ -20,8 +20,8 @@ const f = r.fields;
 export const roundedNote = (entered: string, stored: string) =>
   entered !== stored ? ` (${fmt(r.toast.rounded, { date: stored })})` : '';
 
-type Row = { key: string; artistId: string | null; label: string; percent: string; documentId: string | null; fixed: boolean };
-const emptyRow = (n: number): Row => ({ key: `new${n}`, artistId: null, label: '', percent: '', documentId: null, fixed: false });
+type Row = { key: string; artistId: string | null; label: string; percent: string; documentId: string | null; isMc: boolean; fixed: boolean };
+const emptyRow = (n: number): Row => ({ key: `new${n}`, artistId: null, label: '', percent: '', documentId: null, isMc: false, fixed: false });
 const rowsOf = (s: Split | undefined): Row[] =>
   s
     ? s.shares.map((sh) => ({
@@ -30,10 +30,11 @@ const rowsOf = (s: Split | undefined): Row[] =>
         label: sh.pseudonym,
         percent: sh.percent,
         documentId: sh.documentId,
+        isMc: sh.isMc,
         fixed: true,
       }))
     : [emptyRow(0)];
-const rowsText = (rows: readonly Row[]) => rows.map((x) => `${x.label || '?'} ${x.percent} %`).join(', ');
+const rowsText = (rows: readonly Row[]) => rows.map((x) => `${x.label || '?'} ${x.percent} %${x.isMc ? ` (${r.mc})` : ''}`).join(', ');
 
 /** The rows of a split: kept rows show their pseudonym (percent editable), new rows pick a pseudonym. */
 function RowsEditor({ rows, setRows }: { rows: Row[]; setRows: (update: (rows: Row[]) => Row[]) => void }) {
@@ -78,7 +79,18 @@ function RowsEditor({ rows, setRows }: { rows: Row[]; setRows: (update: (rows: R
               />
             </div>
           )}
-          <TextField name={`split-percent-${i}`} label={f.percent} value={row.percent} onChange={(v) => patch(row.key, { percent: v })} />
+          <div className="flex flex-col gap-1">
+            <TextField name={`split-percent-${i}`} label={f.percent} value={row.percent} onChange={(v) => patch(row.key, { percent: v })} />
+            <label className="flex items-center gap-1 text-xs text-muted" title={r.mcHint}>
+              <input
+                type="checkbox"
+                data-testid={`field-split-mc-${i}`}
+                checked={row.isMc}
+                onChange={(e) => patch(row.key, { isMc: e.currentTarget.checked })}
+              />
+              {f.mc}
+            </label>
+          </div>
           <ActionButton
             name={`split-remove-row-${i}`}
             write={false}
@@ -120,7 +132,7 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
   const [note, setNote] = useState('');
   const [doc, setDoc] = useState<ReadyDocument | null>(null);
   const [confirm, setConfirm] = useState(false);
-  const shares = rows.map((x) => ({ artistId: x.artistId ?? '', percent: x.percent.trim(), documentId: x.documentId }));
+  const shares = rows.map((x) => ({ artistId: x.artistId ?? '', percent: x.percent.trim(), documentId: x.documentId, isMc: x.isMc }));
   const run = useAction(
     async () => {
       if (change) {
@@ -137,7 +149,7 @@ export function SplitDialog(props: { mode: 'create' | 'change'; isrc: string; sp
   const current = from ? splitAt(props.splits, from) : newest;
   // The new rows end where the next split of the ISRC starts (19 §4); read from the list, no date arithmetic.
   const next = from ? props.splits.map((x) => x.validFrom).filter((d) => d > from).sort()[0] : undefined;
-  const closes = current ? `${periodText(current.validFrom, current.validTo, r.open)}: ${current.shares.map((s) => `${s.pseudonym} ${s.percent} %`).join(', ')}` : '—';
+  const closes = current ? `${periodText(current.validFrom, current.validTo, r.open)}: ${current.shares.map((s) => `${s.pseudonym} ${s.percent} %${s.isMc ? ` (${r.mc})` : ''}`).join(', ')}` : '—';
   return (
     <>
       <FormDialog

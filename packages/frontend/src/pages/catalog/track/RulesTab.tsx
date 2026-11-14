@@ -79,6 +79,11 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
                     {s.shares.map((sh) => (
                       <li key={sh.artistId} data-testid={`share-${sh.artistId}`}>
                         <EntityLink kind="artist" id={sh.artistId} label={sh.pseudonym} /> {sh.percent} %
+                        {sh.isMc ? (
+                          <span className="ml-1 rounded bg-default px-1 text-xs" data-testid={`share-mc-${sh.artistId}`} title={r.mcHint}>
+                            {r.mc}
+                          </span>
+                        ) : null}
                         {sh.documentId ? (
                           <span className="text-xs text-muted">
                             {' · '}

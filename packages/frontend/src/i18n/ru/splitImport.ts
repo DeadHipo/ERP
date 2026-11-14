@@ -62,6 +62,7 @@ export const splitImport = {
   issues: {
     isrc_invalid: 'неверный ISRC',
     percent_invalid: 'процент не число или не больше нуля',
+    mc_invalid: 'колонка mc: mc / да / 1 — MC, пусто / нет / 0 — не MC',
     date_invalid: 'неверная дата',
     row_incomplete: 'не заполнены обязательные колонки',
     date_floored: 'дата округлена до первого числа',

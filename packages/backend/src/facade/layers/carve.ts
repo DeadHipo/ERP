@@ -52,14 +52,31 @@ const carveAllocations = (ctx: LayerContext, parts: ParticipationAtDate[], amoun
   );
 
 /**
+ * The rows that bear the pool (D-216): the split rows without the MC mark of the split in force; when every row is
+ * marked, all of them (the pool is never left without a bearer). Without marks: every row, as before.
+ */
+function bearingRows(s: UnitState, ctx: LayerContext): number[] {
+  const all = s.rows.map((r, i) => (r.kind === 'row' ? i : -1)).filter((i) => i >= 0);
+  const marked = new Set(
+    (ctx.splitAt(s.unit.isrc, reportDate(s.unit))?.shares ?? [])
+      .filter((sh) => sh.isMc === true)
+      .map((sh) => canonical(ctx, sh.artistId)),
+  );
+  if (marked.size === 0) return all;
+  const bearing = all.filter((i) => !marked.has((s.rows[i] as Allocation).artistId));
+  return bearing.length > 0 ? bearing : all;
+}
+
+/**
  * Pool: targets `q(net × p / 100)`; their total is taken from the split rows pro rata to the rows' amounts at the
  * start of the kind (quantised, residue to the largest row). A pool smaller than the targets funds them scaled down.
+ * Rows marked MC in the split (D-216) do not bear it: only the other rows form the pool.
  */
 function pool(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate[]): UnitState {
   if (parts.length === 0) return s;
   const shortfalls = [...s.shortfalls];
   const targets = parts.map((p) => pct(s.unit.net, p.percent));
-  const rowIdx = s.rows.map((r, i) => (r.kind === 'row' ? i : -1)).filter((i) => i >= 0);
+  const rowIdx = bearingRows(s, ctx);
   const poolAmount = sumOf(rowIdx.map((i) => (s.rows[i] as Allocation).amount));
   const amounts = fund(s, ctx, parts, targets, poolAmount, shortfalls);
   const taken = sumOf(amounts);

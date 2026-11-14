@@ -21,6 +21,38 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     expect(['A', 'B', 'M1', 'M2'].map(o.amount)).toEqual(['12', '12', '13', '13']);
     expect([o.B, o.ours]).toEqual(['50', '50']);
   });
+  it('D-216: MC rows of the split do not bear a pool carve; the other rows bear it pro rata', () => {
+    // VOZES TALENTINHO shape: two artists 24.8, MC rows 10 and 7; MC Kenin 10 % of net from the pool
+    const o = run(
+      {
+        splits: { [I1]: [{ shares: [['A', '24.8'], ['B', '24.8'], ['MO', '10', null, 'mc'], ['LU', '7', null, 'mc']] }] },
+        parts: [{ artist: 'K', percent: '10', funded: 'artist_pool' }],
+      },
+      unit('100'),
+    );
+    expect(['A', 'B', 'MO', 'LU', 'K'].map(o.amount)).toEqual(['19.8', '19.8', '10', '7', '10']);
+    expect([o.B, o.ours]).toEqual(['66.6', '33.4']);
+    // without marks: pro rata over all four rows (the old answer)
+    const old = run(
+      {
+        splits: { [I1]: [{ shares: [['A', '24.8'], ['B', '24.8'], ['MO', '10'], ['LU', '7']] }] },
+        parts: [{ artist: 'K', percent: '10', funded: 'artist_pool' }],
+      },
+      unit('100'),
+    );
+    // 10 × 24.8 / 66.6 = 3.723723723723… off each artist row, 1.501501… off MO, 1.051051… off LU (residue to the largest)
+    expect(['A', 'B', 'MO', 'LU', 'K'].map(old.amount)).toEqual(['21.076276276277', '21.076276276276', '8.498498498498', '5.948948948949', '10']);
+    // every row marked: all of them bear it (never without a bearer)
+    const all = run(
+      {
+        splits: { [I1]: [{ shares: [['MO', '10', null, 'mc'], ['LU', '10', null, 'mc']] }] },
+        parts: [{ artist: 'K', percent: '4', funded: 'artist_pool' }],
+      },
+      unit('100'),
+    );
+    expect(['MO', 'LU', 'K'].map(all.amount)).toEqual(['8', '8', '4']);
+    expect(exactAfterEveryLayer(o, new Decimal('100'))).toBeNull();
+  });
   it('G05a / G05b: the sublabel half of the label share', () => {
     const a = run({ splits: rows(['A', '50']) }, unit('100', { labelName: 'NoGhost Records' }));
     expect([a.amount('A'), a.amount('NG'), a.B, a.ours]).toEqual(['50', '25', '75', '25']);
