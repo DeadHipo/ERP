@@ -1,0 +1,914 @@
+// ERP 0to8: ТЕКУЩАЯ схема всех таблиц на 2026-11-16 (ветка feature/fable-003, после D-216). Для https://dbdiagram.io/d
+// Источники: packages/backend/src/modules/*/schema.ts, src/auth, src/orgs, migrations/postgres/0001..0032, migrations/clickhouse/0001..0003,
+// живая база (information_schema.columns, pg_constraint, SELECT count(*)). Числа строк сняты 2026-11-16.
+//
+// ЛЕГЕНДА
+//  * org_id NOT NULL есть в КАЖДОЙ таблице PostgreSQL (D-170) и указывает на orgs.organizations.id (FK нет); колонку и связь не рисуем.
+//    Составные ключи с org_id: auth.memberships (user_id, org_id), auth.user_labels (user_id, org_id, label_id), labels.label_aliases (org_id, alias_norm), и т. п.
+//  * Цвет связи (Ref ... [color: ...]):
+//      серый    #888888  настоящий FOREIGN KEY в базе (pg_constraint); все только внутри одного модуля
+//      синий    #1f77b4  id внутри модуля, FK нет (проверяет сервис модуля)
+//      зелёный  #2ca02c  id между модулями, FK нет (держит фасад, D-121)
+//      оранжевый #ff7f0e связь по ISRC (или UPC): общий ключ, мастер-справочника ISRC нет; цель рисуем в owners.tracks / owners.releases
+//      красный  #d62728  связь по строке (имя, label_name, account, writer_norm, название): хрупкое место
+//  * Группа TableGroup = модуль (схема PostgreSQL); owners разбит на две группы (люди+бумаги и каталог) для читаемости, это один модуль.
+//  * В Note каждой таблицы: что это и число строк живой базы. Колонки с личными данными названы в Note таблицы, значения не приводятся.
+//  * Колонки с JSON внутри текста (settlements.operations.allocation, payout_snapshots.payload) несут id внутри строки: рисуем только allocation (зелёная).
+//  * Не рисуются как Ref: owners.releases.label_string (только показ, ни одного чтения связи), documents.file_ref (внешняя ссылка pandadoc:<sha256>),
+//    settlements.payees.payee_ref (внешний реквизит), audit.actions.entity_ids (любые id), pub_lines.period / pubv2.accruals.period (месяц-ключ).
+
+Project erp_0to8_current {
+  database_type: 'PostgreSQL'
+  Note: 'Текущая схема: 48 таблиц PostgreSQL (без schema_migrations) + ClickHouse believe.rows. Деньги пересчитываются из строк отчётов, начислений не хранится.'
+}
+
+// ───────── orgs_auth ─────────
+Table orgs.organizations {
+  id text [pk]
+  name text
+  created_at timestamptz
+  created_by text
+  Note: 'Организации (арендаторы); граница изоляции данных, на неё указывает org_id всех таблиц. Строк: 1.'
+}
+
+Table auth.users {
+  id text [pk]
+  login text
+  password_hash text
+  is_system_admin boolean
+  created_at timestamptz
+  created_by text
+  disabled_at timestamptz
+  Note: 'Пользователи (логин, хэш пароля, признак системного администратора). Строк: 2. Личные данные в колонках: login, password_hash.'
+}
+
+Table auth.memberships {
+  user_id text [pk]
+  role text
+  created_at timestamptz
+  created_by text
+  disabled_at timestamptz
+  indexes {
+    (user_id) [pk]
+  }
+  Note: 'Членство пользователя в организации с ролью (org_admin / label_manager); PK (user_id, org_id). Строк: 1.'
+}
+
+Table auth.user_labels {
+  user_id text
+  label_id text
+  created_at timestamptz
+  created_by text
+  indexes {
+    (user_id, label_id) [pk]
+  }
+  Note: 'Лейблы, которые видит менеджер лейбла; PK (user_id, org_id, label_id). Строк: 0.'
+}
+
+Table auth.sessions {
+  id text [pk]
+  user_id text
+  issued_at timestamptz
+  expires_at timestamptz
+  revoked_at timestamptz
+  Note: 'Отзываемые сессии входа (токен несёт id строки). Строк: 1.'
+}
+
+Table auth.support_grants {
+  id text [pk]
+  user_id text
+  write boolean
+  granted_by text
+  granted_at timestamptz
+  expires_at timestamptz
+  revoked_at timestamptz
+  revoked_by text
+  Note: 'Временные права поддержки: системный администратор в организации до 7 дней. Строк: 0.'
+}
+
+// ───────── labels ─────────
+Table labels.labels {
+  id text [pk]
+  name text
+  kind text
+  own_label_id text
+  created_at timestamptz
+  Note: 'Лейблы: свои (own) и саблейблы (sublabel, own_label_id = чей). Строк: 17. Уникально (с org_id): (name).'
+}
+
+Table labels.label_aliases {
+  alias_norm text [pk, note: 'нормализованная строка label_name Believe']
+  alias text
+  label_id text
+  Note: 'Импринты: нормализованная строка label_name отчёта Believe -> лейбл (без периода). Строк: 34.'
+}
+
+Table labels.label_rules {
+  id text [pk]
+  label_id text
+  percent numeric
+  recipient_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  "note" text
+  created_at timestamptz
+  Note: 'Правила саблейбла: процент и получатель-псевдоним на период, с документом. Строк: 16.'
+}
+
+Table labels.label_accounts {
+  account text [pk, note: 'аккаунт Believe']
+  label_id text
+  created_at timestamptz
+  Note: 'Аккаунт Believe -> своя книга (лейбл); граница книги (D-169). Строк: 2.'
+}
+
+// ───────── owners_people_papers ─────────
+Table owners.owners {
+  id text [pk]
+  name text
+  name_norm text
+  kind text
+  ipi text
+  merged_into text
+  created_at timestamptz
+  origin text
+  Note: 'Владельцы: получатели денег (person | label), с IPI и ссылкой слияния. Строк: 1 328. Личные данные в колонках: name, name_norm, ipi.'
+}
+
+Table owners.owner_aliases {
+  owner_id text
+  alias text
+  alias_norm text
+  indexes {
+    (alias_norm, owner_id) [pk]
+  }
+  Note: 'Псевдонимы-имена владельца (в том числе юридические имена по реестру); ключ поиска автора B17. Строк: 1 327. Личные данные в колонках: alias, alias_norm.'
+}
+
+Table owners.artists {
+  id text [pk]
+  pseudonym text
+  pseudonym_norm text
+  owner_id text
+  merged_into text
+  created_at timestamptz
+  origin text
+  Note: 'Псевдонимы артистов (ники); любой получатель денег в сплите это псевдоним, у него один владелец. Строк: 2 170.'
+}
+
+Table owners.documents {
+  id text [pk]
+  kind text [note: 'contract, appendix, assumption, label_decision, payment_proof, ...']
+  title text
+  file_ref text [note: 'pandadoc:<sha256> | путь; личные данные не приводятся']
+  owner_id text
+  requires_approval boolean
+  approved_at timestamptz
+  approved_by text
+  upload_deadline date
+  migration boolean
+  created_at timestamptz
+  label_id text
+  Note: 'Документы (10 видов: договор, приложение, assumption, платёжное подтверждение и др.), статус утверждения, file_ref. Строк: 1 447. Личные данные в колонках: title, file_ref.'
+}
+
+Table owners.contracts {
+  id text [pk]
+  owner_id text
+  document_id text
+  number text
+  created_at timestamptz
+  payout_threshold_cents bigint
+  Note: 'Договор = документ + владелец + порог выплаты. Строк: 818. Личные данные в колонках: number.'
+}
+
+Table owners.contract_artists {
+  contract_id text
+  artist_id text
+  indexes {
+    (contract_id, artist_id) [pk]
+  }
+  Note: 'Какие псевдонимы покрывает договор. Строк: 809.'
+}
+
+Table owners.merges {
+  id text [pk]
+  entity text
+  from_id text [note: 'id владельца или псевдонима по entity']
+  into_id text [note: 'id владельца или псевдонима по entity']
+  reason text
+  at timestamptz
+  Note: 'Журнал слияний владельцев и псевдонимов (entity = owner | artist). Строк: 2.'
+}
+
+// ───────── owners_catalog ─────────
+Table owners.tracks {
+  id text [pk]
+  isrc text [note: 'не уникален сам по себе: уникальна пара (isrc, upc)']
+  upc text
+  title text
+  created_at timestamptz
+  "note" text
+  Note: 'Каталог треков (ISRC + UPC, уникальна пара); навигация, деньги не читают. Строк: 26 311. Уникально (с org_id): (isrc, upc).'
+}
+
+Table owners.artist_tracks {
+  artist_id text
+  track_id text
+  indexes {
+    (artist_id, track_id) [pk]
+  }
+  Note: 'Какой псевдоним привязан к какому треку каталога. Строк: 15 493.'
+}
+
+Table owners.track_labels {
+  id text [pk]
+  isrc text
+  label_id text
+  valid_from date
+  valid_to date
+  source text
+  "note" text
+  created_at timestamptz
+  Note: 'История книги (лейбла) ISRC по периодам: files | operator | import; навигация, не деньги (D-172). Строк: 23 635.'
+}
+
+Table owners.releases {
+  label_id text
+  upc text
+  release_title text
+  version text
+  artist_string text
+  label_string text [note: 'строка лейбла из экспорта, только показ']
+  released_at timestamp without time zone
+  track_count integer
+  catalog_number text
+  territories integer
+  stores integer
+  created_at timestamptz
+  updated_at timestamptz
+  indexes {
+    (label_id, upc) [pk]
+  }
+  Note: 'Реестр релизов из экспорта Believe, ключ (label_id, upc); навигация. Строк: 8 235.'
+}
+
+// ───────── splits ─────────
+Table splits.splits {
+  id text [pk]
+  isrc text
+  valid_from date
+  valid_to date
+  document_id text
+  origin text
+  "note" text
+  created_at timestamptz
+  Note: 'Версия сплита по ISRC на период (valid_to исключительно). Строк: 25 278.'
+}
+
+Table splits.split_shares {
+  split_id text
+  artist_id text
+  percent numeric
+  document_id text
+  is_mc boolean [note: 'D-216']
+  indexes {
+    (split_id, artist_id) [pk]
+  }
+  Note: 'Строки сплита: псевдоним, процент, документ, признак MC (D-216). Строк: 44 075.'
+}
+
+Table splits.participations {
+  id text [pk]
+  isrc text
+  artist_id text
+  percent numeric
+  base text
+  funded_from text
+  from_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  origin text
+  "note" text
+  created_at timestamptz
+  Note: 'Участия псевдонима на ISRC и дату вне сплита (база, из чьей доли). Строк: 350.'
+}
+
+// ───────── sources ─────────
+Table public.source_files {
+  id uuid [pk]
+  source text
+  account text [note: 'аккаунт Believe из имени файла']
+  reporting_month date
+  report_id text
+  file_name text
+  stored_path text
+  sha256 text
+  status text
+  line_count bigint
+  net_total numeric
+  gross_total numeric
+  uploaded_by text
+  created_at timestamptz
+  updated_at timestamptz
+  label_id text [note: 'книга файла']
+  Note: 'Реестр загруженных файлов Believe (аккаунт, месяц, sha256, статус, книга label_id); строки лежат в ClickHouse. Строк: 48.'
+}
+
+Table believe.rows {
+  file_id UUID
+  reporting_month Date
+  sales_month Date
+  platform String
+  country_region String
+  label_name String [note: 'строка импринта']
+  artist_name String [note: 'строка артиста из отчёта']
+  release_title String
+  track_title String
+  upc String
+  isrc String
+  release_catalog_number String
+  streaming_subscription_type String
+  release_type String
+  sales_type String
+  quantity Int64
+  client_payment_currency String
+  unit_price Decimal(38,12)
+  mechanical_fee Decimal(38,12)
+  gross_revenue Decimal(38,12)
+  client_share_rate Decimal(18,8)
+  net_revenue Decimal(38,12)
+  Note: 'ClickHouse (не PostgreSQL): строки отчёта Believe как в файле, ключ ISRC+UPC+месяцы; поверх вьюхи lines, units, breakdown, file_totals, pair_attrs, pair_attrs_latest, pairs. Связи: file_id -> source_files.id (id), label_name -> label_aliases (строка), isrc / upc. Строк: 79 464 937.'
+}
+
+// ───────── publishing_v1 ─────────
+Table publishing.pub_statements {
+  id text [pk]
+  source text
+  periods text
+  file_name text
+  stored_path text
+  sha256 text
+  generated_at timestamptz
+  generated_at_source text
+  uploaded_at timestamptz
+  status text
+  line_count integer
+  total_payable numeric
+  warnings text
+  label_id text
+  replaced_by text
+  Note: 'Выписки B17 v1 (файл, периоды, sha256, статус, replaced_by); деньги по ним больше не считаются (PUBLISHING_SOURCE=v2). Строк: 6. Уникально (с org_id): (sha256).'
+}
+
+Table publishing.pub_statement_periods {
+  source text
+  period text
+  statement_id text
+  indexes {
+    (source, period) [pk]
+  }
+  Note: 'Какая выписка покрывает какой период источника; PK (source, period). Строк: 7.'
+}
+
+Table publishing.pub_lines {
+  statement_id text
+  line_no integer
+  period text
+  writer_name text [note: 'имя держателя прав; личные данные']
+  writer_norm text
+  songwriters text [note: 'имена авторов через запятую (строка); личные данные']
+  work_title text
+  work_code text
+  operation_type text
+  retailer text
+  country text
+  payable_pico bigint
+  indexes {
+    (statement_id, line_no) [pk]
+  }
+  Note: 'Строки выписок B17 v1: writer_name (держатель прав), writer_norm, songwriters через запятую, сумма. Строк: 1 162 586. Личные данные в колонках: writer_name, writer_norm, songwriters.'
+}
+
+Table publishing.pub_writers {
+  writer_norm text [pk]
+  display_name text
+  owner_id text
+  resolution text
+  role text
+  Note: 'Карта автор -> владелец по нормализованному имени (writer_norm, resolution, role); v1. Строк: 47. Личные данные в колонках: display_name, writer_norm.'
+}
+
+Table publishing.pub_terms {
+  id text [pk]
+  owner_id text
+  percent numeric
+  valid_from date
+  valid_to date
+  document_id text
+  created_at timestamptz
+  operation_type text
+  Note: 'Условия автора по типу операции (процент, период, документ) для v1. Строк: 100.'
+}
+
+// ───────── pubv2 ─────────
+Table pubv2.files {
+  id text [pk]
+  label_id text
+  file_name text
+  sha256 text
+  source text
+  format text
+  periods text[] [note: 'массив периодов']
+  status text
+  replaced_by text
+  row_count integer
+  payable_pico bigint
+  declared_payable_pico bigint
+  stored_path text
+  uploaded_at timestamptz
+  Note: 'Файлы B17 v2 (sha256, периоды, статус, объявленная и посчитанная сумма). Строк: 7. Уникально (с org_id): (sha256).'
+}
+
+Table pubv2.songwriters {
+  id text [pk]
+  name text
+  created_at timestamptz
+  Note: 'Авторы из отчёта B17 v2 (только имя; без владельца). Строк: 34. Личные данные в колонках: name.'
+}
+
+Table pubv2.songwriter_aliases {
+  id text [pk]
+  songwriter_id text
+  name text
+  name_norm text
+  Note: 'Варианты имени автора (name_norm уникально). Строк: 34. Уникально (с org_id): (name_norm). Личные данные в колонках: name, name_norm.'
+}
+
+Table pubv2.songs {
+  id text [pk]
+  songwriter_id text
+  title text
+  title_norm text
+  Note: 'Песни автора по названию (без ISRC). Строк: 1 169. Уникально (с org_id): (songwriter_id, title_norm).'
+}
+
+Table pubv2.song_aliases {
+  id text [pk]
+  song_id text
+  title text
+  title_norm text
+  Note: 'Варианты названия песни. Строк: 1 169. Уникально (с org_id): (song_id, title_norm).'
+}
+
+Table pubv2.accruals {
+  id text [pk]
+  file_id text
+  songwriter_id text
+  song_id text
+  period text
+  gross_pico bigint
+  withholding_pico bigint
+  payable_pico bigint
+  Note: 'Начисления: файл, автор, песня, период, суммы (pico-USD); деньги читают их через facade/pubv2-source.ts. Строк: 4 321.'
+}
+
+// ───────── links ─────────
+Table links.songwriter_owner {
+  songwriter_id text [pk]
+  owner_id text
+  source text
+  decided_by text
+  decided_at timestamptz
+  Note: 'Решение оператора: автор pubv2 -> владелец (recommended | manual). Строк: 33.'
+}
+
+Table links.song_isrc {
+  song_id text
+  isrc text
+  source text
+  decided_by text
+  decided_at timestamptz
+  songwriter_id text
+  indexes {
+    (song_id, isrc) [pk]
+  }
+  Note: 'Решение оператора: песня pubv2 -> ISRC. Строк: 18.'
+}
+
+Table links.publishing_terms {
+  id text [pk]
+  owner_id text
+  percent numeric
+  valid_from date
+  valid_to date
+  document_id text
+  decided_by text
+  created_at timestamptz
+  cancelled_at timestamptz
+  cancelled_by text
+  cancel_reason text
+  isrc text
+  basis text
+  Note: 'Условия паблишинга v2: процент владельца на период, опционально на ISRC; закрывается, не правится. Строк: 101.'
+}
+
+// ───────── settlements ─────────
+Table settlements.operations {
+  id text [pk]
+  direction text
+  amount_cents bigint
+  owner_id text
+  artist_id text
+  date date
+  period text
+  scope text
+  document_id text
+  payment_proof_id text
+  operation_ref text
+  deferred boolean
+  migration boolean
+  comment text
+  external_ref text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+  label_id text
+  kind text [note: 'payout, advance, deduction, credit, return, buyout, forgiveness, writeoff, adjustment']
+  label_source text
+  channel text
+  area text
+  allocation text [note: 'JSON-текст: центы по id псевдонимов (D-181), id внутри текста']
+  cut_id text
+  Note: 'Операции (kind из девяти: выплата, аванс, удержание, кредит, возврат, выкуп, прощение, списание, корректировка); area master | publishing. Строк: 4 058.'
+}
+
+Table settlements.payout_snapshots {
+  operation_id text [pk]
+  created_at timestamptz
+  payload text [note: 'JSON-текст снимка']
+  Note: 'Замороженный снимок расчёта выплаты кнопкой (payload). Строк: 0.'
+}
+
+Table settlements.payees {
+  id text [pk]
+  owner_id text
+  channel text
+  payee_ref text
+  status text
+  basis text
+  valid_from date
+  source text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+  Note: 'Получатель и канал выплаты владельца (tipalti | easystaff | other); confirmed | proposed. Строк: 162. Личные данные в колонках: payee_ref.'
+}
+
+Table settlements.holds {
+  id text [pk]
+  owner_id text
+  label_id text
+  kind text
+  blocks boolean
+  reason text
+  release_when text
+  amount_cents bigint
+  period text
+  review_on date
+  since date
+  source text
+  status text
+  released_at timestamptz
+  released_reason text
+  created_at timestamptz
+  Note: 'Блокировки выплаты (decision | artist_request | question | dispute). Строк: 50.'
+}
+
+Table settlements.payout_answers {
+  id text [pk]
+  owner_id text
+  label_id text
+  due_cents bigint
+  decision text
+  why text
+  about text
+  answered_by text
+  source text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+  Note: 'Ответы «платить» на сумму (первая выплата). Строк: 8.'
+}
+
+Table settlements.cuts {
+  id text [pk]
+  label_id text
+  name text
+  cut_date date
+  master_to date
+  publishing_to date
+  ads_to date
+  comment text
+  created_at timestamptz
+  created_by text
+  Note: 'Срезы (датированные границы по мастеру, паблишингу и рекламе). Строк: 1.'
+}
+
+Table settlements.opening_balances {
+  id text [pk]
+  label_id text
+  artist_id text
+  kind text
+  cutoff_month date
+  synced_at timestamptz
+  master_cents bigint
+  publishing_cents bigint
+  missing boolean
+  basis text
+  document_id text
+  operation_ref text
+  comment text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+  Note: 'Мёртвый архив старта 15.10 (D-205): все строки неактивны, код не читает. Строк: 1 190.'
+}
+
+// ───────── ads ─────────
+Table ads.expenses {
+  id text [pk]
+  isrc text
+  month date
+  amount_cents bigint
+  recovery_percent numeric
+  scope text
+  artist_id text
+  external_ref text
+  source text
+  migration boolean
+  comment text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+  label_id text
+  Note: 'Рекламные расходы: ISRC, месяц, сумма, процент возврата, scope (any | publishing | isrc). Строк: 2 686. Уникально (с org_id): (external_ref).'
+}
+
+// ───────── audit ─────────
+Table audit.actions {
+  id text [pk]
+  at timestamptz
+  operator text
+  method text
+  route text
+  entity_ids text[] [note: 'любые id, без связи']
+  summary jsonb
+  label_id text
+  Note: 'След оператора: каждая запись API (оператор, метод, маршрут, entity_ids, summary). Строк: 251. Личные данные в колонках: operator.'
+}
+
+TableGroup orgs_auth [color: #6b7280] {
+  orgs.organizations
+  auth.users
+  auth.memberships
+  auth.user_labels
+  auth.sessions
+  auth.support_grants
+}
+TableGroup labels [color: #d62728] {
+  labels.labels
+  labels.label_aliases
+  labels.label_rules
+  labels.label_accounts
+}
+TableGroup owners_people_papers [color: #1f77b4] {
+  owners.owners
+  owners.owner_aliases
+  owners.artists
+  owners.documents
+  owners.contracts
+  owners.contract_artists
+  owners.merges
+}
+TableGroup owners_catalog [color: #93c5fd] {
+  owners.tracks
+  owners.artist_tracks
+  owners.track_labels
+  owners.releases
+}
+TableGroup splits [color: #ff7f0e] {
+  splits.splits
+  splits.split_shares
+  splits.participations
+}
+TableGroup sources [color: #7c3aed] {
+  public.source_files
+  believe.rows
+}
+TableGroup publishing_v1 [color: #0d9488] {
+  publishing.pub_statements
+  publishing.pub_statement_periods
+  publishing.pub_lines
+  publishing.pub_writers
+  publishing.pub_terms
+}
+TableGroup pubv2 [color: #14b8a6] {
+  pubv2.files
+  pubv2.songwriters
+  pubv2.songwriter_aliases
+  pubv2.songs
+  pubv2.song_aliases
+  pubv2.accruals
+}
+TableGroup links [color: #2ca02c] {
+  links.songwriter_owner
+  links.song_isrc
+  links.publishing_terms
+}
+TableGroup settlements [color: #b45309] {
+  settlements.operations
+  settlements.payout_snapshots
+  settlements.payees
+  settlements.holds
+  settlements.payout_answers
+  settlements.cuts
+  settlements.opening_balances
+}
+TableGroup ads [color: #9ca3af] {
+  ads.expenses
+}
+TableGroup audit [color: #9ca3af] {
+  audit.actions
+}
+
+// ═══ серые: настоящий FK (pg_constraint) ═══
+Ref: splits.split_shares.split_id > splits.splits.id [color: #888888]  // FK
+Ref: owners.owners.merged_into > owners.owners.id [color: #888888]  // FK
+Ref: owners.owner_aliases.owner_id > owners.owners.id [color: #888888]  // FK
+Ref: owners.artists.merged_into > owners.artists.id [color: #888888]  // FK
+Ref: owners.artists.owner_id > owners.owners.id [color: #888888]  // FK
+Ref: owners.artist_tracks.artist_id > owners.artists.id [color: #888888]  // FK
+Ref: owners.artist_tracks.track_id > owners.tracks.id [color: #888888]  // FK
+Ref: owners.documents.owner_id > owners.owners.id [color: #888888]  // FK
+Ref: owners.contracts.owner_id > owners.owners.id [color: #888888]  // FK
+Ref: owners.contracts.document_id > owners.documents.id [color: #888888]  // FK
+Ref: owners.contract_artists.artist_id > owners.artists.id [color: #888888]  // FK
+Ref: owners.contract_artists.contract_id > owners.contracts.id [color: #888888]  // FK
+Ref: settlements.payout_snapshots.operation_id - settlements.operations.id [color: #888888]  // FK
+Ref: publishing.pub_statement_periods.statement_id > publishing.pub_statements.id [color: #888888]  // FK
+Ref: publishing.pub_lines.statement_id > publishing.pub_statements.id [color: #888888]  // FK
+Ref: labels.labels.own_label_id > labels.labels.id [color: #888888]  // FK
+Ref: labels.label_aliases.label_id > labels.labels.id [color: #888888]  // FK
+Ref: labels.label_rules.label_id > labels.labels.id [color: #888888]  // FK
+Ref: labels.label_accounts.label_id > labels.labels.id [color: #888888]  // FK
+Ref: auth.memberships.user_id > auth.users.id [color: #888888]  // FK
+Ref: auth.user_labels.user_id > auth.memberships.user_id [color: #888888]  // FK (user_id, org_id)
+Ref: auth.sessions.user_id > auth.users.id [color: #888888]  // FK
+Ref: auth.support_grants.user_id > auth.users.id [color: #888888]  // FK
+Ref: pubv2.songwriter_aliases.songwriter_id > pubv2.songwriters.id [color: #888888]  // FK
+Ref: pubv2.songs.songwriter_id > pubv2.songwriters.id [color: #888888]  // FK
+Ref: pubv2.song_aliases.song_id > pubv2.songs.id [color: #888888]  // FK
+Ref: pubv2.accruals.file_id > pubv2.files.id [color: #888888]  // FK
+Ref: pubv2.accruals.songwriter_id > pubv2.songwriters.id [color: #888888]  // FK
+Ref: pubv2.accruals.song_id > pubv2.songs.id [color: #888888]  // FK
+
+// ═══ синие: id внутри модуля, без FK ═══
+Ref: settlements.operations.cut_id > settlements.cuts.id [color: #1f77b4]
+Ref: settlements.operations.operation_ref > settlements.operations.id [color: #1f77b4]  // ссылка на другую операцию
+Ref: publishing.pub_statements.replaced_by > publishing.pub_statements.id [color: #1f77b4]
+Ref: pubv2.files.replaced_by > pubv2.files.id [color: #1f77b4]
+Ref: owners.merges.from_id > owners.owners.id [color: #1f77b4]  // или artists.id по entity
+Ref: owners.merges.into_id > owners.owners.id [color: #1f77b4]  // или artists.id по entity
+Ref: believe.rows.file_id > public.source_files.id [color: #1f77b4]  // ClickHouse -> PostgreSQL, один модуль sources
+
+// ═══ зелёные: id между модулями (держит фасад) ═══
+Ref: splits.split_shares.artist_id > owners.artists.id [color: #2ca02c]
+Ref: splits.participations.artist_id > owners.artists.id [color: #2ca02c]
+Ref: splits.participations.from_artist_id > owners.artists.id [color: #2ca02c]
+Ref: labels.label_rules.recipient_artist_id > owners.artists.id [color: #2ca02c]
+Ref: ads.expenses.artist_id > owners.artists.id [color: #2ca02c]
+Ref: settlements.operations.artist_id > owners.artists.id [color: #2ca02c]
+Ref: settlements.operations.allocation > owners.artists.id [color: #2ca02c]
+Ref: settlements.opening_balances.artist_id > owners.artists.id [color: #2ca02c]
+Ref: publishing.pub_writers.owner_id > owners.owners.id [color: #2ca02c]
+Ref: publishing.pub_terms.owner_id > owners.owners.id [color: #2ca02c]
+Ref: links.songwriter_owner.owner_id > owners.owners.id [color: #2ca02c]
+Ref: links.publishing_terms.owner_id > owners.owners.id [color: #2ca02c]
+Ref: settlements.operations.owner_id > owners.owners.id [color: #2ca02c]
+Ref: settlements.payees.owner_id > owners.owners.id [color: #2ca02c]
+Ref: settlements.holds.owner_id > owners.owners.id [color: #2ca02c]
+Ref: settlements.payout_answers.owner_id > owners.owners.id [color: #2ca02c]
+Ref: links.songwriter_owner.songwriter_id > pubv2.songwriters.id [color: #2ca02c]
+Ref: links.song_isrc.song_id > pubv2.songs.id [color: #2ca02c]
+Ref: links.song_isrc.songwriter_id > pubv2.songwriters.id [color: #2ca02c]
+Ref: splits.splits.document_id > owners.documents.id [color: #2ca02c]
+Ref: splits.split_shares.document_id > owners.documents.id [color: #2ca02c]
+Ref: splits.participations.document_id > owners.documents.id [color: #2ca02c]
+Ref: labels.label_rules.document_id > owners.documents.id [color: #2ca02c]
+Ref: publishing.pub_terms.document_id > owners.documents.id [color: #2ca02c]
+Ref: links.publishing_terms.document_id > owners.documents.id [color: #2ca02c]
+Ref: settlements.operations.document_id > owners.documents.id [color: #2ca02c]
+Ref: settlements.operations.payment_proof_id > owners.documents.id [color: #2ca02c]
+Ref: settlements.opening_balances.document_id > owners.documents.id [color: #2ca02c]
+Ref: public.source_files.label_id > labels.labels.id [color: #2ca02c]
+Ref: owners.documents.label_id > labels.labels.id [color: #2ca02c]
+Ref: owners.track_labels.label_id > labels.labels.id [color: #2ca02c]
+Ref: owners.releases.label_id > labels.labels.id [color: #2ca02c]
+Ref: publishing.pub_statements.label_id > labels.labels.id [color: #2ca02c]
+Ref: pubv2.files.label_id > labels.labels.id [color: #2ca02c]
+Ref: settlements.operations.label_id > labels.labels.id [color: #2ca02c]
+Ref: settlements.holds.label_id > labels.labels.id [color: #2ca02c]
+Ref: settlements.payout_answers.label_id > labels.labels.id [color: #2ca02c]
+Ref: settlements.cuts.label_id > labels.labels.id [color: #2ca02c]
+Ref: settlements.opening_balances.label_id > labels.labels.id [color: #2ca02c]
+Ref: ads.expenses.label_id > labels.labels.id [color: #2ca02c]
+Ref: audit.actions.label_id > labels.labels.id [color: #2ca02c]
+Ref: auth.user_labels.label_id > labels.labels.id [color: #2ca02c]
+
+// ═══ оранжевые: по ISRC / UPC ═══
+Ref: believe.rows.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: splits.splits.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: splits.participations.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: owners.track_labels.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: links.song_isrc.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: links.publishing_terms.isrc > owners.tracks.isrc [color: #ff7f0e]  // условие на ISRC
+Ref: ads.expenses.isrc > owners.tracks.isrc [color: #ff7f0e]
+Ref: believe.rows.upc > owners.releases.upc [color: #ff7f0e]  // UPC
+Ref: owners.tracks.upc > owners.releases.upc [color: #ff7f0e]  // UPC
+
+// ═══ красные: по строке ═══
+Ref: believe.rows.label_name > labels.label_aliases.alias_norm [color: #d62728]  // строка импринта -> лейбл (normalizeLabelString)
+Ref: public.source_files.account > labels.label_accounts.account [color: #d62728]  // аккаунт из имени файла -> книга
+Ref: publishing.pub_lines.writer_norm > publishing.pub_writers.writer_norm [color: #d62728]  // имя держателя прав -> карта автора -> владелец
+Ref: publishing.pub_lines.songwriters > publishing.pub_writers.writer_norm [color: #d62728]  // авторы через запятую -> writer_norm
+Ref: publishing.pub_writers.writer_norm <> owners.owner_aliases.alias_norm [color: #d62728]  // имя автора -> алиас владельца (D-087)
+Ref: publishing.pub_terms.operation_type <> publishing.pub_lines.operation_type [color: #d62728]  // условие автора по типу операции (строка)
+Ref: pubv2.songwriter_aliases.name_norm > owners.owner_aliases.alias_norm [color: #d62728]  // рекомендация автор -> владелец по имени (exact_name, same_words)
+Ref: pubv2.songwriter_aliases.name_norm > publishing.pub_writers.writer_norm [color: #d62728]  // рекомендация по старой карте v1 (old_map)
+Ref: pubv2.songs.title_norm > owners.tracks.title [color: #d62728]  // рекомендация песня -> ISRC по базовому названию
+Ref: believe.rows.artist_name > owners.artists.pseudonym_norm [color: #d62728]  // поиск дублей: артист отчёта ~ псевдоним без сплита
+
+// ══════════════════════════ СВОДКА ══════════════════════════
+// Таблиц PostgreSQL: 48 (без public.schema_migrations) + ClickHouse believe.rows (вьюхи lines, units, breakdown, file_totals, pair_attrs, pair_attrs_latest, pairs не рисуются).
+// По модулям: orgs 1; auth 5; labels 4; owners 11; splits 3; sources (public.source_files) 1; publishing 5; pubv2 6; links 3; settlements 7; ads 1; audit 1; ClickHouse: believe.rows 1.
+// Связей: 29 серых (настоящий FK), 7 синих (id внутри модуля), 42 зелёных (id между модулями), 9 оранжевых (ISRC / UPC), 10 красных (по строке); всего 97.
+// Ключ org_id (в каждой таблице PostgreSQL) в счёт не входит.
+//
+// КРАСНЫЕ связи (по строке): откуда -> куда, где читается
+//  1. believe.rows.label_name -> labels.label_aliases.alias_norm  [строка импринта -> лейбл (normalizeLabelString)]  packages/backend/src/modules/labels/service.ts:280; packages/backend/src/facade/layers/label-of-record.ts:10; packages/backend/src/facade/ads.ts:79; packages/backend/src/facade/owner-scope.ts:63
+//  2. public.source_files.account -> labels.label_accounts.account  [аккаунт из имени файла -> книга]  packages/backend/src/modules/labels/service.ts:261; packages/backend/src/facade/sources.ts:41
+//  3. publishing.pub_lines.writer_norm -> publishing.pub_writers.writer_norm  [имя держателя прав -> карта автора -> владелец]  packages/backend/src/facade/calculation.ts:261; packages/backend/src/facade/calculation.ts:277
+//  4. publishing.pub_lines.songwriters -> publishing.pub_writers.writer_norm  [авторы через запятую -> writer_norm]  packages/backend/src/facade/label-scope.ts:3
+//  5. publishing.pub_writers.writer_norm -> owners.owner_aliases.alias_norm  [имя автора -> алиас владельца (D-087)]  packages/backend/src/facade/sources.ts:148; packages/backend/src/modules/owners/service.ts:375
+//  6. publishing.pub_terms.operation_type -> publishing.pub_lines.operation_type  [условие автора по типу операции (строка)]  packages/backend/src/facade/layers/author-share.ts:20; packages/backend/src/facade/calculation.ts:281
+//  7. pubv2.songwriter_aliases.name_norm -> owners.owner_aliases.alias_norm  [рекомендация автор -> владелец по имени (exact_name, same_words)]  packages/backend/src/facade/pubv2-links.ts:36; packages/backend/src/facade/pubv2-links.ts:39
+//  8. pubv2.songwriter_aliases.name_norm -> publishing.pub_writers.writer_norm  [рекомендация по старой карте v1 (old_map)]  packages/backend/src/facade/pubv2-links.ts:33
+//  9. pubv2.songs.title_norm -> owners.tracks.title  [рекомендация песня -> ISRC по базовому названию]  packages/backend/src/facade/pubv2-links.ts:83; packages/backend/src/facade/pubv2-links.ts:13
+//  10. believe.rows.artist_name -> owners.artists.pseudonym_norm  [поиск дублей: артист отчёта ~ псевдоним без сплита]  packages/backend/src/facade/search.ts:103
+//
+// ЗЕЛЁНЫЕ связи (между модулями по id): откуда -> куда, где читается (фасад)
+//  1. splits.split_shares.artist_id -> owners.artists.id  packages/backend/src/facade/context.ts:185; packages/backend/src/facade/owner-scope.ts:58
+//  2. splits.participations.artist_id -> owners.artists.id  packages/backend/src/facade/owner-scope.ts:60
+//  3. splits.participations.from_artist_id -> owners.artists.id  packages/backend/src/facade/owner-scope.ts:60
+//  4. labels.label_rules.recipient_artist_id -> owners.artists.id  packages/backend/src/facade/layers/carve.ts:169; packages/backend/src/facade/owner-scope.ts:62
+//  5. ads.expenses.artist_id -> owners.artists.id  packages/backend/src/facade/ads.ts:90
+//  6. settlements.operations.artist_id -> owners.artists.id  packages/backend/src/facade/owner-view.ts:131
+//  7. settlements.operations.allocation -> owners.artists.id  packages/backend/src/facade/balance.ts:341
+//  8. settlements.opening_balances.artist_id -> owners.artists.id  packages/backend/src/modules/settlements/schema.ts:19
+//  9. publishing.pub_writers.owner_id -> owners.owners.id  packages/backend/src/facade/sources.ts:158; packages/backend/src/facade/calculation.ts:261
+//  10. publishing.pub_terms.owner_id -> owners.owners.id  packages/backend/src/facade/calculation.ts:176
+//  11. links.songwriter_owner.owner_id -> owners.owners.id  packages/backend/src/facade/pubv2-source.ts:31; packages/backend/src/facade/pubv2-links.ts:135
+//  12. links.publishing_terms.owner_id -> owners.owners.id  packages/backend/src/facade/pubv2-source.ts:43
+//  13. settlements.operations.owner_id -> owners.owners.id  packages/backend/src/facade/owner-view.ts:129
+//  14. settlements.payees.owner_id -> owners.owners.id  packages/backend/src/facade/admission.ts:68
+//  15. settlements.holds.owner_id -> owners.owners.id  packages/backend/src/facade/admission.ts:76
+//  16. settlements.payout_answers.owner_id -> owners.owners.id  packages/backend/src/facade/admission.ts:68
+//  17. links.songwriter_owner.songwriter_id -> pubv2.songwriters.id  packages/backend/src/facade/pubv2-source.ts:31
+//  18. links.song_isrc.song_id -> pubv2.songs.id  packages/backend/src/facade/pubv2-source.ts:49
+//  19. links.song_isrc.songwriter_id -> pubv2.songwriters.id  packages/backend/src/modules/links/schema.ts:11
+//  20. splits.splits.document_id -> owners.documents.id  packages/backend/src/facade/calculation.ts:178
+//  21. splits.split_shares.document_id -> owners.documents.id  packages/backend/src/facade/context.ts:185
+//  22. splits.participations.document_id -> owners.documents.id  packages/backend/src/facade/calculation.ts:178
+//  23. labels.label_rules.document_id -> owners.documents.id  packages/backend/src/facade/calculation.ts:179
+//  24. publishing.pub_terms.document_id -> owners.documents.id  packages/backend/src/facade/calculation.ts:180
+//  25. links.publishing_terms.document_id -> owners.documents.id  packages/backend/src/facade/pubv2-source.ts:44
+//  26. settlements.operations.document_id -> owners.documents.id  packages/backend/src/facade/context.ts:142
+//  27. settlements.operations.payment_proof_id -> owners.documents.id  packages/backend/src/facade/context.ts:133
+//  28. settlements.opening_balances.document_id -> owners.documents.id  packages/backend/src/modules/settlements/schema.ts:24
+//  29. public.source_files.label_id -> labels.labels.id  packages/backend/src/facade/label-scope.ts:9; packages/backend/src/facade/calculation.ts:243
+//  30. owners.documents.label_id -> labels.labels.id  packages/backend/src/modules/owners/service.ts:128
+//  31. owners.track_labels.label_id -> labels.labels.id  packages/backend/src/facade/catalog.ts:290
+//  32. owners.releases.label_id -> labels.labels.id  packages/backend/src/facade/release-registry.ts:54
+//  33. publishing.pub_statements.label_id -> labels.labels.id  packages/backend/src/facade/pubv2-source.ts:99
+//  34. pubv2.files.label_id -> labels.labels.id  packages/backend/src/facade/pubv2-source.ts:78
+//  35. settlements.operations.label_id -> labels.labels.id  packages/backend/src/facade/balance.ts:22
+//  36. settlements.holds.label_id -> labels.labels.id  packages/backend/src/facade/context.ts:280
+//  37. settlements.payout_answers.label_id -> labels.labels.id  packages/backend/src/facade/context.ts:280
+//  38. settlements.cuts.label_id -> labels.labels.id  packages/backend/src/facade/payouts.ts:32
+//  39. settlements.opening_balances.label_id -> labels.labels.id  packages/backend/src/modules/settlements/schema.ts:35
+//  40. ads.expenses.label_id -> labels.labels.id  packages/backend/src/facade/ads-api.ts:74
+//  41. audit.actions.label_id -> labels.labels.id  packages/backend/src/facade/audit.ts:8
+//  42. auth.user_labels.label_id -> labels.labels.id  packages/backend/src/facade/viewer.ts:19
