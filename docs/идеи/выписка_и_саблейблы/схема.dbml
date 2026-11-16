@@ -1,3 +1,11 @@
+// ОБНОВЛЕНИЕ 2026-11-17 (вечер). Часть «ПОСЛЕ» ниже — модель совета (привязка как исключение, labels.isrc_labels).
+// Владелец выбрал другую модель: саблейблы только по привязкам ISRC. Её таблица — labels.isrc_bindings
+// (batch_id, sublabel_id, isrc, percent, valid_from, valid_to, document_id, отмена) и колонка
+// labels.labels.recipient_artist_id; правила и алиасы уходят из расчёта долей. Точная схема — проект_привязок.md, раздел 4.
+// Связи те же по цветам: оранжевая isrc_bindings.isrc -> believe.rows.isrc, синяя sublabel_id -> labels.labels.id,
+// зелёные document_id -> owners.documents.id и labels.recipient_artist_id -> owners.artists.id; красная связь
+// label_name -> label_aliases остаётся только для рекламы и подсказок.
+//
 // Модуль лейблов и его соседи: схема ДО и ПОСЛЕ решений совета (2026-11-17). Для https://dbdiagram.io/d
 // Только лейблы и то, что с ними связано, а не вся база (вся база: docs/идеи/модули_и_документы/текущая_схема.dbml).
 // Источники: packages/backend/src/modules/labels/schema.ts; migrations/postgres/0006_labels.sql, 0014_label_books.sql,
