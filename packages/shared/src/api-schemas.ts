@@ -818,3 +818,13 @@ export const sublabelTermCancelBody = z.object({ reason: z.string().min(1).max(2
 
 /** A document attached to terms that have none. */
 export const sublabelTermsDocumentBody = z.object({ ids: z.array(z.string().min(1)).min(1).max(5000), documentId: z.string().min(1) });
+
+/** The report of a sublabel by its terms (D-219): a report-month range; csv = one sheet. */
+export const sublabelReportQuery = z.object({
+  from: month.optional().describe('First report month, YYYY-MM'),
+  to: month.optional().describe('Last report month, YYYY-MM'),
+  format: z.enum(['json', 'csv']).default('json').describe('json, or csv: one sheet (UTF-8 with BOM, `;`, every field quoted)'),
+});
+
+/** The hints of a month (D-219): the tracks under a sublabel's label string without a term. */
+export const sublabelSuggestionsQuery = z.object({ month: month.describe('The report month, YYYY-MM') });

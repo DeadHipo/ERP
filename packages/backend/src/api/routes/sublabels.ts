@@ -34,11 +34,28 @@ export function sublabelsRouter(facade: Facade) {
     res.json(await facade.cancelSublabelTerm(param(req, 'id'), operator(res), parse(S.sublabelTermCancelBody, req.body).reason)),
   );
 
+  r.get('/sublabels/suggestions', async (req, res) =>
+    res.json(await facade.sublabelSuggestions(parse(S.sublabelSuggestionsQuery, req.query).month)),
+  );
   r.get('/sublabels', async (_req, res) => res.json(await facade.listSublabels()));
   r.post('/sublabels', async (req, res) => res.status(201).json(await facade.createSublabel(parse(S.sublabelNameBody, req.body).name)));
   r.patch('/sublabels/:id', async (req, res) =>
     res.json(await facade.renameSublabel(param(req, 'id'), parse(S.sublabelNameBody, req.body).name)),
   );
+  // the report of a sublabel by its terms (D-219): json, or one csv sheet
+  r.get('/sublabels/:id/report', async (req, res) => {
+    const q = parse(S.sublabelReportQuery, req.query);
+    const period = { from: q.from, to: q.to };
+    if (q.format === 'csv') {
+      const { fileName, text } = await facade.sublabelReportCsv(param(req, 'id'), period);
+      const ascii = fileName.replace(/[^A-Za-z0-9._-]/g, '_');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+      res.send(text);
+      return;
+    }
+    res.json(await facade.sublabelReport(param(req, 'id'), period));
+  });
   r.post('/sublabels/:id/terms', async (req, res) => {
     const { dryRun } = parse(S.sublabelTermsAddQuery, req.query);
     const body = parse(S.sublabelTermsBody, req.body);

@@ -2577,3 +2577,57 @@ export const sublabelTermsResultSchema = z.object({
   }),
   termIds: z.array(z.string()).describe('The created terms (empty in the preview)'),
 });
+
+const sublabelReportSumFields = {
+  labelShare: money.describe('The label share after the artists and the participations, before the part of the sublabel'),
+  amount: money.describe('The part of the sublabel by its terms'),
+  confirmed: money.describe('The part confirmed by an approved document'),
+  waiting: money.describe('The part that waits (no document, not approved, an assumption, no split)'),
+  currentAmount: money.describe('What the sublabel rules in force give the sublabel today on the same units (the money paid today)'),
+};
+
+/** The report of a sublabel by its terms (D-219): track × report month, its own part only. */
+export const sublabelReportSchema = z.object({
+  sublabel: sublabelSchema,
+  period: z.object({ from: month.nullable(), to: month.nullable() }),
+  rows: z.array(
+    z.object({
+      isrc: z.string().describe('The ISRC of the recording'),
+      title: z.string().nullable().describe('The title in the catalog'),
+      month: month.describe('The report month'),
+      termId: z.string().describe('The term in force that month'),
+      percent: z.string().describe('Percent of the label share'),
+      documentId: z.string().nullable().describe('The document of the term; null = none'),
+      labelShare: money.describe('The label share after the artists and the participations'),
+      amount: money.describe('The part of the sublabel'),
+      status: z.enum(['confirmed', 'waiting']).describe('confirmed: the document of the term is approved'),
+      reason: z
+        .enum(['no_document', 'document_not_approved', 'assumption', 'no_split', 'not_allocated'])
+        .nullable()
+        .describe('Why the part waits; null = confirmed'),
+      currentAmount: money.describe('What the sublabel rules give the sublabel today on these units'),
+    }),
+  ),
+  months: z.array(z.object({ month, ...sublabelReportSumFields })),
+  total: z.object(sublabelReportSumFields),
+});
+
+/** The hints of a month (D-219): per sublabel, the tracks under its label string without a term in force. */
+export const sublabelSuggestionsSchema = z.object({
+  month: month.describe('The report month'),
+  groups: z.array(
+    z.object({
+      sublabelId: z.string().describe('Id of the sublabel'),
+      sublabelName: z.string().describe('The name of the sublabel'),
+      net: money.describe('Net of the month of the tracks of the group'),
+      items: z.array(
+        z.object({
+          isrc: z.string().describe('The ISRC of the recording'),
+          title: z.string().nullable().describe('The title in the catalog'),
+          labelString: z.string().describe('The label string of the report (a hint, never money)'),
+          net: money.describe('Net of the track in the month'),
+        }),
+      ),
+    }),
+  ),
+});

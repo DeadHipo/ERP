@@ -970,6 +970,31 @@ const operations: ApiOperation[] = [
     response: list(R.sublabelTermListItemSchema),
   },
   {
+    method: 'get',
+    path: '/sublabels/:id/report',
+    access: 'org',
+    ability: { action: 'read_money', subject: 'labels', scope: 'org' },
+    tag: 'labels',
+    summary:
+      'The report of a sublabel by its terms (D-219): track × report month, the label share after the artists and the participations, the percent of the term, the part of the sublabel, confirmed or waiting with the reason; months and the total; currentAmount = what the sublabel rules in force give today (the money is still paid by them). Its own part only: no gross of a track, no artists, nothing of ours. format=csv: one sheet (UTF-8 with BOM, `;`, every field quoted)',
+    query: S.sublabelReportQuery,
+    csv: true,
+    response: R.sublabelReportSchema,
+    errors: ['404 not_found: sublabel'],
+    explain: true,
+  },
+  {
+    method: 'get',
+    path: '/sublabels/suggestions',
+    access: 'org',
+    ability: { action: 'read_money', subject: 'labels', scope: 'org' },
+    tag: 'labels',
+    summary:
+      'Hints of a month (D-219): per sublabel, the tracks whose Believe label string is an alias of the sublabel and that have no term in force that month, with their net. A hint only: the money never reads the label string of a sublabel term',
+    query: S.sublabelSuggestionsQuery,
+    response: R.sublabelSuggestionsSchema,
+  },
+  {
     method: 'post',
     path: '/sublabels/:id/terms',
     access: 'org',

@@ -62,6 +62,8 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'POST /sublabels/terms/:id/close': 'x',
   'POST /sublabels/terms/:id/cancel': 'x',
   'POST /sublabels/terms/document': 'x',
+  'GET /sublabels/:id/report': 'x', // D-219: money of the organization
+  'GET /sublabels/suggestions': 'x',
   'GET /sources/files': 'L',
   'GET /sources/lines': 'L',
   'GET /sources/lines/facets': 'L',

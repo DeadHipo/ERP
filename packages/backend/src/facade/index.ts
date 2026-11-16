@@ -34,6 +34,7 @@ import { operationImportApi } from './operation-import';
 import { admissionApi } from './admission';
 import { cutsApi } from './cuts';
 import { sublabelsApi } from './sublabels';
+import { sublabelReportApi } from './sublabel-report';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -105,6 +106,7 @@ export function openFacade(config: FacadeConfig) {
     ...cutsApi(ctx, payoutsPart),
     ...pubV2LinksApi(ctx, { pubv2, links, publishing }),
     ...sublabelsApi(ctx, { links }),
+    ...sublabelReportApi(ctx, { links }),
   };
 }
 

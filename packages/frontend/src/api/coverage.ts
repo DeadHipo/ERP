@@ -135,6 +135,8 @@ export const OPERATION_COVERAGE = {
   'POST /sublabels/terms/:id/close': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
   'POST /sublabels/terms/:id/cancel': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
   'POST /sublabels/terms/document': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'GET /sublabels/:id/report': { refusal: 'no screen yet: step 4 of the sublabels plan (D-219)' },
+  'GET /sublabels/suggestions': { refusal: 'no screen yet: step 4 of the sublabels plan (D-219)' },
   'GET /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: the tab links' },
   'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },
   'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },

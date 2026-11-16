@@ -43,6 +43,8 @@ describe('operation coverage', () => {
       'POST /sublabels/terms/:id/cancel',
       'POST /sublabels/terms/:id/close',
       'POST /sublabels/terms/document',
+      'GET /sublabels/:id/report',
+      'GET /sublabels/suggestions',
     ];
     expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain', ...SUBLABELS_UNTIL_STEP_4].sort());
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);

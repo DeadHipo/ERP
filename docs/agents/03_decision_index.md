@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-218 by topic)
+# Decision index (D-001 … D-219 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -200,6 +200,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-216 The MC mark of a split row (`split_shares.is_mc`, migration 0032): an MC row keeps its percent but does not bear pool carves of other MCs (pro rata over the unmarked rows); set by a new split version from a month; import column `mc`; signal `mcRowBearsCarve` · in force
 - D-217 The sublabels as a register of names (`labels.sublabels`) and the terms of a sublabel on an ISRC (`links.sublabel_terms`: percent of the label share, period, document; a new term closes the open one, only the latest is cancelled, a document attached once), migration 0033; step 1 of the plan, the money does not read them yet · in force
 - D-218 The sublabels in the API (`facade/sublabels.ts`, `api/routes/sublabels.ts`): the register, a batch of terms with a preview (`dryRun`, classes new / closes / unchanged / errors, all or nothing, 422 `terms_invalid`), close, cancel, a document later; rights for now as labels / publishing v2, to be revised · in force
+- D-219 The report of a sublabel by its terms (`facade/sublabel-report.ts`, `GET /sublabels/:id/report`, json / csv): track × report month, the label share before the sublabel's carve, its percent and part, confirmed / waiting, `currentAmount` = today's rule; a read of the calculation, which does not read the terms; the hints of a month (`GET /sublabels/suggestions`) · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
