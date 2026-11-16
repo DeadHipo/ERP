@@ -79,6 +79,7 @@ export const NAV: readonly NavSection[] = [
       { id: 'splits', label: items.splits, icon: ScaleIcon, path: '/splits', op: 'GET /splits' },
       { id: 'participations', label: items.participations, icon: ReceiptPercentIcon, path: '/participations', op: 'GET /participations' },
       { id: 'labels', label: items.labels, icon: TagIcon, path: '/labels', op: 'GET /labels' },
+      { id: 'sublabels', label: items.sublabels, icon: TagIcon, path: '/sublabels', op: 'GET /sublabels' },
       { id: 'publishing', label: items.publishing, icon: BuildingLibraryIcon, path: '/publishing', op: 'GET /publishing/writers' },
       { id: 'publishingV2', label: items.publishingV2, icon: BuildingLibraryIcon, path: '/publishing-v2', op: 'GET /publishing-v2/songwriters' },
       { id: 'documents', label: items.documents, icon: DocumentTextIcon, path: '/documents', op: 'GET /documents' },

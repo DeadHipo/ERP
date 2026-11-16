@@ -7,6 +7,8 @@ import { LabelsPage } from '../pages/reference/labels/LabelsPage';
 import { PublishingPage } from '../pages/reference/publishing/PublishingPage';
 import { PublishingV2Page } from '../pages/reference/publishing-v2/PublishingV2Page';
 import { SongwriterV2Page } from '../pages/reference/publishing-v2/SongwriterV2Page';
+import { SublabelPage } from '../pages/reference/sublabels/SublabelPage';
+import { SublabelsPage } from '../pages/reference/sublabels/SublabelsPage';
 import { ParticipationsPage } from '../pages/reference/splits/ParticipationsPage';
 import { SplitsPage } from '../pages/reference/splits/SplitsPage';
 import { SplitImportPage } from '../pages/reference/splits/import/SplitImportPage';
@@ -18,6 +20,8 @@ export const rulesRoutes = [
   <Route key="participations" path={ROUTE_PATHS.participations} element={<ParticipationsPage />} />,
   <Route key="labels" path={ROUTE_PATHS.labels} element={<LabelsPage />} />,
   <Route key="label" path={ROUTE_PATHS.label} element={<LabelPage />} />,
+  <Route key="sublabels" path={ROUTE_PATHS.sublabels} element={<SublabelsPage />} />,
+  <Route key="sublabel" path={ROUTE_PATHS.sublabel} element={<SublabelPage />} />,
   <Route key="publishing" path={ROUTE_PATHS.publishing} element={<PublishingPage />} />,
   <Route key="publishing-v2" path={ROUTE_PATHS.publishingV2} element={<PublishingV2Page />} />,
   <Route key="publishing-v2-songwriter" path={ROUTE_PATHS.publishingV2Songwriter} element={<SongwriterV2Page />} />,

@@ -20,6 +20,7 @@ export const nav = {
     splits: 'Сплиты',
     participations: 'Участия',
     labels: 'Лейблы',
+    sublabels: 'Саблейблы',
     publishing: 'Паблишинг',
     publishingV2: 'Паблишинг v2',
     documents: 'Документы',

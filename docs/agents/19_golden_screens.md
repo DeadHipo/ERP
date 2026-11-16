@@ -536,6 +536,12 @@ is not listed, with `field-cut-show-all` its balance is 0; P10 block «Срез�
 «S57 срез · 2026-06-15» → the row's `[data-col=cut]` `data-cut-id`; the delete of the cut answers the toast `cut_in_use`.
 The cut stays in the e2e organization (its signal `cutsUnsettled` counts the seeded positions of 0to8).
 
+**S58 (P36 / P37 sublabels, `49-sublabels`, D-217…D-220)** a sublabel of its own («S58 Sublabel e2e», created on P36 from
+`nav-sublabels`); a term of 25 % from 2026-01 on the S01 k2 track (net 100 in 2026-03, row A 50): the preview with a wrong
+ISRC has one error row and closes «Сохранить»; saved without a document. The report of the API: one row 2026-03 waiting
+(`no_document`), the label share 50, the part 12.5; P37 «Отчёт» shows the same total; the csv `sublabel_*.csv`; an `appendix`
+attached on P36 «Треки»; the history cancels the term and the report is empty. The money never reads the terms.
+
 **S54 (P19 B17 replacement, `44-b17-replace`)** the e2e seed has one statement and no xlsx writer reusable by the specs:
 the replacement itself (superseded + `replacedBy`, the lines kept, the quarters moved, `periods_differ`,
 `replace_label_differs`, `replace_not_loaded`) is covered by `packages/backend/tests/b17-replace.test.ts`. Here the seeded
@@ -635,6 +641,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 44 | `44-b17-replace.spec.ts` | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
 | 46 | `46-admission.spec.ts` | S56 (P10 «Допуск»: the payee turns the admission on, the answer, the hold, the threshold, no payee) | acts (A: `Owner S56 e2e`; the first payee row of the organization: the admission is on from here) |
 | 48 | `48-cuts.spec.ts` | S57 (P34 / P35: a cut, the transfer, the owner's tab «Срезы», an operation attributed from its row, the delete refused) | acts (A: `Owner S57 e2e` with an adjustment and a transfer; one cut of 0to8 stays) |
+| 49 | `49-sublabels.spec.ts` | S58 (P36 / P37, D-220: a sublabel, a term with a preview and an error row, the report = the API, the csv, a document attached, the cancel) | acts (a sublabel «S58 Sublabel e2e» stays, its term cancelled; the money does not read the terms) |
 | – | `smoke.spec.ts` | the shell (the sidebar = `navFor` of `me.abilities`: an `org_admin` sees every section and «Организация»), the user menu (`e2e-operator`, organization A), the operator field with the login off (mocked `/auth/me`), every route renders (also `/users`) | reads |
 | – | `states.spec.ts` | SS1–SS7 on `/dev/states` with mocks (`/auth/me` mocked as the login off, D-170) | no seed |
 

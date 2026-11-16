@@ -19,8 +19,8 @@ describe('operation coverage', () => {
     expect(bad).toEqual([]);
   });
 
-  it('uses only page ids P1..P35 or shell', () => {
-    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|3[0-5])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
+  it('uses only page ids P1..P37 or shell', () => {
+    const bad = withPage.filter((e) => e.page !== 'shell' && !/^P([1-9]|1\d|2\d|3[0-7])$/.test(e.page)).map((e) => `${e.key}: ${e.page}`);
     expect(bad).toEqual([]);
   });
 
@@ -33,20 +33,7 @@ describe('operation coverage', () => {
 
   it('gives every refusal a reason', () => {
     const refusals = entries.flatMap(([key, e]) => ('refusal' in e ? [{ key, reason: e.refusal }] : []));
-    // D-218: the eight sublabel operations wait for their page (step 4 of the sublabels plan), which removes them from this list
-    const SUBLABELS_UNTIL_STEP_4 = [
-      'GET /sublabels',
-      'GET /sublabels/terms',
-      'PATCH /sublabels/:id',
-      'POST /sublabels',
-      'POST /sublabels/:id/terms',
-      'POST /sublabels/terms/:id/cancel',
-      'POST /sublabels/terms/:id/close',
-      'POST /sublabels/terms/document',
-      'GET /sublabels/:id/report',
-      'GET /sublabels/suggestions',
-    ];
-    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain', ...SUBLABELS_UNTIL_STEP_4].sort());
+    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain'].sort());
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);
   });
 });

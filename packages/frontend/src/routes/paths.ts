@@ -24,6 +24,10 @@ export const ROUTE_PATHS = {
   participations: 'participations',
   labels: 'labels',
   label: 'labels/:id',
+  /** P36 (D-220): the register of sublabels, their tracks and the hints. */
+  sublabels: 'sublabels',
+  /** P37 (D-220): one sublabel: its tracks and its report. */
+  sublabel: 'sublabels/:id',
   publishing: 'publishing',
   /** P32 (D-182): the songwriters and files of the report summaries, no owner link. */
   publishingV2: 'publishing-v2',

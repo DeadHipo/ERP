@@ -342,6 +342,28 @@ export const sources = {
 };
 
 /** Publishing v2 (D-182): the report summaries, no owner link. */
+/** The sublabels (D-217…D-219): the register, the terms of a sublabel on a track, its report and the hints. */
+export const sublabels = {
+  list: () => call('GET', '/sublabels', { schema: list(R.sublabelListItemSchema) }),
+  create: (name: string) => call('POST', '/sublabels', { body: { name }, schema: R.sublabelSchema }),
+  rename: (sublabelId: string, name: string) => call('PATCH', `/sublabels/${id(sublabelId)}`, { body: { name }, schema: R.sublabelSchema }),
+  terms: (query: z.input<typeof S.sublabelTermsQuery> = {}) => call('GET', '/sublabels/terms', { query, schema: list(R.sublabelTermListItemSchema) }),
+  /** A batch of terms: `dryRun` = the preview (nothing written). */
+  addTerms: (sublabelId: string, body: z.input<typeof S.sublabelTermsBody>, dryRun: boolean) =>
+    call('POST', `/sublabels/${id(sublabelId)}/terms`, { query: { dryRun: dryRun ? '1' : '0' }, body, schema: R.sublabelTermsResultSchema }),
+  closeTerm: (termId: string, validTo: string) => call('POST', `/sublabels/terms/${id(termId)}/close`, { body: { validTo }, schema: R.sublabelTermSchema }),
+  cancelTerm: (termId: string, reason: string) =>
+    call('POST', `/sublabels/terms/${id(termId)}/cancel`, { body: { reason }, schema: R.sublabelTermCancelSchema }),
+  attachDocument: (ids: string[], documentId: string) =>
+    call('POST', '/sublabels/terms/document', { body: { ids, documentId }, schema: list(R.sublabelTermSchema) }),
+  report: (sublabelId: string, query: { from?: string; to?: string } = {}) =>
+    call('GET', `/sublabels/${id(sublabelId)}/report`, { query, schema: R.sublabelReportSchema }),
+  /** The report as one csv sheet: the file is saved by the page. */
+  reportCsv: (sublabelId: string, query: { from?: string; to?: string } = {}) =>
+    download(`/sublabels/${id(sublabelId)}/report`, { ...query, format: 'csv' }, 'sublabel.csv'),
+  suggestions: (month: string) => call('GET', '/sublabels/suggestions', { query: { month }, schema: R.sublabelSuggestionsSchema }),
+};
+
 export const publishingV2 = {
   files: (query: z.input<typeof S.labelQuery> = {}) => call('GET', '/publishing-v2/files', { query, schema: list(R.pubV2FileSchema) }),
   upload: (file: File, labelId: string, replace: boolean) =>

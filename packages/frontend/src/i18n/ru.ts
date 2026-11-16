@@ -21,12 +21,14 @@ import { operations } from './ru/operations';
 import { onboarding } from './ru/onboarding';
 import { claude } from './ru/claude';
 import { cuts } from './ru/cuts';
+import { sublabels } from './ru/sublabels';
 import { actions, overview, questions, queue, reasonActions, signalsPage } from './ru/work';
 
 /** The one Russian dictionary of the interface, split by domain. A "t" is just importing `ru`. */
 export const ru = {
   claude,
   cuts,
+  sublabels,
   common,
   nav,
   shell,

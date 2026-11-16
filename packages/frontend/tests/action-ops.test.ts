@@ -17,6 +17,7 @@ const WITHOUT_OP = [
   'expand-month',
   'files-all',
   'files-newest',
+  'sublabel-term-history',
   'files-none',
   'note-cancel',
   'onboarding-collapse',
