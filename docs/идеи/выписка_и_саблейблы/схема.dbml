@@ -1,0 +1,438 @@
+// Модуль лейблов и его соседи: схема ДО и ПОСЛЕ решений совета (2026-11-17). Для https://dbdiagram.io/d
+// Только лейблы и то, что с ними связано, а не вся база (вся база: docs/идеи/модули_и_документы/текущая_схема.dbml).
+// Источники: packages/backend/src/modules/labels/schema.ts; migrations/postgres/0006_labels.sql, 0014_label_books.sql,
+// 0015_label_books_2.sql, 0018_catalog.sql; живая база erp 2026-11-17 (information_schema.columns, pg_constraint,
+// SELECT count(*)); ClickHouse believe.rows: SELECT count() по 48 загруженным файлам (status = 'loaded').
+// Решения: docs/идеи/выписка_и_саблейблы/консилиум/сведение.md (Л1–Л20, итог голосования); числа — консилиум/цифры.md
+// («Опорные цифры») и периметр.md.
+//
+// ЛЕГЕНДА
+//  * org_id NOT NULL есть в каждой таблице PostgreSQL (D-170); колонку и связь с orgs.organizations не рисуем.
+//    Первичные ключи составные с org_id: label_aliases (org_id, alias_norm), label_accounts (org_id, account) и т. п.
+//  * У соседних таблиц показаны только ключевые колонки (полный список — в текущая_схема.dbml).
+//  * Цвет связи:
+//      серый     #888888  настоящий внешний ключ в базе (pg_constraint), только внутри одного модуля
+//      синий     #1f77b4  id внутри модуля, внешнего ключа нет
+//      зелёный   #2ca02c  id между модулями, внешнего ключа нет (держит фасад, D-121)
+//      оранжевый #ff7f0e  по ISRC или UPC: общий ключ, справочника ISRC нет; цель рисуем в believe.rows.isrc
+//      красный   #d62728  по строке (label_name, account): хрупкое место
+//  * Вторая часть файла — та же схема после решений. Чтобы файл оставался валидным, её схемы названы с префиксом
+//    «после_» (например "после_labels"."labels"); в базе такого префикса не будет.
+
+Project erp_labels_before_after {
+  database_type: 'PostgreSQL'
+  Note: 'Модуль лейблов до и после решений совета 2026-11-17. ДО: 13 таблиц, 24 связи. ПОСЛЕ: 13 таблиц, 25 связей.'
+}
+
+// =====================================================================================================================
+// === ДО: 2026-11-17 ===
+// =====================================================================================================================
+
+// ───────── labels ─────────
+Table labels.labels {
+  id text [pk]
+  name text
+  kind text [note: 'own (свой лейбл, книга) | sublabel (саблейбл)']
+  own_label_id text [note: 'у саблейбла: свой лейбл, которому он принадлежит']
+  created_at timestamptz
+  Note: 'Лейблы: 2 своих (0to8, Echo8) и 15 саблейблов (11 под 0to8, 4 под Echo8). Строк: 17.'
+}
+
+Table labels.label_aliases {
+  alias_norm text [pk, note: 'нормализованная строка label_name из отчёта Believe']
+  alias text
+  label_id text
+  Note: 'Строка отчёта -> лейбл, без срока: каждая из 34 строк Believe отображена (22 ведут к саблейблам). Строк: 34.'
+}
+
+Table labels.label_rules {
+  id text [pk]
+  label_id text
+  percent numeric [note: 'процент доли лейбла после артистов и участий; сегодня все 50']
+  recipient_artist_id text [note: 'получатель: ник владельца вида label']
+  valid_from date
+  valid_to date [note: 'не включается; NULL = без конца']
+  document_id text
+  "note" text
+  created_at timestamptz
+  Note: 'Правило саблейбла: какой процент и кому, на период, с документом (assumption 13, other 2, contract 1). Строк: 16.'
+}
+
+Table labels.label_accounts {
+  account text [pk, note: 'аккаунт Believe']
+  label_id text
+  created_at timestamptz
+  Note: 'Аккаунт Believe -> свой лейбл: так файл попадает в книгу (D-169). Строк: 2.'
+}
+
+// ───────── owners: каталог ─────────
+Table owners.track_labels {
+  id text [pk]
+  isrc text
+  label_id text
+  valid_from date
+  valid_to date
+  source text [note: 'files | operator | import; operator 0 строк']
+  "note" text
+  created_at timestamptz
+  Note: 'История лейбла ISRC, выведенная из файлов: навигация, деньги её не читают (D-172). Строк: 23 635 (ручных правок 0).'
+}
+
+// ───────── sources ─────────
+Table public.source_files {
+  id uuid [pk]
+  account text [note: 'аккаунт Believe из имени файла']
+  reporting_month date
+  status text
+  label_id text [note: 'книга файла']
+  Note: 'Реестр загруженных файлов Believe; сами строки лежат в ClickHouse. Строк: 48 (все loaded).'
+}
+
+Table believe.rows {
+  file_id UUID
+  reporting_month Date
+  label_name String [note: 'строка лейбла из отчёта (импринт)']
+  isrc String
+  upc String
+  net_revenue Decimal(38,12)
+  Note: 'ClickHouse, не PostgreSQL: строки отчёта Believe как в файле. Строк: 79 464 937 (21 200 ISRC, 34 строки лейбла).'
+}
+
+// ───────── owners: люди и бумаги ─────────
+Table owners.owners {
+  id text [pk]
+  kind text [note: 'person | label']
+  Note: 'Владельцы: кому платим; 17 из них вида label, у каждого 1 ник. Строк: 1 328.'
+}
+
+Table owners.artists {
+  id text [pk]
+  pseudonym text
+  owner_id text
+  Note: 'Ники (псевдонимы); каждый принадлежит одному владельцу. Строк: 2 170.'
+}
+
+Table owners.documents {
+  id text [pk]
+  kind text [note: 'contract, appendix, assumption, label_decision, ...']
+  owner_id text
+  label_id text
+  approved_at timestamptz
+  Note: 'Документы-основания: договоры, приложения, допущения, решения лейбла. Строк: 1 447.'
+}
+
+// ───────── splits ─────────
+Table splits.splits {
+  id text [pk]
+  isrc text
+  valid_from date
+  valid_to date
+  document_id text
+  Note: 'Версии сплита трека: доли артистов на период (сами доли в split_shares, здесь не рисуются). Строк: 25 278.'
+}
+
+Table splits.participations {
+  id text [pk]
+  isrc text
+  artist_id text
+  percent numeric
+  from_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  Note: 'Участия на ISRC (продюсеры и др.): процент с базы до доли лейбла. Строк: 350.'
+}
+
+// ───────── ads ─────────
+Table ads.expenses {
+  id text [pk]
+  isrc text
+  month date
+  amount_cents bigint
+  artist_id text
+  label_id text [note: 'запасной лейбл, если ISRC не найден в строках']
+  Note: 'Рекламные расходы по ISRC и месяцу; лейбл трека читается из строки отчёта. Строк: 2 686.'
+}
+
+TableGroup before_labels [color: #d62728] {
+  labels.labels
+  labels.label_aliases
+  labels.label_rules
+  labels.label_accounts
+}
+
+TableGroup before_catalog {
+  owners.track_labels
+}
+
+TableGroup before_sources {
+  public.source_files
+  believe.rows
+}
+
+TableGroup before_neighbours {
+  owners.owners
+  owners.artists
+  owners.documents
+  splits.splits
+  splits.participations
+  ads.expenses
+}
+
+// ДО: серые — настоящие внешние ключи (6)
+Ref: labels.labels.own_label_id > labels.labels.id [color: #888888]
+Ref: labels.label_aliases.label_id > labels.labels.id [color: #888888]
+Ref: labels.label_rules.label_id > labels.labels.id [color: #888888]
+Ref: labels.label_accounts.label_id > labels.labels.id [color: #888888]
+Ref: owners.artists.owner_id > owners.owners.id [color: #888888]
+Ref: owners.documents.owner_id > owners.owners.id [color: #888888]
+
+// ДО: синие — id внутри модуля (1)
+Ref: believe.rows.file_id > public.source_files.id [color: #1f77b4]  // ClickHouse -> PostgreSQL, один модуль sources
+
+// ДО: зелёные — id между модулями (11)
+Ref: labels.label_rules.recipient_artist_id > owners.artists.id [color: #2ca02c]
+Ref: labels.label_rules.document_id > owners.documents.id [color: #2ca02c]
+Ref: owners.track_labels.label_id > labels.labels.id [color: #2ca02c]
+Ref: public.source_files.label_id > labels.labels.id [color: #2ca02c]
+Ref: owners.documents.label_id > labels.labels.id [color: #2ca02c]
+Ref: splits.splits.document_id > owners.documents.id [color: #2ca02c]
+Ref: splits.participations.artist_id > owners.artists.id [color: #2ca02c]
+Ref: splits.participations.from_artist_id > owners.artists.id [color: #2ca02c]
+Ref: splits.participations.document_id > owners.documents.id [color: #2ca02c]
+Ref: ads.expenses.artist_id > owners.artists.id [color: #2ca02c]
+Ref: ads.expenses.label_id > labels.labels.id [color: #2ca02c]
+
+// ДО: оранжевые — по ISRC (4)
+Ref: splits.splits.isrc > believe.rows.isrc [color: #ff7f0e]
+Ref: splits.participations.isrc > believe.rows.isrc [color: #ff7f0e]
+Ref: owners.track_labels.isrc > believe.rows.isrc [color: #ff7f0e]
+Ref: ads.expenses.isrc > believe.rows.isrc [color: #ff7f0e]
+
+// ДО: красные — по строке (2)
+Ref: believe.rows.label_name > labels.label_aliases.alias_norm [color: #d62728]  // строка отчёта -> лейбл: единственный путь «чей трек»
+Ref: public.source_files.account > labels.label_accounts.account [color: #d62728]  // аккаунт из имени файла -> книга
+
+
+// =====================================================================================================================
+// === ПОСЛЕ: модель совета ===
+// =====================================================================================================================
+// Решения: Л3-А (границы), Л4-А (привязка — исключение), Л6-Б (labels.isrc_labels; owners.track_labels удаляется при
+// условии В2), Л7-В (срок у строки не делать), Л8-А (процент на правиле), Л9-А, Л10-А, Л15-А (переход байт в байт),
+// Л16-А (саблейбл = лейбл + владелец вида label с одним ником), Л20-А (реклама читает лейбл через то же место).
+
+// ───────── после: labels ─────────
+Table "после_labels"."labels" {
+  id text [pk]
+  name text
+  kind text [note: 'own (свой лейбл, книга) | sublabel (саблейбл)']
+  own_label_id text
+  created_at timestamptz
+  Note: 'Лейблы: свои и саблейблы, без изменений; саблейбл = эта запись + владелец вида label с одним ником (Л16). Строк: 17.'
+}
+
+Table "после_labels"."label_aliases" {
+  alias_norm text [pk, note: 'нормализованная строка label_name из отчёта Believe']
+  alias text
+  label_id text
+  Note: 'Строка отчёта -> лейбл, без изменений; срок действия не вводится до первой переразметки целой строки, Л7. Строк: 34.'
+}
+
+Table "после_labels"."label_rules" {
+  id text [pk]
+  label_id text
+  percent numeric
+  recipient_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  "note" text
+  created_at timestamptz
+  Note: 'Процент доли лейбла после артистов и участий; выкуп части лейбла = закрыть и открыть правило. Строк: 16.'
+}
+
+Table "после_labels"."label_accounts" {
+  account text [pk, note: 'аккаунт Believe']
+  label_id text
+  created_at timestamptz
+  Note: 'Аккаунт Believe -> свой лейбл (книга), без изменений. Строк: 2.'
+}
+
+Table "после_labels"."isrc_labels" {
+  isrc text
+  label_id text
+  valid_from date [note: 'первое число месяца']
+  valid_to date [note: 'не включается; NULL = без конца']
+  document_id text [note: 'основание решения']
+  "note" text
+  decided_by text [note: 'кто решил']
+  created_at timestamptz
+  indexes {
+    (isrc, valid_from) [pk, note: 'ключ вместе с org_id']
+  }
+  Note: 'Привязка — исключение: только там, где строка отчёта неправа; не правится, закрывается новой; периоды одного ISRC не пересекаются. Строк: 0 на старте; первые ≈ 30 после ответов владельца.'
+}
+
+// ───────── после: sources ─────────
+Table "после_sources"."source_files" {
+  id uuid [pk]
+  account text
+  reporting_month date
+  status text
+  label_id text [note: 'книга файла']
+  Note: 'Реестр загруженных файлов Believe, без изменений (имя в базе public.source_files). Строк: 48.'
+}
+
+Table "после_believe"."rows" {
+  file_id UUID
+  reporting_month Date
+  label_name String
+  isrc String
+  upc String
+  net_revenue Decimal(38,12)
+  Note: 'ClickHouse: строки отчёта Believe, без изменений. Строк: 79 464 937.'
+}
+
+// ───────── после: соседи (без изменений) ─────────
+Table "после_owners"."owners" {
+  id text [pk]
+  kind text [note: 'person | label']
+  Note: 'Владельцы; саблейбл получает деньги и выписку как владелец вида label (Л16). Строк: 1 328.'
+}
+
+Table "после_owners"."artists" {
+  id text [pk]
+  pseudonym text
+  owner_id text
+  Note: 'Ники; у владельца вида label один ник — получатель по правилу. Строк: 2 170.'
+}
+
+Table "после_owners"."documents" {
+  id text [pk]
+  kind text
+  owner_id text
+  label_id text
+  approved_at timestamptz
+  Note: 'Документы-основания; теперь и основания привязок ISRC. Строк: 1 447.'
+}
+
+Table "после_splits"."splits" {
+  id text [pk]
+  isrc text
+  valid_from date
+  valid_to date
+  document_id text
+  Note: 'Версии сплита трека, без изменений: доля нашей стороны сюда не переезжает (Л3, Л8). Строк: 25 278.'
+}
+
+Table "после_splits"."participations" {
+  id text [pk]
+  isrc text
+  artist_id text
+  percent numeric
+  from_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  Note: 'Участия на ISRC, без изменений. Строк: 350.'
+}
+
+Table "после_ads"."expenses" {
+  id text [pk]
+  isrc text
+  month date
+  amount_cents bigint
+  artist_id text
+  label_id text
+  Note: 'Рекламные расходы; лейбл трека читается через то же место, что и доля: привязка ISRC, потом строка (Л20). Строк: 2 686.'
+}
+
+TableGroup after_labels [color: #d62728] {
+  "после_labels"."labels"
+  "после_labels"."label_aliases"
+  "после_labels"."label_rules"
+  "после_labels"."label_accounts"
+  "после_labels"."isrc_labels"
+}
+
+TableGroup after_sources {
+  "после_sources"."source_files"
+  "после_believe"."rows"
+}
+
+TableGroup after_neighbours {
+  "после_owners"."owners"
+  "после_owners"."artists"
+  "после_owners"."documents"
+  "после_splits"."splits"
+  "после_splits"."participations"
+  "после_ads"."expenses"
+}
+
+// ПОСЛЕ: серые — настоящие внешние ключи (6)
+Ref: "после_labels"."labels"."own_label_id" > "после_labels"."labels"."id" [color: #888888]
+Ref: "после_labels"."label_aliases"."label_id" > "после_labels"."labels"."id" [color: #888888]
+Ref: "после_labels"."label_rules"."label_id" > "после_labels"."labels"."id" [color: #888888]
+Ref: "после_labels"."label_accounts"."label_id" > "после_labels"."labels"."id" [color: #888888]
+Ref: "после_owners"."artists"."owner_id" > "после_owners"."owners"."id" [color: #888888]
+Ref: "после_owners"."documents"."owner_id" > "после_owners"."owners"."id" [color: #888888]
+
+// ПОСЛЕ: синие — id внутри модуля (2)
+Ref: "после_believe"."rows"."file_id" > "после_sources"."source_files"."id" [color: #1f77b4]
+Ref: "после_labels"."isrc_labels"."label_id" > "после_labels"."labels"."id" [color: #1f77b4]  // НОВАЯ
+
+// ПОСЛЕ: зелёные — id между модулями (11)
+Ref: "после_labels"."label_rules"."recipient_artist_id" > "после_owners"."artists"."id" [color: #2ca02c]
+Ref: "после_labels"."label_rules"."document_id" > "после_owners"."documents"."id" [color: #2ca02c]
+Ref: "после_labels"."isrc_labels"."document_id" > "после_owners"."documents"."id" [color: #2ca02c]  // НОВАЯ
+Ref: "после_sources"."source_files"."label_id" > "после_labels"."labels"."id" [color: #2ca02c]
+Ref: "после_owners"."documents"."label_id" > "после_labels"."labels"."id" [color: #2ca02c]
+Ref: "после_splits"."splits"."document_id" > "после_owners"."documents"."id" [color: #2ca02c]
+Ref: "после_splits"."participations"."artist_id" > "после_owners"."artists"."id" [color: #2ca02c]
+Ref: "после_splits"."participations"."from_artist_id" > "после_owners"."artists"."id" [color: #2ca02c]
+Ref: "после_splits"."participations"."document_id" > "после_owners"."documents"."id" [color: #2ca02c]
+Ref: "после_ads"."expenses"."artist_id" > "после_owners"."artists"."id" [color: #2ca02c]
+Ref: "после_ads"."expenses"."label_id" > "после_labels"."labels"."id" [color: #2ca02c]
+
+// ПОСЛЕ: оранжевые — по ISRC (4)
+Ref: "после_labels"."isrc_labels"."isrc" > "после_believe"."rows"."isrc" [color: #ff7f0e]  // НОВАЯ: привязка ISRC -> строки отчёта
+Ref: "после_splits"."splits"."isrc" > "после_believe"."rows"."isrc" [color: #ff7f0e]
+Ref: "после_splits"."participations"."isrc" > "после_believe"."rows"."isrc" [color: #ff7f0e]
+Ref: "после_ads"."expenses"."isrc" > "после_believe"."rows"."isrc" [color: #ff7f0e]
+
+// ПОСЛЕ: красные — по строке (2)
+Ref: "после_believe"."rows"."label_name" > "после_labels"."label_aliases"."alias_norm" [color: #d62728]  // запасной ответ для треков без привязки
+Ref: "после_sources"."source_files"."account" > "после_labels"."label_accounts"."account" [color: #d62728]  // аккаунт -> книга
+
+
+// =====================================================================================================================
+// СВОДКА «ДО -> ПОСЛЕ»
+// =====================================================================================================================
+// Таблицы на схеме: 13 -> 13.
+//   + labels.isrc_labels (привязка ISRC -> лейбл с месяца; 0 строк на старте, ≈ 30 после ответов владельца:
+//     22 сольных трека под строками 77 Records -> 0to8 и 8 треков приложения под строкой «0to8» -> 77 Records, Л12).
+//   - owners.track_labels (23 635 строк, выведены из файлов, ручных правок 0) — уходит при условии В2: владелец снимает
+//     ручную поправку каталога. Число таблиц во всей базе то же: 48 -> 48 (Л6-Б).
+//   labels, label_aliases, label_rules, label_accounts — без изменений (Л7-В: срока у строки нет; Л8-А: процент только
+//   на правиле; Л9-А: выкуп части лейбла = закрыть правило и открыть новое).
+// Связи: 24 -> 25.
+//   серые     6 -> 6
+//   синие     1 -> 2   (+ isrc_labels.label_id -> labels.id)
+//   зелёные  11 -> 11  (- track_labels.label_id -> labels.id; + isrc_labels.document_id -> documents.id)
+//   оранжевые 4 -> 4   (- track_labels.isrc; + isrc_labels.isrc)
+//   красные   2 -> 2   (строка отчёта -> лейбл остаётся, но теперь это запасной ответ)
+// Главное отличие: ДО на вопрос «чей трек» отвечала только строка отчёта (красная связь); ПОСЛЕ сначала спрашивается
+// решение человека с документом (оранжевая + зелёная), а строка — только когда решения нет.
+//
+// ПОРЯДОК ЧТЕНИЯ «ЧЕЙ ТРЕК В МЕСЯЦЕ» (одно место для доли лейбла и для рекламы, Л15, Л20):
+//   1. Привязка ISRC: есть открытая на этот месяц строка labels.isrc_labels -> её лейбл.
+//   2. Иначе строка отчёта: believe.rows.label_name -> labels.label_aliases -> лейбл (так сегодня решаются все 1 645 ISRC
+//      саблейблов; новый ISRC под строкой саблейбла идёт ему сам, Л5).
+//   3. Иначе ждёт: деньги «нашей» стороны в C label_unmapped (сегодня 0 строк в этом положении), артисты получают по сплиту.
+//   Дальше правило лейбла на месяц (label_rules) даёт процент и получателя, как сегодня.
+// Пустая isrc_labels даёт прежний calculate() байт в байт (тест); переход через переключатель off | shadow | on и отчёт
+// разницы ISRC x месяц x получатель (Л15-А). Открываются 4 закрытых файла (layers/label-of-record.ts, layers/types.ts,
+// calculation.ts, owner-scope.ts) и facade/ads.ts; carve.ts, categorise.ts и математика balance.ts не меняются.
+//
+// НЕ НАРИСОВАНО: таблица доступа по ссылке для саблейбла (Л16-А: отзываемая ссылка только на чтение, +1 таблица токенов
+// в auth). Её устройство решает отдельный дизайн выписки, поэтому на этой схеме её нет; с ней во всей базе будет 49 таблиц.
