@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newFacade } from './helpers/fixtures';
+import { approvedAppendix, newFacade } from './helpers/fixtures';
 
 // The sublabels (D-217): a register of names in `labels` and the terms of a sublabel on a track in `links`, by the
 // rules of the publishing terms (D-185, D-188). The money does not read them. Synthetic names and ISRCs only.
@@ -141,5 +141,105 @@ describe('the terms of a sublabel on a track (D-217)', () => {
     ]);
     await expect(links.attachSublabelTermDocument([ids[0]!], 'doc-10', 'lawyer')).rejects.toMatchObject({ code: 'term_has_document' });
     await expect(links.attachSublabelTermDocument(['nope'], 'doc-10', 'lawyer')).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('the actions of the sublabels (D-218)', () => {
+  async function world() {
+    const f = await newFacade();
+    await f.modules.owners.createTrack({ title: 'Song A', isrc: A, upc: '000000000001' });
+    const one = await f.createSublabel('One');
+    const two = await f.createSublabel('Two');
+    const appendix = (await approvedAppendix(f)).id;
+    return { f, one: one.id, two: two.id, appendix };
+  }
+
+  it('classifies a batch without writing: dates floored, the catalog, every error class', async () => {
+    const { f, one } = await world();
+    const out = await f.addSublabelTerms(
+      one,
+      {
+        percent: '50',
+        validFrom: '2025-11-17',
+        items: [
+          { isrc: A },
+          { isrc: 'fr-x28-26-00002', percent: '25', validFrom: '2026-03' },
+          { isrc: 'bad' },
+          { isrc: A },
+          { isrc: 'FRX282600003', percent: '0' },
+          { isrc: 'FRX282600004', validFrom: '2026-13-01' },
+          { isrc: 'FRX282600005', validTo: '2025-11-20' },
+        ],
+      },
+      { dryRun: true },
+      'tester',
+    );
+    expect(out.applied).toBe(false);
+    expect(out.rows.map((r) => [r.isrc, r.kind, r.error, r.validFrom, r.notInCatalog, r.title])).toEqual([
+      [A, 'new', null, '2025-11-01', false, 'Song A'],
+      [B, 'new', null, '2026-03-01', true, null],
+      ['BAD', 'error', 'isrc_invalid', null, false, null],
+      [A, 'error', 'duplicate_in_request', null, false, 'Song A'],
+      ['FRX282600003', 'error', 'percent_invalid', null, false, null],
+      ['FRX282600004', 'error', 'date_invalid', null, false, null],
+      ['FRX282600005', 'error', 'empty_period', '2025-11-01', false, null],
+    ]);
+    expect(out.totals).toEqual({ rows: 7, new: 2, closes: 0, unchanged: 0, errors: 5, notInCatalog: 1 });
+    expect(await f.modules.links.sublabelTerms()).toEqual([]);
+    // the apply of the same batch refuses as a whole
+    await expect(f.addSublabelTerms(one, { percent: '50', validFrom: '2025-11', items: [{ isrc: A }, { isrc: 'bad' }] }, { dryRun: false }, 'tester')).rejects.toMatchObject({
+      code: 'terms_invalid',
+      details: { rows: [{ line: 2, isrc: 'BAD', code: 'isrc_invalid' }], errors: 1 },
+    });
+    expect(await f.modules.links.sublabelTerms()).toEqual([]);
+  });
+
+  it('applies: a repeat is unchanged, a buyout and a move close the open term, an earlier start is an error row', async () => {
+    const { f, one, two, appendix } = await world();
+    const first = await f.addSublabelTerms(one, { percent: '50', validFrom: '2025-11', documentId: appendix, items: [{ isrc: A }, { isrc: B }] }, { dryRun: false }, 'tester');
+    expect([first.applied, first.termIds.length]).toEqual([true, 2]);
+    const again = await f.addSublabelTerms(one, { percent: '50', validFrom: '2025-11', documentId: appendix, items: [{ isrc: A }] }, { dryRun: false }, 'tester');
+    expect([again.rows[0]?.kind, again.termIds]).toEqual(['unchanged', []]);
+    const preview = await f.addSublabelTerms(
+      two,
+      { percent: '50', validFrom: '2026-09', items: [{ isrc: A }, { isrc: B, validFrom: '2025-10' }] },
+      { dryRun: true },
+      'tester',
+    );
+    expect(preview.rows.map((r) => [r.kind, r.error, r.closes?.sublabelName ?? null, r.closes?.percent ?? null])).toEqual([
+      ['closes', null, 'One', '50'],
+      ['error', 'term_overlap', null, null],
+    ]);
+    await f.addSublabelTerms(one, { percent: '25', validFrom: '2026-03', items: [{ isrc: B }] }, { dryRun: false }, 'tester');
+    const terms = await f.listSublabelTerms({ isrc: B });
+    expect(terms.map((t) => [t.sublabelName, t.percent, t.validFrom, t.validTo, t.documentStatus])).toEqual([
+      ['One', '50', '2025-11-01', '2026-03-01', 'approved'],
+      ['One', '25', '2026-03-01', null, null],
+    ]);
+    expect((await f.listSublabelTerms({ sublabel: one, month: '2026-01' })).map((t) => t.isrc)).toEqual([A, B]);
+    expect((await f.listSublabelTerms({ noDocument: true })).map((t) => [t.isrc, t.percent])).toEqual([[B, '25']]);
+    const list = await f.listSublabels();
+    expect(list.map((s) => [s.name, s.withoutDocument])).toEqual([
+      ['One', 1],
+      ['Two', 0],
+    ]);
+  });
+
+  it('closes from a floored month, cancels the latest, attaches a document of a split kind only', async () => {
+    const { f, one, appendix } = await world();
+    const { termIds } = await f.addSublabelTerms(one, { percent: '50', validFrom: '2025-11', items: [{ isrc: A }] }, { dryRun: false }, 'tester');
+    const id = termIds[0] as string;
+    expect((await f.closeSublabelTerm(id, '2026-06-20')).validTo).toBe('2026-06-01');
+    expect((await f.listSublabelTerms({ isrc: A }))[0]?.state).toBe('closed');
+    const payment = await f.modules.owners.createDocument({ kind: 'payment_proof', title: 'Proof', fileRef: 'dummy://p.pdf', requiresApproval: false });
+    await expect(f.attachSublabelTermsDocument([id], payment.id, 'tester')).rejects.toMatchObject({ code: 'document_kind' });
+    await expect(f.attachSublabelTermsDocument([id], 'nope', 'tester')).rejects.toMatchObject({ code: 'not_found' });
+    expect((await f.attachSublabelTermsDocument([id], appendix, 'tester'))[0]?.documentId).toBe(appendix);
+    await expect(
+      f.addSublabelTerms(one, { percent: '50', validFrom: '2025-11', documentId: payment.id, items: [{ isrc: B }] }, { dryRun: true }, 'tester'),
+    ).rejects.toMatchObject({ code: 'document_kind' });
+    await expect(f.addSublabelTerms('nope', { percent: '50', validFrom: '2025-11', items: [{ isrc: B }] }, { dryRun: true }, 'tester')).rejects.toMatchObject({ code: 'not_found' });
+    expect(await f.cancelSublabelTerm(id, 'tester', 'mistake')).toEqual({ id, reopened: null });
+    expect((await f.listSublabelTerms({ isrc: A, withCancelled: true }))[0]?.state).toBe('cancelled');
   });
 });

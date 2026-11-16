@@ -568,6 +568,22 @@ const OPERATOR = 'contract-test';
     const pubV2Term = await call('post', '/publishing-v2/terms', { body: { ownerId: pubV2Owner.id, percent: '50', validFrom: '2026-01-01' } });
     expect(pubV2Term.percent).toBe('50');
     expect((await call('post', '/publishing-v2/terms/:id/cancel', { params: { id: pubV2Term.id }, body: { reason: 'contract check' } })).reopened).toBeNull();
+    // the sublabels (D-217, D-218): the register, a batch of terms (preview, apply), the list, close, cancel, a document later
+    const subl = await call('post', '/sublabels', { body: { name: 'Contract Sublabel Synth' } });
+    expect((await call('patch', '/sublabels/:id', { params: { id: subl.id }, body: { name: 'Contract Sublabel Synth 2' } })).name).toBe('Contract Sublabel Synth 2');
+    const termsBody = { percent: '50', validFrom: '2026-02-15', items: [{ isrc: I1 }, { isrc: 'QZTST2699999', percent: '25' }] };
+    const termsPreview = await call('post', '/sublabels/:id/terms', { params: { id: subl.id }, body: termsBody });
+    expect([termsPreview.applied, termsPreview.totals.new, termsPreview.rows[0].validFrom, termsPreview.rows[1].notInCatalog]).toEqual([false, 2, '2026-02-01', true]);
+    const termsApplied = await call('post', '/sublabels/:id/terms', { params: { id: subl.id }, query: { dryRun: '0' }, body: termsBody });
+    expect(termsApplied.termIds).toHaveLength(2);
+    const subList = await call('get', '/sublabels');
+    expect(subList.find((x: { id: string }) => x.id === subl.id)).toMatchObject({ withoutDocument: 2 });
+    const subTerms = await call('get', '/sublabels/terms', { query: { sublabel: subl.id } });
+    expect(subTerms.map((t: { isrc: string; title: string | null }) => [t.isrc, t.title])).toEqual([[I1, 'Track One'], ['QZTST2699999', null]]);
+    const withDoc = await call('post', '/sublabels/terms/document', { body: { ids: [termsApplied.termIds[0]], documentId: appendix.id } });
+    expect(withDoc[0].documentId).toBe(appendix.id);
+    expect((await call('post', '/sublabels/terms/:id/close', { params: { id: termsApplied.termIds[1] }, body: { validTo: '2026-06' } })).validTo).toBe('2026-06-01');
+    expect((await call('post', '/sublabels/terms/:id/cancel', { params: { id: termsApplied.termIds[1] }, body: { reason: 'contract check' } })).reopened).toBeNull();
     const pubV2Songs = await call('get', '/publishing-v2/songs');
     const pubV2Song = pubV2Songs.find((x: { songwriterId: string }) => x.songwriterId === pubV2Writers[0].id);
     expect((await call('get', '/publishing-v2/songs/:id/candidates', { params: { id: pubV2Song.songId } })).isrcs).toEqual([]);
@@ -1097,9 +1113,9 @@ describe('API contract: the ability of every operation (D-171)', () => {
     }
   });
 
-  it('a preview mode (D-172) only on the three imports (splits; operations, D-173; the start, D-174), with dryRun in its query; the release preview is a route of its own (D-195)', () => {
+  it('a preview mode (D-172) only on the imports (splits; operations, D-173) and the terms of a sublabel (D-218), with dryRun in its query; the release preview is a route of its own (D-195)', () => {
     const previews = API_OPERATIONS.filter((o) => o.preview);
-    expect(previews.map(operationKey).sort()).toEqual(['POST /releases/preview', 'POST /settlements/operations/import', 'POST /splits/import']);
+    expect(previews.map(operationKey).sort()).toEqual(['POST /releases/preview', 'POST /settlements/operations/import', 'POST /splits/import', 'POST /sublabels/:id/terms']);
     for (const o of previews.filter((x) => x.path !== '/releases/preview')) expect(o.query && 'dryRun' in o.query.shape, operationKey(o)).toBe(true);
   });
 

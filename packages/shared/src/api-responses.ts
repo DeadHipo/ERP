@@ -2504,3 +2504,76 @@ export const ownerCutsSchema = z.object({
   ),
 });
 export type OwnerCuts = z.infer<typeof ownerCutsSchema>;
+
+// ---- The sublabels (D-217, D-218) ----
+
+export const sublabelSchema = z.object({
+  id: z.string(),
+  name: z.string().describe('The name of the sublabel'),
+  createdAt: timestamp,
+});
+
+export const sublabelListItemSchema = sublabelSchema.extend({
+  tracksNow: z.number().int().describe('Tracks with a term in force this month'),
+  withoutDocument: z.number().int().describe('Live terms without a document: their money waits'),
+});
+
+/** The term of a sublabel on a track: the percent of the label share after the artists and the participations. */
+export const sublabelTermSchema = z.object({
+  id: z.string(),
+  sublabelId: z.string().describe('Id of the sublabel'),
+  isrc: z.string().describe('The ISRC of the recording'),
+  percent: z.string().describe('Percent of the label share after the artists and the participations'),
+  validFrom: date,
+  validTo: date.nullable().describe('Exclusive; null = open'),
+  documentId: z.string().nullable().describe('null = no document: the money of the term waits'),
+  note: z.string().nullable(),
+  decidedBy: z.string().describe('The operator who set the term'),
+  decidedAt: timestamp,
+  documentBy: z.string().nullable().describe('Who attached the document later'),
+  documentAt: timestamp.nullable(),
+  cancelledAt: timestamp.nullable(),
+  cancelledBy: z.string().nullable().describe('The operator who cancelled the term'),
+  cancelReason: z.string().nullable().describe('Why the term was cancelled'),
+});
+
+export const sublabelTermListItemSchema = sublabelTermSchema.extend({
+  sublabelName: z.string().describe('The name of the sublabel'),
+  title: z.string().nullable().describe('The title of the track in the catalog; null = not in the catalog'),
+  documentStatus: z.enum(['approved', 'not_approved', 'not_attached', 'missing']).nullable().describe('null = no document'),
+  state: z.enum(['open', 'future', 'closed', 'cancelled']).describe('Today: in force, starting later, ended, cancelled'),
+});
+
+export const sublabelTermCancelSchema = z.object({ id: z.string(), reopened: z.string().nullable().describe('The term open again') });
+
+/** One row of a batch of terms: its class (D-218). */
+export const sublabelTermPreviewRowSchema = z.object({
+  line: z.number().int(),
+  isrc: z.string(),
+  title: z.string().nullable(),
+  percent: z.string().nullable(),
+  validFrom: date.nullable(),
+  validTo: date.nullable(),
+  kind: z.enum(['new', 'closes', 'unchanged', 'error']).describe('new: no term before; closes: closes the open term at its start; unchanged: the same term is open, skipped'),
+  error: z
+    .enum(['isrc_invalid', 'percent_invalid', 'date_invalid', 'empty_period', 'duplicate_in_request', 'term_overlap'])
+    .nullable(),
+  notInCatalog: z.boolean().describe('The track is not in the catalog yet: the term is kept for later'),
+  closes: z
+    .object({ termId: z.string(), sublabelId: z.string(), sublabelName: z.string(), percent: z.string(), validFrom: date })
+    .nullable(),
+});
+
+export const sublabelTermsResultSchema = z.object({
+  applied: z.boolean().describe('false = the preview, nothing written'),
+  rows: z.array(sublabelTermPreviewRowSchema),
+  totals: z.object({
+    rows: z.number().int(),
+    new: z.number().int(),
+    closes: z.number().int(),
+    unchanged: z.number().int(),
+    errors: z.number().int(),
+    notInCatalog: z.number().int(),
+  }),
+  termIds: z.array(z.string()).describe('The created terms (empty in the preview)'),
+});

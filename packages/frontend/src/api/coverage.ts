@@ -125,6 +125,16 @@ export const OPERATION_COVERAGE = {
   'POST /publishing-v2/songs/:id/isrcs': { page: 'P32', route: '/publishing-v2', note: 'D-184: action-isrcs-submit' },
   'POST /publishing-v2/terms/:id/cancel': { page: 'P32', route: '/publishing-v2', note: 'D-188: action-cancel-term in the dialog «Сплит»' },
   'POST /publishing-v2/terms': { page: 'P32', route: '/publishing-v2', note: 'D-185: action-term-submit' },
+
+  // the sublabels (D-217, D-218): the screens are step 4 of docs/идеи/выписка_и_саблейблы/план_разработки.md
+  'GET /sublabels': { refusal: 'no screen yet: the page «Саблейблы» comes in step 4 of the sublabels plan (D-218)' },
+  'POST /sublabels': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'PATCH /sublabels/:id': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'GET /sublabels/terms': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'POST /sublabels/:id/terms': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'POST /sublabels/terms/:id/close': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'POST /sublabels/terms/:id/cancel': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
+  'POST /sublabels/terms/document': { refusal: 'no screen yet: step 4 of the sublabels plan (D-218)' },
   'GET /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: the tab links' },
   'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },
   'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },

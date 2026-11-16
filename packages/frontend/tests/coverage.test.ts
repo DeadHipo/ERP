@@ -33,7 +33,18 @@ describe('operation coverage', () => {
 
   it('gives every refusal a reason', () => {
     const refusals = entries.flatMap(([key, e]) => ('refusal' in e ? [{ key, reason: e.refusal }] : []));
-    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain']);
+    // D-218: the eight sublabel operations wait for their page (step 4 of the sublabels plan), which removes them from this list
+    const SUBLABELS_UNTIL_STEP_4 = [
+      'GET /sublabels',
+      'GET /sublabels/terms',
+      'PATCH /sublabels/:id',
+      'POST /sublabels',
+      'POST /sublabels/:id/terms',
+      'POST /sublabels/terms/:id/cancel',
+      'POST /sublabels/terms/:id/close',
+      'POST /sublabels/terms/document',
+    ];
+    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain', ...SUBLABELS_UNTIL_STEP_4].sort());
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);
   });
 });

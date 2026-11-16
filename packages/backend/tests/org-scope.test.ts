@@ -260,6 +260,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     answer: string;
     /** D-198: a cut of B's book */
     cut: string;
+    /** D-217: a sublabel of the register and a term of it */
+    subl: string;
+    sublTerm: string;
   };
   type Call = { params?: Record<string, string>; query?: Record<string, string>; body?: unknown; file?: { path: string; fileName: string } };
 
@@ -357,11 +360,17 @@ describe('two organizations behind the login: the API (D-170)', () => {
     await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
     const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
     const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
+    const sublB = await ok('b', 'post', '/sublabels', { name: 'B Sublabel Secret' });
+    const sublTermsB = await as('b', request(app).post(`/api/v1/sublabels/${sublB.id as string}/terms`))
+      .query({ dryRun: '0' })
+      .send({ percent: '50', validFrom: '2026-01', documentId: db_.id, items: [{ isrc: ISRC_B }] });
+    expect(sublTermsB.status, JSON.stringify(sublTermsB.body)).toBe(201);
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
       label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
+      subl: sublB.id, sublTerm: sublTermsB.body.termIds[0],
       cut: (await ok('b', 'post', '/settlements/cuts', { labelId: lb.id, name: 'B cut Secret', cutDate: '2026-08-15' })).id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
@@ -375,7 +384,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(),
     };
   };
 
@@ -492,6 +501,18 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'PATCH /contracts/:id': (x) => ({ params: { id: x.contract }, body: { payoutThresholdCents: 1 } }),
     // the cuts (D-198): B's label and B's cut are unknown in A
     'GET /settlements/cuts': (x) => ({ query: { label: x.label } }),
+    // D-217, D-218: the sublabels of the register and their terms
+    'GET /sublabels': () => ({}),
+    'PATCH /sublabels/:id': (x) => ({ params: { id: x.subl }, body: { name: 'Scope Check Name' } }),
+    'GET /sublabels/terms': (x) => ({ query: { sublabel: x.subl, isrc: x.isrc } }),
+    'POST /sublabels/:id/terms': (x) => ({
+      params: { id: x.subl },
+      query: { dryRun: '1' },
+      body: { percent: '50', validFrom: '2026-01', documentId: x.document, items: [{ isrc: x.isrc }] },
+    }),
+    'POST /sublabels/terms/:id/close': (x) => ({ params: { id: x.sublTerm }, body: { validTo: '2026-09' } }),
+    'POST /sublabels/terms/:id/cancel': (x) => ({ params: { id: x.sublTerm }, body: { reason: 'scope check' } }),
+    'POST /sublabels/terms/document': (x) => ({ body: { ids: [x.sublTerm], documentId: x.document } }),
     'POST /settlements/cuts': (x) => ({ body: { labelId: x.label, name: 'n', cutDate: '2026-08-15' } }),
     'PATCH /settlements/cuts/:id': (x) => ({ params: { id: x.cut }, body: { name: 'n' } }),
     'POST /settlements/cuts/:id/delete': (x) => ({ params: { id: x.cut } }),
@@ -519,6 +540,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     // A's facade (another organization's are owner_not_found / pseudonym_not_found rows); its `?label=` is checked by
     // the label guard before the body
     'POST /settlements/operations/import',
+    // D-217: a new sublabel is a name in A; nothing of B is named
+    'POST /sublabels',
   ];
 
   /**

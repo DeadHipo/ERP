@@ -13,6 +13,7 @@ import { participationsRouter } from './participations';
 import { auditRouter } from './audit';
 import { adsRouter } from './ads';
 import { onboardingRouter } from './onboarding';
+import { sublabelsRouter } from './sublabels';
 
 /**
  * Version 1 of the JSON API of one organization: one router per topic, all mounted at the root of the version. The
@@ -33,5 +34,6 @@ export function createV1Router(facade: Facade, opts: { tmpDir: string }) {
   r.use(auditRouter(facade));
   r.use(adsRouter(facade));
   r.use(onboardingRouter(facade));
+  r.use(sublabelsRouter(facade));
   return r;
 }

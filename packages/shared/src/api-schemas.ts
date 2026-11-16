@@ -766,3 +766,55 @@ export const cutTransferBody = z.object({
   documentId: z.string().min(1).describe('The basis document of the two adjustments (D-173); both rows are dated the day after the cut'),
   comment: z.string().trim().max(2000).optional(),
 });
+
+// ---- The sublabels (D-217, D-218): a register of names and the terms of a sublabel on a track ----
+
+/** A new sublabel or a new name: unique in the organization without case. */
+export const sublabelNameBody = z.object({ name: z.string().min(1).max(200) });
+
+/** The terms: of one sublabel, of one ISRC (the history of a track), in force in a month, without a document. */
+export const sublabelTermsQuery = z.object({
+  sublabel: z.string().min(1).optional().describe('Id of a sublabel'),
+  isrc: z.string().min(1).optional().describe('One track: its history'),
+  month: month.optional().describe('Only the terms in force on the first day of this month'),
+  noDocument: z.enum(['0', '1']).optional().describe('1 = only the terms without a document (their money waits)'),
+  withCancelled: z.enum(['0', '1']).optional().describe('1 = the cancelled terms too'),
+});
+
+/** The preview or the apply of a batch of terms (D-218). */
+export const sublabelTermsAddQuery = z.object({
+  dryRun: z.enum(['0', '1']).default('1').describe('1 = preview (nothing is written, no audit row), 0 = apply (all or nothing)'),
+});
+
+/**
+ * A batch of terms of one sublabel: the percent of the label share after the artists and the participations and the
+ * first month, for every track or per track; a date is floored to its month (M52); one document for the batch (none =
+ * the money waits). At most 5 000 tracks.
+ */
+export const sublabelTermsBody = z.object({
+  documentId: z.string().min(1).nullable().optional(),
+  percent: z.string().min(1).describe('Percent of the label share, above 0, at most 100'),
+  validFrom: z.string().min(1).describe('YYYY-MM or YYYY-MM-DD, floored to the month'),
+  validTo: z.string().min(1).nullable().optional().describe('Exclusive end, floored to the month; none = open'),
+  note: z.string().max(2000).nullable().optional(),
+  items: z
+    .array(
+      z.object({
+        isrc: z.string().min(1),
+        percent: z.string().min(1).nullable().optional(),
+        validFrom: z.string().min(1).nullable().optional(),
+        validTo: z.string().min(1).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(5000),
+});
+
+/** The end of an open term (exclusive, floored to the month). */
+export const sublabelTermCloseBody = z.object({ validTo: z.string().min(1).describe('YYYY-MM or YYYY-MM-DD') });
+
+/** The cancellation of a mistaken term: why. */
+export const sublabelTermCancelBody = z.object({ reason: z.string().min(1).max(2000) });
+
+/** A document attached to terms that have none. */
+export const sublabelTermsDocumentBody = z.object({ ids: z.array(z.string().min(1)).min(1).max(5000), documentId: z.string().min(1) });

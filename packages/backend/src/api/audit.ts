@@ -80,6 +80,48 @@ export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
   }
 > = new Map([
   [
+    // the terms of a sublabel (D-218): the preview leaves no row; the apply records the counts, the created terms and their ISRCs
+    'POST /sublabels/:id/terms',
+    {
+      preview: (query: Record<string, unknown>) => query.dryRun !== '0',
+      summary: (response: unknown, body: Record<string, unknown>) => {
+        const t = asRecord(asRecord(response).totals);
+        return {
+          percent: body.percent,
+          validFrom: body.validFrom,
+          validTo: body.validTo ?? null,
+          documentId: body.documentId ?? null,
+          rows: t.rows,
+          new: t.new,
+          closes: t.closes,
+          unchanged: t.unchanged,
+        };
+      },
+      ids: (response: unknown) => {
+        const r = asRecord(response);
+        const ids = Array.isArray(r.termIds) ? r.termIds.filter((x): x is string => typeof x === 'string') : [];
+        const rows = Array.isArray(r.rows) ? r.rows.map(asRecord) : [];
+        const isrcs = rows.filter((x) => x.kind === 'new' || x.kind === 'closes').map((x) => x.isrc).filter((x): x is string => typeof x === 'string');
+        return [...ids, ...isrcs];
+      },
+    },
+  ],
+  [
+    // a document attached to terms (D-218): the terms and their ISRCs from the response
+    'POST /sublabels/terms/document',
+    {
+      preview: () => false,
+      summary: (_response: unknown, body: Record<string, unknown>) => ({
+        documentId: body.documentId,
+        terms: Array.isArray(body.ids) ? body.ids.length : 0,
+      }),
+      ids: (response: unknown) =>
+        (Array.isArray(response) ? response.map(asRecord) : []).flatMap((t) =>
+          [t.id, t.isrc].filter((x): x is string => typeof x === 'string'),
+        ),
+    },
+  ],
+  [
     'POST /splits/import',
     {
       preview: (query: Record<string, unknown>) => query.dryRun !== '0',
