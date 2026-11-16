@@ -2,7 +2,7 @@ import { date, numeric, pgSchema, primaryKey, text, unique } from 'drizzle-orm/p
 import { isoTimestamp } from '../../shared/pg-db';
 
 // Our labels, the imprint strings that are aliases of them and the sublabel rule per period.
-// The DDL is migrations/postgres/0006_labels.sql and 0014_label_books.sql, 0016_organizations.sql (schema `labels`); change both.
+// The DDL is migrations/postgres/0006_labels.sql and 0014_label_books.sql, 0016_organizations.sql, 0033_sublabels.sql (schema `labels`); change both.
 
 const s = pgSchema('labels');
 
@@ -32,6 +32,18 @@ export const labelRules = s.table('label_rules', {
   validTo: date('valid_to', { mode: 'string' }),
   documentId: text('document_id'),
   note: text('note'),
+  createdAt: isoTimestamp('created_at').notNull(),
+});
+
+/**
+ * The sublabels (D-217): a register of names only, outside `labels` so the label of a track never comes from it. The
+ * terms of a sublabel on a track are `links.sublabel_terms`. DDL: 0033_sublabels.sql; the name is unique per
+ * organization without case (index `sublabels_org_name`).
+ */
+export const sublabels = s.table('sublabels', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
   createdAt: isoTimestamp('created_at').notNull(),
 });
 

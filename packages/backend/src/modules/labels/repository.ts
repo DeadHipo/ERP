@@ -2,12 +2,13 @@ import { asc, eq, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { Decimal } from '../../shared/money';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { labelAccounts, labelAliases, labelRules, labels } from './schema';
+import { labelAccounts, labelAliases, labelRules, labels, sublabels } from './schema';
 
 export type LabelRow = OrgFree<typeof labels.$inferSelect>;
 export type AliasRow = OrgFree<typeof labelAliases.$inferSelect>;
 export type RuleRow = OrgFree<typeof labelRules.$inferSelect>;
 export type AccountRow = OrgFree<typeof labelAccounts.$inferSelect>;
+export type SublabelRow = OrgFree<typeof sublabels.$inferSelect>;
 
 /** PostgreSQL pads numeric(9,6) with zeros; the application keeps percents as they were entered. */
 const canonicalRule = (r: RuleRow): RuleRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
@@ -23,6 +24,7 @@ export function createLabelsRepository(db: Db, org: OrgScope) {
     labelAliases: orgFree(labelAliases),
     labelRules: orgFree(labelRules),
     labelAccounts: orgFree(labelAccounts),
+    sublabels: orgFree(sublabels),
   };
   return {
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
@@ -115,6 +117,24 @@ export function createLabelsRepository(db: Db, org: OrgScope) {
     },
     deleteAccount: async (account: string) => {
       await orm().delete(labelAccounts).where(orgWhere(org, labelAccounts, eq(labelAccounts.account, account)));
+    },
+    /** The sublabels (D-217), by name. */
+    allSublabels: () => orm().select(C.sublabels).from(sublabels).where(orgWhere(org, sublabels)).orderBy(asc(sublabels.name)),
+    getSublabel: async (id: string) =>
+      (await orm().select(C.sublabels).from(sublabels).where(orgWhere(org, sublabels, eq(sublabels.id, id))))[0],
+    /** The sublabel of this name without case (`sublabels_org_name`). */
+    sublabelByName: async (name: string) =>
+      (
+        await orm()
+          .select(C.sublabels)
+          .from(sublabels)
+          .where(orgWhere(org, sublabels, sql`lower(${sublabels.name}) = ${name.toLowerCase()}`))
+      )[0],
+    insertSublabel: async (row: SublabelRow) => {
+      await orm().insert(sublabels).values(orgRow(org, row));
+    },
+    renameSublabel: async (id: string, name: string) => {
+      await orm().update(sublabels).set({ name }).where(orgWhere(org, sublabels, eq(sublabels.id, id)));
     },
   };
 }

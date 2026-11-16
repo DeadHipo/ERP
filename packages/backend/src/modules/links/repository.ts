@@ -1,11 +1,19 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgQuery, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { publishingTerms, songIsrc, songwriterOwner } from './schema';
+import { publishingTerms, songIsrc, songwriterOwner, sublabelTerms } from './schema';
 
 export type SongwriterOwnerRow = OrgFree<typeof songwriterOwner.$inferSelect>;
 export type SongIsrcRow = OrgFree<typeof songIsrc.$inferSelect>;
 export type PublishingTermRow = OrgFree<typeof publishingTerms.$inferSelect>;
+export type SublabelTermRow = OrgFree<typeof sublabelTerms.$inferSelect>;
+
+/** Which sublabel terms to read (D-217); the cancelled ones only on request. */
+export interface SublabelTermFilter {
+  sublabelId?: string;
+  isrcs?: readonly string[];
+  withCancelled?: boolean;
+}
 
 /** All SQL of the links module lives here (schema `links`); every statement is of the organization `org` (D-170). */
 export function createLinksRepository(db: Db, org: OrgScope) {
@@ -82,6 +90,44 @@ export function createLinksRepository(db: Db, org: OrgScope) {
          DO UPDATE SET owner_id = $3, source = $4, decided_by = $5, decided_at = $6`,
         [r.songwriterId, r.ownerId, r.source, r.decidedBy, r.decidedAt],
       );
+    },
+    /** The sublabel terms (D-217), by ISRC then start. */
+    sublabelTerms: (f: SublabelTermFilter = {}): Promise<SublabelTermRow[]> => {
+      const conds: SQL[] = [];
+      if (!f.withCancelled) conds.push(isNull(sublabelTerms.cancelledAt));
+      if (f.sublabelId !== undefined) conds.push(eq(sublabelTerms.sublabelId, f.sublabelId));
+      if (f.isrcs !== undefined) {
+        if (f.isrcs.length === 0) return Promise.resolve([]);
+        conds.push(inArray(sublabelTerms.isrc, [...f.isrcs]));
+      }
+      return db
+        .orm()
+        .select(orgFree(sublabelTerms))
+        .from(sublabelTerms)
+        .where(orgWhere(org, sublabelTerms, ...conds))
+        .orderBy(asc(sublabelTerms.isrc), asc(sublabelTerms.validFrom));
+    },
+    sublabelTerm: async (id: string): Promise<SublabelTermRow | undefined> =>
+      (await db.orm().select(orgFree(sublabelTerms)).from(sublabelTerms).where(orgWhere(org, sublabelTerms, eq(sublabelTerms.id, id))))[0],
+    insertSublabelTerms: async (rows: SublabelTermRow[]) => {
+      if (rows.length > 0) await db.orm().insert(sublabelTerms).values(orgRows(org, rows));
+    },
+    setSublabelTermValidTo: async (id: string, validTo: string | null) => {
+      await db.orm().update(sublabelTerms).set({ validTo }).where(orgWhere(org, sublabelTerms, eq(sublabelTerms.id, id)));
+    },
+    cancelSublabelTerm: async (id: string, by: string, reason: string, at: string) => {
+      await db
+        .orm()
+        .update(sublabelTerms)
+        .set({ cancelledAt: at, cancelledBy: by, cancelReason: reason })
+        .where(orgWhere(org, sublabelTerms, eq(sublabelTerms.id, id)));
+    },
+    attachSublabelTermDocument: async (ids: readonly string[], documentId: string, by: string, at: string) => {
+      await db
+        .orm()
+        .update(sublabelTerms)
+        .set({ documentId, documentBy: by, documentAt: at })
+        .where(orgWhere(org, sublabelTerms, inArray(sublabelTerms.id, [...ids]), isNull(sublabelTerms.documentId)));
     },
     /** D-194: a merge of owners moves the songwriters of the merged owner to the survivor. */
     reassignSongwriters: async (fromOwnerId: string, intoOwnerId: string) => {

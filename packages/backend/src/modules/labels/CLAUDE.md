@@ -16,3 +16,5 @@ it; this module knows nothing about files). An account has no period (owner, 202
 only by the facade's `removeLabelAccount`, which first refuses an account with files (409 `account_has_files`). The
 label string of a unit still decides the label of record and the sublabel rule; the units of an account whose string
 leads to another own label stay in the account's book and are reported (`labelOutsideAccount`).
+
+`sublabels` (D-217, migration `0033_sublabels.sql`): the register of sublabels, a name only (unique per organization without case, 409 `sublabel_name_taken`); filled from the labels of kind `sublabel` with the same ids. The terms of a sublabel on a track live in `links.sublabel_terms`. Until the switch of the money the calculation still reads the labels of kind `sublabel`, their aliases and rules.

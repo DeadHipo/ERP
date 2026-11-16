@@ -188,3 +188,47 @@ describe.runIf(postgresUp)('migration 0016_organizations', () => {
   });
 });
 
+
+describe.runIf(postgresUp)('migration 0033_sublabels (D-217)', () => {
+  const config = postgresConfigFromEnv();
+  const admin = createPostgres({ ...config, max: 1 });
+  afterAll(() => admin.close());
+
+  it('copies the sublabels of labels.labels with their ids, own labels stay out; a second run changes nothing', async () => {
+    const name = `erp_t_m33_${randomBytes(4).toString('hex')}`;
+    await admin.pool.query(`CREATE DATABASE ${name}`);
+    const pg = createPostgres({ ...config, database: name, max: 1 });
+    try {
+      for (const m of postgresMigrations()) if (m.version <= 32) await pg.pool.query(m.text);
+      const ORG = '00000000-0000-4000-8000-000000000001';
+      await pg.pool.query(`INSERT INTO orgs.organizations (id, name, created_by) VALUES ('${ORG}', 'A', 't') ON CONFLICT DO NOTHING`);
+      await pg.pool.query(`INSERT INTO labels.labels (org_id, id, name, kind, created_at) VALUES ('${ORG}', 'own1', 'Own', 'own', now())`);
+      await pg.pool.query(
+        `INSERT INTO labels.labels (org_id, id, name, kind, own_label_id, created_at) VALUES ('${ORG}', 'sub1', 'Sub One', 'sublabel', 'own1', now())`,
+      );
+      const m33 = postgresMigrations().find((m) => m.version === 33)?.text as string;
+      await pg.pool.query(m33);
+      await pg.pool.query(m33);
+      const rows = (await pg.pool.query('SELECT org_id, id, name FROM labels.sublabels')).rows;
+      expect(rows).toEqual([{ org_id: ORG, id: 'sub1', name: 'Sub One' }]);
+      // one live term per ISRC and start; a cancelled one frees the start
+      const term = (id: string, cancelled: boolean) =>
+        pg.pool.query(
+          `INSERT INTO links.sublabel_terms (org_id, id, sublabel_id, isrc, percent, valid_from, decided_by, decided_at, cancelled_at, cancelled_by)
+           VALUES ('${ORG}', '${id}', 'sub1', 'FRX282600001', 50, '2026-01-01', 't', now(), ${cancelled ? "now(), 't'" : 'NULL, NULL'})`,
+        );
+      await term('t1', true);
+      await term('t2', false);
+      await expect(term('t3', false)).rejects.toThrow(/sublabel_terms_start/);
+      await expect(
+        pg.pool.query(
+          `INSERT INTO links.sublabel_terms (org_id, id, sublabel_id, isrc, percent, valid_from, decided_by, decided_at)
+           VALUES ('${ORG}', 't4', 'sub1', 'FRX282600002', 50, '2026-01-15', 't', now())`,
+        ),
+      ).rejects.toThrow(/check/i);
+    } finally {
+      await pg.close();
+      await admin.pool.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    }
+  });
+});

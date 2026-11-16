@@ -4,10 +4,19 @@ import { newId } from '../../shared/identifiers';
 import { assertDate, nowIso, type IsoDate } from '../../shared/dates';
 import type { Db } from '../../shared/pg-db';
 import type { OrgScope } from '../../shared/org-scope';
-import type { AccountRow, AliasRow, LabelRow, RuleRow } from './repository';
+import type { AccountRow, AliasRow, LabelRow, RuleRow, SublabelRow } from './repository';
 import { createLabelsRepository } from './repository';
 
 export type LabelKind = 'own' | 'sublabel';
+
+/** A sublabel of the register (D-217): a name only. */
+export interface SublabelView {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+const sublabelView = (r: SublabelRow): SublabelView => ({ id: r.id, name: r.name, createdAt: r.createdAt });
 
 export interface RuleView {
   id: string;
@@ -296,6 +305,44 @@ export function createLabelsService(db: Db, org: OrgScope) {
           };
         },
       };
+    },
+
+    /** The sublabels (D-217), by name. */
+    async listSublabels(): Promise<SublabelView[]> {
+      return (await repo.allSublabels()).map(sublabelView);
+    },
+
+    async getSublabel(id: string): Promise<SublabelView> {
+      const r = await repo.getSublabel(id);
+      if (!r) throw new NotFoundError('Sublabel', id);
+      return sublabelView(r);
+    },
+
+    /** A new sublabel: a name, unique in the organization without case (409 `sublabel_name_taken`). */
+    async createSublabel(nameRaw: string): Promise<SublabelView> {
+      const name = nameRaw.trim();
+      if (!name) throw new ValidationError('Sublabel name is empty');
+      return repo.transaction(async () => {
+        if (await repo.sublabelByName(name))
+          throw new ConflictError(`A sublabel named "${name}" already exists`, 'sublabel_name_taken');
+        const row: SublabelRow = { id: newId(), name, createdAt: nowIso() };
+        await repo.insertSublabel(row);
+        return sublabelView(row);
+      });
+    },
+
+    /** Renames a sublabel; the same rule of a unique name. */
+    async renameSublabel(id: string, nameRaw: string): Promise<SublabelView> {
+      const name = nameRaw.trim();
+      if (!name) throw new ValidationError('Sublabel name is empty');
+      return repo.transaction(async () => {
+        if (!(await repo.getSublabel(id))) throw new NotFoundError('Sublabel', id);
+        const same = await repo.sublabelByName(name);
+        if (same && same.id !== id)
+          throw new ConflictError(`A sublabel named "${name}" already exists`, 'sublabel_name_taken');
+        await repo.renameSublabel(id, name);
+        return service.getSublabel(id);
+      });
     },
   };
   return service;
