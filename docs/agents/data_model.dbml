@@ -1,0 +1,757 @@
+// ERP 0to8: полная структура данных (на 2026-11-15, миграции postgres 0001…0032, clickhouse 0001…0003).
+// Вставить целиком в https://dbdiagram.io/d (или drawdb.app → Import → DBML).
+//
+// Условности:
+//  * org_id NOT NULL есть в КАЖДОЙ таблице модулей (D-170) → orgs.organizations.id. Колонку и связь не рисуем,
+//    чтобы не забивать схему.
+//  * Цвет связи = её природа:
+//      серый   #888888  настоящий FOREIGN KEY в базе (их очень мало, только внутри модуля);
+//      синий   #2f6fdf  логическая ссылка по id внутри модуля (FK нет, проверяет сервис);
+//      зелёный #1f9d55  межмодульная ссылка по id (FK нет, проверяет фасад, D-121);
+//      оранж.  #e07b00  связь по ISRC (общий ключ, справочника ISRC нет: owners.tracks это каталог, не мастер);
+//      красный #d0312d  связь ПО СТРОКЕ (нормализованное имя / строка отчёта); здесь живёт хрупкость.
+
+Project erp_0to8 {
+  database_type: 'PostgreSQL'
+  Note: 'Ничего не хранится как начисления: деньги пересчитываются из строк отчётов (believe.rows, pub_lines, pubv2.accruals).'
+}
+
+// ───────────────────────────── orgs / auth ─────────────────────────────
+Table orgs.organizations {
+  id text [pk]
+  name text
+  created_at timestamptz
+  created_by text
+}
+
+Table auth.users {
+  id text [pk]
+  login text
+  password_hash text
+  org_id text
+  is_system_admin boolean
+  created_at timestamptz
+  created_by text
+  disabled_at timestamptz
+}
+
+Table auth.memberships {
+  user_id text
+  org_id text
+  role text [note: 'org_admin | label_manager']
+  created_at timestamptz
+  created_by text
+  disabled_at timestamptz
+}
+
+Table auth.user_labels {
+  user_id text
+  org_id text
+  label_id text
+  created_at timestamptz
+  created_by text
+}
+
+Table auth.sessions {
+  id text [pk]
+  user_id text
+  org_id text
+  issued_at timestamptz
+  expires_at timestamptz
+  revoked_at timestamptz
+}
+
+Table auth.support_grants {
+  id text [pk]
+  org_id text
+  user_id text
+  write boolean
+  granted_by text
+  granted_at timestamptz
+  expires_at timestamptz
+  revoked_at timestamptz
+  revoked_by text
+}
+
+// ───────────────────────────── labels ─────────────────────────────
+Table labels.labels {
+  id text [pk]
+  name text [note: 'unique (org, name)']
+  kind text [note: 'own | sublabel']
+  own_label_id text [note: 'для sublabel: чей он']
+  created_at timestamptz
+}
+
+Table labels.label_aliases {
+  alias_norm text [pk, note: 'нормализованная строка Believe label_name (импринт)']
+  alias text
+  label_id text
+  Note: 'Импринты. Единственный мост между отчётом Believe и лейблом: строка → label.'
+}
+
+Table labels.label_rules {
+  id text [pk]
+  label_id text
+  percent numeric(9,6)
+  recipient_artist_id text [note: 'псевдоним-получатель доли саблейбла']
+  valid_from date
+  valid_to date
+  document_id text
+  note text
+  created_at timestamptz
+}
+
+Table labels.label_accounts {
+  account text [pk, note: 'аккаунт Believe; = граница книги (D-169)']
+  label_id text
+  created_at timestamptz
+}
+
+// ───────────────────────────── owners (+ каталог) ─────────────────────────────
+Table owners.owners {
+  id text [pk]
+  name text
+  name_norm text
+  kind text [note: 'label | person']
+  ipi text
+  merged_into text
+  origin text
+  created_at timestamptz
+}
+
+Table owners.owner_aliases {
+  owner_id text
+  alias text
+  alias_norm text
+  indexes { (alias_norm, owner_id) [pk] }
+}
+
+Table owners.artists {
+  id text [pk, note: 'псевдоним; любой получатель денег = псевдоним']
+  pseudonym text
+  pseudonym_norm text
+  owner_id text
+  merged_into text
+  origin text
+  created_at timestamptz
+}
+
+Table owners.tracks {
+  id text [pk]
+  isrc text
+  upc text
+  title text
+  note text
+  created_at timestamptz
+}
+
+Table owners.artist_tracks {
+  artist_id text
+  track_id text
+  indexes { (artist_id, track_id) [pk] }
+}
+
+Table owners.documents {
+  id text [pk]
+  kind text [note: 'contract, appendix, assumption, label_decision, …']
+  title text
+  file_ref text
+  owner_id text
+  requires_approval boolean
+  approved_at timestamptz
+  approved_by text
+  upload_deadline date
+  migration boolean
+  label_id text
+  created_at timestamptz
+}
+
+Table owners.contracts {
+  id text [pk]
+  owner_id text
+  document_id text
+  number text
+  payout_threshold_cents bigint
+  created_at timestamptz
+}
+
+Table owners.contract_artists {
+  contract_id text
+  artist_id text
+  indexes { (contract_id, artist_id) [pk] }
+}
+
+Table owners.merges {
+  id text [pk]
+  entity text [note: 'owner | artist']
+  from_id text
+  into_id text
+  reason text
+  at timestamptz
+}
+
+Table owners.track_labels {
+  id text [pk]
+  isrc text
+  label_id text
+  valid_from date
+  valid_to date
+  source text [note: 'files | operator | import']
+  note text
+  created_at timestamptz
+  Note: 'Навигация, не деньги (D-172): calculate() это не читает.'
+}
+
+Table owners.releases {
+  label_id text
+  upc text
+  release_title text
+  version text
+  artist_string text
+  label_string text [note: 'строка лейбла из экспорта Believe']
+  released_at timestamp
+  track_count integer
+  catalog_number text
+  territories integer
+  stores integer
+  created_at timestamptz
+  updated_at timestamptz
+  indexes { (label_id, upc) [pk] }
+}
+
+// ───────────────────────────── splits ─────────────────────────────
+Table splits.splits {
+  id text [pk]
+  isrc text
+  valid_from date
+  valid_to date [note: 'исключительно (D-025)']
+  document_id text
+  origin text
+  note text
+  created_at timestamptz
+}
+
+Table splits.split_shares {
+  split_id text
+  artist_id text
+  percent numeric(9,6)
+  document_id text
+  is_mc boolean [note: 'D-216']
+  indexes { (split_id, artist_id) [pk] }
+}
+
+Table splits.participations {
+  id text [pk]
+  isrc text
+  artist_id text
+  percent numeric(9,6)
+  base text
+  funded_from text
+  from_artist_id text
+  valid_from date
+  valid_to date
+  document_id text
+  origin text
+  note text
+  created_at timestamptz
+}
+
+// ───────────────────────────── sources (Believe) ─────────────────────────────
+Table public.source_files {
+  id uuid [pk]
+  source text
+  account text [note: 'аккаунт Believe']
+  reporting_month date
+  report_id text
+  file_name text
+  stored_path text
+  sha256 text
+  status text [note: 'loading | loaded | …']
+  line_count bigint
+  net_total numeric(38,12)
+  gross_total numeric(38,12)
+  uploaded_by text
+  label_id text [note: 'книга = лейбл аккаунта (D-169)']
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table believe.rows {
+  file_id uuid
+  reporting_month date
+  sales_month date
+  platform text
+  country_region text
+  label_name text [note: 'СТРОКА импринта → label_aliases']
+  artist_name text [note: 'строка, ни с чем не связана']
+  release_title text
+  track_title text
+  upc text
+  isrc text
+  release_catalog_number text
+  streaming_subscription_type text
+  release_type text
+  sales_type text
+  quantity bigint
+  client_payment_currency text
+  unit_price decimal(38,12)
+  mechanical_fee decimal(38,12)
+  gross_revenue decimal(38,12)
+  client_share_rate decimal(18,8)
+  net_revenue decimal(38,12)
+  Note: 'ClickHouse. Поверх него вьюхи units / units_by_label (сумма по ключу isrc + label_name + месяц, D-124).'
+}
+
+// ───────────────────────────── publishing v1 (B17) ─────────────────────────────
+Table publishing.pub_statements {
+  id text [pk]
+  source text
+  periods text
+  file_name text
+  stored_path text
+  sha256 text
+  generated_at timestamptz
+  generated_at_source text
+  uploaded_at timestamptz
+  status text
+  line_count integer
+  total_payable numeric
+  warnings text
+  label_id text
+  replaced_by text
+}
+
+Table publishing.pub_statement_periods {
+  source text
+  period text
+  statement_id text
+  indexes { (source, period) [pk] }
+}
+
+Table publishing.pub_lines {
+  statement_id text
+  line_no integer
+  period text
+  writer_name text [note: 'rights-holder name']
+  writer_norm text
+  songwriters text [note: 'через запятую, строка']
+  work_title text
+  work_code text
+  operation_type text
+  retailer text
+  country text
+  payable_pico bigint
+  indexes { (statement_id, line_no) [pk] }
+}
+
+Table publishing.pub_writers {
+  writer_norm text [pk]
+  display_name text
+  owner_id text
+  resolution text
+  role text
+}
+
+Table publishing.pub_terms {
+  id text [pk]
+  owner_id text
+  percent numeric
+  valid_from date
+  valid_to date
+  document_id text
+  operation_type text
+  created_at timestamptz
+}
+
+// ───────────────────────────── publishing v2 ─────────────────────────────
+Table pubv2.files {
+  id text [pk]
+  label_id text
+  file_name text
+  sha256 text
+  source text [note: 'b17']
+  format text
+  periods text[]
+  status text [note: 'loaded | superseded']
+  replaced_by text
+  row_count integer
+  payable_pico bigint
+  declared_payable_pico bigint
+  stored_path text
+  uploaded_at timestamptz
+}
+
+Table pubv2.songwriters {
+  id text [pk]
+  name text
+  created_at timestamptz
+}
+
+Table pubv2.songwriter_aliases {
+  id text [pk]
+  songwriter_id text
+  name text
+  name_norm text
+}
+
+Table pubv2.songs {
+  id text [pk]
+  songwriter_id text
+  title text
+  title_norm text
+}
+
+Table pubv2.song_aliases {
+  id text [pk]
+  song_id text
+  title text
+  title_norm text
+}
+
+Table pubv2.accruals {
+  id text [pk]
+  file_id text
+  songwriter_id text
+  song_id text
+  period text
+  gross_pico bigint
+  withholding_pico bigint
+  payable_pico bigint
+}
+
+// ───────────────────────────── links (решения оператора) ─────────────────────────────
+Table links.songwriter_owner {
+  songwriter_id text
+  owner_id text
+  source text [note: 'recommended | manual']
+  decided_by text
+  decided_at timestamptz
+}
+
+Table links.song_isrc {
+  song_id text
+  songwriter_id text
+  isrc text
+  source text
+  decided_by text
+  decided_at timestamptz
+}
+
+Table links.publishing_terms {
+  id text [pk]
+  owner_id text
+  percent numeric
+  valid_from date
+  valid_to date
+  document_id text
+  isrc text
+  basis text
+  decided_by text
+  created_at timestamptz
+  cancelled_at timestamptz
+  cancelled_by text
+  cancel_reason text
+}
+
+// ───────────────────────────── settlements ─────────────────────────────
+Table settlements.operations {
+  id text [pk]
+  kind text [note: 'payout, advance, deduction, credit, return, buyout, forgiveness, writeoff, adjustment']
+  direction text
+  amount_cents bigint
+  owner_id text
+  artist_id text
+  label_id text
+  area text [note: 'master | publishing']
+  date date
+  period text
+  scope text
+  document_id text
+  payment_proof_id text
+  operation_ref text [note: 'ссылка на другую операцию']
+  cut_id text
+  allocation text [note: 'центы по псевдонимам (D-181)']
+  channel text
+  deferred boolean
+  migration boolean
+  label_source text
+  comment text
+  external_ref text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+}
+
+Table settlements.payout_snapshots {
+  operation_id text [pk]
+  payload text
+  created_at timestamptz
+}
+
+Table settlements.payees {
+  id text [pk]
+  owner_id text
+  channel text [note: 'tipalti | easystaff | other']
+  payee_ref text
+  status text [note: 'confirmed | proposed']
+  basis text
+  valid_from date
+  source text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+}
+
+Table settlements.holds {
+  id text [pk]
+  owner_id text
+  label_id text
+  kind text [note: 'decision | artist_request | question | dispute']
+  blocks boolean
+  reason text
+  release_when text
+  amount_cents bigint
+  period text
+  review_on date
+  since date
+  source text
+  status text
+  released_at timestamptz
+  released_reason text
+  created_at timestamptz
+}
+
+Table settlements.payout_answers {
+  id text [pk]
+  owner_id text
+  label_id text
+  due_cents bigint
+  decision text [note: 'pay | pay_task']
+  why text
+  about text
+  answered_by text
+  source text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+}
+
+Table settlements.cuts {
+  id text [pk]
+  label_id text
+  name text
+  cut_date date
+  master_to date
+  publishing_to date
+  ads_to date
+  comment text
+  created_at timestamptz
+  created_by text
+}
+
+Table settlements.opening_balances {
+  id text [pk]
+  label_id text
+  artist_id text
+  kind text
+  cutoff_month date
+  master_cents bigint
+  publishing_cents bigint
+  document_id text
+  Note: 'Архив старта 15.10 (D-205): все строки неактивны, код не читает.'
+}
+
+// ───────────────────────────── ads / audit ─────────────────────────────
+Table ads.expenses {
+  id text [pk]
+  isrc text
+  month date
+  amount_cents bigint
+  recovery_percent numeric
+  scope text [note: 'any | publishing | isrc']
+  artist_id text
+  label_id text
+  external_ref text
+  source text
+  migration boolean
+  comment text
+  created_at timestamptz
+  deactivated_at timestamptz
+  deactivated_reason text
+}
+
+Table audit.actions {
+  id text [pk]
+  at timestamptz
+  operator text
+  method text
+  route text
+  entity_ids text[] [note: 'любые id, без связи']
+  summary jsonb
+  label_id text
+}
+
+// ═════════════════════════════ ГРУППЫ ═════════════════════════════
+TableGroup orgs_auth [color: #6b7280] {
+  orgs.organizations
+  auth.users
+  auth.memberships
+  auth.user_labels
+  auth.sessions
+  auth.support_grants
+}
+TableGroup labels [color: #d0312d] {
+  labels.labels
+  labels.label_aliases
+  labels.label_rules
+  labels.label_accounts
+}
+TableGroup owners [color: #2f6fdf] {
+  owners.owners
+  owners.owner_aliases
+  owners.artists
+  owners.documents
+  owners.contracts
+  owners.contract_artists
+  owners.merges
+}
+TableGroup catalog [color: #93c5fd] {
+  owners.tracks
+  owners.artist_tracks
+  owners.track_labels
+  owners.releases
+}
+TableGroup splits [color: #e07b00] {
+  splits.splits
+  splits.split_shares
+  splits.participations
+}
+TableGroup sources_believe [color: #7c3aed] {
+  public.source_files
+  believe.rows
+}
+TableGroup publishing_v1 [color: #0d9488] {
+  publishing.pub_statements
+  publishing.pub_statement_periods
+  publishing.pub_lines
+  publishing.pub_writers
+  publishing.pub_terms
+}
+TableGroup publishing_v2 [color: #14b8a6] {
+  pubv2.files
+  pubv2.songwriters
+  pubv2.songwriter_aliases
+  pubv2.songs
+  pubv2.song_aliases
+  pubv2.accruals
+}
+TableGroup links [color: #1f9d55] {
+  links.songwriter_owner
+  links.song_isrc
+  links.publishing_terms
+}
+TableGroup settlements [color: #b45309] {
+  settlements.operations
+  settlements.payout_snapshots
+  settlements.payees
+  settlements.holds
+  settlements.payout_answers
+  settlements.cuts
+  settlements.opening_balances
+}
+TableGroup ads_audit [color: #9ca3af] {
+  ads.expenses
+  audit.actions
+}
+
+// ═════════════════════════════ СВЯЗИ ═════════════════════════════
+
+// ── настоящие FK (серые) ──
+Ref: auth.memberships.user_id > auth.users.id [color: #888888]
+Ref: auth.sessions.user_id > auth.users.id [color: #888888]
+Ref: auth.support_grants.user_id > auth.users.id [color: #888888]
+Ref: splits.split_shares.split_id > splits.splits.id [color: #888888]
+Ref: publishing.pub_statement_periods.statement_id > publishing.pub_statements.id [color: #888888]
+Ref: publishing.pub_lines.statement_id > publishing.pub_statements.id [color: #888888]
+
+// ── внутри модуля по id, без FK (синие) ──
+Ref: auth.user_labels.user_id > auth.users.id [color: #2f6fdf]
+Ref: labels.labels.own_label_id > labels.labels.id [color: #2f6fdf]
+Ref: labels.label_aliases.label_id > labels.labels.id [color: #2f6fdf]
+Ref: labels.label_rules.label_id > labels.labels.id [color: #2f6fdf]
+Ref: labels.label_accounts.label_id > labels.labels.id [color: #2f6fdf]
+Ref: owners.owner_aliases.owner_id > owners.owners.id [color: #2f6fdf]
+Ref: owners.artists.owner_id > owners.owners.id [color: #2f6fdf]
+Ref: owners.documents.owner_id > owners.owners.id [color: #2f6fdf]
+Ref: owners.contracts.owner_id > owners.owners.id [color: #2f6fdf]
+Ref: owners.contracts.document_id > owners.documents.id [color: #2f6fdf]
+Ref: owners.contract_artists.contract_id > owners.contracts.id [color: #2f6fdf]
+Ref: owners.contract_artists.artist_id > owners.artists.id [color: #2f6fdf]
+Ref: owners.artist_tracks.artist_id > owners.artists.id [color: #2f6fdf]
+Ref: owners.artist_tracks.track_id > owners.tracks.id [color: #2f6fdf]
+Ref: believe.rows.file_id > public.source_files.id [color: #2f6fdf]
+Ref: pubv2.songwriter_aliases.songwriter_id > pubv2.songwriters.id [color: #2f6fdf]
+Ref: pubv2.songs.songwriter_id > pubv2.songwriters.id [color: #2f6fdf]
+Ref: pubv2.song_aliases.song_id > pubv2.songs.id [color: #2f6fdf]
+Ref: pubv2.accruals.file_id > pubv2.files.id [color: #2f6fdf]
+Ref: pubv2.accruals.songwriter_id > pubv2.songwriters.id [color: #2f6fdf]
+Ref: pubv2.accruals.song_id > pubv2.songs.id [color: #2f6fdf]
+Ref: settlements.payout_snapshots.operation_id - settlements.operations.id [color: #2f6fdf]
+Ref: settlements.operations.cut_id > settlements.cuts.id [color: #2f6fdf]
+
+// ── между модулями по id (зелёные; проверяет фасад) ──
+// owner / artist
+Ref: splits.split_shares.artist_id > owners.artists.id [color: #1f9d55]
+Ref: splits.participations.artist_id > owners.artists.id [color: #1f9d55]
+Ref: labels.label_rules.recipient_artist_id > owners.artists.id [color: #1f9d55]
+Ref: publishing.pub_writers.owner_id > owners.owners.id [color: #1f9d55]
+Ref: publishing.pub_terms.owner_id > owners.owners.id [color: #1f9d55]
+Ref: links.songwriter_owner.owner_id > owners.owners.id [color: #1f9d55]
+Ref: links.songwriter_owner.songwriter_id > pubv2.songwriters.id [color: #1f9d55]
+Ref: links.song_isrc.song_id > pubv2.songs.id [color: #1f9d55]
+Ref: links.publishing_terms.owner_id > owners.owners.id [color: #1f9d55]
+Ref: settlements.operations.owner_id > owners.owners.id [color: #1f9d55]
+Ref: settlements.operations.artist_id > owners.artists.id [color: #1f9d55]
+Ref: settlements.payees.owner_id > owners.owners.id [color: #1f9d55]
+Ref: settlements.holds.owner_id > owners.owners.id [color: #1f9d55]
+Ref: settlements.payout_answers.owner_id > owners.owners.id [color: #1f9d55]
+Ref: ads.expenses.artist_id > owners.artists.id [color: #1f9d55]
+// documents
+Ref: splits.splits.document_id > owners.documents.id [color: #1f9d55]
+Ref: splits.split_shares.document_id > owners.documents.id [color: #1f9d55]
+Ref: splits.participations.document_id > owners.documents.id [color: #1f9d55]
+Ref: labels.label_rules.document_id > owners.documents.id [color: #1f9d55]
+Ref: publishing.pub_terms.document_id > owners.documents.id [color: #1f9d55]
+Ref: links.publishing_terms.document_id > owners.documents.id [color: #1f9d55]
+Ref: settlements.operations.document_id > owners.documents.id [color: #1f9d55]
+// label_id (книга / лейбл)
+Ref: public.source_files.label_id > labels.labels.id [color: #1f9d55]
+Ref: owners.documents.label_id > labels.labels.id [color: #1f9d55]
+Ref: owners.track_labels.label_id > labels.labels.id [color: #1f9d55]
+Ref: owners.releases.label_id > labels.labels.id [color: #1f9d55]
+Ref: publishing.pub_statements.label_id > labels.labels.id [color: #1f9d55]
+Ref: pubv2.files.label_id > labels.labels.id [color: #1f9d55]
+Ref: settlements.operations.label_id > labels.labels.id [color: #1f9d55]
+Ref: settlements.holds.label_id > labels.labels.id [color: #1f9d55]
+Ref: settlements.payout_answers.label_id > labels.labels.id [color: #1f9d55]
+Ref: settlements.cuts.label_id > labels.labels.id [color: #1f9d55]
+Ref: ads.expenses.label_id > labels.labels.id [color: #1f9d55]
+Ref: auth.user_labels.label_id > labels.labels.id [color: #1f9d55]
+
+// ── по ISRC (оранжевые): общий ключ без мастер-таблицы; тянем к каталогу owners.tracks ──
+Ref: believe.rows.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: splits.splits.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: splits.participations.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: owners.track_labels.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: links.song_isrc.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: links.publishing_terms.isrc > owners.tracks.isrc [color: #e07b00]
+Ref: ads.expenses.isrc > owners.tracks.isrc [color: #e07b00]
+// UPC: тоже строка
+Ref: believe.rows.upc > owners.releases.upc [color: #e07b00]
+
+// ── ПО СТРОКЕ (красные): где связь держится на тексте ──
+Ref: believe.rows.label_name > labels.label_aliases.alias_norm [color: #d0312d]   // imprint string → label (labelOf(string, date))
+Ref: public.source_files.account > labels.label_accounts.account [color: #d0312d] // аккаунт Believe → книга
+Ref: owners.releases.label_string > labels.label_aliases.alias_norm [color: #d0312d]
+Ref: publishing.pub_lines.writer_norm > publishing.pub_writers.writer_norm [color: #d0312d] // B17 holder name → owner
+Ref: owners.owner_aliases.alias_norm <> publishing.pub_writers.writer_norm [color: #d0312d] // сопоставление писателей по имени (D-087)
