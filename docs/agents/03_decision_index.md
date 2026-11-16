@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-220 by topic)
+# Decision index (D-001 … D-221 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -202,6 +202,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-218 The sublabels in the API (`facade/sublabels.ts`, `api/routes/sublabels.ts`): the register, a batch of terms with a preview (`dryRun`, classes new / closes / unchanged / errors, all or nothing, 422 `terms_invalid`), close, cancel, a document later; rights for now as labels / publishing v2, to be revised · in force
 - D-219 The report of a sublabel by its terms (`facade/sublabel-report.ts`, `GET /sublabels/:id/report`, json / csv): track × report month, the label share before the sublabel's carve, its percent and part, confirmed / waiting, `currentAmount` = today's rule; a read of the calculation, which does not read the terms; the hints of a month (`GET /sublabels/suggestions`) · in force
 - D-220 The pages of the sublabels: P36 `/sublabels` (the register, every term with its history, close, cancel and document, the hints of a month) and P37 `/sublabels/:id` (its tracks, the report with the csv); the add dialog checks a batch (`dryRun`) before saving it · in force
+- D-221 The loader of the terms of the sublabels (`scripts/sublabels/load-terms.ts`, csv → batches of `addSublabelTerms`, dry run by default, audit on `--apply`); the live load waits for the owner's answer on the documents and migration 0033 · in force (script), live load open
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
