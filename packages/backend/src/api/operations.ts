@@ -990,7 +990,7 @@ const operations: ApiOperation[] = [
     ability: { action: 'read_money', subject: 'labels', scope: 'org' },
     tag: 'labels',
     summary:
-      'Hints of a month (D-219): per sublabel, the tracks whose Believe label string is an alias of the sublabel and that have no term in force that month, with their net. A hint only: the money never reads the label string of a sublabel term',
+      'Hints (D-219, D-224): per sublabel, the tracks whose Believe label string is an alias of the sublabel in report months no term covers (every loaded month, or `month`), with the strings, the first and last such month and their net. A hint only: the money never reads the label string of a sublabel term',
     query: S.sublabelSuggestionsQuery,
     response: R.sublabelSuggestionsSchema,
   },

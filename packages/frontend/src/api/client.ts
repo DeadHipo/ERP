@@ -361,7 +361,7 @@ export const sublabels = {
   /** The report as one csv sheet: the file is saved by the page. */
   reportCsv: (sublabelId: string, query: { from?: string; to?: string } = {}) =>
     download(`/sublabels/${id(sublabelId)}/report`, { ...query, format: 'csv' }, 'sublabel.csv'),
-  suggestions: (month: string) => call('GET', '/sublabels/suggestions', { query: { month }, schema: R.sublabelSuggestionsSchema }),
+  suggestions: (month = '') => call('GET', '/sublabels/suggestions', { query: month ? { month } : {}, schema: R.sublabelSuggestionsSchema }),
 };
 
 export const publishingV2 = {

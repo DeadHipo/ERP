@@ -185,13 +185,14 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     },
 
     /**
-     * The hints of a month (D-219): the tracks whose Believe label string is an alias of a sublabel of the register (the
-     * same id in `labels`) and that have no live term in force in that month, with their net of the month. A hint
-     * only: the money never reads it.
+     * The hints (D-219, D-224): the tracks whose Believe label string is an alias of a sublabel of the register (the
+     * same id in `labels`) in report months that no live term covers, over every loaded month (or one month). Per
+     * track: the strings it came under with their first and last month, the first and last uncovered month, how many,
+     * and the net of those months. A track that came under two sublabels is a hint of each. A hint only: the money
+     * never reads it.
      */
-    async sublabelSuggestions(monthRaw: string) {
-      const month = monthOf(monthStart(monthRaw));
-      const day = monthStart(month);
+    async sublabelSuggestions(monthRaw?: string) {
+      const month = monthRaw ? monthOf(monthStart(monthRaw)) : null;
       const [register, list] = await Promise.all([labels.listSublabels(), labels.listLabels()]);
       const names = new Map(register.map((s) => [s.id, s.name]));
       const sublabelOfAlias = new Map<string, string>();
@@ -199,16 +200,30 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       if (sublabelOfAlias.size === 0) return { month, groups: [] };
       const isrcs = await sources.isrcsOfLabelAliases([...sublabelOfAlias.keys()], normalizeLabelString);
       if (isrcs.length === 0) return { month, groups: [] };
-      const units = await sources.units({ isrcs, from: month, to: month });
+      const units = await sources.units({ isrcs, ...(month ? { from: month, to: month } : {}) });
       const live = await links.sublabelTerms({ isrcs: [...new Set(units.map((u) => u.isrc))] });
-      const covered = new Set(live.filter((t) => covers(t, day)).map((t) => t.isrc));
-      const found = new Map<string, Map<string, { labelString: string; net: Decimal }>>();
+      const termsOf = new Map<string, SublabelTermRow[]>();
+      for (const t of live) termsOf.set(t.isrc, [...(termsOf.get(t.isrc) ?? []), t]);
+      const covered = (isrc: string, m: string) => (termsOf.get(isrc) ?? []).some((t) => covers(t, monthStart(m)));
+      interface Found {
+        strings: Map<string, { from: string; to: string }>;
+        months: Set<string>;
+        net: Decimal;
+      }
+      const found = new Map<string, Map<string, Found>>();
       for (const u of units) {
         const sub = sublabelOfAlias.get(normalizeLabelString(u.labelName));
-        if (!sub || !u.isrc || covered.has(u.isrc)) continue;
+        if (!sub || !u.isrc || covered(u.isrc, u.reportingMonth)) continue;
         const of = found.get(sub) ?? found.set(sub, new Map()).get(sub)!;
-        const cur = of.get(u.isrc) ?? { labelString: u.labelName, net: ZERO };
-        of.set(u.isrc, { labelString: cur.labelString, net: cur.net.add(picoToDecimal(u.netPico)) });
+        const cur = of.get(u.isrc) ?? { strings: new Map(), months: new Set<string>(), net: ZERO };
+        const span = cur.strings.get(u.labelName);
+        cur.strings.set(u.labelName, {
+          from: span && span.from < u.reportingMonth ? span.from : u.reportingMonth,
+          to: span && span.to > u.reportingMonth ? span.to : u.reportingMonth,
+        });
+        cur.months.add(u.reportingMonth);
+        cur.net = cur.net.add(picoToDecimal(u.netPico));
+        of.set(u.isrc, cur);
       }
       const allIsrcs = [...new Set([...found.values()].flatMap((m) => [...m.keys()]))];
       const titles = new Map<string, string>();
@@ -216,7 +231,20 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       const groups = [...found.entries()]
         .map(([sublabelId, items]) => {
           const list = [...items.entries()]
-            .map(([isrc, x]) => ({ isrc, title: titles.get(isrc) ?? null, labelString: x.labelString, net: x.net }))
+            .map(([isrc, x]) => {
+              const months = [...x.months].sort();
+              return {
+                isrc,
+                title: titles.get(isrc) ?? null,
+                labelStrings: [...x.strings.entries()]
+                  .map(([labelString, span]) => ({ labelString, ...span }))
+                  .sort((a, b) => (a.from === b.from ? a.labelString.localeCompare(b.labelString) : a.from < b.from ? -1 : 1)),
+                from: months[0] as string,
+                to: months[months.length - 1] as string,
+                months: months.length,
+                net: x.net,
+              };
+            })
             .sort((a, b) => b.net.cmp(a.net) || (a.isrc < b.isrc ? -1 : 1));
           return {
             sublabelId,

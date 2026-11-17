@@ -136,7 +136,7 @@ export const OPERATION_COVERAGE = {
   'POST /sublabels/terms/:id/cancel': { page: 'P36', route: '/sublabels', note: 'D-220: action-cancel-sublabel-term in the history dialog' },
   'POST /sublabels/terms/document': { page: 'P36', route: '/sublabels', note: 'D-220: action-attach-sublabel-terms → action-attach-sublabel-document' },
   'GET /sublabels/:id/report': { page: 'P37', route: '/sublabels/:id', note: 'D-220: the tab report (sublabel-report-total, report-month-<m>, report-row-<m>-<isrc>) and action-sublabel-report-csv (format=csv)' },
-  'GET /sublabels/suggestions': { page: 'P36', route: '/sublabels', note: 'D-220: the tab hints by month (suggestion-group-<id>, suggestion-<isrc>)' },
+  'GET /sublabels/suggestions': { page: 'P36', route: '/sublabels', note: 'D-220, D-224: the tab hints over every month (suggestion-group-<id>, suggestion-<isrc>)' },
   'GET /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: the tab links' },
   'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },
   'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },

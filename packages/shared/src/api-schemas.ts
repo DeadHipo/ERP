@@ -826,5 +826,5 @@ export const sublabelReportQuery = z.object({
   format: z.enum(['json', 'csv']).default('json').describe('json, or csv: one sheet (UTF-8 with BOM, `;`, every field quoted)'),
 });
 
-/** The hints of a month (D-219): the tracks under a sublabel's label string without a term. */
-export const sublabelSuggestionsQuery = z.object({ month: month.describe('The report month, YYYY-MM') });
+/** The hints (D-219, D-224): the tracks under a sublabel's label string in months no term covers. */
+export const sublabelSuggestionsQuery = z.object({ month: month.optional().describe('One report month, YYYY-MM; none = every loaded month (D-224)') });

@@ -34,5 +34,5 @@ export const sublabelQueries = {
       ...MONEY_QUERY,
     }),
   suggestions: (month: string) =>
-    queryOptions({ queryKey: sublabelKeys.suggestions(month), queryFn: () => api.sublabels.suggestions(month), enabled: month !== '', ...MONEY_QUERY }),
+    queryOptions({ queryKey: sublabelKeys.suggestions(month), queryFn: () => api.sublabels.suggestions(month), ...MONEY_QUERY }),
 };

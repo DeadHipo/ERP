@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-223 by topic)
+# Decision index (D-001 … D-224 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -205,6 +205,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-221 The loader of the terms of the sublabels (`scripts/sublabels/load-terms.ts`, csv → batches of `addSublabelTerms`, dry run by default, audit on `--apply`); the live load waits for the owner's answer on the documents and migration 0033 · in force (script), live load open
 - D-222 The terms of 77 Records (31), R2R PRODUCTION (149) and NoGhost (360 × 2) loaded into the live store after migration 0033; the reports equal the audit (1 322,52 / 603,21 / 35 182,67); the documents of 13.11 and the money switch open · done
 - D-223 The report of a sublabel by month / track / artist: `tracks` and `artists` (groups by the set of pseudonyms of a track, adding up to the total) in the API, `artists` on every row and in the csv; P37 shows the total and expandable rows (`?view=months|tracks|artists`) · in force
+- D-224 The hints of the sublabels over every loaded month (`month` optional): per track the strings with their months, the first and last uncovered month, their count and net; P36 without a month field, «Добавить отмеченные» from each track's first month · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

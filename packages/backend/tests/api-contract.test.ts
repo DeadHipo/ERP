@@ -589,6 +589,7 @@ const OPERATOR = 'contract-test';
     const subCsv = await call('get', '/sublabels/:id/report', { params: { id: subl.id }, query: { format: 'csv' } });
     expect(subCsv.text.split('\r\n')[0]).toBe('\uFEFF"month";"isrc";"title";"artists";"label_share";"percent";"amount";"status";"reason"');
     expect((await call('get', '/sublabels/suggestions', { query: { month: '2026-07' } })).month).toBe('2026-07');
+    expect((await call('get', '/sublabels/suggestions')).month).toBeNull();
     const pubV2Songs = await call('get', '/publishing-v2/songs');
     const pubV2Song = pubV2Songs.find((x: { songwriterId: string }) => x.songwriterId === pubV2Writers[0].id);
     expect((await call('get', '/publishing-v2/songs/:id/candidates', { params: { id: pubV2Song.songId } })).isrcs).toEqual([]);

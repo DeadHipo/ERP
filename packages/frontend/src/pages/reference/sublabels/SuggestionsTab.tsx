@@ -1,22 +1,28 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { sublabelQueries } from '../../../api/queries/sublabels';
 import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
-import { TextField } from '../../../components/fields/TextField';
-import { ru } from '../../../i18n/ru';
+import { fmt, ru } from '../../../i18n/ru';
+import { formatCount } from '../../../lib/money';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
 import { AddTermsDialog } from './dialogs';
 
 const t = ru.sublabels;
 
-/** «Подсказки» (D-219): the tracks under a sublabel's Believe string without a term in the month; a hint, never money. */
+const span = (from: string, to: string) => (from === to ? from : `${from} — ${to}`);
+
+/**
+ * «Подсказки» (D-219, D-224): over every loaded month, the tracks under a sublabel's Believe string in months no term
+ * covers, with the strings and their months. «Добавить отмеченные» starts each track from its first such month. A
+ * hint, never money.
+ */
 export function SuggestionsTab() {
-  const [month, setMonth] = useState('');
   const [chosen, setChosen] = useState<Record<string, Set<string>>>({});
-  const [adding, setAdding] = useState<{ sublabelId: string; isrcs: string[] } | null>(null);
-  const query = useQuery(sublabelQueries.suggestions(month));
+  const [adding, setAdding] = useState<{ sublabelId: string; items: string[] } | null>(null);
+  const query = useQuery(sublabelQueries.suggestions(''));
   const toggle = (group: string, isrc: string) =>
     setChosen((c) => {
       const next = new Set(c[group] ?? []);
@@ -27,63 +33,88 @@ export function SuggestionsTab() {
   return (
     <div className="flex flex-col gap-3" data-testid="sublabel-suggestions">
       <p className="text-sm text-muted">{t.suggestionsHint}</p>
-      <TextField name="suggestions-month" label={t.suggestionsMonth} type="month" value={month} onChange={setMonth} />
-      {month === '' ? (
-        <p className="text-sm text-muted">{t.pickMonth}</p>
-      ) : (
-        <QueryView query={query} isEmpty={(d) => d.groups.length === 0} emptyMessage={t.suggestionsEmpty}>
-          {(d) => (
-            <div className="flex flex-col gap-6">
-              {d.groups.map((g) => {
-                const picked = chosen[g.sublabelId] ?? new Set<string>();
-                return (
-                  <section key={g.sublabelId} data-testid={`suggestion-group-${g.sublabelId}`} className="flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-sm font-medium">
-                        {g.sublabelName} · <Money value={g.net} />
-                      </h2>
-                      <ActionButton
-                        name={`add-suggestions-${g.sublabelId}`}
-                        op="POST /sublabels/:id/terms"
-                        isDisabled={picked.size === 0}
-                        reason={t.selectFirst}
-                        onPress={() => setAdding({ sublabelId: g.sublabelId, isrcs: [...picked] })}
-                      >
-                        {t.addSelected}
-                      </ActionButton>
-                    </div>
-                    <SimpleTable headers={['', t.cols.isrc, t.cols.title, t.cols.labelString, t.cols.net]}>
-                      {g.items.map((x) => (
-                        <tr key={x.isrc} data-testid={`suggestion-${x.isrc}`}>
-                          <Td>
-                            <input
-                              type="checkbox"
-                              data-testid={`suggestion-pick-${x.isrc}`}
-                              checked={picked.has(x.isrc)}
-                              onChange={() => toggle(g.sublabelId, x.isrc)}
-                            />
-                          </Td>
-                          <Td>{x.isrc}</Td>
-                          <Td>{x.title ?? ''}</Td>
-                          <Td>{x.labelString}</Td>
-                          <Td>
-                            <Money value={x.net} />
-                          </Td>
-                        </tr>
-                      ))}
-                    </SimpleTable>
-                  </section>
-                );
-              })}
-            </div>
-          )}
-        </QueryView>
-      )}
+      <QueryView query={query} isEmpty={(d) => d.groups.length === 0} emptyMessage={t.suggestionsEmpty}>
+        {(d) => (
+          <div className="flex flex-col gap-6">
+            {d.groups.map((g) => {
+              const picked = chosen[g.sublabelId] ?? new Set<string>();
+              const all = g.items.length > 0 && picked.size === g.items.length;
+              return (
+                <section key={g.sublabelId} data-testid={`suggestion-group-${g.sublabelId}`} className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-sm font-medium">
+                      <Link className="text-accent hover:underline" to={`/sublabels/${g.sublabelId}`}>
+                        {g.sublabelName}
+                      </Link>{' '}
+                      · {fmt(t.suggestionsCount, { n: formatCount(g.items.length) })} · <Money value={g.net} />
+                    </h2>
+                    <ActionButton
+                      name="add-suggestions"
+                      op="POST /sublabels/:id/terms"
+                      isDisabled={picked.size === 0}
+                      reason={t.selectFirst}
+                      onPress={() =>
+                        setAdding({
+                          sublabelId: g.sublabelId,
+                          items: g.items.filter((x) => picked.has(x.isrc)).map((x) => `${x.isrc};;${x.from}`),
+                        })
+                      }
+                    >
+                      {t.addSelected}
+                    </ActionButton>
+                  </div>
+                  <SimpleTable headers={['', t.cols.isrc, t.cols.title, t.cols.labelString, t.cols.uncovered, t.cols.monthsCount, t.cols.net]}>
+                    <tr>
+                      <Td>
+                        <input
+                          type="checkbox"
+                          aria-label={t.pickAll}
+                          data-testid={`suggestion-pick-all-${g.sublabelId}`}
+                          checked={all}
+                          onChange={() => setChosen((c) => ({ ...c, [g.sublabelId]: all ? new Set() : new Set(g.items.map((x) => x.isrc)) }))}
+                        />
+                      </Td>
+                      <Td colSpan={6} className="text-xs text-muted">
+                        {t.pickAll}
+                      </Td>
+                    </tr>
+                    {g.items.map((x) => (
+                      <tr key={x.isrc} data-testid={`suggestion-${x.isrc}`} data-from={x.from} data-to={x.to}>
+                        <Td>
+                          <input type="checkbox" data-testid={`suggestion-pick-${x.isrc}`} checked={picked.has(x.isrc)} onChange={() => toggle(g.sublabelId, x.isrc)} />
+                        </Td>
+                        <Td>
+                          <Link className="text-accent hover:underline" to={`/tracks/${x.isrc}`}>
+                            {x.isrc}
+                          </Link>
+                        </Td>
+                        <Td>{x.title ?? ''}</Td>
+                        <Td col="labelStrings">
+                          {x.labelStrings.map((l) => (
+                            <div key={l.labelString}>
+                              {l.labelString} <span className="text-muted">({span(l.from, l.to)})</span>
+                            </div>
+                          ))}
+                        </Td>
+                        <Td col="span">{span(x.from, x.to)}</Td>
+                        <Td col="months">{formatCount(x.months)}</Td>
+                        <Td col="net">
+                          <Money value={x.net} />
+                        </Td>
+                      </tr>
+                    ))}
+                  </SimpleTable>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </QueryView>
       {adding ? (
         <AddTermsDialog
           sublabelId={adding.sublabelId}
-          isrcs={adding.isrcs}
-          month={month}
+          isrcs={adding.items}
+          month={adding.items.map((x) => x.split(';')[2] ?? '').sort()[0]}
           onClose={() => {
             setAdding(null);
             setChosen({});

@@ -87,24 +87,40 @@ describe('the report of a sublabel by its terms (D-219)', () => {
     await expect(f.sublabelReport('nope')).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it('hints the tracks under the sublabel string without a term in force, never the covered ones', async () => {
+  it('hints the tracks under the sublabel string in months no term covers, over every month or one', async () => {
     const { f, sub, appendix } = await world();
-    expect(await f.sublabelSuggestions('2026-07')).toEqual({
-      month: '2026-07',
+    const item = (isrc: string, title: string, from: string, to: string, months: number, net: string) => ({
+      isrc,
+      title,
+      labelStrings: [{ labelString: 'Sub R Records', from, to }],
+      from,
+      to,
+      months,
+      net,
+    });
+    // every month: T1 in 2026-07 and 2026-08, T2 in 2026-07
+    expect(await f.sublabelSuggestions()).toEqual({
+      month: null,
       groups: [
         {
           sublabelId: sub,
           sublabelName: 'Sub R',
-          net: '140',
-          items: [
-            { isrc: T1, title: 'Song 1', labelString: 'Sub R Records', net: '100' },
-            { isrc: T2, title: 'Song 2', labelString: 'Sub R Records', net: '40' },
-          ],
+          net: '150',
+          items: [item(T1, 'Song 1', '2026-07', '2026-08', 2, '110'), item(T2, 'Song 2', '2026-07', '2026-07', 1, '40')],
         },
       ],
     });
-    await f.addSublabelTerms(sub, { percent: '50', validFrom: '2026-07', documentId: appendix, items: [{ isrc: T1 }] }, { dryRun: false }, 'tester');
-    expect((await f.sublabelSuggestions('2026-07')).groups[0]?.items.map((x) => x.isrc)).toEqual([T2]);
+    // one month
+    expect((await f.sublabelSuggestions('2026-07')).groups[0]?.items.map((x) => [x.isrc, x.net])).toEqual([
+      [T1, '100'],
+      [T2, '40'],
+    ]);
+    // a term from 2026-08 on T1 leaves its July uncovered; one from 2026-07 removes it
+    await f.addSublabelTerms(sub, { percent: '50', validFrom: '2026-08', documentId: appendix, items: [{ isrc: T1 }] }, { dryRun: false }, 'tester');
+    expect((await f.sublabelSuggestions()).groups[0]?.items.find((x) => x.isrc === T1)).toEqual(item(T1, 'Song 1', '2026-07', '2026-07', 1, '100'));
+    await f.addSublabelTerms(sub, { percent: '50', validFrom: '2026-07', items: [{ isrc: T2 }] }, { dryRun: false }, 'tester');
+    expect((await f.sublabelSuggestions()).groups[0]?.items.map((x) => x.isrc)).toEqual([T1]);
     expect(await f.sublabelSuggestions('2026-06')).toEqual({ month: '2026-06', groups: [] });
   });
+
 });

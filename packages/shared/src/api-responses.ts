@@ -2637,18 +2637,23 @@ export const sublabelReportSchema = z.object({
 
 /** The hints of a month (D-219): per sublabel, the tracks under its label string without a term in force. */
 export const sublabelSuggestionsSchema = z.object({
-  month: month.describe('The report month'),
+  month: month.nullable().describe('The one report month asked; null = every loaded month'),
   groups: z.array(
     z.object({
       sublabelId: z.string().describe('Id of the sublabel'),
       sublabelName: z.string().describe('The name of the sublabel'),
-      net: money.describe('Net of the month of the tracks of the group'),
+      net: money.describe('Net of the uncovered months of the tracks of the group'),
       items: z.array(
         z.object({
           isrc: z.string().describe('The ISRC of the recording'),
           title: z.string().nullable().describe('The title in the catalog'),
-          labelString: z.string().describe('The label string of the report (a hint, never money)'),
-          net: money.describe('Net of the track in the month'),
+          labelStrings: z
+            .array(z.object({ labelString: z.string().describe('The label string of the report'), from: month.describe('Its first uncovered month'), to: month.describe('Its last uncovered month') }))
+            .describe('The label strings of the report (a hint, never money) with the first and last uncovered month of each'),
+          from: month.describe('The first report month under the sublabel string without a term'),
+          to: month.describe('The last such month'),
+          months: z.number().int().describe('How many such months'),
+          net: money.describe('Net of the track in those months'),
         }),
       ),
     }),
