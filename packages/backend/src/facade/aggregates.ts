@@ -7,7 +7,7 @@ import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
 import { registryRowOf } from './release-registry';
 import { ownersReach } from './owner-scope';
-import { artistsByIsrc, readArtistLinks, unionArtists } from './track-artists';
+import { artistsByIsrc, unionArtists, type ArtistIndex } from './track-artists';
 
 /**
  * The owner id list of `GET /owners/payables?ids=` (comma-separated). At most 200: UUIDs are long and the request line
@@ -196,9 +196,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         const tracks = await owners.listTracks(byIsrcs);
         const splitList = await splits.listSplits(byIsrcs);
         const partList = await splits.listParticipations(byIsrcs);
-        // the pseudonyms of every ISRC (D-166): the links of these tracks, the rows and participations above
-        const { links, index } = await readArtistLinks(owners, tracks, only === undefined);
-        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+        // the pseudonyms of every ISRC (D-166, D-233): the rows and participations above
+        const index = (await owners.artistIndex()) as ArtistIndex;
+        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index }) };
       });
       const { attrs, byIsrc } = await nameMaps(byIsrcs);
       const onlySet = only ? new Set(only) : undefined;
@@ -254,11 +254,11 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         const tracks = await owners.listTracks();
         const splitList = await splits.listSplits();
         const partList = await splits.listParticipations();
-        const { links, index } = await readArtistLinks(owners, tracks, true);
+        const index = (await owners.artistIndex()) as ArtistIndex;
         // the catalog label now (D-172): navigation, the money of P5 stays by the files
         const history = await owners.trackLabels.list();
         const labelNames = new Map((await ctx.labels.listLabels()).map((l) => [l.id, l.name]));
-        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }), history, labelNames };
+        return { tracks, splitList, partList, artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index }), history, labelNames };
       });
       const open = new Map(history.filter((h) => h.validTo === null).map((h) => [h.isrc, h]));
       const { attrs, byIsrc } = await nameMaps();
@@ -322,8 +322,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const units = calc.units.filter((u) => u.isrc === isrc);
       const mine = tracks.filter((t) => t.isrc === isrc);
       const named = [...attrs.entries()].filter(([k]) => k.startsWith(`${isrc}|`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];
-      const links = await owners.artistLinks({ trackIds: mine.map((t) => t.id) });
-      const artistsOf = artistsByIsrc({ tracks: mine, links, splits: splitList.items, participations: partList.items, index: calc.artistIndex });
+      const artistsOf = artistsByIsrc({ splits: splitList.items, participations: partList.items, index: calc.artistIndex });
       return {
         isrc,
         tracks: mine,
@@ -384,14 +383,14 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         db.snapshot(async () => {
           const tracks = (await owners.listTracks()).filter((t) => !lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc)));
           // the pseudonyms of a UPC (D-166): those of its tracks (rows, participations, registry links)
-          const [splitList, partList, { links, index }] = await Promise.all([
+          const [splitList, partList, index] = await Promise.all([
             splits.listSplits(),
             splits.listParticipations(),
-            readArtistLinks(owners, tracks, true),
+            owners.artistIndex() as Promise<ArtistIndex>,
           ]);
           // the release registry (D-172, no money): of the label under a label, the last updated row of a UPC under «Все»
           const registry = await registryRows(lc?.book.id);
-          return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }), registry };
+          return { tracks, artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index }), registry };
         }),
         sources.netByUpc(lc ? { labelIds: [lc.book.id] } : {}),
         nameMaps(),
@@ -454,12 +453,8 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const isrcs = [...new Set([...unitsOf.keys(), ...mine.map((t) => t.isrc).filter((x): x is string => !!x)])].sort();
       // the pseudonyms of the tracks of the release (D-166): the rows, participations and registry links of its ISRCs
       const artistsOf = await db.snapshot(async () => {
-        const [splitList, partList, links] = await Promise.all([
-          splits.listSplits({ isrcs }),
-          splits.listParticipations({ isrcs }),
-          owners.artistLinks({ trackIds: mine.map((t) => t.id) }),
-        ]);
-        return artistsByIsrc({ tracks: mine, links, splits: splitList, participations: partList, index: calc.artistIndex });
+        const [splitList, partList] = await Promise.all([splits.listSplits({ isrcs }), splits.listParticipations({ isrcs })]);
+        return artistsByIsrc({ splits: splitList, participations: partList, index: calc.artistIndex });
       });
       return {
         upc,

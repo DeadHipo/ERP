@@ -45,7 +45,6 @@ const MODULES: { module: string; tables: string[]; sums: { table: string; expr: 
       'owner_aliases',
       'artists',
       'tracks',
-      'artist_tracks',
       'documents',
       'contracts',
       'contract_artists',

@@ -56,7 +56,6 @@ export const createTrackBody = z.object({
   title: z.string().min(1),
   isrc: z.string().nullish(),
   upc: z.string().nullish(),
-  artistIds: z.array(z.string()).optional(),
 });
 
 /** Identifiers and/or the free note of a track; send what changes (a null/empty note clears it). */

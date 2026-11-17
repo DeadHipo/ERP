@@ -102,8 +102,8 @@ export class Case {
       title: isrc,
       isrc,
       upc,
-      artistIds: artists.map((a) => this.id(a)),
     });
+    void artists; // D-233: no stored artist link; the pseudonyms of a track come from its rows and participations
     this.isrcs.add(isrc);
   }
   async split(

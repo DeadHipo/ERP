@@ -51,15 +51,6 @@ export const tracks = s.table('tracks', {
   createdAt: isoTimestamp('created_at').notNull(),
 });
 
-export const artistTracks = s.table(
-  'artist_tracks',
-  {
-    orgId: text('org_id').notNull(),
-    artistId: text('artist_id').notNull(),
-    trackId: text('track_id').notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.artistId, t.trackId] })],
-);
 
 export const documents = s.table('documents', {
   orgId: text('org_id').notNull(),

@@ -78,7 +78,7 @@ describe('README 5: buyout payment is not part of the balance', () => {
       shares: [{ artistId: sellerId, percent: '50' }],
     });
     await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
-    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [sellerId], title: 'T' });
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, title: 'T' });
     await f.buyout({
       isrcs: [I1],
       sellerArtistId: sellerId,
@@ -189,7 +189,7 @@ describe('README 5: period filter', () => {
       shares: [{ artistId: id, percent: '50' }],
     });
     await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
-    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, title: 'T' });
     await f.ingestBelieve(
       writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100', salesMonth: '2026-05' }]), f.testLabels['0to8'],
     );
@@ -246,7 +246,7 @@ describe('README 5: no floats in money', () => {
       shares: [{ artistId: id, percent: '33.333333' }],
     });
     await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
-    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+    await f.modules.owners.createTrack({ isrc: I1, upc: UPC, title: 'T' });
     await f.ingestBelieve(
       writeBelieve('2026-07', [
         { isrc: I1, upc: UPC, net: '0.1' },
@@ -305,7 +305,7 @@ describe('README 5: recalculated from scratch for the period and "today"', () =>
         shares: [{ artistId: id, percent: '50' }],
       });
       await f.confirmSplit(s.id, (await approvedAppendix(f)).id);
-      await f.modules.owners.createTrack({ isrc: I1, upc: UPC, artistIds: [id], title: 'T' });
+      await f.modules.owners.createTrack({ isrc: I1, upc: UPC, title: 'T' });
       await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
       expect((await f.ownerBalance(owner.id)).total.payable.toFixed()).toBe('50');
       // a later report changes "today" at once; the July period view does not move

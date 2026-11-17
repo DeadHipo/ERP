@@ -21,7 +21,7 @@ async function world(f: TestFacade) {
   const ownerB = await o.createOwner({ name: 'Owner B', kind: 'person' });
   const b1 = await o.createArtist({ pseudonym: 'B1', ownerId: ownerB.id });
   const [a1, a2] = a.artists as unknown as [{ id: string }, { id: string }];
-  for (const isrc of [I1, I2, I3]) await o.createTrack({ title: isrc, isrc, upc: UPC, artistIds: [a1.id] });
+  for (const isrc of [I1, I2, I3]) await o.createTrack({ title: isrc, isrc, upc: UPC });
   const appendix = await approvedAppendix(f, a.owner.id);
   // I1: A1 30 + A2 20 confirmed -> ours 50
   await f.createSplit({

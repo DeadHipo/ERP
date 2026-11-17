@@ -23,7 +23,7 @@ async function setup() {
   const [a1, a2] = artists as unknown as [{ id: string }, { id: string }];
   const appendix = await approvedAppendix(f, owner.id);
   const pending = await o.createDocument({ kind: 'appendix', title: 'Pending appendix', ownerId: owner.id, requiresApproval: true });
-  for (const isrc of [I1, I2]) await o.createTrack({ title: `T ${isrc}`, isrc, upc: UPC, artistIds: [a1.id] });
+  for (const isrc of [I1, I2]) await o.createTrack({ title: `T ${isrc}`, isrc, upc: UPC });
   const i1a = await f.createSplit({ isrc: I1, validFrom: '2025-01-01', validTo: '2026-01-01', shares: [{ artistId: a1.id, percent: '40' }] });
   const i1b = await f.createSplit({ isrc: I1, validFrom: '2026-01-01', shares: [{ artistId: a1.id, percent: '40' }] });
   const i2 = await f.createSplit({ isrc: I2, validFrom: '2025-01-01', shares: [{ artistId: a2.id, percent: '10' }], documentId: pending.id });

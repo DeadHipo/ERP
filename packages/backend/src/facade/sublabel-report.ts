@@ -6,7 +6,7 @@ import { calculate } from './calculation';
 import type { FacadeContext } from './context';
 import { pct } from './layers/exact';
 import { csvText } from './payroll';
-import { artistsByIsrc, readArtistLinks } from './track-artists';
+import { artistsByIsrc, type ArtistIndex } from './track-artists';
 import type { ArtistRef } from '@erp/shared/api-responses';
 import { scoped } from './scope';
 
@@ -69,12 +69,12 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     // the titles and the pseudonyms of the registry on each ISRC (D-166): split rows, participations, registry links
     const { tracks, artistsOf } = await db.snapshot(async () => {
       const tracks = await owners.listTracks({ isrcs });
-      const [splitList, partList, { links, index }] = await Promise.all([
+      const [splitList, partList, index] = await Promise.all([
         splits.listSplits({ isrcs }),
         splits.listParticipations({ isrcs }),
-        readArtistLinks(owners, tracks),
+        owners.artistIndex() as Promise<ArtistIndex>,
       ]);
-      return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+      return { tracks, artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index }) };
     });
     const titles = new Map<string, string>();
     for (const t of tracks) if (t.isrc && !titles.has(t.isrc)) titles.set(t.isrc, t.title);

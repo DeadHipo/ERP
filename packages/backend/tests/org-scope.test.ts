@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(42); // D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(41); // D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
@@ -413,7 +413,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /artists/:id/balance': (x) => ({ params: { id: x.artist } }),
     'POST /artists/:id/owner': (x) => ({ params: { id: x.artist }, body: { ownerId: A.owner } }),
     'GET /tracks': () => ({}),
-    'POST /tracks': (x) => ({ body: { title: 'Into A', artistIds: [x.artist] } }),
     'PATCH /tracks/:id': (x) => ({ params: { id: x.track }, body: { note: 'n' } }),
     'GET /tracks/summary': (x) => ({ query: { isrcs: x.isrc } }),
     'GET /tracks/catalog': (x) => ({ query: { label: x.label } }),
@@ -544,6 +543,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /sublabels',
     // D-232: a new label is a name in A (before: a sublabel named its own label)
     'POST /labels',
+    'POST /tracks', // D-233: a track names no pseudonym any more
   ];
 
   /**

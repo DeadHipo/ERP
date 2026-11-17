@@ -114,7 +114,7 @@ describe('the label checklist (D-172)', () => {
     expect(s.unmapped).toMatchObject({ state: 'todo', count: 1, values: ['Nobody Knows'] });
     // the same strings as the signal labelUnmapped under the label (the signal reads only the units of known pairs:
     // the tracks are registered first)
-    for (const n of [1, 2]) await f.modules.owners.createTrack({ title: `Onb ${n}`, isrc: I(n), upc: UPC, artistIds: [] });
+    for (const n of [1, 2]) await f.modules.owners.createTrack({ title: `Onb ${n}`, isrc: I(n), upc: UPC });
     const signals = await f.signals({}, fresh.id);
     expect(signals.labelUnmapped.map((u) => u.labelName).sort()).toEqual(s.unmapped?.values);
     expect(s.catalog).toMatchObject({ state: 'todo', count: 2, counts: { isrcs: 2, withOpenInterval: 0, tracksWithoutLabel: 2, releases: 0, releasesIncomplete: 0 } });

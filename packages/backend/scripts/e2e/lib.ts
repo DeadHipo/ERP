@@ -377,8 +377,7 @@ export class Sc {
       title: i,
       isrc: i,
       upc: u,
-      artistIds: (opts.artists ?? []).map((a) => this.id(a)),
-    });
+    }); // D-233: no stored artist link (`opts.artists` names only the report's artist string now)
     if (!this.keys.isrcs.includes(i)) this.keys.isrcs.push(i);
     if (!this.keys.upcs.includes(u)) this.keys.upcs.push(u);
   }

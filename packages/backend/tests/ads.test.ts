@@ -169,7 +169,7 @@ async function stackWorld(f: TestFacade) {
   const a = await confirmedOwner(f, 'Owner A', ['A1']);
   const a1 = a.artists[0] as { id: string };
   const o = f.modules.owners;
-  for (const isrc of [I1, I2]) await o.createTrack({ title: isrc, isrc, upc: UPC, artistIds: [a1.id] });
+  for (const isrc of [I1, I2]) await o.createTrack({ title: isrc, isrc, upc: UPC });
   const appendix = await approvedAppendix(f, a.owner.id);
   for (const isrc of [I1, I2])
     await f.createSplit({ isrc, validFrom: '2020-01-01', shares: [{ artistId: a1.id, percent: '50' }], documentId: appendix.id });
@@ -339,7 +339,7 @@ describe('ads: the owner balance (stack)', () => {
     const I3 = 'QZTST2600003';
     const b = await confirmedOwner(f, 'Owner B', ['B1']);
     const b1 = b.artists[0] as { id: string };
-    await f.modules.owners.createTrack({ title: I3, isrc: I3, upc: UPC, artistIds: [b1.id] });
+    await f.modules.owners.createTrack({ title: I3, isrc: I3, upc: UPC });
     await f.createSplit({ isrc: I3, validFrom: '2020-01-01', shares: [{ artistId: b1.id, percent: '50' }], documentId: (await approvedAppendix(f, b.owner.id)).id });
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I3, upc: UPC, net: '30', labelName: 'Echo8' }], { account: '1055956' }), echo);
     expect((await f.ownerList({ label: zero })).map((o) => o.id)).not.toContain(b.owner.id);

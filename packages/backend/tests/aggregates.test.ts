@@ -122,7 +122,7 @@ async function world() {
   await c.part(I(1), 'P', '15', 'bucket', 'label_share');
   await c.split(I(2), [['M', '50']]);
   const u = await unconfirmedOwner(c.f, 'Owner U', ['U']);
-  await c.f.modules.owners.createTrack({ title: 'U track', isrc: I(4), upc: UPC, artistIds: [] });
+  await c.f.modules.owners.createTrack({ title: 'U track', isrc: I(4), upc: UPC });
   await c.f.createSplit({
     isrc: I(4),
     validFrom: '2020-01-01',
@@ -267,20 +267,17 @@ describe('GET /tracks/summary (N5)', () => {
     expect(money.artists).toEqual(t1.artists);
   });
 
-  it('a registry link and a merged pseudonym: the link counts, the merged id answers as the survivor, once (D-166)', async () => {
+  it('a merged pseudonym answers as the survivor, once; a pseudonym without a row or participation is not an artist of the track (D-166, D-233)', async () => {
     const c = new Case();
     c.f = await newFacade(0);
     c.appendix = (await approvedAppendix(c.f)).id;
     await c.person('A', 'L');
     await c.second('A2', 'A');
-    await c.track(I(1), UPC, ['L']); // L is linked in the registry, has no row
+    await c.track(I(1), UPC, ['L']); // L named at the track's creation, without a row: not stored since D-233
     await c.split(I(1), [['A2', '40']]);
     await c.f.modules.owners.mergeArtists(c.id('A2'), c.id('A'), 'same person');
     const items = (await request(appOf(c)).get('/api/v1/tracks/summary').expect(200)).body.items as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
-    expect(items.find((i) => i.isrc === I(1)).artists).toEqual([
-      { id: c.id('A'), pseudonym: 'A' },
-      { id: c.id('L'), pseudonym: 'L' },
-    ]);
+    expect(items.find((i) => i.isrc === I(1)).artists).toEqual([{ id: c.id('A'), pseudonym: 'A' }]);
   });
 });
 

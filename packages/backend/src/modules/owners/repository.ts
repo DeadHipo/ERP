@@ -2,7 +2,6 @@ import { and, asc, eq, inArray, isNotNull, isNull, or, sql, type AnyColumn, type
 import type { Db } from '../../shared/pg-db';
 import { orgFree, orgQuery, orgRow, orgRows, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
 import {
-  artistTracks,
   artists,
   contractArtists,
   contracts,
@@ -22,7 +21,6 @@ export type TrackRow = OrgFree<typeof tracks.$inferSelect>;
 export type DocumentRow = OrgFree<typeof documents.$inferSelect>;
 export type ContractRow = OrgFree<typeof contracts.$inferSelect>;
 export type ContractArtistRow = OrgFree<typeof contractArtists.$inferSelect>;
-export type ArtistTrackRow = OrgFree<typeof artistTracks.$inferSelect>;
 export type MergeRow = OrgFree<typeof merges.$inferSelect>;
 export type TrackLabelRow = OrgFree<typeof trackLabels.$inferSelect>;
 export type ReleaseRow = OrgFree<typeof releases.$inferSelect>;
@@ -49,7 +47,6 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
     ownerAliases: orgFree(ownerAliases),
     artists: orgFree(artists),
     tracks: orgFree(tracks),
-    artistTracks: orgFree(artistTracks),
     documents: orgFree(documents),
     contracts: orgFree(contracts),
     contractArtists: orgFree(contractArtists),
@@ -163,39 +160,6 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
 
     setTrackNote: async (id: string, note: string | null) => {
       await orm().update(tracks).set({ note }).where(orgWhere(org, tracks, eq(tracks.id, id)));
-    },
-    linkArtistTrack: async (artistId: string, trackId: string) => {
-      await orm().insert(artistTracks).values(orgRow(org, { artistId, trackId })).onConflictDoNothing();
-    },
-    tracksOfArtists: async (artistIds: string[]) =>
-      artistIds.length === 0
-        ? []
-        : orm()
-            .select({ artistId: artistTracks.artistId, track: C.tracks })
-            .from(artistTracks)
-            .innerJoin(tracks, orgWhere(org, tracks, eq(tracks.id, artistTracks.trackId)))
-            .where(orgWhere(org, artistTracks, anyOf(artistTracks.artistId, artistIds))),
-    artistLinksOfTrack: (trackId: string) =>
-      orm()
-        .select(C.artistTracks)
-        .from(artistTracks)
-        .where(orgWhere(org, artistTracks, eq(artistTracks.trackId, trackId))),
-    /** Every artist → track link, or (the unit scope of the facade, D-166) only those of the given tracks. */
-    artistLinksOfTracks: (trackIds?: string[]) =>
-      trackIds && trackIds.length === 0
-        ? Promise.resolve([] as ArtistTrackRow[])
-        : orm()
-            .select(C.artistTracks)
-            .from(artistTracks)
-            .where(orgWhere(org, artistTracks, trackIds ? anyOf(artistTracks.trackId, trackIds) : undefined)),
-    moveArtistTracks: async (from: string, into: string) => {
-      await q(
-        `INSERT INTO owners.artist_tracks (org_id, artist_id, track_id)
-         SELECT org_id, $3, track_id FROM owners.artist_tracks WHERE org_id = $1 AND artist_id = $2
-         ON CONFLICT DO NOTHING`,
-        [from, into],
-      );
-      await orm().delete(artistTracks).where(orgWhere(org, artistTracks, eq(artistTracks.artistId, from)));
     },
 
     insertDocument: async (row: OrgFree<typeof documents.$inferInsert>) => {

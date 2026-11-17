@@ -4,7 +4,7 @@ import type { FacadeContext } from './context';
 import { ALL_VIEWER, assertViewerHolds, assertViewerLabel, labelForbidden, viewerSees, type Viewer } from './viewer';
 
 export function ownerViewApi(ctx: FacadeContext) {
-  const { db, owners, settlements, publishing, labels, labelContext, assertOwnLabel, scopeOf } = ctx;
+  const { db, owners, splits, settlements, publishing, labels, labelContext, assertOwnLabel, scopeOf } = ctx;
   const api = {
     /** A document; its label (D-169), when given, must be an own label (the module does not know labels). */
     async createDocument(input: Parameters<typeof owners.createDocument>[0]) {
@@ -96,12 +96,24 @@ export function ownerViewApi(ctx: FacadeContext) {
       const card = await db.snapshot(async () => {
         const owner = await owners.getOwner(ownerId);
         const artists = await owners.listArtistsOfOwner(owner.id);
-        const tracks = await owners.tracksOfArtists(artists.map((a) => a.id));
+        // the tracks of a pseudonym: those of the ISRCs of its split rows and participations, by every id it had (D-233)
+        const idx = await owners.artistIndex();
+        const canon = (id: string) => idx.get(id)?.id ?? id;
+        const mine = new Set(artists.map((a) => a.id));
+        const isrcsOf = new Map<string, Set<string>>();
+        const add = (artistId: string, isrc: string) => {
+          const id = canon(artistId);
+          if (mine.has(id)) (isrcsOf.get(id) ?? isrcsOf.set(id, new Set()).get(id)!).add(isrc);
+        };
+        for (const s of await splits.listSplits()) for (const sh of s.shares) add(sh.artistId, s.isrc);
+        for (const p of await splits.listParticipations()) add(p.artistId, p.isrc);
+        const all = [...new Set([...isrcsOf.values()].flatMap((x) => [...x]))];
+        const tracks = all.length > 0 ? await owners.listTracks({ isrcs: all }) : [];
         return {
           owner,
           artists: artists.map((a) => ({
             ...a,
-            tracks: tracks.filter((t) => t.artistId === a.id).map((t) => t.track),
+            tracks: tracks.filter((t) => t.isrc !== null && (isrcsOf.get(a.id)?.has(t.isrc) ?? false)),
           })),
           documents: await owners.listDocuments(owner.id),
           contracts: await owners.contractsOfOwner(owner.id),

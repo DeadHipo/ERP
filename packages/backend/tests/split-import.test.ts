@@ -266,8 +266,8 @@ describe('split import: the row classes', () => {
 
   it('rows without a document wait in C split_unconfirmed, not assumption', async () => {
     const f = await newFacade();
-    const { artists } = await confirmedOwner(f, 'Owner Wait', ['Waiter']);
-    await f.modules.owners.createTrack({ title: 'T', isrc: I1, upc: UPC, artistIds: [(artists as unknown as [{ id: string }])[0].id] });
+    await confirmedOwner(f, 'Owner Wait', ['Waiter']);
+    await f.modules.owners.createTrack({ title: 'T', isrc: I1, upc: UPC });
     await run(f, csv([{ isrc: I1, pseudonym: 'Waiter', percent: '40', from: '2026-01-01' }]), false);
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '100' }]), f.testLabels['0to8']);
     const [r] = await f.reconciliation();

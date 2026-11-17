@@ -302,11 +302,7 @@ await db.transaction(async () => {
       origin: 'legacy-erp',
     });
     bump(confirmed ? 'splits_confirmed' : 'splits_unconfirmed');
-    const trackId = trackOfIsrc.get(isrc);
-    if (trackId)
-      for (const s of shares)
-        if (!new Decimal(s.rate).isZero())
-          await owners.linkArtistTrack(artistOfParty.get(s.party) as string, trackId);
+    // D-233: no stored artist → track link (the pseudonyms of a track come from its split rows)
   }
 
   // ---------- buyouts: split change of the seller from the effective date, confirmed by a buyout document ----------

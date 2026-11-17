@@ -582,7 +582,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
       title: string;
       isrc?: string | null;
       upc?: string | null;
-      artistIds?: string[];
       note?: string | null;
     }): Promise<TrackView> {
       const isrc = input.isrc ? assertIsrc(input.isrc) : null;
@@ -593,11 +592,8 @@ export function createOwnersService(db: Db, org: OrgScope) {
       await repo.transaction(async () => {
         if (isrc && upc && (await repo.trackByPair(isrc, upc)))
           throw new ConflictError(`Track ${isrc} / ${upc} already exists`, 'duplicate_track');
+        // D-233: no artist link is stored; the pseudonyms of a track are those of its split rows and participations
         await repo.insertTrack({ id, isrc, upc, title, note, createdAt: nowIso() });
-        for (const artistId of input.artistIds ?? []) {
-          if (!(await repo.getArtist(artistId))) throw new NotFoundError('Artist', artistId);
-          await repo.linkArtistTrack(artistId, id);
-        }
       });
       return { id, isrc, upc, title, note };
     },
@@ -629,27 +625,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
         await repo.setTrackNote(trackId, clean);
         return toTrackView({ ...t, note: clean });
       });
-    },
-
-    /** Informational link: shows which artist a track belongs to. It never decides who gets paid. */
-    async linkArtistTrack(artistId: string, trackId: string): Promise<void> {
-      await repo.transaction(async () => {
-        if (!(await repo.getArtist(artistId))) throw new NotFoundError('Artist', artistId);
-        if (!(await repo.getTrack(trackId))) throw new NotFoundError('Track', trackId);
-        await repo.linkArtistTrack(artistId, trackId);
-      });
-    },
-
-    async tracksOfArtists(artistIds: string[]): Promise<{ artistId: string; track: TrackView }[]> {
-      return (await repo.tracksOfArtists(artistIds)).map((r) => ({
-        artistId: r.artistId,
-        track: toTrackView(r.track),
-      }));
-    },
-
-    /** The artist → track links of the registry (every one, or those of the given tracks); resolved by the facade (D-166). */
-    async artistLinks(filter: { trackIds?: string[] } = {}): Promise<{ artistId: string; trackId: string }[]> {
-      return (await repo.artistLinksOfTracks(filter.trackIds)).map((l) => ({ artistId: l.artistId, trackId: l.trackId }));
     },
 
     async listTracks(filter: { isrcs?: string[] } = {}): Promise<TrackView[]> {
@@ -1010,7 +985,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
             'merge_owner_conflict',
           );
         }
-        await repo.moveArtistTracks(fromId, intoId);
         await repo.moveContractArtists(fromId, intoId);
         await repo.setArtistMergedInto(fromId, intoId);
         await repo.insertMerge({ id: newId(), entity: 'artist', fromId, intoId, reason, at: nowIso() });

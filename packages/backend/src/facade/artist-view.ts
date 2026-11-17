@@ -27,20 +27,17 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
       // under a label (D-168): the pseudonyms visible under it
       const lc = await labelContext(f.label);
       return db.snapshot(async () => {
-        const [idx, ownerList, splitList, partList, links, trackList, contractLinks] = await Promise.all([
+        const [idx, ownerList, splitList, partList, contractLinks] = await Promise.all([
           owners.artistIndex(),
           owners.listOwners(),
           splits.listSplits(),
           splits.listParticipations(),
-          owners.artistLinks(),
-          owners.listTracks(),
           owners.contractLinks(),
         ]);
         const today = todayIso();
         const canon = (id: string) => idx.get(id)?.id ?? id;
         const open = (validTo: string | null) => validTo === null || validTo > today;
         const ownerById = new Map(ownerList.map((o) => [o.id, o]));
-        const trackById = new Map(trackList.map((t) => [t.id, t]));
         type Agg = { previousIds: number; tracks: Set<string>; splitRows: number; participations: number; contracts: Set<string>; undocumented: number };
         const aggs = new Map<string, Agg>();
         const of = (id: string): Agg => {
@@ -49,10 +46,6 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           return a;
         };
         for (const [id, a] of idx) if (id !== a.id) of(a.id).previousIds += 1;
-        for (const l of links) {
-          const t = trackById.get(l.trackId);
-          if (t) of(canon(l.artistId)).tracks.add(t.isrc ?? `track:${t.id}`);
-        }
         for (const s of splitList)
           for (const sh of s.shares) {
             const a = of(canon(sh.artistId));
@@ -182,11 +175,11 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           for (const s of (await splitsPart.listSplits({ artistId: id, limit: 100_000 })).items) splits.set(s.id, s);
           for (const p of (await splitsPart.listParticipations({ artistId: id })).items) participations.set(p.id, p);
         }
-        // the tracks: the registry links of the pseudonym and the tracks of the ISRCs its rows and participations are on
+        // the tracks: those of the ISRCs its rows and participations are on (D-233: no stored link)
         const isrcs = [...new Set([...splits.values(), ...participations.values()].map((x) => x.isrc))];
         const tracks = [
           ...new Map(
-            [...(await owners.tracksOfArtists(ids)).map((t) => t.track), ...(isrcs.length ? await owners.listTracks({ isrcs }) : [])].map(
+            (isrcs.length ? await owners.listTracks({ isrcs }) : []).map(
               (t) => [t.id, t],
             ),
           ).values(),
