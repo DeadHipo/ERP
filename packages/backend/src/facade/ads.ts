@@ -44,13 +44,12 @@ export interface AdResult {
    */
   incomeBookLabelId: string | null;
   incomeBookLabelName: string | null;
-  sublabelName: string | null;
+  /** Who bears the unrecovered part for a sublabel's report, set by hand (D-231); the money never reads it. */
+  bearerSublabelId: string | null;
   parts: AdPart[];
-  /** amount − Σ recovered: borne by the sublabel (its rule's recipient pseudonym) or by us. */
+  /** amount − Σ recovered: the label's in the money (D-232: no sublabel rule bears it). */
   unrecovered: Decimal;
-  borneBy:
-    | { kind: 'sublabel'; artistId: string; ownerId: string | null; amount: Decimal }
-    | { kind: 'ours'; amount: Decimal };
+  borneBy: { kind: 'ours'; amount: Decimal };
 }
 
 export interface AdContext {
@@ -74,13 +73,9 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
   const amount = centsToDecimal(ad.amountCents);
   const percent = new Decimal(ad.recoveryPercent);
   const date = monthStart(ad.month);
-  const labelString = ad.isrc ? ctx.labelStringOf(ad.isrc, ad.month) : undefined;
-  // the label string of the ISRC's line at the month decides only the sublabel rule (who bears the unrecovered part)
-  const l = labelString !== undefined ? ctx.labelOf(labelString, date) : undefined;
   // the payer is the record's label (D-169, R9), whatever the line says
   const ourLabelId = ad.labelId;
   const incomeBookLabelId = ad.isrc ? (ctx.bookOf(ad.isrc, ad.month) ?? null) : null;
-  const rule = l && l.kind === 'sublabel' && l.rule && !l.rule.percent.isZero() ? l.rule : null;
   const canon = (id: string) => ctx.artistIndex.get(id);
 
   let status: AdStatus;
@@ -116,15 +111,8 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
   });
   // the rest by subtraction: Σ recovered + unrecovered = amount exactly
   const unrecovered = amount.sub(sumOf(parts.map((p) => p.recovered)));
-  const borneBy: AdResult['borneBy'] =
-    status !== 'no_split' && rule && unrecovered.gt(0)
-      ? {
-          kind: 'sublabel',
-          artistId: canon(rule.recipientArtistId)?.id ?? rule.recipientArtistId,
-          ownerId: canon(rule.recipientArtistId)?.ownerId ?? null,
-          amount: unrecovered,
-        }
-      : { kind: 'ours', amount: unrecovered };
+  // the unrecovered part is the label's (D-232: no sublabel rule; who bears it for a sublabel's report is set by hand, D-231)
+  const borneBy: AdResult['borneBy'] = { kind: 'ours', amount: unrecovered };
   return {
     adId: ad.id,
     isrc: ad.isrc,
@@ -137,16 +125,15 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
     ourLabelName: ourLabelId ? (ctx.labelName(ourLabelId) ?? null) : null,
     incomeBookLabelId,
     incomeBookLabelName: incomeBookLabelId ? (ctx.labelName(incomeBookLabelId) ?? null) : null,
-    sublabelName: l && l.kind === 'sublabel' ? l.name : null,
     parts,
+    bearerSublabelId: ad.bearerSublabelId,
     unrecovered,
     borneBy,
   };
 }
 
-/** The recoup scope of an expense position (an artist's part or the sublabel's): like an advance (D-155). */
-export function scopeOf(r: Pick<AdResult, 'scope' | 'isrc'>, bearer: 'artist' | 'sublabel'): Scope {
-  if (bearer === 'sublabel') return { kind: 'any' };
+/** The recoup scope of an artist's expense position: like an advance (D-155). */
+export function scopeOf(r: Pick<AdResult, 'scope' | 'isrc'>): Scope {
   if (r.scope === 'publishing') return { kind: 'publishing' };
   if (r.scope === 'isrc' && r.isrc) return { kind: 'isrcs', isrcs: [r.isrc] };
   return { kind: 'any' };
@@ -160,7 +147,7 @@ export interface AdPosition extends Position {
   adId: string;
   isrc: string | null;
   adMonth: string;
-  role: 'artist' | 'sublabel';
+  role: 'artist';
 }
 
 /** Every charge of every owner, by owner (the balance reads its own). */
@@ -180,7 +167,7 @@ export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[
         artistId: p.artistId,
         month: null,
         amount: p.recovered,
-        scope: scopeOf(r, 'artist'),
+        scope: scopeOf(r),
         labelId: r.ourLabelId,
         adId: r.adId,
         isrc: r.isrc,
@@ -188,21 +175,6 @@ export function adPositionsByOwner(results: AdResult[]): Map<string, AdPosition[
         role: 'artist',
       });
     }
-    const b = r.borneBy;
-    if (b.kind === 'sublabel' && b.ownerId && b.amount.gt(0))
-      add({
-        id: `ad:${r.adId}:${b.artistId}:sublabel`,
-        ownerId: b.ownerId,
-        artistId: b.artistId,
-        month: null,
-        amount: b.amount,
-        scope: scopeOf(r, 'sublabel'),
-        labelId: r.ourLabelId,
-        adId: r.adId,
-        isrc: r.isrc,
-        adMonth: r.month,
-        role: 'sublabel',
-      });
   }
   return out;
 }
@@ -247,7 +219,7 @@ export interface AdSummaryRow {
   noSplit: Decimal;
 }
 
-/** Per month and payer: the whole expense, what artists return, what sublabels and we bear. */
+/** Per month and payer: the whole expense, what artists return, what we bear; `borneBySublabels` = the part a sublabel bears by hand (D-231), information only. */
 export function adSummary(results: AdResult[], from?: string, to?: string): AdSummaryRow[] {
   const rows = new Map<string, AdSummaryRow>();
   for (const r of results) {
@@ -272,8 +244,8 @@ export function adSummary(results: AdResult[], from?: string, to?: string): AdSu
     row.count += 1;
     row.amount = row.amount.add(r.amount);
     row.recoveredFromArtists = row.recoveredFromArtists.add(sumOf(r.parts.map((p) => p.recovered)));
-    if (r.borneBy.kind === 'sublabel') row.borneBySublabels = row.borneBySublabels.add(r.borneBy.amount);
-    else row.borneByUs = row.borneByUs.add(r.borneBy.amount);
+    if (r.bearerSublabelId) row.borneBySublabels = row.borneBySublabels.add(r.unrecovered);
+    else row.borneByUs = row.borneByUs.add(r.unrecovered);
     if (r.status === 'no_split') row.noSplit = row.noSplit.add(r.amount);
   }
   return [...rows.values()].sort((a, b) =>

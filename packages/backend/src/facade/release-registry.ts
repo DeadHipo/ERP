@@ -153,7 +153,7 @@ export function releaseRegistryApi(ctx: FacadeContext) {
      * the file is `create` (a new UPC), `update` (the fields that differ), `unchanged` (only counted), `error` (the codes
      * of the line; a UPC whose lines disagree is an error on every line) or `duplicate` (a repeated line equal to the
      * first: ignored). `missing` = the UPCs of the registry the file does not list: they stay. `400 label_required`,
-     * `404`, `400 label_not_own`, a viewer of other labels `403 label_forbidden`; the file: `400 release_import_header`,
+     * `404`, a viewer of other labels `403 label_forbidden`; the file: `400 release_import_header`,
      * `413 import_too_large`.
      */
     async previewReleases(

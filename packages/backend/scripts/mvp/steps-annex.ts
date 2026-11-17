@@ -22,25 +22,26 @@ export async function stepLabels(ctx: Ctx) {
   const existing = await ctx.labels.listLabels();
   const ids = new Map(existing.map((l) => [l.name.toLowerCase(), l.id]));
   const aliasSeen = new Set(existing.flatMap((l) => l.aliases.map((a) => a.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim())));
-  const rulesFrom = new Map(existing.map((l) => [l.id, new Set(l.rules.map((r) => r.validFrom))]));
 
-  const ensureLabel = async (name: string, kind: 'own' | 'sublabel', ownName: string | null): Promise<string> => {
+  // D-232: every label is own; a sublabel of the json is no label any more: its strings become aliases of its own
+  // label (the units stay ours), and the sublabel itself is the register (`labels.sublabels`, D-217), not loaded here
+  const ensureLabel = async (name: string): Promise<string> => {
     const hit = ids.get(name.toLowerCase());
     if (hit) return hit;
-    const ownId = ownName ? ids.get(ownName.toLowerCase()) : null;
-    if (kind === 'sublabel' && !ownId) throw new Error(`own label ${ownName} of ${name} is missing`);
-    const id = ctx.apply
-      ? (await ctx.labels.createLabel({ name, kind, ownLabelId: ownId ?? null })).id
-      : ctx.fakeId('label');
+    const id = ctx.apply ? (await ctx.labels.createLabel({ name })).id : ctx.fakeId('label');
     ids.set(name.toLowerCase(), id);
-    rulesFrom.set(id, new Set());
-    log.event('label_created', `${name} (${kind}${ownName ? ` of ${ownName}` : ''})`);
+    log.event('label_created', name);
     return id;
   };
 
   log.h('Labels');
-  for (const l of j.labels.filter((x) => x.kind === 'own')) await ensureLabel(l.name, 'own', null);
-  for (const l of j.labels.filter((x) => x.kind === 'sublabel')) await ensureLabel(l.name, 'sublabel', l.ownLabel);
+  for (const l of j.labels.filter((x) => x.kind === 'own')) await ensureLabel(l.name);
+  for (const l of j.labels.filter((x) => x.kind === 'sublabel')) {
+    const ownId = l.ownLabel ? ids.get(l.ownLabel.toLowerCase()) : undefined;
+    if (!ownId) throw new Error(`own label ${l.ownLabel} of ${l.name} is missing`);
+    if (!ids.has(l.name.toLowerCase())) ids.set(l.name.toLowerCase(), ownId);
+    log.event('sublabel_as_own', `${l.name}: its strings are aliases of ${l.ownLabel} (D-232)`);
+  }
 
   log.h('Aliases');
   for (const s of j.strings) {
@@ -59,50 +60,11 @@ export async function stepLabels(ctx: Ctx) {
     log.event('alias_added', `"${s.string}" -> ${s.label}`);
   }
 
+  // D-232: the sublabel rule model removed; the rules of the json are no-ops (the terms of a sublabel are
+  // `links.sublabel_terms`, D-217, loaded by scripts/sublabels/)
   log.h('Sublabel rules');
-  for (const l of j.labels.filter((x) => x.kind === 'sublabel')) {
-    const labelId = ids.get(l.name.toLowerCase()) as string;
-    const recipient = await ctx.ownerWithPseudonym(l.name, 'label', 'mvp:labels');
-    for (const r of l.rules) {
-      if (rulesFrom.get(labelId)?.has(r.from)) {
-        log.count('rule_exists');
-        continue;
-      }
-      let docId: string;
-      if (r.basis === 'agreement')
-        docId = await ctx.ensureDoc({ kind: 'contract', title: r.document, approve: true, ref: 'mvp-load:annex/labels' });
-      else if (r.basis === 'owner_decision_2')
-        docId = await ctx.ensureDoc({
-          kind: 'other',
-          title: 'Owner decision 2 of 2026-11-02 (sublabel half rule)',
-          approve: true,
-          ref: 'mvp-load:annex/labels',
-        });
-      else
-        docId = await ctx.ensureDoc({
-          kind: 'assumption',
-          title: `Assumption Q12: half rule for ${l.name}`,
-          approve: false,
-          ref: 'mvp-load:annex/labels',
-        });
-      try {
-        if (ctx.apply)
-          await ctx.f.createLabelRule({
-            labelId,
-            percent: pct(r.percent),
-            recipientArtistId: recipient.artistId,
-            validFrom: r.from,
-            validTo: r.to,
-            documentId: docId,
-            note: `mvp:labels:${l.name}:${r.from}`,
-          });
-        rulesFrom.get(labelId)?.add(r.from);
-        log.event('rule_set', `${l.name} ${pct(r.percent)} from ${r.from} to ${r.to ?? 'open'} basis ${r.basis}`);
-      } catch (e) {
-        log.event('rule_error', `${l.name} from ${r.from}: ${errText(e)}`);
-      }
-    }
-  }
+  for (const l of j.labels.filter((x) => x.kind === 'sublabel'))
+    for (const r of l.rules) log.event('rule_skipped', `${l.name} ${pct(r.percent)} from ${r.from}: no sublabel rules since D-232`);
 }
 
 // ================================================================= tracks

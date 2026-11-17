@@ -43,7 +43,6 @@ test('S24/1 A: the tabs — the split row with its document, the contract, opera
   await expect(split).toContainText('A-241 50 %');
   await expect(split.getByTestId('chip-approved')).toBeVisible();
   await expect(page.getByTestId('artist-participations')).toContainText('Участий нет');
-  await expect(page.getByTestId('artist-label-rules')).toContainText('Таких правил нет');
   await page.getByTestId('tab-documents').click();
   await expect(page).toHaveURL(/tab=documents/);
   await expect(page.getByTestId(`document-${k.documents['contract:A']}`)).toContainText('утверждён');
@@ -60,22 +59,7 @@ test('S24/1 A: the tabs — the split row with its document, the contract, opera
   await expect(page.getByTestId('balance-tracks')).toContainText('нет');
 });
 
-test('S23 NG: the sublabel recipient earned 25 (the carve), recouped 25 of the advance of 50, 25 remain; the rule is listed', async ({ page }) => {
-  const k = sc(23);
-  await openArtist(page, k.artists.NG ?? '');
-  await expectTotals(page, { earned: '25', recouped: '25', unrecouped: '25', recoupedFromMaster: '25', paid: '0' });
-  const position = page.getByTestId(`position-${k.extra['advance-operation']}`);
-  await expect(position.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
-  await expect(position.locator('[data-col="recouped"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await expect(position.locator('[data-col="remaining"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await expect(page.getByTestId('by-label-0to8').locator('[data-col="earned"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await page.getByTestId('tab-rules').click();
-  const rule = page.getByTestId(`label-rule-${k.labelRules['NoGhost Records 23']}`);
-  await expect(rule).toContainText('50 %');
-  await expect(rule.getByRole('link').first()).toHaveAttribute('href', `/labels/${k.labels['NoGhost Records 23']}`);
-  await expect(page.getByTestId('artist-splits')).toContainText('Строк сплитов нет');
-});
-
+// D-232: S23 NG (the sublabel recipient and its rule) removed with the sublabel rule
 test('the owner page links to the pseudonym; the splits list and the document card link pseudonyms', async ({ page }) => {
   const k = sc(24, 1);
   await openAs(page, `/owners/${k.owners.A}?tab=balance`);

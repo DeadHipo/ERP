@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { approvedAppendix, confirmedOwner, labelOwner, newFacade, writeBelieve } from './helpers/fixtures';
-import { testStack } from './helpers/test-sources';
+import { approvedAppendix, confirmedOwner, newFacade, writeBelieve } from './helpers/fixtures';
 
-// The report of a sublabel by its terms (D-219): a read of the calculation, which does not read the terms. A world
-// whose sublabel exists twice with one id, as after migration 0033: a label of kind sublabel with an alias and a rule
-// (the money today) and the same id in the register (the terms). Synthetic names, ISRCs and amounts only.
+// The report of a sublabel by its terms (D-219): a read of the calculation, which does not read the terms. D-232: the
+// sublabel is the register row only; its Believe string is an alias of the own label 0to8, so the units stay ours.
+// Synthetic names, ISRCs and amounts only.
 
 const T1 = 'QZTST2600101';
 const T2 = 'QZTST2600102';
@@ -23,13 +22,9 @@ async function world() {
   const appendix = (await approvedAppendix(f)).id;
   // T1: the artist 50 % (confirmed) -> the label share is half the net; T2 has no split
   await f.createSplit({ isrc: T1, validFrom: '2020-01-01', shares: [{ artistId: artist.id, percent: '50' }], documentId: appendix });
-  const sub = await l.createLabel({ name: 'Sub R', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
-  await l.addAlias(sub.id, 'Sub R Records');
-  const recipient = await labelOwner(f, 'Sub R');
-  await l.setRule({ labelId: sub.id, percent: '50', recipientArtistId: recipient.artist.id, validFrom: '2026-01-01', documentId: appendix });
-  // the register row with the same id (what 0033 copies)
-  const { pg, orgId } = await testStack();
-  await pg.pool.query('INSERT INTO labels.sublabels (org_id, id, name, created_at) VALUES ($1, $2, $3, now())', [orgId, sub.id, 'Sub R']);
+  // D-232: the sublabel rule model removed (a label of kind sublabel with a rule, its id copied into the register)
+  const sub = await f.createSublabel('Sub R');
+  await l.addAlias(f.testLabels['0to8'], 'Sub R Records');
   await f.ingestBelieve(
     writeBelieve('2026-07', [
       { isrc: T1, upc: UPC, net: '100', labelName: 'Sub R Records' },
@@ -42,7 +37,7 @@ async function world() {
 }
 
 describe('the report of a sublabel by its terms (D-219)', () => {
-  it('gives its part per track and month, equal to the rule when the term is the same; the money does not move', async () => {
+  it('gives its part per track and month of the label share; the money does not move', async () => {
     const { f, sub, appendix, artist, second } = await world();
     const before = JSON.stringify(await f.trackMoney(T1));
     expect((await f.sublabelReport(sub)).rows).toEqual([]);
@@ -53,23 +48,24 @@ describe('the report of a sublabel by its terms (D-219)', () => {
     expect(JSON.stringify(await f.trackMoney(T1))).toBe(before);
 
     const r = await f.sublabelReport(sub);
-    expect(r.rows.map((x) => [x.month, x.isrc, x.title, x.labelShare, x.percent, x.amount, x.status, x.reason, x.currentAmount])).toEqual([
-      ['2026-07', T1, 'Song 1', '50', '50', '25', 'confirmed', null, '25'],
-      ['2026-07', T2, 'Song 2', '0', '50', '0', 'waiting', 'no_split', '0'],
-      ['2026-08', T1, 'Song 1', '5', '25', '1.25', 'waiting', 'no_document', '2.5'],
+    expect(r.rows.map((x) => [x.month, x.isrc, x.title, x.labelShare, x.percent, x.amount, x.status, x.reason])).toEqual([
+      ['2026-07', T1, 'Song 1', '50', '50', '25', 'confirmed', null],
+      ['2026-07', T2, 'Song 2', '0', '50', '0', 'waiting', 'no_split'],
+      ['2026-08', T1, 'Song 1', '5', '25', '1.25', 'waiting', 'no_document'],
     ]);
+    // D-232: no current amount (the carve of the rule) in rows, months, tracks and total
     expect(r.months).toEqual([
-      { month: '2026-07', labelShare: '50', amount: '25', confirmed: '25', waiting: '0', currentAmount: '25' },
-      { month: '2026-08', labelShare: '5', amount: '1.25', confirmed: '0', waiting: '1.25', currentAmount: '2.5' },
+      { month: '2026-07', labelShare: '50', amount: '25', confirmed: '25', waiting: '0' },
+      { month: '2026-08', labelShare: '5', amount: '1.25', confirmed: '0', waiting: '1.25' },
     ]);
-    expect(r.total).toEqual({ labelShare: '55', amount: '26.25', confirmed: '25', waiting: '1.25', currentAmount: '27.5' });
+    expect(r.total).toEqual({ labelShare: '55', amount: '26.25', confirmed: '25', waiting: '1.25' });
     // the period per track (the largest part first) and per set of pseudonyms: both add up to the total
     const A = { id: artist.id, pseudonym: 'Report Artist' };
     const B = { id: second.id, pseudonym: 'Second Artist' };
     expect(r.rows.map((x) => x.artists)).toEqual([[A], [A, B].sort((x, y) => x.pseudonym.localeCompare(y.pseudonym)), [A]]);
-    expect(r.tracks.map((x) => [x.isrc, x.months, x.labelShare, x.amount, x.confirmed, x.waiting, x.currentAmount])).toEqual([
-      [T1, 2, '55', '26.25', '25', '1.25', '27.5'],
-      [T2, 1, '0', '0', '0', '0', '0'],
+    expect(r.tracks.map((x) => [x.isrc, x.months, x.labelShare, x.amount, x.confirmed, x.waiting])).toEqual([
+      [T1, 2, '55', '26.25', '25', '1.25'],
+      [T2, 1, '0', '0', '0', '0'],
     ]);
     expect(r.artists.map((x) => [x.artists.map((y) => y.pseudonym), x.tracks, x.isrcs, x.amount])).toEqual([
       [['Report Artist'], 1, [T1], '26.25'],

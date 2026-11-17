@@ -49,10 +49,7 @@ export interface PartSpec {
 export interface LabelSpec {
   id: string;
   name: string;
-  kind: 'own' | 'sublabel';
-  own?: string;
   aliases: string[];
-  rule?: { id?: string; percent: string; recipient: string; doc?: string | null; from?: string; to?: string };
 }
 
 export interface World {
@@ -68,25 +65,11 @@ export interface World {
   pairs?: string[];
 }
 
+// D-232: the sublabel rule model removed (NoGhost and qaraqshy were sublabels with rules); their strings stay as
+// aliases of the own labels, so the generated worlds keep mapping them.
 export const DEFAULT_LABELS: LabelSpec[] = [
-  { id: 'L0', name: '0to8', kind: 'own', aliases: ['Test Label', '0to8', 'Ahh Music'] },
-  { id: 'LE', name: 'Echo8', kind: 'own', aliases: ['Echo8'] },
-  {
-    id: 'LNG',
-    name: 'NoGhost Records',
-    kind: 'sublabel',
-    own: 'L0',
-    aliases: ['NoGhost Records'],
-    rule: { id: 'rule-ng', percent: '50', recipient: 'NG', doc: 'ok' },
-  },
-  {
-    id: 'LQQ',
-    name: 'qaraqshy records',
-    kind: 'sublabel',
-    own: 'LE',
-    aliases: ['qaraqshy records'],
-    rule: { id: 'rule-qq', percent: '50', recipient: 'QQ', doc: 'assume' },
-  },
+  { id: 'L0', name: '0to8', aliases: ['Test Label', '0to8', 'Ahh Music', 'NoGhost Records'] },
+  { id: 'LE', name: 'Echo8', aliases: ['Echo8', 'qaraqshy records'] },
 ];
 
 const covers = (from: string | undefined, to: string | undefined, date: string) =>
@@ -102,7 +85,6 @@ export function makeContext(w: World = {}): LayerContext {
   const ids = new Set<string>();
   for (const sp of Object.values(w.splits ?? {})) for (const s of sp) for (const [a] of s.shares) ids.add(a);
   for (const p of w.parts ?? []) ids.add(p.artist);
-  for (const l of labels) if (l.rule) ids.add(l.rule.recipient);
   for (const id of ids) {
     const live = w.merged?.[id] ?? id;
     artistIndex.set(id, { id: live, pseudonym: live, ownerId: ownerOf(live) });
@@ -115,24 +97,9 @@ export function makeContext(w: World = {}): LayerContext {
   const isrcs = new Set([...Object.keys(w.splits ?? {}), ...(w.parts ?? []).map((p) => p.isrc ?? I1), I1]);
   const knownPairs = new Set(w.pairs ?? [...isrcs].map((i) => `${i}|${UPC}`));
   return {
-    labelOf(s: string, date: string): LabelOfRecord | undefined {
+    labelOf(s: string): LabelOfRecord | undefined {
       const l = byAlias.get(norm(s));
-      if (!l) return undefined;
-      const r = l.rule && covers(l.rule.from, l.rule.to, date) ? l.rule : null;
-      return {
-        id: l.id,
-        name: l.name,
-        kind: l.kind,
-        ownLabelId: l.own ?? null,
-        rule: r
-          ? {
-              id: r.id ?? `rule-${l.id}`,
-              percent: new Decimal(r.percent),
-              recipientArtistId: r.recipient,
-              documentId: r.doc === undefined ? 'ok' : r.doc,
-            }
-          : null,
-      };
+      return l ? { id: l.id, name: l.name } : undefined;
     },
     labelName: (id) => labels.find((l) => l.id === id)?.name,
     knownPairs,

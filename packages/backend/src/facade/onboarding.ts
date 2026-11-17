@@ -238,7 +238,7 @@ export function onboardingApi(ctx: FacadeContext) {
      */
     async organizationChecklist(users: { members: number; admins: number }) {
       const list = await db.snapshot(() => labels.listLabels());
-      const own = list.filter((l) => l.kind === 'own');
+      const own = list;
       const accounts = own.reduce((n, l) => n + l.accounts.length, 0);
       const ownWithoutAccount = own.filter((l) => l.accounts.length === 0).length;
       const steps: OnboardingStep<OrgOnboardingKey>[] = [

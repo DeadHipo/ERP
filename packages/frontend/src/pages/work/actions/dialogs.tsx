@@ -30,12 +30,11 @@ import { SPLIT_STEP_KINDS } from '../../../lib/document-kinds';
 
 // The dialogs of the queue and signal actions (16 §2.6, §2.7; 17 §6). Each is opened by the page for one row and
 // closed by `onClose` after its final write succeeded. Irreversible final steps go through `ConfirmDialog`. The owner
-// actions live in `owner-dialogs.tsx`, the label rule close in `rule-dialogs.tsx` and the ad edit of a signal row in
+// actions live in `owner-dialogs.tsx` and the ad edit of a signal row in
 // `pages/ads/AdDialogs.tsx` (`EditAdByIdDialog`, D-169); this file re-exports them so the
 // action table (`action-table.ts`) names every dialog from one module.
 
 export { AssignOwnerDialog, CreateContractDialog, MergeOwnerDialog } from './owner-dialogs';
-export { CloseRuleDialog } from './rule-dialogs';
 export { SetOperationLabelDialog } from './label-dialogs';
 export { EditAdByIdDialog } from '../../ads/AdDialogs';
 export { TrackLabelsDialog } from '../../catalog/track/TrackLabelsDialog';
@@ -108,7 +107,7 @@ export function ConfirmSplitDialog(props: { splitId: string; isrc: string; onClo
 // ---- assumption / rule_unconfirmed: replace the document of a split row, a participation or a label rule ----
 
 export function ReplaceDocumentDialog(props: {
-  kind: 'split' | 'participation' | 'labelRule';
+  kind: 'split' | 'participation';
   /** The split, participation or label rule id. */
   ruleId: string;
   isrc: string | null;
@@ -123,12 +122,9 @@ export function ReplaceDocumentDialog(props: {
   const [confirm, setConfirm] = useState(false);
   const splits = useQuery({ ...splitQueries.list(props.isrc ?? undefined), enabled: props.kind === 'split' });
   const parts = useQuery({ ...splitQueries.participations(props.isrc ?? undefined), enabled: props.kind === 'participation' });
-  const labels = useQuery({ ...labelQueries.list(), enabled: props.kind === 'labelRule' });
   const split = splits.data?.items.find((s) => s.id === props.ruleId);
   const part = parts.data?.items.find((p) => p.id === props.ruleId);
-  const label = labels.data?.find((l) => l.rules.some((r) => r.id === props.ruleId));
-  const rule = label?.rules.find((r) => r.id === props.ruleId);
-  const found = props.kind === 'split' ? !!split : props.kind === 'participation' ? !!part : !!rule;
+  const found = props.kind === 'split' ? !!split : !!part;
   const from = monthStart(month);
 
   // The new rows of a split change end where the next split of the ISRC starts (19 §4): read from the splits list.
@@ -141,9 +137,7 @@ export function ReplaceDocumentDialog(props: {
       ? split.shares.map((s) => `${s.pseudonym} ${s.percent} %${s.documentId === props.oldDocumentId ? ' [допущение]' : ''}`).join(', ')
       : props.kind === 'participation' && part
         ? `${part.pseudonym} ${part.percent} % (${participationText(part)}) · ${part.isrc}`
-        : rule && label
-          ? `${label.name} → ${rule.recipientPseudonym} ${rule.percent} %`
-          : '';
+        : '';
 
   const run = useAction(
     async (documentId: string): Promise<string> => {
@@ -173,18 +167,6 @@ export function ReplaceDocumentDialog(props: {
         });
         return fmt(a.toast.participationCreated, { from: res.validFrom });
       }
-      if (rule && label) {
-        await api.labels.closeRule(rule.id, { validTo: from });
-        const res = await api.labels.setRule(label.id, {
-          percent: rule.percent,
-          recipientArtistId: rule.recipientArtistId,
-          validFrom: from,
-          validTo: rule.validTo,
-          documentId,
-          note: rule.note,
-        });
-        return fmt(a.toast.ruleSet, { from: res.validFrom });
-      }
       throw new api.ApiError(a.hints.noRule, 0, 'not_found');
     },
     { invalidate: 'all', success: (text) => text },
@@ -199,7 +181,7 @@ export function ReplaceDocumentDialog(props: {
         subtitle={a.hints.monthRule}
         footer={
           <Submit
-            op={props.kind === 'split' ? 'POST /splits/change' : props.kind === 'participation' ? 'POST /participations/:id/close' : 'POST /labels/:id/rules'}
+            op={props.kind === 'split' ? 'POST /splits/change' : 'POST /participations/:id/close'}
             label={props.title}
             disabled={!doc || !found || month === ''}
             reason={!found ? a.hints.noRule : a.hints.pickFirst}
@@ -273,7 +255,7 @@ export function ApproveDocumentDialog(props: {
 
 export function LabelAliasDialog(props: { alias: string; onClose: () => void }) {
   const labels = useQuery(labelQueries.list());
-  const own = (labels.data ?? []).filter((l) => l.kind === 'own');
+  const own = labels.data ?? [];
   const [labelId, setLabelId] = useState<string | null>(null);
   const run = useAction((id: string) => api.labels.addAlias(id, { alias: props.alias }), {
     invalidate: 'all',
@@ -293,123 +275,6 @@ export function LabelAliasDialog(props: { alias: string; onClose: () => void }) 
         {ru.signalsPage.cols.label}: <b>{props.alias}</b>
       </div>
       <SelectField name="alias-label" label={f.ownLabel} value={labelId} onChange={setLabelId} options={own.map((l) => ({ id: l.id, label: l.name }))} />
-    </FormDialog>
-  );
-}
-
-function RuleFields(props: {
-  percent: string;
-  setPercent: (v: string) => void;
-  recipient: string | null;
-  setRecipient: (v: string | null) => void;
-  month: string;
-  setMonth: (v: string) => void;
-  document: string | null;
-  setDocument: (v: string | null) => void;
-}) {
-  return (
-    <>
-      <TextField name="rule-percent" label={f.percent} value={props.percent} onChange={props.setPercent} isRequired />
-      <EntityPicker name="rule-recipient" label={f.recipient} kind="artists" value={props.recipient} onChange={(id) => props.setRecipient(id)} />
-      <DateField name="rule-from" label={f.validFrom} value={props.month} onChange={props.setMonth} month isRequired />
-      <EntityPicker
-        name="rule-document"
-        label={f.document}
-        kind="documents"
-        value={props.document}
-        accept={(i) => i.kind !== 'assumption'}
-        onChange={(id) => props.setDocument(id)}
-      />
-    </>
-  );
-}
-
-export function SublabelRuleDialog(props: { labelString: string; onClose: () => void }) {
-  const labels = useQuery(labelQueries.list());
-  const own = (labels.data ?? []).filter((l) => l.kind === 'own');
-  const [ownId, setOwnId] = useState<string | null>(null);
-  const [name, setName] = useState(props.labelString);
-  const [percent, setPercent] = useState('50');
-  const [recipient, setRecipient] = useState<string | null>(null);
-  const [month, setMonth] = useState('');
-  const [document, setDocument] = useState<string | null>(null);
-  const run = useAction(
-    async () => {
-      if (!ownId || !recipient) throw new api.ApiError(a.hints.fillFields, 0, 'validation_error');
-      const label = await api.labels.create({ name: name.trim(), kind: 'sublabel', ownLabelId: ownId });
-      await api.labels.addAlias(label.id, { alias: props.labelString });
-      const rule = await api.labels.setRule(label.id, {
-        percent: percent.trim(),
-        recipientArtistId: recipient,
-        validFrom: monthStart(month),
-        documentId: document,
-      });
-      return `${fmt(a.toast.labelCreated, { name: label.name })}; ${fmt(a.toast.ruleSet, { from: rule.validFrom })}`;
-    },
-    { invalidate: 'all', success: (t) => t },
-  );
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={a.sublabelRule}
-      subtitle={a.hints.monthRule}
-      footer={
-        <Submit
-          name="sublabel-submit" op="POST /labels"
-          label={a.sublabelRule}
-          disabled={!ownId || !recipient || name.trim() === '' || percent.trim() === '' || month === ''}
-          pending={run.isPending}
-          onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}
-        />
-      }
-    >
-      <SelectField name="sublabel-own" label={f.ownLabel} value={ownId} onChange={setOwnId} options={own.map((l) => ({ id: l.id, label: l.name }))} />
-      <TextField name="sublabel-name" label={f.labelName} value={name} onChange={setName} isRequired />
-      <RuleFields {...{ percent, setPercent, recipient, setRecipient, month, setMonth, document, setDocument }} />
-    </FormDialog>
-  );
-}
-
-/** sublabelWithoutRule: a rule for an existing sublabel (found by its name or alias in `GET /labels`). */
-export function SetRuleDialog(props: { labelString: string; month: string; onClose: () => void }) {
-  const labels = useQuery(labelQueries.list());
-  const label = labels.data?.find((l) => l.name === props.labelString || l.aliases.includes(props.labelString));
-  const [percent, setPercent] = useState('50');
-  const [recipient, setRecipient] = useState<string | null>(null);
-  const [month, setMonth] = useState(props.month);
-  const [document, setDocument] = useState<string | null>(null);
-  const run = useAction(
-    (labelId: string) =>
-      api.labels.setRule(labelId, {
-        percent: percent.trim(),
-        recipientArtistId: recipient ?? '',
-        validFrom: monthStart(month),
-        documentId: document,
-      }),
-    { invalidate: 'all', success: (r) => fmt(a.toast.ruleSet, { from: r.validFrom }) },
-  );
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={a.setRule}
-      subtitle={a.hints.monthRule}
-      footer={
-        <Submit
-          name="rule-submit" op="POST /labels/:id/rules"
-          label={a.setRule}
-          disabled={!label || !recipient || percent.trim() === '' || month === ''}
-          reason={!label ? a.hints.noRule : undefined}
-          pending={run.isPending}
-          onPress={() => label && run.mutate(label.id, { onSuccess: props.onClose })}
-        />
-      }
-    >
-      <div className="text-sm">
-        {ru.signalsPage.cols.label}: <b>{props.labelString}</b>
-      </div>
-      <RuleFields {...{ percent, setPercent, recipient, setRecipient, month, setMonth, document, setDocument }} />
     </FormDialog>
   );
 }

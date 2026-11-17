@@ -13,10 +13,10 @@ export const ALL_LABELS = 'all';
  * label manager those of `me.labels`. `GET /labels` keeps the list fresh (a label created on P17 shows at once).
  */
 function choosable(
-  labels: readonly { id: string; name: string; kind: string }[],
+  labels: readonly { id: string; name: string }[],
   me: Pick<Me, 'allLabels' | 'labels'> | undefined,
 ): { id: string; name: string }[] {
-  const own = labels.filter((l) => l.kind === 'own');
+  const own = labels;
   const mine = me && !me.allLabels ? own.filter((l) => me.labels.some((x) => x.id === l.id)) : own;
   return mine.map((l) => ({ id: l.id, name: l.name }));
 }

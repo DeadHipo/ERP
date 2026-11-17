@@ -91,26 +91,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  for (const [g, a, ng, b, ours] of [
-    ['G05a', '50', '25', '75', '25'],
-    ['G05b', '70', '15', '85', '15'],
-  ] as const) {
-    it(`${g}: NoGhost sublabel half (row A ${a})`, async () => {
-      const c = await single(
-        async (c) => {
-          await c.person('A');
-          await c.company('NG');
-          await c.sublabel('NoGhost Records', '0to8', 'NG');
-          await c.split(I(1), [['A', a]]);
-        },
-        '100',
-        'NoGhost Records',
-      );
-      expect((await c.amounts(I(1))).amounts).toEqual({ A: a, NG: ng });
-      expect(await c.row()).toMatchObject({ B: b, C: '0', ours, byLabel: { '0to8': ours } });
-      await c.verify();
-    });
-  }
+  // D-232: the sublabel rule model removed (G05a / G05b: the NoGhost sublabel half)
 
   it('G06 / G07: label owners as rows', async () => {
     const c = await Case.start();
@@ -315,36 +296,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  async function noGhostTop(net: string) {
-    return single(
-      async (c) => {
-        await c.person('A', 'B', 'R');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-        await c.split(I(1), [
-          ['A', '25'],
-          ['B', '25'],
-        ]);
-        await c.part(I(1), 'R', '15', 'net', 'top');
-      },
-      net,
-      'NoGhost Records',
-    );
-  }
-
-  it('G15 (E1, M26): a negative unit', async () => {
-    const c = await noGhostTop('-100');
-    expect((await c.amounts(I(1))).amounts).toEqual({ R: '-15', A: '-21.25', B: '-21.25', NG: '-21.25' });
-    expect(await c.row()).toMatchObject({ A: '-100', B: '-78.75', C: '0', ours: '-21.25' });
-    await c.verify();
-  });
-
-  it('G16 (E2): a zero unit', async () => {
-    const c = await noGhostTop('0');
-    expect((await c.amounts(I(1))).amounts).toEqual({ R: '0', A: '0', B: '0', NG: '0' });
-    expect(await c.row()).toMatchObject({ A: '0', B: '0', C: '0', ours: '0' });
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G15 / G16: a negative and a zero unit through top, rows and the sublabel)
 
   it('G17 (M28, E25): a sale to Duetti from 2026-06-01', async () => {
     const c = await Case.start();
@@ -368,56 +320,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  async function g18(withE: boolean) {
-    return single(
-      async (c) => {
-        await c.person('A', 'B', 'R', 'M', 'P', 'E');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-        await c.split(I(1), [
-          ['A', '25'],
-          ['B', '25'],
-        ]);
-        await c.part(I(1), 'R', '15', 'net', 'top');
-        await c.part(I(1), 'M', '13', 'net', 'artist_pool');
-        await c.part(I(1), 'P', '10', 'bucket', 'label_share');
-        if (withE) await c.part(I(1), 'E', '10', 'bucket', 'artist_share', { from: 'A' });
-      },
-      '100',
-      'NoGhost Records',
-    );
-  }
-
-  it('G18 (E18, Q11): every layer on one unit', async () => {
-    const c = await g18(false);
-    const a = await c.amounts(I(1));
-    expect(a.amounts).toEqual({ R: '15', A: '14.75', B: '14.75', M: '13', P: '4.25', NG: '19.125' });
-    expect([a.reasons.P, a.reasons.NG]).toEqual(['assumption', 'assumption']);
-    expect(await c.row()).toMatchObject({
-      B: '57.5',
-      C: '23.375',
-      ours: '19.125',
-      breakdown: { assumption: '23.375' },
-    });
-    const s = await c.f.signals();
-    expect(s.assumptions.map((x) => x.basis).sort()).toEqual(['q11', 'q11']);
-    await c.verify();
-  });
-
-  it('G18b: plus E 10 of A after the pool carve', async () => {
-    const c = await g18(true);
-    expect((await c.amounts(I(1))).amounts).toEqual({
-      R: '15',
-      A: '13.275',
-      B: '14.75',
-      M: '13',
-      E: '1.475',
-      P: '4.25',
-      NG: '19.125',
-    });
-    expect(await c.row()).toMatchObject({ B: '57.5', C: '23.375', ours: '19.125' });
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G18 / G18b: every layer on one unit incl. the sublabel and Q11)
 
   it('G19 (E12): a row without document, an approved participation', async () => {
     const c = await single(async (c) => {
@@ -437,34 +340,13 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G20 (Q12): an Echo8 sublabel under an assumption rule', async () => {
-    const c = await single(
-      async (c) => {
-        await c.person('A');
-        await c.company('QQ');
-        const q12 = await assumptionDoc(c.f, null, 'Q12: the half rule for other imprints');
-        await c.sublabel('qaraqshy records', 'Echo8', 'QQ', { doc: q12.id });
-        await c.split(I(1), [['A', '50']]);
-      },
-      '100',
-      'qaraqshy records',
-    );
-    const a = await c.amounts(I(1));
-    expect(a.amounts).toEqual({ A: '50', QQ: '25' });
-    expect(a.reasons.QQ).toBe('assumption');
-    expect(await c.row()).toMatchObject({ B: '50', C: '25', ours: '25', byLabel: { Echo8: '25' } });
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G20: an Echo8 sublabel under an assumption rule)
 
-  it('G21 (R1, D-029): a sublabel on an ISRC without split', async () => {
-    const c = await single(
-      async (c) => {
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-      },
-      '100',
-      'NoGhost Records',
-    );
+  it('G21 (D-029, D-175): an ISRC without split', async () => {
+    // D-232: the sublabel rule model removed (the NoGhost sublabel of the world; R1 is gone)
+    const c = await single(async (c) => {
+      await c.company('NG');
+    });
     const a = await c.amounts(I(1));
     // D-175: the whole label share of a unit without a split waits in C `no_split`; the sublabel carve does not run
     // (before: NG 50 C assumption by R1, ours 50)
@@ -473,48 +355,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G21b (D-136): signals for a sublabel without a rule in force and for a rule recipient that is a row', async () => {
-    const c = await Case.start();
-    await c.person('A', 'R');
-    await c.company('NG');
-    await c.track(I(1));
-    await c.track(I(2));
-    await c.split(I(1), [
-      ['A', '40'],
-      ['R', '10'],
-    ]);
-    await c.split(I(2), [['A', '50']]);
-    // rule starts 2026-06: March is a sublabel month without a rule; June on ISRC 1 pays R twice (row + rule)
-    const labels = c.f.modules.labels;
-    const l = await labels.createLabel({
-      name: 'NoGhost Records',
-      kind: 'sublabel',
-      ownLabelId: await c.labelId('0to8'),
-    });
-    await labels.addAlias(l.id, 'NoGhost Records');
-    await labels.setRule({
-      labelId: l.id,
-      percent: '50',
-      recipientArtistId: c.id('R'),
-      validFrom: '2026-06-01',
-      documentId: (await approvedDoc(c.f, 'contract')).id,
-    });
-    const rows = [
-      { isrc: I(1), net: '100', label: 'NoGhost Records' },
-      { isrc: I(2), net: '40', label: 'NoGhost Records' },
-    ];
-    await c.load('2026-03', rows);
-    await c.load('2026-06', rows);
-    const s = await c.f.signals();
-    expect(s.sublabelWithoutRule.map((x) => [x.label, x.month, x.net.toFixed()])).toEqual([
-      ['NoGhost Records', '2026-03', '140'],
-    ]);
-    expect(s.ruleRecipientIsRow.map((x) => [x.isrc, x.pseudonym, x.month])).toEqual([[I(1), 'R', '2026-06']]);
-    expect(s.twoRowsOneOwner).toEqual([]);
-    const only = await c.f.signals({ from: '2026-06', to: '2026-06' });
-    expect(only.sublabelWithoutRule).toEqual([]);
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G21b: the signals sublabelWithoutRule and ruleRecipientIsRow)
 
   it('G21c (D-136): two split rows of one ISRC belong to pseudonyms of one owner', async () => {
     const c = await Case.start();
@@ -530,8 +371,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     expect(s.twoRowsOneOwner.map((x) => [x.isrc, x.month, x.pseudonyms])).toEqual([
       [I(1), '2026-03', ['A', 'A2']],
     ]);
-    expect(s.sublabelWithoutRule).toEqual([]);
-    expect(s.ruleRecipientIsRow).toEqual([]);
+    // D-232: the sublabel rule model removed (the two signals of the sublabel rules)
     await c.verify();
   });
 
@@ -669,24 +509,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G29 (Q10, E21): an advance on the sublabel pseudonym', async () => {
-    const c = await single(
-      async (c) => {
-        await c.person('A');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-        await c.split(I(1), [['A', '50']]);
-      },
-      '100',
-      'NoGhost Records',
-    );
-    await advance(c, 'NG', '50', { kind: 'any' });
-    const b = await c.balance('NG');
-    expect(
-      [b.total.earned, b.total.recouped, b.positions[0]?.remaining, b.total.payable].map((x) => x?.toFixed()),
-    ).toEqual(['25', '25', '25', '0']);
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G29: an advance on the sublabel pseudonym)
 
   it('G30 (D-023, D-035): the perimeter', async () => {
     const c = await Case.start();
@@ -704,21 +527,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G31 (E4): rows 100 and a sublabel: NG 0 emitted', async () => {
-    const c = await single(
-      async (c) => {
-        await c.person('A');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-        await c.split(I(1), [['A', '100']]);
-      },
-      '100',
-      'NoGhost Records',
-    );
-    expect((await c.amounts(I(1))).amounts).toEqual({ A: '100', NG: '0' });
-    expect(await c.row()).toMatchObject({ B: '100', C: '0', ours: '0' });
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G31: rows 100 and a sublabel, NG 0 emitted)
 
   it('G32 (E24): rows 100 after a top 15', async () => {
     const c = await single(async (c) => {
@@ -781,44 +590,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G62 (D-212): the period income of an owner by layer: split row, top, carve, sublabel rule', async () => {
-    const c = await Case.start();
-    await c.person('A', 'B');
-    await c.sublabel('NoGhost Records', '0to8', 'A');
-    for (const n of [1, 2, 3, 4]) await c.track(I(n));
-    await c.split(I(1), [['A', '50']]);
-    await c.split(I(2), [['B', '50']]);
-    await c.part(I(2), 'A', '15', 'net', 'top');
-    await c.split(I(3), [['B', '50']]);
-    await c.part(I(3), 'A', '10', 'bucket', 'label_share');
-    await c.split(I(4), [['B', '50']]);
-    await c.load('2026-03', [
-      { isrc: I(1), net: '100' },
-      { isrc: I(2), net: '100' },
-      { isrc: I(3), net: '100' },
-      { isrc: I(4), net: '100', label: 'NoGhost Records' },
-    ]);
-    await c.load('2026-04', [{ isrc: I(1), net: '20' }]);
-    const text = (b: Awaited<ReturnType<Case['balance']>>) => ({
-      earnedMaster: b.period.earnedMaster.toFixed(),
-      byLayer: Object.fromEntries(Object.entries(b.period.earnedMasterByLayer).map(([k, v]) => [k, v.toFixed()])),
-    });
-    // March: row 50 of 100; top 15 of 100; label share 50 × 10 % = 5; NoGhost half of the label share 50 = 25
-    const march = await c.f.ownerBalance(c.owners.get('A') as string, { from: '2026-03', to: '2026-03' });
-    expect(text(march)).toEqual({ earnedMaster: '95', byLayer: { split: '50', top: '15', carve: '5', sublabel: '25' } });
-    // all time: April adds the row 10 of 20
-    const all = await c.balance('A');
-    expect(text(all)).toEqual({ earnedMaster: '105', byLayer: { split: '60', top: '15', carve: '5', sublabel: '25' } });
-    // D-213: month by month; the months add up to the period
-    const months = (b: Awaited<ReturnType<Case['balance']>>) =>
-      b.period.byMonth.map((m) => [m.month, m.earnedMaster.toFixed(), ...['split', 'top', 'carve', 'sublabel'].map((l) => m.earnedMasterByLayer[l as 'split'].toFixed())]);
-    expect(months(all)).toEqual([
-      ['2026-03', '95', '50', '15', '5', '25'],
-      ['2026-04', '10', '10', '0', '0', '0'],
-    ]);
-    expect(months(march)).toEqual([['2026-03', '95', '50', '15', '5', '25']]);
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G62: the period income by layer, its world needed a sublabel rule)
 
   it('G63 (D-216): an MC row of the split does not bear the pool carve; a new version from a month keeps the history', async () => {
     const c = await Case.start();
@@ -892,21 +664,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G38 (E14): the label string decides per month', async () => {
-    const c = await Case.start();
-    await c.person('A');
-    await c.company('NG');
-    await c.sublabel('NoGhost Records', '0to8', 'NG');
-    await c.track(I(1));
-    await c.split(I(1), [['A', '50']]);
-    await c.load('2026-03', [{ isrc: I(1), net: '100', label: 'NoGhost Records' }]);
-    await c.load('2026-04', [{ isrc: I(1), net: '100' }]);
-    expect((await c.amounts(I(1), '2026-03')).amounts).toEqual({ A: '50', NG: '25' });
-    expect((await c.row('2026-03')).ours).toBe('25');
-    expect((await c.amounts(I(1), '2026-04')).amounts).toEqual({ A: '50' });
-    expect((await c.row('2026-04')).ours).toBe('50');
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G38: the sublabel string decides per month)
 
   it('G39 (E20): a retroactive top after a payout', async () => {
     const c = await single(async (c) => {
@@ -954,23 +712,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
     await c.verify();
   });
 
-  it('G41 (E5): an all-zero split keeps the sublabel rule as B', async () => {
-    const c = await single(
-      async (c) => {
-        await c.person('A');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records', '0to8', 'NG');
-        await c.split(I(1), [['A', '0']]);
-      },
-      '100',
-      'NoGhost Records',
-    );
-    const a = await c.amounts(I(1));
-    expect(a.amounts).toEqual({ NG: '50' });
-    expect(a.reasons.NG).toBeNull();
-    expect(await c.row()).toMatchObject({ B: '50', C: '0', ours: '50', noSplit: '0' });
-    await c.verify();
-  });
+  // D-232: the sublabel rule model removed (G41: an all-zero split keeps the sublabel rule as B)
 
   it('G42 (MVP 16): a brand pseudonym linked to the track takes nothing without a row', async () => {
     const c = await Case.start();

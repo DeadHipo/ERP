@@ -217,57 +217,9 @@ export function splitsApi(ctx: FacadeContext) {
         };
       });
     },
-    /** Labels with aliases and rules; a rule carries the recipient pseudonym and the document status. */
+    /** The own labels with their Believe strings and accounts (D-232: no rules). */
     listLabels() {
-      return db.snapshot(async () => {
-        const list = await labels.listLabels();
-        const idx = await owners.artistIndex();
-        const statuses = await owners.documentStatuses(
-          list.flatMap((l) => l.rules.map((r) => r.documentId)).filter((d): d is string => !!d),
-        );
-        return list.map((l) => ({
-          ...l,
-          rules: l.rules.map((r) => ({
-            ...r,
-            recipientPseudonym: idx.get(r.recipientArtistId)?.pseudonym ?? '?',
-            documentStatus: r.documentId ? (statuses.get(r.documentId) ?? 'missing') : 'missing',
-          })),
-        }));
-      });
-    },
-    /**
-     * A sublabel rule: the start and the end are floored to the month start (M52, D-130), the recipient must exist,
-     * the document kind is checked.
-     */
-    createLabelRule(input: {
-      labelId: string;
-      percent: string;
-      recipientArtistId: string;
-      validFrom: string;
-      validTo?: string | null;
-      documentId?: string | null;
-      note?: string | null;
-    }) {
-      return db.transaction(async () => {
-        const validFrom = floorToMonth(input.validFrom);
-        const validTo = floorEnd(validFrom, input.validTo);
-        await checkSplitDocument(input.documentId);
-        const idx = await owners.artistIndex();
-        await owners.getArtist(input.recipientArtistId);
-        return labels.setRule({
-          ...input,
-          recipientArtistId: idx.get(input.recipientArtistId)?.id ?? input.recipientArtistId,
-          validFrom,
-          validTo,
-        });
-      });
-    },
-    /** Ends a sublabel rule; the end date is floored to the month start (D-130). */
-    closeLabelRule(id: string, validTo: string) {
-      return db.transaction(async () => {
-        const r = await labels.getRule(id);
-        return labels.closeRule(id, floorEnd(r.validFrom, validTo) ?? validTo);
-      });
+      return labels.listLabels();
     },
     /** Splits with artist names and document status, for the splits page. */
     async listSplits(filter: {

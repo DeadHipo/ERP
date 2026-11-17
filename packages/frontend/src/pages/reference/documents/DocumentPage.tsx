@@ -14,7 +14,7 @@ import { CReasonList } from '../../catalog/components/CReasonList';
 import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
 import { centsToText } from '../../owners/components/cents';
 import { ApproveDocumentDialog, CreateContractDialog } from '../../work/actions/dialogs';
-import { DocumentCell, OwnerLink, period, useArtistNames, useOwnerNames } from '../shared';
+import { OwnerLink, period, useArtistNames, useOwnerNames } from '../shared';
 import { ApproveControl } from './DocumentsPage';
 import { AttachDialog, ConfirmSplitWithDocumentDialog, SetDocumentLabelDialog, useDocumentLabelName } from './DocumentDialogs';
 
@@ -135,19 +135,6 @@ export function DocumentPage() {
                       <Td><EntityLink kind="artist" id={p.artistId} label={p.pseudonym} /></Td>
                       <Td>{p.percent}</Td>
                       <Td>{period(p.validFrom, p.validTo)}</Td>
-                    </tr>
-                  ))}
-                </SimpleTable>
-              </Section>
-              <Section title={t.labelRules} testId="uses-label-rules" empty={u.labelRules.length === 0}>
-                <SimpleTable headers={[ru.reference.labels.cols.name, t.uses.recipient, t.uses.percent, t.uses.period, r.document]}>
-                  {u.labelRules.map((x) => (
-                    <tr key={x.id} data-testid={`label-rule-${x.id}`} className="border-t border-border">
-                      <Td><EntityLink kind="label" id={x.labelId} /></Td>
-                      <Td><EntityLink kind="artist" id={x.recipientArtistId} label={x.recipientPseudonym} /></Td>
-                      <Td>{x.percent}</Td>
-                      <Td>{period(x.validFrom, x.validTo)}</Td>
-                      <Td><DocumentCell id={x.documentId} status={x.documentStatus} /></Td>
                     </tr>
                   ))}
                 </SimpleTable>

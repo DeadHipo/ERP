@@ -45,7 +45,7 @@ describe('HTTP errors (D-170)', () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(' ')));
     // PostgreSQL refuses a NUL byte in text: drizzle throws DrizzleQueryError whose message lists the parameters
-    const res = await request(app).post('/api/v1/labels').set('X-Operator', 'tests').send({ name: `${marker}\u0000`, kind: 'own' });
+    const res = await request(app).post('/api/v1/labels').set('X-Operator', 'tests').send({ name: `${marker}\u0000` });
     expect(res.status).toBe(500);
     const text = logged.join('\n');
     expect(text).toContain(res.body.error.requestId as string);

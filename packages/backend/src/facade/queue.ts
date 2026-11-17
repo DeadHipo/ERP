@@ -127,7 +127,7 @@ interface Acc {
 }
 
 function ruleKind(a: MasterAllocation): QueueKeyKind {
-  return a.layer === 'split' ? 'split' : a.layer === 'sublabel' ? 'labelRule' : 'participation';
+  return a.layer === 'split' ? 'split' : 'participation';
 }
 
 function keyOf(

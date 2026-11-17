@@ -99,21 +99,11 @@ std('S03', 8, ['100', '100', '0', '0']);
 for (const m of ['2026-01', '2026-03']) add('S04', 1, m, ['100', '50', '0', '50']);
 for (const m of ['2026-01', '2026-03']) add('S04', 2, m, ['100', '50', '0', '50']);
 for (const m of ['2026-01', '2026-02']) add('S04', 3, m, ['100', '50', '0', '50']);
-std('S05', 1, ['100', '75', '0', '25'], { byLabel: { '0to8': '25' } });
-std('S05', 2, ['100', '85', '0', '15']);
-std('S05', 3, ['100', '100', '0', '0']);
-std('S05', 4, ['100', '50', '0', '50']);
 std('S06', 1, ['100', '50', '0', '50'], { byLabel: { '0to8': '50' } });
 // the string `Echo8` in a file of account(0): our share by the string Echo8, the book 0to8 (D-169)
 std('S06', 2, ['100', '50', '0', '50'], { byLabel: { Echo8: '50' }, book: '0to8' });
-std('S06', 3, ['100', '75', '0', '25']);
-add('S06', 3, '2026-04', ['100', '50', '0', '50']);
-std('S07', 1, ['-100', '-78.75', '0', '-21.25']);
-std('S07', 2, ['0', '0', '0', '0']);
-std('S08', 1, ['100', '57.5', '23.375', '19.125']);
-std('S08', 2, ['100', '57.5', '23.375', '19.125']);
-std('S08', 3, ['100', '50', '25', '25'], { byLabel: { Echo8: '25' }, book: '0to8' });
-std('S08', 4, ['100', '0', '100', '0'], { noSplit: '100' }); // D-175: no split → C no_split, no sublabel carve
+// D-232: the sublabel rule model removed (S05, S06/3, S07, S08/1-3, S23, S37 rows)
+std('S08', 4, ['100', '0', '100', '0'], { noSplit: '100' }); // D-175: no split → C no_split
 std('S09', 1, ['100', '49.8', '0', '50.2']);
 std('S09', 2, ['100', '10', '0', '90']);
 std('S10', 1, ['100', '50', '0', '50'], { byLabel: { '0to8': '50' } });
@@ -133,7 +123,6 @@ std('S21', 1, ['100', '10', '0', '90']);
 for (const m of ['2026-03', '2026-04']) add('S22', 1, m, ['100', '57.5', '0', '42.5']);
 add('S22', 2, M3, ['100', '57.5', '0', '42.5']);
 add('S22', 2, '2026-04', ['-100', '-57.5', '0', '-42.5']);
-std('S23', 1, ['100', '75', '0', '25']);
 for (const k of [1, 2, 3]) std('S24', k, ['100', '50', '0', '50']);
 for (const m of ['2026-02', '2026-03', '2026-05']) add('S25', 1, m, ['100', '50', '0', '50']);
 for (const m of ['2026-05', '2026-06']) add('S26', 1, m, ['100', '50', '0', '50']);
@@ -145,7 +134,6 @@ std('S30', 1, ['100', '0', '100', '0']); // D-175: the registered track without 
 std('S32', 1, ['100', '50', '5', '45']);
 std('S33', 1, ['200', '50', '50', '100']);
 std('S35', 4, ['100', '50', '5', '45']);
-for (const m of ['2026-03', '2026-04']) add('S37', 1, m, ['100', '75', '0', '25']);
 // S38 (G50, D-169): one file per account, each its own book
 std('S38', 1, ['100', '50', '0', '50'], { book: '0to8' });
 add('S38', 1, M3, ['60', '30', '0', '30'], { book: 'Echo8' }, 1);
@@ -233,7 +221,7 @@ await balCheck('S11 P', 'S11', 1, 'P', { earned: '7.5' });
 await balCheck('S14 A before', 'S14', 1, 'A', { confirmed: false, earned: '0', waiting: '50', payable: '0' });
 await balCheck('S22/1 P (G27)', 'S22', 1, 'P', { earned: '15', recouped: '10', remaining: '0', payable: '5' });
 await balCheck('S22/2 P (G27b)', 'S22', 2, 'P', { earned: '0', recouped: '0', remaining: '10', payable: '0' });
-await balCheck('S23 NG (G29)', 'S23', 1, 'NG', { earned: '25', recouped: '25', remaining: '25', payable: '0' });
+// D-232: the sublabel rule model removed (S23 NG G29)
 await balCheck('S24/1 A (G28)', 'S24', 1, 'A', { paid: '30', payable: '20' });
 await balCheck('S24/2 A (G28)', 'S24', 2, 'A', { paid: '70', payable: '-20', payableShown: '0' });
 await balCheck('S24/3 A before (G39)', 'S24', 3, 'A', { earned: '50', paid: '50', payable: '0' });
@@ -268,12 +256,7 @@ check('signals isrcsWithoutSplit S08/4 (G21)', noSplit[case$('S08', 4).isrcs[0] 
 check('signals isrcsWithoutSplit S30', noSplit[case$('S30', 1).isrcs[0] as string], '100');
 check('signals unallocated S20 pairs', sig.unallocated.pairs.filter((p) => p.isrc === case$('S20', 1).isrcs[0]).map((p) => [p.isrc, p.net.toFixed()]), [[case$('S20', 1).isrcs[0], '7']]);
 check('signals unallocated S20 withoutIsrc', String(sig.unallocated.withoutIsrc), '2');
-check(
-  'signals sublabelWithoutRule S35/1 and S37 (after the spec) or S35/1 only',
-  sig.sublabelWithoutRule.map((x) => [x.label, x.month, x.net.toFixed()]),
-  [['Ghost Label 35', '2026-03', '140']],
-);
-check('signals ruleRecipientIsRow S35/1', sig.ruleRecipientIsRow.map((x) => [x.isrc, x.month]), [[case$('S35', 1).isrcs[0], '2026-06']]);
+// D-232: the sublabel rule model removed (the signals sublabelWithoutRule and ruleRecipientIsRow of S35/1, S37)
 check('signals twoRowsOneOwner S35/2', sig.twoRowsOneOwner.map((x) => [x.isrc, x.month, x.pseudonyms]), [
   [case$('S35', 2).isrcs[0], '2026-03', [case$('S35', 2).names.A, case$('S35', 2).names.A2].sort()],
 ]);
@@ -284,17 +267,11 @@ check(
   [[case$('S35', 4).isrcs[0], case$('S35', 4).names.P, 'label_share', '5']],
 );
 check('signals ambiguousWriters S19', sig.ambiguousWriters.map((w) => w.displayName), ['HOLDER W4']);
+// D-232: the sublabel rule model removed (S08/3 QQ 25 and the q11 rows of S08/1, S08/2)
 check(
-  'signals assumptions: S13 Q1 40, S08/3 QQ 25, q11 4.25 and 19.125 for each of S08/1 and S08/2 (no r1 since D-175)',
-  sig.assumptions.map((a) => [a.basis, a.amount.toFixed()]).sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
-  [
-    ['document', '25'],
-    ['document', '40'],
-    ['q11', '19.125'],
-    ['q11', '19.125'],
-    ['q11', '4.25'],
-    ['q11', '4.25'],
-  ].sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
+  'signals assumptions: S13 Q1 40',
+  sig.assumptions.map((a) => [a.basis, a.amount.toFixed()]),
+  [['document', '40']],
 );
 
 console.log(`\n${passes} PASS, ${fails} FAIL`);

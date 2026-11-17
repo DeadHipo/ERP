@@ -15,7 +15,7 @@
   per source, account and month, `ourShare` = Σ label share of the units where it is ours (D-127).
 - `layers/` holds the master money as pure functions (no storage, own tests in `tests/layers/`). The order is the list
   `MASTER_LAYERS` in `layers/index.ts`: label of record → perimeter → off the top → split → carves (pool, artist share,
-  label share, sublabel, in `carve.ts`) → categorise (10 §3). The pool kind is taken pro rata only from the split rows
+  label share, in `carve.ts`; no sublabel carve since D-232) → categorise (10 §3). The pool kind is taken pro rata only from the split rows
   without the MC mark of the split in force (D-216, `bearingRows`; all rows when every row is marked; no marks = the
   old answer). Exactness: quantise every amount to 12 decimals right
   after its multiplication (`layers/exact.ts`: `q`, `pct`), get every remainder by subtraction, distribute pro rata /
@@ -41,7 +41,7 @@
   signals or the document uses (counts over everything, D-012). One path, no mode: `tests/scope.test.ts` asserts
   scoped = full for every scoped method by patching the test's own reads to ignore the filters (D-164).
 - **Owner reach** (`owner-scope.ts`, D-163, D-164): `ownerReach` / `ownersReach` give the ISRCs that can carry an
-  owner's money (splits and participations of its pseudonyms, label strings of sublabels whose rule names them, its
+  owner's money (splits and participations of its pseudonyms, its
   ads); a calculation over them gives the same `ownerBalance()`, since the balance reads only the units where the owner
   has an allocation. The balance route, the payout snapshot (`balanceWithFiles`) and `ownerPayables({ ids })` use it.
   `artistReach` is the same for one pseudonym, by every id it had: `artistBalance()` (`balance.ts`) takes the artist row
@@ -57,14 +57,14 @@
   proves it on the real data.
 - **The label as a book** (`label-scope.ts`, `balance.ts`, D-168, D-169): the book of a Believe unit is the own label its
   **file** was loaded under (`source_files.label_id`, R6; `UnitResult.bookLabelId / bookLabelName`, set in `calculate()`
-  after `allocateUnit`, `LayerContext` untouched); the label string still decides the label of record, the sublabel rule
+  after `allocateUnit`, `LayerContext` untouched); the label string still decides the label of record
   and «ours / `label_unmapped`» (`layers/label-of-record.ts`, `ourShareByLabel`, the signal `labelOutsideAccount`). A
   file without a label is the book `'?'`. Publishing sits in the book of its statement (`PublishingResult.labelId`, R8),
   an advertising charge in the book of its payer (`ad.labelId`, R9), an operation in its own label (D-168). The book of
   an own label is `labelBook()` = `LabelBook { id, name, fileIds }` (its loaded files); a read under a label is
   `scoped(modules, { labelIds: [L] })` over the unit scope, the reference lists restricted to `sources.isrcsOfFiles(fileIds)`,
   and the B17 results filtered after the calculation by `underLabel(calc, L)`; `labelVisibility()` adds the pseudonyms
-  with a row or participation on those ISRCs, sublabel-rule recipients of L, operations and ads paid by L (and the split
+  with a row or participation on those ISRCs, operations and ads paid by L (and the split
   rows of their ISRCs), the owners of L's publishing lines. The facade methods take the label as the last argument
   (`ctx.labelContext` / `ctx.viewOf`); the routes pass `?label=`. `ownerBalance()` partitions **every** field by book
   (the label id, `''` = without a label, named `'?'` in the answer): earned / waiting by the unit's book and the
@@ -181,4 +181,4 @@
 - **The position per pseudonym (D-181, `balance.ts`).** Beside the book accumulators every pseudonym has `pos[area]` (`PosAcc`: the formula terms of its own items plus `shared`) and the owner has its own (`pools`, key `OWNER_POSITION = ''`: the owner's publishing, the operations without a pseudonym); `posOf(artistId, key, area)` picks the accumulator of an operation, an ad, or a recoup. After the recoup the owner's own deficit per book and area is shared to the positive positions, the largest first. The answer: `payable` = the formula (Σ positions), `payableShown` = Σ positive positions (`shownOf`), `ownerPosition`, `payableNegative` = a negative position exists; the areas the same (`byArea.payableShown`; Σ areas of `payableShown` ≥ the book's, since max(0, a + b) ≤ max(0, a) + max(0, b)); the artist rows `position`, `positionNegative`, `byLabel[].position / positionByArea`. `gateOf` (`context.ts`) and `createPayout` read `payableShown`; the button writes the `allocation` of its payout (`splitCents`, pro rata to the positive positions of the area) and the balance applies it; a return without a pseudonym follows the allocation of its payout. `tests/position.test.ts`; `Case.verify()` pins Σ positions = payable and `payableShown` = Σ positive per book.
 - **The cuts (D-198, `cuts.ts`, `as-of.ts`).** A cut of a label (`settlements.cuts`) is a view: the very `ownerBalance` under the label's view over one `calculate()` cut by `cutCalculationBy` (units / publishing / ads before the first-day bounds) and `cutOperationsBy` (dated up to `cut_date`, or attributed to this or an earlier cut by `operations.cut_id`). The state is per position (D-181); nothing of it is stored, `calculate()` and the layers never see a cut. Plan: `docs/идеи/срезы/план.md`.
 - **The opening balances (D-174) were removed by D-205.** The start became the cut «Кабинет 15.10» (D-203, D-204: reconciling adjustments attributed to the cut, forgivenesses of the advances' rests at the bound, holds for `missing`); `ownerBalance` has no `starts`, the gate no `start_missing`, the payroll no `start` column. The table `settlements.opening_balances` was dropped by D-228.
-- **The sublabels (D-217, D-218, `sublabels.ts`).** The register (`labels.sublabels`) and the terms of a sublabel on an ISRC (`links.sublabel_terms`): the facade floors the dates (M52), normalizes the ISRC, checks the sublabel, the document kind (`SPLIT_DOCUMENT_KINDS`) and the catalog, and classifies a batch (`new`, `closes`, `unchanged`, errors) in a snapshot for the preview and again in one transaction for the apply (all or nothing, 422 `terms_invalid`). `calculate()`, the layers, `owner-scope.ts` and `balance.ts` do not read the terms yet: the sublabel money still comes from the rules of `labels`. The report (`sublabel-report.ts`, D-219) reads one `calculate()` over the ISRCs of the terms: base = the unit's label share plus today's `sublabel` allocations on it, part = `pct(base, percent)`; `currentAmount` is today's rule on the same units. `boundaries.test.ts` keeps the calculation from reading the terms.
+- **The sublabels (D-217, D-218, `sublabels.ts`).** The register (`labels.sublabels`) and the terms of a sublabel on an ISRC (`links.sublabel_terms`): the facade floors the dates (M52), normalizes the ISRC, checks the sublabel, the document kind (`SPLIT_DOCUMENT_KINDS`) and the catalog, and classifies a batch (`new`, `closes`, `unchanged`, errors) in a snapshot for the preview and again in one transaction for the apply (all or nothing, 422 `terms_invalid`). `calculate()`, the layers, `owner-scope.ts` and `balance.ts` never read the terms; since D-229 / D-232 the money carves no sublabel part at all (no rule, no recipient): the part is the report's. The report (`sublabel-report.ts`, D-219) reads one `calculate()` over the ISRCs of the terms: base = the unit's label share after the artists and the participations, part = `pct(base, percent)`; the ads it bears by hand (D-231) come off as `amountAfterAds`. `boundaries.test.ts` keeps the calculation from reading the terms.

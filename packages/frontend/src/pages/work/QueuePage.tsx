@@ -30,7 +30,6 @@ import {
   PublishingTermsDialog,
   RegisterTrackDialog,
   ReplaceDocumentDialog,
-  SublabelRuleDialog,
 } from './actions/dialogs';
 import { REASON_ACTIONS } from './actions/action-table';
 import { ACTION_OPS, type RowAction } from './actions/action-ops';
@@ -356,12 +355,11 @@ function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; ope
       case 'split_unconfirmed':
         return [btn('confirm-split', a.confirmSplit)];
       case 'assumption':
-        if (g.assumptionBasis === 'q11' || g.assumptionBasis === 'r1') return [readOnly(t.basis[g.assumptionBasis], t.basisText)];
         return [btn('replace-assumption', a.replaceAssumption)];
       case 'artist_without_owner':
         return [btn('assign-owner', a.assignOwner)];
       case 'label_unmapped':
-        return [btn('label-alias', a.labelAlias), btn('sublabel-rule', a.sublabelRule)];
+        return [btn('label-alias', a.labelAlias)];
       case 'rule_unconfirmed':
         return g.documentId && g.documentStatus === 'not_approved'
           ? [btn('approve', a.approveDocument)]
@@ -383,7 +381,7 @@ function GroupActions({ reason, g, open }: { reason: CReason; g: QueueGroup; ope
 function ActionHost({ active, onClose }: { active: Active; onClose: () => void }) {
   const g = active.group;
   const isrc = g.isrcs[0]?.isrc ?? null;
-  const ruleKind = g.key.kind === 'split' || g.key.kind === 'participation' || g.key.kind === 'labelRule' ? g.key.kind : null;
+  const ruleKind = g.key.kind === 'split' || g.key.kind === 'participation' ? g.key.kind : null;
   switch (active.action) {
     case 'create-contract':
       return (
@@ -419,8 +417,6 @@ function ActionHost({ active, onClose }: { active: Active; onClose: () => void }
       return <AssignOwnerDialog artistId={g.key.id} pseudonym={g.key.label} onClose={onClose} />;
     case 'label-alias':
       return <LabelAliasDialog alias={g.key.id} onClose={onClose} />;
-    case 'sublabel-rule':
-      return <SublabelRuleDialog labelString={g.key.id} onClose={onClose} />;
     case 'register-track': {
       const [pairIsrc = '', pairUpc = ''] = g.key.id.split('|');
       return <RegisterTrackDialog isrc={pairIsrc} upc={pairUpc} onClose={onClose} />;

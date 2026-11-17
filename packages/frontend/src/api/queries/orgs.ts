@@ -17,6 +17,6 @@ export const orgQueries = {
   labels: (id: string) =>
     queryOptions({
       queryKey: orgKeys.labels(id),
-      queryFn: async () => (await api.labels.listOf(id)).filter((l) => l.kind === 'own'),
+      queryFn: () => api.labels.listOf(id),
     }),
 };

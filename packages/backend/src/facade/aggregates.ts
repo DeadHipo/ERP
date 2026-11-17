@@ -342,8 +342,6 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           ourLabelName: u.ourLabelName,
           bookLabelId: u.bookLabelId,
           bookLabelName: u.bookLabelName,
-          sublabelName: u.sublabelName,
-          rule: u.ruleId,
           net: u.net,
           labelShare: u.labelShare,
           labelShareCategory: u.labelShareCategory,
@@ -361,7 +359,6 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             status: state.status,
             ourLabelId: state.ourLabelId,
             ourLabelName: state.ourLabelName,
-            rule: state.rule,
             scaledNet: state.scaledNet,
             labelShare: state.labelShare,
             labelShareCategory: state.labelShareCategory,
@@ -493,7 +490,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         throw new NotFoundError('Document', documentId);
       const mayTouch = await ctx.scopeOf(viewer).isrcFilter();
       const calc = await calcWithOps();
-      const { document, splitList, partList, labelList, ownerContracts, ops } = await db.snapshot(async () => {
+      const { document, splitList, partList, ownerContracts, ops } = await db.snapshot(async () => {
         const document = await owners.getDocument(documentId);
         const ownerList = await owners.listOwners();
         const ids = document.ownerId ? [document.ownerId] : ownerList.map((o) => o.id);
@@ -501,7 +498,6 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           document,
           splitList: await lists.listSplits({ limit: 100000 }),
           partList: await lists.listParticipations(),
-          labelList: await lists.listLabels(),
           ownerContracts: (
             await Promise.all(ids.map(async (id) => (await owners.contractsOfOwner(id)).map((c) => ({ ...c, ownerId: id }))))
           ).flat(),
@@ -538,7 +534,6 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
             .map((x) => ({ splitId: s.id, isrc: s.isrc, artistId: x.artistId })),
         ),
         participations: partList.items.filter((p) => p.documentId === documentId && mayTouch(p.isrc)),
-        labelRules: labelList.flatMap((l) => l.rules).filter((r) => r.documentId === documentId),
         contracts: contracts.map(({ ownerId: _o, ...c }) => c),
         operations: ops.filter((o) => (o.documentId === documentId || o.paymentProofId === documentId) && viewerHolds(viewer, o.labelId)),
         waiting: { amount, cByReason: waiting },

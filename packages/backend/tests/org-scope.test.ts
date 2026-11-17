@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(43); // D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(42); // D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
@@ -154,7 +154,7 @@ describe('two organizations in one database (D-170)', () => {
       storageDir: join(dataDir, 'orgs', orgId, 'files', 'sources'),
     });
     const f = openFacade({ db: stack.db, orgId, dataDir, payoutThresholdCents: 0, sources });
-    const label = await f.modules.labels.createLabel({ name: '0to8', kind: 'own' });
+    const label = await f.modules.labels.createLabel({ name: '0to8' });
     await f.modules.labels.addAlias(label.id, 'Test Label');
     await f.modules.labels.addAccount(label.id, '1052428');
     return { f, label: label.id };
@@ -246,7 +246,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
 
   type Ids = {
     owner: string; artist: string; artist2: string; track: string; document: string; split: string;
-    participation: string; label: string; sublabel: string; rule: string; file: string; norm: string;
+    participation: string; label: string; sublabel: string; file: string; norm: string;
     operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
     /** D-173: a B17 statement */
     statement: string;
@@ -310,7 +310,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     }
 
     // A: an own label, a confirmed owner with a pseudonym, an approved appendix
-    const la = await ok('a', 'post', '/labels', { name: '0to8', kind: 'own' });
+    const la = await ok('a', 'post', '/labels', { name: '0to8' });
     const oa = await ok('a', 'post', '/owners', { name: 'A Owner', kind: 'person' });
     const aa = await ok('a', 'post', '/artists', { pseudonym: 'A Pseudo', ownerId: oa.id });
     const da = await ok('a', 'post', '/documents', { kind: 'appendix', title: 'A appendix', fileRef: 'dummy://a.pdf', requiresApproval: false });
@@ -318,10 +318,11 @@ describe('two organizations behind the login: the API (D-170)', () => {
     A = { label: la.id, owner: oa.id, artist: aa.id, document: da.id, buyout: ba.id };
 
     // B: the same kinds of everything, under other names and ids
-    const lb = await ok('b', 'post', '/labels', { name: 'B Label Secret', kind: 'own' });
+    const lb = await ok('b', 'post', '/labels', { name: 'B Label Secret' });
     await ok('b', 'post', `/labels/${lb.id}/aliases`, { alias: 'Test Label' });
     await ok('b', 'post', `/labels/${lb.id}/accounts`, { account: '2799555' });
-    const sb = await ok('b', 'post', '/labels', { name: 'B Sub Secret', kind: 'sublabel', ownLabelId: lb.id });
+    // D-232: the sublabel rule model removed (a sublabel label and its rule): `sublabel` is a second own label of B
+    const sb = await ok('b', 'post', '/labels', { name: 'B Sub Secret' });
     const ob = await ok('b', 'post', '/owners', { name: 'B Owner Secret', kind: 'person' });
     const ab = await ok('b', 'post', '/artists', { pseudonym: 'B Pseudo Secret', ownerId: ob.id });
     const ab2 = await ok('b', 'post', '/artists', { pseudonym: 'B Second Secret', ownerId: ob.id });
@@ -336,7 +337,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const tb = await ok('b', 'post', '/tracks', { title: 'B Track Secret', isrc: ISRC_B, upc: UPC_B });
     const spb = await ok('b', 'post', '/splits', { isrc: ISRC_B, validFrom: '2026-01-01', shares: [{ artistId: ab.id, percent: '50' }], documentId: db_.id });
     const pb = await ok('b', 'post', '/participations', { isrc: ISRC_B, artistId: ab2.id, percent: '5', base: 'net', fundedFrom: 'top', validFrom: '2026-01-01', documentId: db_.id });
-    const rb = await ok('b', 'post', `/labels/${sb.id}/rules`, { percent: '30', recipientArtistId: ab2.id, validFrom: '2026-01-01', documentId: db_.id });
     const believe = writeBelieve('2026-07', [{ isrc: ISRC_B, upc: UPC_B, net: '100' }], { account: '2799555' });
     const fb = await as('b', request(app).post('/api/v1/sources/believe')).query({ label: lb.id }).attach('file', believe.path, believe.fileName);
     expect(fb.status, JSON.stringify(fb.body)).toBe(201);
@@ -367,7 +367,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     expect(sublTermsB.status, JSON.stringify(sublTermsB.body)).toBe(201);
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
-      label: lb.id, sublabel: sb.id, rule: rb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
+      label: lb.id, sublabel: sb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
       subl: sublB.id, sublTerm: sublTermsB.body.termIds[0],
@@ -383,7 +383,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const u = () => randomUUID();
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
-      sublabel: u(), rule: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
+      sublabel: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
       upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(),
     };
   };
@@ -438,12 +438,10 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /participations': (x) => ({ body: { isrc: 'QZTST2697777', artistId: x.artist, percent: '5', base: 'net', fundedFrom: 'top', validFrom: '2026-01-01', documentId: A.document } }),
     'POST /participations/:id/close': (x) => ({ params: { id: x.participation }, body: { validTo: '2026-09-01' } }),
     'GET /labels': () => ({}),
-    'POST /labels': (x) => ({ body: { name: 'Into A sub', kind: 'sublabel', ownLabelId: x.label } }),
     'POST /labels/:id/accounts': (x) => ({ params: { id: x.label }, body: { account: '2799777' } }),
     'POST /labels/:id/accounts/:account/remove': (x) => ({ params: { id: x.label, account: x.account } }),
     'POST /labels/:id/aliases': (x) => ({ params: { id: x.sublabel }, body: { alias: 'Into A alias' } }),
-    'POST /labels/:id/rules': (x) => ({ params: { id: x.sublabel }, body: { percent: '10', recipientArtistId: A.artist, validFrom: '2026-01-01', documentId: A.document } }),
-    'POST /labels/rules/:id/close': (x) => ({ params: { id: x.rule }, body: { validTo: '2026-09-01' } }),
+    // D-232: the sublabel rule model removed (POST /labels/:id/rules, POST /labels/rules/:id/close)
     'GET /sources/files': (x) => ({ query: { label: x.label } }),
     'GET /sources/lines': (x) => ({ query: { fileId: x.file } }),
     'GET /sources/lines/facets': (x) => ({ query: { fileId: x.file } }),
@@ -544,6 +542,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /settlements/operations/import',
     // D-217: a new sublabel is a name in A; nothing of B is named
     'POST /sublabels',
+    // D-232: a new label is a name in A (before: a sublabel named its own label)
+    'POST /labels',
   ];
 
   /**

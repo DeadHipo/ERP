@@ -197,12 +197,9 @@ export function createFacadeContext(
     };
   }
 
-  /** An own label by id (D-168): 404 for an unknown id, 400 `label_not_own` for a sublabel. */
+  /** An own label by id (D-168): 404 for an unknown id (every label is own since D-232). */
   async function assertOwnLabel(labelId: string) {
-    const l = await labels.getLabel(labelId);
-    if (l.kind !== 'own')
-      throw new ValidationError(`Label "${l.name}" is a sublabel; an operation belongs to an own label`, { labelId }, 'label_not_own');
-    return l;
+    return labels.getLabel(labelId);
   }
 
   /** The book of an own label and who is visible under it (D-168), or nothing when no label is asked. */

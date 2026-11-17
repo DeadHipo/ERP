@@ -38,6 +38,7 @@ export interface CaseKeys {
   /** Label name -> label id. */
   labels: Record<string, string>;
   /** Label string -> rule id. */
+  /** D-232: always empty (no label rules any more); kept while the e2e specs read it. */
   labelRules: Record<string, string>;
   /** B17 lines of the case: title -> { writer, payable, period }. */
   b17: Record<string, { writer: string; payable: string; period: string; songwriters: string; operationType: string }>;

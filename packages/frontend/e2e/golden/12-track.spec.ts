@@ -66,15 +66,8 @@ const CASES: [string, number, number, Alloc[], string][] = [
   ['G35', 3, 6, [['A-036', '50', 'B'], ['P1-036', '5', 'B'], ['P2-036', '7.5', 'B']], '37.5'],
   ['G36', 3, 7, [['A-037', '25', 'B'], ['B-037', '25', 'B'], ['S-037', '15', 'B']], '35'],
   ['G37', 3, 8, [['A-038', '50', 'B'], ['P-038', '50', 'B']], '0'],
-  ['G05a', 5, 1, [['A-051', '50', 'B'], ['NG', '25', 'B']], '25'],
-  ['G05b', 5, 2, [['A-052', '70', 'B'], ['NG', '15', 'B']], '15'],
-  ['G31', 5, 3, [['A-053', '100', 'B'], ['NG', '0', 'B']], '0'],
-  ['G41', 5, 4, [['NG', '50', 'B']], '50'],
   ['G08a', 6, 1, [['A-061', '50', 'B']], '50'],
   ['G08b', 6, 2, [['A-062', '50', 'B']], '50'],
-  ['G15', 7, 1, [['R-071', '-15', 'B'], ['A-071', '-21.25', 'B'], ['B-071', '-21.25', 'B'], ['NG', '-21.25', 'B']], '-21.25'],
-  ['G16', 7, 2, [['R-072', '0', 'B'], ['A-072', '0', 'B'], ['B-072', '0', 'B'], ['NG', '0', 'B']], '0'],
-  ['G20', 8, 3, [['A-083', '50', 'B'], ['QQ', '25', 'C', 'assumption']], '25'],
   ['G21', 8, 4, [], '0'], // D-175: no split → no allocations, the label share waits in C no_split
   ['G34', 9, 1, [['A-091', '12.266666666666', 'B'], ['B-091', '12.266666666667', 'B'], ['C-091', '12.266666666667', 'B'], ['M-091', '13', 'B']], '50.2'],
 ];
@@ -100,18 +93,7 @@ test('G03a and G34: the text is rounded half-up to cents, the exact string stays
   expect(norm(await b.textContent())).toBe('12,27');
 });
 
-test('G15 negative unit: red amounts with a minus; G16 zero unit: every allocation 0', async ({ page }) => {
-  await openTrack(page, isrc(7, 1, 1));
-  await expect(cell(page.getByTestId('track-totals'), 'net')).toHaveAttribute('title', '-100');
-  await expect(cell(page.getByTestId('track-totals'), 'B')).toHaveAttribute('title', '-78.75');
-  const d = await expand(page, account(7, 1), upc(7, 1, 1));
-  const a = cell(d.getByTestId('allocations').locator('[data-pseudonym="A-071"]'), 'amount');
-  expect(norm(await a.textContent())).toBe('-21,25');
-  await expect(a).toHaveClass(/text-danger/);
-  await openTrack(page, isrc(7, 2, 1));
-  await expect(cell(page.getByTestId('track-totals'), 'ours')).toHaveAttribute('title', '0');
-});
-
+// D-232: «G15 negative unit» removed with the sublabel rule
 test('G44: three carves on a pool of 10, A 0 and the shortfalls of the carves', async ({ page }) => {
   await openTrack(page, isrc(9, 2, 1));
   const d = await expectMonth(
@@ -133,75 +115,9 @@ test('G37: the carve shortfall of 20', async ({ page }) => {
   await expect(d.locator('[data-testid^="shortfall-"]').getByTestId('money')).toHaveAttribute('title', '20');
 });
 
-test('G18: the C reasons with the ⚠ Q11 basis and the layer-by-layer table', async ({ page }) => {
-  await openTrack(page, isrc(8, 1, 1));
-  await expect(cell(page.getByTestId('track-totals'), 'C')).toHaveAttribute('title', '23.375');
-  await expect(page.getByTestId('track-totals').getByTestId('c-reason-assumption').getByTestId('money')).toHaveAttribute('title', '23.375');
-  const d = await expectMonth(
-    page,
-    8,
-    1,
-    [
-      ['R-081', '15', 'B'],
-      ['A-081', '14.75', 'B'],
-      ['B-081', '14.75', 'B'],
-      ['M-081', '13', 'B'],
-      ['P-081', '4.25', 'C', 'assumption'],
-      ['NG-081', '19.125', 'C', 'assumption'],
-    ],
-    '19.125',
-  );
-  await expect(d.getByTestId('allocations').locator('[data-pseudonym="NG-081"] [data-col="basis"]')).toHaveText('⚠ Q11');
-  const row = monthRow(page, account(8, 1), upc(8, 1, 1));
-  await expect(row.getByTestId('label-string')).toHaveText('NoGhost Records 08a');
-  await expect(row.getByTestId('label-of-record')).toHaveText('0to8');
-  await expect(row.getByTestId('sublabel')).toHaveText('NoGhost Records 08a');
-  const layers = d.getByTestId('layers').locator('tbody tr');
-  await expect(layers).toHaveCount(6);
-  const layer = (name: string) => d.getByTestId(`layer-${name}`);
-  const added = async (name: string) =>
-    layer(name).locator('[data-col="added"] li').evaluateAll((els) =>
-      els.map((e) => `${e.getAttribute('data-pseudonym')} ${e.querySelector('[data-testid="money"]')?.getAttribute('title')}`),
-    );
-  await expect(cell(layer('off-the-top'), 'scaledNet')).toHaveAttribute('title', '85');
-  expect(await added('off-the-top')).toEqual(['R-081 15']);
-  await expect(cell(layer('split'), 'labelShare')).toHaveAttribute('title', '42.5');
-  expect(await added('split')).toEqual(['A-081 21.25', 'B-081 21.25']);
-  await expect(cell(layer('carve'), 'labelShare')).toHaveAttribute('title', '19.125');
-  expect(await added('carve')).toEqual(['A-081 14.75', 'B-081 14.75', 'M-081 13', 'P-081 4.25', 'NG-081 19.125']);
-  expect(await added('categorise')).toEqual(['P-081 4.25', 'NG-081 19.125']);
-  await expect(layer('categorise').locator('[data-col="added"]')).toContainText('(C)');
-});
-
-test('G18b: the artist-share carve inside A', async ({ page }) => {
-  await openTrack(page, isrc(8, 2, 1));
-  const d = await expand(page, account(8, 2), upc(8, 2, 1));
-  const amount = (ps: string) => cell(d.getByTestId('allocations').locator(`[data-pseudonym="${ps}"]`), 'amount');
-  await expect(amount('E-082')).toHaveAttribute('title', '1.475');
-  expect(norm(await amount('E-082').textContent())).toBe('1,48');
-  await expect(amount('A-082')).toHaveAttribute('title', '13.275');
-});
-
-test('G38: the label string decides per month; G08a/G08b: the label of record', async ({ page }) => {
-  await openTrack(page, isrc(6, 3, 1));
-  const acct = account(6, 3);
-  const u = upc(6, 3, 1);
-  await expect(monthRow(page, acct, u, M).getByTestId('label-string')).toHaveText('NoGhost Records');
-  await expect(monthRow(page, acct, u, '2026-04').getByTestId('label-string')).toHaveText('Test Label');
-  await expectMonth(page, 6, 3, [['A-063', '50', 'B'], ['NG', '25', 'B']], '25', M);
-  await expectMonth(page, 6, 3, [['A-063', '50', 'B']], '50', '2026-04');
-  await openTrack(page, isrc(6, 1, 1));
-  await expect(monthRow(page, account(6, 1), upc(6, 1, 1)).getByTestId('label-string')).toHaveText('Ahh Music');
-  await expect(monthRow(page, account(6, 1), upc(6, 1, 1)).getByTestId('label-of-record')).toHaveText('0to8');
-  await openTrack(page, isrc(6, 2, 1));
-  const echo = monthRow(page, account(6, 2), upc(6, 2, 1));
-  await expect(echo.getByTestId('label-of-record')).toHaveText('Echo8');
-  // D-169: the string `Echo8` decides the label of record (the sublabel rule), the book is the label of the file: 0to8
-  await expect(echo).toHaveAttribute('data-label', 'Echo8');
-  await expect(echo).toHaveAttribute('data-book', '0to8');
-  await expect(echo.getByTestId('month-book')).toHaveText('0to8');
-});
-
+// D-232: «G18» removed with the sublabel rule
+// D-232: «G18b» removed with the sublabel rule
+// D-232: «G38» removed with the sublabel rule
 test('G45, G46, G47: two months each', async ({ page }) => {
   await openTrack(page, isrc(4, 1, 1));
   await expectMonth(page, 4, 1, [['A-041', '50', 'B']], '50', '2026-01');

@@ -44,14 +44,6 @@ async function expectGone(page: Page, kind: string, id: string) {
   await settled(page);
   await expect(group(page, kind, id)).toHaveCount(0);
 }
-/** P6 of an ISRC: the exact amount of one pseudonym's allocation in the month of the (single) account. */
-async function expectAlloc(page: Page, nn: number, k: number, pseudonym: string, amount: string) {
-  await openAs(page, `/tracks/${isrc(nn, k, 1)}`);
-  await settled(page);
-  await page.getByTestId(`month-${account(nn, k)}-${upc(nn, k, 1)}-${M}`).getByTestId('action-expand-month').click();
-  const detail = page.getByTestId(`month-detail-${account(nn, k)}-${upc(nn, k, 1)}-${M}`);
-  await expect(detail.locator(`[data-pseudonym="${pseudonym}"] [data-col="amount"]`).getByTestId('money')).toHaveAttribute('title', amount);
-}
 /** The publishing lines of a P10 writer: `[title, amount, percent, category]`, exact strings; the owner's earned total. */
 async function expectPublishing(page: Page, ownerId: string, lines: [string, string, string, string][]) {
   await openAs(page, `/owners/${ownerId}?tab=publishing`);
@@ -143,16 +135,7 @@ test('S13 assumption on a row → replace by a document from 2026-03 (the 05 gro
   expect((await apiPost(request, '/splits/change', body)).status).toBe(201);
 });
 
-test('S08 Q11 groups are read-only with the decision; the ISRC without a split is a no_split group (D-175)', async ({ page }) => {
-  await openReason(page, 'assumption');
-  const q11 = group(page, 'labelRule', sc(8, 1).labelRules['NoGhost Records 08a'] ?? '');
-  await expect(q11.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '19.125');
-  await expect(q11.getByTestId('read-only')).toContainText('⚠ Q11');
-  await expect(q11.getByTestId('action-replace-assumption')).toHaveCount(0);
-  const p = group(page, 'participation', sc(8, 1).participations.P ?? '');
-  await expect(p.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '4.25');
-  // D-175: the label rule of S08/4 carves nothing on the ISRC without a split; its whole label share waits in C no_split
-  await expect(group(page, 'labelRule', sc(8, 4).labelRules['NoGhost Records 08d'] ?? '')).toHaveCount(0);
+test('S08/4: the ISRC without a split is a no_split group (D-175; the Q11 groups left with the sublabel rule, D-232)', async ({ page }) => {
   await openReason(page, 'no_split');
   await expectAmount(page, 'pair', `${isrc(8, 4, 1)}|${upc(8, 4, 1)}`, '100');
 });
@@ -238,41 +221,7 @@ test('S16 label_unmapped → alias of 0to8', async ({ page, request }) => {
   expect([again.status, again.code]).toEqual([409, 'alias_taken']);
 });
 
-test('S17 label_unmapped → sublabel of 0to8 with a rule 50 → NG-171', async ({ page, request }) => {
-  await expectOverview(page, [[account(17, 1), M, '100 / 50 / 50 / 0']]);
-  await openSignalList(page, 'labelUnmapped');
-  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records B').locator('[data-col="net"]').getByTestId('money')).toHaveAttribute('title', '100');
-  await openReason(page, 'label_unmapped');
-  await expectAmount(page, 'labelString', 'Mystery Records B', '50');
-  await group(page, 'labelString', 'Mystery Records B').getByTestId('action-sublabel-rule').click();
-  const dialog = page.getByTestId('form-dialog');
-  await choose(page, 'sublabel-own', '0to8');
-  await expect(dialog.getByTestId('field-sublabel-name')).toHaveValue('Mystery Records B');
-  await pick(page, 'rule-recipient', 'NG-171');
-  await dialog.getByTestId('field-rule-from').fill('2020-01');
-  await pick(page, 'rule-document', 'Contract Company NG-171');
-  const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/labels') && r.request().method() === 'POST');
-  await dialog.getByTestId('action-sublabel-submit').click();
-  const labelId = ((await (await created).json()) as { id: string }).id;
-  await toastOk(page, 'Сублейбл создан');
-  await expectGone(page, 'labelString', 'Mystery Records B');
-  await p1(page, account(17, 1), M, '100 / 75 / 0 / 25');
-  await openSignalList(page, 'labelUnmapped');
-  await expect(signalRow(page, 'labelUnmapped', 'Mystery Records B')).toHaveCount(0);
-  // P17 shows the new rule, P6 the carve of NG-171
-  await openAs(page, `/labels/${labelId}`);
-  const rule = page.locator('[data-testid^="label-rule-"]');
-  await expect(rule).toHaveCount(1);
-  await expect(rule).toContainText('NG-171');
-  await expect(rule.locator('[data-col="percent"]')).toHaveText('50');
-  await expectAlloc(page, 17, 1, 'NG-171', '25');
-  const again = await apiPost(request, `/labels/${labelId}/rules`, {
-    percent: '50',
-    recipientArtistId: sc(17).artists.NG,
-    validFrom: '2020-01-01',
-  });
-  expect([again.status, again.code]).toEqual([409, 'rule_overlap']);
-});
+// D-232: S17 «label_unmapped → sublabel with a rule» removed with the sublabel rule
 
 test('S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01', async ({ page, request }) => {
   const k = sc(18);

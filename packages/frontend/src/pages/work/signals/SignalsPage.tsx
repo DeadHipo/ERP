@@ -15,15 +15,12 @@ import { ru } from '../../../i18n/ru';
 import { useOwnerNames } from '../../reference/shared';
 import {
   AssignOwnerDialog,
-  CloseRuleDialog,
   CreateSplitDialog,
   LabelAliasDialog,
   MapWriterDialog,
   NoteDialog,
   RecreateParticipationDialog,
   RegisterTrackDialog,
-  SetRuleDialog,
-  SublabelRuleDialog,
 } from '../actions/dialogs';
 import { SIGNAL_ACTIONS, type SignalName } from '../actions/action-table';
 import { LABEL_SIGNALS, type LabelSignalName } from './label-signals';
@@ -206,29 +203,6 @@ function renderList(name: Exclude<SignalName, LabelSignalName>, data: Signals, c
             moneyCol('net', c.net, (r) => r.net),
             actionCol((r) => [
               btn('label-alias', a.labelAlias, () => open(<LabelAliasDialog alias={r.labelName} onClose={close} />)),
-              btn('sublabel-rule', a.sublabelRule, () => open(<SublabelRuleDialog labelString={r.labelName} onClose={close} />)),
-            ]),
-          ]}
-        />
-      );
-    }
-    case 'sublabelWithoutRule': {
-      type R = Signals['sublabelWithoutRule'][number];
-      return (
-        <Grid<R>
-          name={name}
-          count={count}
-          rows={data.sublabelWithoutRule}
-          rowKey={(r) => `${r.label}|${r.month}`}
-          columns={[
-            textCol('label', c.label, (r) => r.label),
-            textCol('month', c.month, (r) => r.month),
-            moneyCol('net', c.net, (r) => r.net),
-            actionCol((r) => [
-              btn('set-rule', a.setRule, () => open(<SetRuleDialog labelString={r.label} month={r.month} onClose={close} />)),
-              <Link key="labels" to="/labels" className="text-xs text-accent hover:underline">
-                {t.toLabels}
-              </Link>,
             ]),
           ]}
         />
@@ -251,30 +225,6 @@ function renderList(name: Exclude<SignalName, LabelSignalName>, data: Signals, c
               <Link key="rules" to={`/tracks/${encodeURIComponent(r.isrc)}?tab=rules`} className="text-xs text-accent hover:underline">
                 {t.toRules}
               </Link>,
-            ]),
-          ]}
-        />
-      );
-    }
-    case 'ruleRecipientIsRow': {
-      type R = Signals['ruleRecipientIsRow'][number];
-      return (
-        <Grid<R>
-          name={name}
-          count={count}
-          rows={data.ruleRecipientIsRow}
-          rowKey={(r) => `${r.isrc}|${r.month}`}
-          columns={[
-            isrcCol((r) => r.isrc),
-            pseudonymCol<R>(),
-            textCol('month', c.month, (r) => r.month),
-            actionCol((r) => [
-              <Link key="rules" to={`/tracks/${encodeURIComponent(r.isrc)}?tab=rules`} className="text-xs text-accent hover:underline">
-                {t.toRules}
-              </Link>,
-              btn('close-rule', a.closeRule, () =>
-                open(<CloseRuleDialog artistId={r.artistId} month={r.month} onClose={close} />),
-              ),
             ]),
           ]}
         />

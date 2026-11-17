@@ -51,7 +51,7 @@ function ForeignLabelReset({ me }: { me: Me }) {
   const { requested: labelId, setLabel } = useLabel();
   useEffect(() => {
     if (!labels.data) return;
-    const own = labels.data.filter((l) => l.kind === 'own').map((l) => l.id);
+    const own = labels.data.map((l) => l.id);
     const allowed = me.allLabels ? own : own.filter((id) => me.labels.some((l) => l.id === id));
     if (labelId === '' ? me.allLabels : allowed.includes(labelId)) return;
     setLabel(me.allLabels ? '' : (allowed[0] ?? ''));

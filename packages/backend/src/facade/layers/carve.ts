@@ -161,24 +161,8 @@ function labelShare(s: UnitState, ctx: LayerContext, parts: ParticipationAtDate[
   };
 }
 
-/** Sublabel: `q(labelShare × rule.percent / 100)` of what remains, to the rule's recipient (not for an unmapped string). */
-function sublabel(s: UnitState, ctx: LayerContext): UnitState {
-  const rule = s.rule;
-  if (!rule || rule.percent.isZero() || s.labelShareCategory !== 'ours') return s;
-  const a = allocation(ctx, {
-    artistId: rule.recipientArtistId,
-    layer: 'sublabel',
-    kind: 'sublabel',
-    ruleId: rule.id,
-    documentId: rule.documentId,
-    percent: rule.percent,
-    amount: pct(s.labelShare, rule.percent),
-  });
-  return { ...s, rows: [...s.rows, a], labelShare: s.labelShare.sub(a.amount) };
-}
-
 /**
- * Layer 5: the carves, four kinds in a fixed order (pool, artist share, label share, sublabel), one shared base per
+ * Layer 5: the carves, three kinds in a fixed order (pool, artist share, label share; the sublabel left with D-232), one shared base per
  * kind, so the order of the participations inside a kind never changes an amount. Every amount is quantised right
  * after its multiplication and every remainder is obtained by subtraction (10 §3 "Exactness").
  */
@@ -188,5 +172,5 @@ export function carve(s: UnitState, ctx: LayerContext): UnitState {
   let out = pool(s, ctx, of('artist_pool'));
   out = artistShare(out, ctx, of('artist_share'));
   out = labelShare(out, ctx, of('label_share'));
-  return sublabel(out, ctx);
+  return out;
 }

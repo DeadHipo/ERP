@@ -72,16 +72,7 @@ describe('layer 4: split (M1, M2, M3a, M6, M7, M9, M10, M28)', () => {
     const jun = run(w, unit('100', { reportingMonth: '2026-06' }));
     expect([may.amount('A'), may.ours, jun.amount('DU'), jun.ours]).toEqual(['50', '50', '100', '0']);
   });
-  it('G41: an all-zero split has no row; the label share is the whole net, status allocated', () => {
-    const o = run({ splits: rows(['A', '0']) }, unit('100', { labelName: 'NoGhost Records' }));
-    expect([o.amount('A'), o.state.status, o.amount('NG'), o.reason('NG'), o.ours]).toEqual([
-      undefined,
-      'allocated',
-      '50',
-      null,
-      '50',
-    ]);
-  });
+  // D-232: the sublabel rule model removed (G41: an all-zero split under the sublabel NoGhost, NG 50)
   it('no split: status no_split, the label share is the scaled net and waits in C no_split (D-029, D-175)', () => {
     const o = run({}, unit('100'));
     expect([o.state.status, o.state.labelShareCategory, o.ours, o.state.labelShare.toFixed()]).toEqual(['no_split', 'no_split', '0', '100']);

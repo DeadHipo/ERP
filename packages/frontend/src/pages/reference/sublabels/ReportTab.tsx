@@ -21,8 +21,8 @@ type Report = z.output<typeof sublabelReportSchema>;
 type Sums = Report['total'];
 type View = 'months' | 'tracks' | 'artists';
 const VIEWS: readonly View[] = ['months', 'tracks', 'artists'];
-const SUM_KEYS = ['labelShare', 'amount', 'confirmed', 'waiting', 'currentAmount'] as const;
-const SUM_HEADERS = [t.cols.labelShare, t.cols.amount, t.confirmed, t.waiting, t.cols.current];
+const SUM_KEYS = ['labelShare', 'amount', 'confirmed', 'waiting'] as const;
+const SUM_HEADERS = [t.cols.labelShare, t.cols.amount, t.confirmed, t.waiting];
 
 function SumCells(props: { sums: Sums }) {
   return (
@@ -82,7 +82,6 @@ function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) 
     t.cols.percent,
     t.cols.amount,
     t.cols.status,
-    t.cols.current,
   ];
   return (
     <SimpleTable headers={head}>
@@ -100,7 +99,6 @@ function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) 
           <Td>{x.percent}%</Td>
           <Td col="amount"><Money value={x.amount} /></Td>
           <Td col="status">{x.reason ? `${t.waiting}: ${t.reason[x.reason]}` : t.confirmed}</Td>
-          <Td col="currentAmount"><Money value={x.currentAmount} /></Td>
         </tr>
       ))}
     </SimpleTable>
@@ -131,7 +129,7 @@ function MonthsView(props: { r: Report }) {
           <Expandable
             key={m.month}
             testId={`report-month-${m.month}`}
-            colSpan={8}
+            colSpan={7}
             open={open.has(m.month)}
             onToggle={() => open.toggle(m.month)}
             cells={
@@ -159,7 +157,7 @@ function TracksView(props: { r: Report; isrcs?: readonly string[]; testId?: stri
         <Expandable
           key={x.isrc}
           testId={`report-track-${x.isrc}`}
-          colSpan={10}
+          colSpan={9}
           open={open.has(x.isrc)}
           onToggle={() => open.toggle(x.isrc)}
           cells={
@@ -193,7 +191,7 @@ function ArtistsView(props: { r: Report }) {
           <Expandable
             key={g.key}
             testId={`report-artist-${g.key || 'none'}`}
-            colSpan={8}
+            colSpan={7}
             open={open.has(g.key)}
             onToggle={() => open.toggle(g.key)}
             cells={

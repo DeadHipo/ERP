@@ -164,10 +164,10 @@ export async function newFacade(threshold = 0, opts: { paymentService?: PaymentS
   });
   // The own labels every test starts with: the imprint of the synthetic Believe files is "Test Label".
   const labels = facade.modules.labels;
-  const zero = await labels.createLabel({ name: '0to8', kind: 'own' });
+  const zero = await labels.createLabel({ name: '0to8' });
   await labels.addAlias(zero.id, 'Test Label');
   await labels.addAlias(zero.id, '0to8');
-  const echo = await labels.createLabel({ name: 'Echo8', kind: 'own' });
+  const echo = await labels.createLabel({ name: 'Echo8' });
   await labels.addAlias(echo.id, 'Echo8');
   // the Believe accounts of the synthetic files (D-169): a file is loaded under the label its account is registered to
   await labels.addAccount(zero.id, '1052428');

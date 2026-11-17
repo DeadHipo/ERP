@@ -119,14 +119,11 @@ export function adsApi(ctx: FacadeContext) {
         if (artistId) {
           const hit =
             (rec.artistId && (calc.artistIndex.get(rec.artistId)?.id ?? rec.artistId) === artistId) ||
-            r?.parts.some((p) => p.artistId === artistId) ||
-            (r?.borneBy.kind === 'sublabel' && r.borneBy.artistId === artistId);
+            r?.parts.some((p) => p.artistId === artistId);
           if (!hit) continue;
         }
         if (ownerId) {
-          const hit =
-            r?.parts.some((p) => p.ownerId === ownerId) ||
-            (r?.borneBy.kind === 'sublabel' && r.borneBy.ownerId === ownerId);
+          const hit = r?.parts.some((p) => p.ownerId === ownerId);
           if (!hit) continue;
         }
         views.push(viewOf(rec, r, calc.artistIndex));

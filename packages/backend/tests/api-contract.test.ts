@@ -425,22 +425,10 @@ const OPERATOR = 'contract-test';
     });
 
     // labels
-    const own = await call('post', '/labels', { body: { name: 'Own Synthetic', kind: 'own' } });
-    const sub = await call('post', '/labels', {
-      body: { name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: own.id },
-    });
-    await call('post', '/labels/:id/aliases', { params: { id: sub.id }, body: { alias: 'Sub Imprint' } });
-    const rule = await call('post', '/labels/:id/rules', {
-      params: { id: sub.id },
-      body: { percent: '30', recipientArtistId: a2.id, validFrom: '2026-02-10', documentId: appendix.id },
-      labelId: null, // the response's labelId is the sublabel: never recorded (D-169)
-    });
-    expect(rule.validFrom).toBe('2026-02-01');
+    const own = await call('post', '/labels', { body: { name: 'Own Synthetic' } });
+    // D-232: the sublabel rule model removed (a sublabel label, POST /labels/:id/rules and its close, the rules of the list)
+    await call('post', '/labels/:id/aliases', { params: { id: own.id }, body: { alias: 'Sub Imprint' } });
     const labelList = await call('get', '/labels');
-    expect(
-      (labelList as unknown as { rules: { recipientPseudonym: string }[] }[]).flatMap((l) => l.rules)[0]
-        ?.recipientPseudonym,
-    ).toBe('Synth Two');
     // D-168: a Believe account under an own label; the seeded 0to8 is the label of every operation below
     const zero = (labelList as unknown as { id: string; name: string }[]).find((l) => l.name === '0to8') as { id: string };
     // D-169: a document under a label; PATCH sets and clears it; the list under a label adds those without a label
@@ -457,9 +445,7 @@ const OPERATOR = 'contract-test';
     expect((await call('get', '/documents', { query: { label: zero.id } })).map((d: { id: string }) => d.id)).not.toContain(labelled.id);
     const cleared = await call('patch', '/documents/:id', { params: { id: labelled.id }, body: { labelId: null }, labelId: null });
     expect(cleared.labelId).toBeNull();
-    const subRefused = (await R.patch(`/api/v1/documents/${labelled.id}`).set('X-Operator', OPERATOR).send({ labelId: sub.id }))
-      .body as { error: { code: string } };
-    expect(subRefused.error.code).toBe('label_not_own');
+    // D-232: the sublabel rule model removed (a document under a sublabel label was label_not_own)
     // (1052428 → 0to8 and 1055956 → Echo8 are registered by newFacade, D-169)
     const withAccount = await call('post', '/labels/:id/accounts', { params: { id: own.id }, body: { account: '2799001' } });
     expect(withAccount.accounts).toEqual(['2799001']);
@@ -467,10 +453,6 @@ const OPERATOR = 'contract-test';
       params: { id: own.id, account: '2799001' },
     });
     expect(withoutAccount.accounts).toEqual([]);
-    await call('post', '/labels/rules/:id/close', {
-      params: { id: rule.id },
-      body: { validTo: '2026-06-01' },
-    });
 
     // participations
     const part = await call('post', '/participations', {
@@ -503,7 +485,7 @@ const OPERATOR = 'contract-test';
       { isrc: I3, upc: UPC, net: '5' },
     ]);
     expect((await refused('/api/v1/sources/believe', {}, july)).error.code).toBe('label_required');
-    expect((await refused('/api/v1/sources/believe', { label: sub.id }, july)).error.code).toBe('label_not_own');
+    // D-232: the sublabel rule model removed (a file under a sublabel label was label_not_own)
     const unregistered = writeBelieve('2026-07', [{ isrc: I1, upc: UPC, net: '1' }], { account: '2799002' });
     expect((await refused('/api/v1/sources/believe', { label: zero.id }, unregistered)).error).toMatchObject({
       code: 'account_unregistered',

@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { TrackMoney } from '@erp/shared/api-responses';
 import { documentQueries } from '../../../api/queries/documents';
-import { labelQueries } from '../../../api/queries/labels';
 import { EntityLink } from '../../../components/EntityLink';
 import { PageState, QueryView } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
@@ -14,7 +13,6 @@ type Use = keyof typeof t.used;
 /** The documents the rules of this ISRC refer to (splits, rows, participations, sublabel rules, allocations). */
 export function DocumentsTab({ data }: { data: TrackMoney }) {
   const documents = useQuery(documentQueries.list());
-  const labels = useQuery(labelQueries.list());
   const uses = new Map<string, Set<Use>>();
   const add = (id: string | null, use: Use) => {
     if (!id) return;
@@ -27,8 +25,6 @@ export function DocumentsTab({ data }: { data: TrackMoney }) {
     for (const sh of s.shares) add(sh.documentId, 'row');
   }
   for (const p of data.participations) add(p.documentId, 'participation');
-  const ruleIds = new Set(data.months.flatMap((m) => (m.rule ? [m.rule] : [])));
-  for (const l of labels.data ?? []) for (const rule of l.rules) if (ruleIds.has(rule.id)) add(rule.documentId, 'labelRule');
   for (const m of data.months) for (const a of m.allocations) add(a.documentId, 'allocation');
   if (uses.size === 0) return <PageState variant="empty" message={t.empty} />;
   return (

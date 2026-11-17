@@ -25,20 +25,7 @@ export const perimeterSignals: Scenario[] = [
   {
     id: 'S35',
     async run(_f, { seed }) {
-      // k1 G21b: a sublabel without a rule in force in 2026-03, a rule recipient that is a row from 2026-06
-      const c1 = seed.sc(35, 1);
-      await c1.person('A', 'R');
-      await c1.sublabel('Ghost Label 35', '0to8', 'R', { validFrom: '2026-06-01' });
-      await c1.track(1);
-      await c1.track(2);
-      await c1.split(1, [['A', '40'], ['R', '10']]);
-      await c1.split(2, [['A', '50']]);
-      const rows = [
-        { j: 1, net: '100', label: 'Ghost Label 35' },
-        { j: 2, net: '40', label: 'Ghost Label 35' },
-      ];
-      await c1.load('2026-03', rows);
-      await c1.load('2026-06', rows);
+      // D-232: the sublabel rule model removed (S35/1 G21b: the signals sublabelWithoutRule and ruleRecipientIsRow)
 
       // k2 G21c: two split rows of one ISRC belong to pseudonyms of one owner
       const c2 = seed.sc(35, 2);

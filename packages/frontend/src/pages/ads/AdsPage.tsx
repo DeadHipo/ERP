@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useBearerName } from './BearerField';
 import { useLabel, useWriteLabel } from '../../lib/label';
 import type { ColDef } from 'ag-grid-community';
 import type { z } from 'zod';
@@ -244,10 +245,11 @@ type P = { data?: AdView };
 function AdsGrid(props: { rows: AdView[] }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const own = useOwnLabels();
+  const bearerName = useBearerName();
   const columns = useMemo(() => {
     const names = new Map(own.map((l) => [l.id, l.name]));
-    return adColumns(setDialog, (id) => (id ? (names.get(id) ?? id) : t.noPayer));
-  }, [own]);
+    return adColumns(setDialog, (id) => (id ? (names.get(id) ?? id) : t.noPayer), bearerName);
+  }, [own, bearerName]);
   return (
     <>
       <OperatorNotice />
@@ -269,12 +271,7 @@ function AdsGrid(props: { rows: AdView[] }) {
 const borneText = (ad: AdView) => {
   const a = ad.allocation;
   if (!a) return '';
-  return a.borneBy.kind === 'sublabel'
-    ? fmt(t.borne.sublabel, {
-        pseudonym: a.sublabelName ?? a.borneBy.artistId,
-        amount: formatMoney(a.borneBy.amount),
-      })
-    : fmt(t.borne.ours, { amount: formatMoney(a.borneBy.amount) });
+  return fmt(t.borne.ours, { amount: formatMoney(a.borneBy.amount) });
 };
 
 /** The payer (D-169) and, when the income of the ISRC sits in another book that month, that book. */
@@ -284,7 +281,11 @@ const payerText = (ad: AdView, nameOf: (id: string | null) => string) => {
   return book && ad.allocation?.incomeBookLabelId !== ad.labelId ? `${payer} (${fmt(t.bookOf, { book })})` : payer;
 };
 
-function adColumns(open: (d: Dialog) => void, nameOf: (id: string | null) => string): ColDef<AdView>[] {
+function adColumns(
+  open: (d: Dialog) => void,
+  nameOf: (id: string | null) => string,
+  bearerName: (id: string | null) => string,
+): ColDef<AdView>[] {
   const c = t.cols;
   return [
     {
@@ -346,7 +347,7 @@ function adColumns(open: (d: Dialog) => void, nameOf: (id: string | null) => str
           </span>
         ) : null,
     },
-    { colId: 'sublabel', headerName: c.sublabel, minWidth: 110, valueGetter: (p) => p.data?.allocation?.sublabelName ?? '' },
+    { colId: 'sublabel', headerName: c.sublabel, minWidth: 110, valueGetter: (p) => (p.data?.bearerSublabelId ? bearerName(p.data.bearerSublabelId) : '') },
     {
       colId: 'artists',
       headerName: c.artists,

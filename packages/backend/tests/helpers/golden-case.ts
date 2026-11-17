@@ -144,19 +144,7 @@ export class Case {
     if (!l) throw new Error(`no label ${name}`);
     return l.id;
   }
-  /** A sublabel of an own label with its alias and a rule of `percent` to a pseudonym. */
-  async sublabel(name: string, own: string, recipient: string, o: { percent?: string; doc?: string } = {}) {
-    const labels = this.f.modules.labels;
-    const l = await labels.createLabel({ name, kind: 'sublabel', ownLabelId: await this.labelId(own) });
-    await labels.addAlias(l.id, name);
-    await labels.setRule({
-      labelId: l.id,
-      percent: o.percent ?? '50',
-      recipientArtistId: this.id(recipient),
-      validFrom: '2020-01-01',
-      documentId: o.doc ?? (await approvedDoc(this.f, 'contract')).id,
-    });
-  }
+  // D-232: the sublabel rule model removed (`sublabel(name, own, recipient)`: a sublabel label with a rule)
   /** One Believe file per call. */
   async load(
     month: string,

@@ -25,7 +25,7 @@ type Dialog = { kind: 'create' } | { kind: 'edit'; member: Member } | { kind: 'p
 /** The own labels of the organization of the session: the labels a manager may get. */
 function useOwn() {
   const labels = useQuery(labelQueries.list());
-  return labels.data?.filter((l) => l.kind === 'own').map((l) => ({ id: l.id, name: l.name }));
+  return labels.data?.map((l) => ({ id: l.id, name: l.name }));
 }
 
 /** `YYYY-MM-DDTHH:mm` of a `datetime-local` input → an ISO timestamp with its offset (the browser's zone). */

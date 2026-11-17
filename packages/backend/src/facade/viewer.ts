@@ -90,7 +90,6 @@ export function viewerScope(modules: ScopeModules, viewer: Viewer) {
     const resolve = await resolver();
     const out = new Set<string>();
     for (const l of await modules.labels.listLabels()) {
-      if (l.kind !== 'own') continue;
       for (const id of (await labelVisibility(modules, await labelBook(modules, l.id))).ownerIds) out.add(resolve(id));
     }
     return out;

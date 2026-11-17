@@ -36,7 +36,7 @@ let labelId: string | undefined;
 if (labelName === undefined) {
   console.warn('WARNING: no --label: the files are loaded without a label (D-169) and are not in the book of any label');
 } else {
-  const own = (await facade.modules.labels.listLabels()).find((l) => l.kind === 'own' && l.name === labelName);
+  const own = (await facade.modules.labels.listLabels()).find((l) => l.name === labelName);
   if (!own) {
     console.error(`No own label named "${labelName}"`);
     await stack.close();

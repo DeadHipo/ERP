@@ -11,10 +11,9 @@ import type { ArtistRef } from '@erp/shared/api-responses';
 import { scoped } from './scope';
 
 // The report of a sublabel by its terms (D-219): its tracks by month, the label share after the artists and the
-// participations, its percent and its part. A read of the calculation as it is: `calculate()`, the layers and the
-// balance do not change and do not read the terms. Each viewer sees only its own part (spec §9): no gross of a track,
-// no artists' shares, nothing of ours. The money paid today still follows the sublabel rules: `currentAmount` is what
-// those rules give the sublabel on the same units, so the two can be compared before the money is switched.
+// participations, its percent and its part. A read of the calculation as it is; since D-229 / D-232 the money carves no
+// sublabel part (a sublabel has no recipient), so the part lives only here. Each viewer sees only its own part (spec
+// §9): no gross of a track, no artists' shares, nothing of ours.
 
 /** Why the part of a row waits; null = confirmed by an approved document. */
 export type SublabelReportReason = 'no_document' | 'document_not_approved' | 'assumption' | 'no_split' | 'not_allocated';
@@ -27,7 +26,6 @@ interface Sums {
   amount: string;
   confirmed: string;
   waiting: string;
-  currentAmount: string;
 }
 
 interface Acc {
@@ -36,7 +34,6 @@ interface Acc {
   term: SublabelTermRow;
   labelShare: Decimal;
   amount: Decimal;
-  current: Decimal;
   noSplit: boolean;
   notAllocated: boolean;
 }
@@ -60,7 +57,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       months: [] as ({ month: string } & Sums)[],
       tracks: [] as ({ isrc: string; title: string | null; artists: ArtistRef[]; months: number } & Sums)[],
       artists: [] as ({ key: string; artists: ArtistRef[]; tracks: number; isrcs: string[] } & Sums)[],
-      total: { labelShare: '0', amount: '0', confirmed: '0', waiting: '0', currentAmount: '0' },
+      total: { labelShare: '0', amount: '0', confirmed: '0', waiting: '0' },
       ads: [] as { adId: string; isrc: string | null; month: string; amount: string; recoveryPercent: string; unrecovered: string }[],
       adsTotal: '0',
       amountAfterAds: '0',
@@ -89,11 +86,9 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     for (const u of calc.units) {
       const term = byIsrc.get(u.isrc)?.find((t) => covers(t, monthStart(u.reportingMonth)));
       if (!term) continue;
-      // the label share before the sublabel's carve: what remains plus what today's rule carved (no new multiplication)
-      const carved = u.allocations.filter((a) => a.kind === 'sublabel').reduce((s, a) => s.add(a.amount), ZERO);
+      // the label share after the artists and the participations (no sublabel carve in the money since D-229 / D-232)
       const allocated = u.status === 'allocated';
-      const base = allocated && u.labelShareCategory !== 'no_split' ? u.labelShare.add(carved) : ZERO;
-      const current = u.sublabelId === sublabelId ? carved : ZERO;
+      const base = allocated && u.labelShareCategory !== 'no_split' ? u.labelShare : ZERO;
       const key = `${u.isrc}|${u.reportingMonth}`;
       const a = acc.get(key) ?? {
         isrc: u.isrc,
@@ -101,13 +96,11 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
         term,
         labelShare: ZERO,
         amount: ZERO,
-        current: ZERO,
         noSplit: false,
         notAllocated: false,
       };
       a.labelShare = a.labelShare.add(base);
       a.amount = a.amount.add(pct(base, new Decimal(term.percent)));
-      a.current = a.current.add(current);
       if (u.status === 'no_split' || u.labelShareCategory === 'no_split') a.noSplit = true;
       else if (!allocated) a.notAllocated = true;
       acc.set(key, a);
@@ -136,7 +129,6 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
         amount: money(a.amount),
         status: reason === null ? ('confirmed' as const) : ('waiting' as const),
         reason,
-        currentAmount: money(a.current),
       };
     }
 
@@ -150,7 +142,6 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
         amount: money(amount),
         confirmed: money(confirmed),
         waiting: money(amount.sub(confirmed)),
-        currentAmount: money(list.reduce((s, a) => s.add(a.current), ZERO)),
       };
     };
     const months = [...new Set(sorted.map((a) => a.month))].map((month) => ({ month, ...sum(sorted.filter((a) => a.month === month)) }));
@@ -229,7 +220,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       const month = monthRaw ? monthOf(monthStart(monthRaw)) : null;
       const [register, list, allTerms] = await Promise.all([labels.listSublabels(), labels.listLabels(), links.sublabelTerms()]);
       const names = new Map(register.map((s) => [s.id, s.name]));
-      const ownNames = new Set(list.filter((l) => l.kind === 'own').map((l) => normalizeLabelString(l.name)));
+      const ownNames = new Set(list.map((l) => normalizeLabelString(l.name)));
       const termedIsrcs = [...new Set(allTerms.map((t) => t.isrc))];
       const sublabelOfIsrc = new Map(allTerms.map((t) => [t.isrc, t.sublabelId]));
       const sublabelOfAlias = new Map<string, string>();

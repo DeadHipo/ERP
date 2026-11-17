@@ -88,7 +88,7 @@ const files: Step = async (f) => {
 
 /** The own label named `name`, or a stop. */
 async function ownLabel(f: Facade, name: string): Promise<string | undefined> {
-  const l = (await f.modules.labels.listLabels()).find((x) => x.kind === 'own' && x.name === name);
+  const l = (await f.modules.labels.listLabels()).find((x) => x.name === name);
   if (!l) console.log(`  stop: no own label named ${name}`);
   return l?.id;
 }

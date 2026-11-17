@@ -388,8 +388,8 @@ interface PeriodAcc {
   recouped: Decimal;
 }
 type AllocationLayer = Allocation['layer'];
-const ALLOCATION_LAYERS: readonly AllocationLayer[] = ['split', 'top', 'carve', 'sublabel'];
-const newLayers = (): Record<AllocationLayer, Decimal> => ({ split: ZERO, top: ZERO, carve: ZERO, sublabel: ZERO });
+const ALLOCATION_LAYERS: readonly AllocationLayer[] = ['split', 'top', 'carve'];
+const newLayers = (): Record<AllocationLayer, Decimal> => ({ split: ZERO, top: ZERO, carve: ZERO });
 interface MonthAcc {
   earnedMasterByLayer: Record<AllocationLayer, Decimal>;
   earnedPublishing: Decimal;

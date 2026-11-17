@@ -303,8 +303,8 @@ export const actions = {
       `подтверждает: ${confirms}`,
       'утверждение необратимо',
     ],
-    confirms: (splits: number, rows: number, participations: number, rules: number, contracts: number) =>
-      `сплитов ${splits}, строк ${rows}, участий ${participations}, правил ${rules}, договоров ${contracts}`,
+    confirms: (splits: number, rows: number, participations: number, contracts: number) =>
+      `сплитов ${splits}, строк ${rows}, участий ${participations}, договоров ${contracts}`,
     contractTitle: 'Создать договор',
     /** The queue group's amount the contract unblocks (an API value of `GET /queue/owner_unconfirmed`). */
     contractQueue: 'ждёт подтверждения владельца (очередь): {amount}',

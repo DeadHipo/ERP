@@ -107,8 +107,6 @@ export const OPERATION_COVERAGE = {
   'POST /labels/:id/accounts': { page: 'P17', route: '/labels/:id', note: 'action-add-account (D-168); also P19: account_unregistered opens register-account-dialog (D-169)' },
   'POST /labels/:id/accounts/:account/remove': { page: 'P17', route: '/labels/:id', note: 'action-remove-account-<account> with ConfirmDialog (D-169)' },
   'POST /labels/:id/aliases': { page: 'P17', route: '/labels/:id', note: 'action-add-alias; also the queue and the signals' },
-  'POST /labels/:id/rules': { page: 'P17', route: '/labels/:id', note: 'action-set-rule; also the queue and the signals' },
-  'POST /labels/rules/:id/close': { page: 'P17', route: '/labels/:id', note: 'action-close-rule' },
 
   'GET /sources/files': { page: 'P19', route: '/sources', note: 'label= of the switch; the «Лейбл» column file-label / statement-label (D-169)' },
   'GET /sources/lines': { page: 'P19', route: '/sources/lines', note: 'label= of the switch: the files of the label only (D-169)' },

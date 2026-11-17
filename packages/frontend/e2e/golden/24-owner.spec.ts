@@ -93,22 +93,7 @@ test('S24/3 G39: a retroactive top participation R 15 turns payable 0 into -7.5 
   await expectOverview(page, [[account(24, 3), '2026-03', '100 / 57.5 / 0 / 42.5']]);
 });
 
-test('S23 G29: the sublabel recipient NG-231 earned 25, recouped 25, position remaining 25, payable 0', async ({ page }) => {
-  const k = sc(23);
-  const ownerId = k.owners.NG ?? '';
-  await expectOverview(page, [[account(23, 1), '2026-03', '100 / 75 / 0 / 25']]);
-  await openOwner(page, ownerId);
-  await expectTotals(page, { earned: '25', recouped: '25', payable: '0' });
-  const position = page.getByTestId(`position-${k.extra['advance-operation']}`);
-  await expect(position.locator('[data-col="amount"]').getByTestId('money')).toHaveAttribute('title', '50');
-  await expect(position.locator('[data-col="recouped"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await expect(position.locator('[data-col="remaining"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await expect(page.getByTestId('payout-gate').getByTestId('gate-nothing_to_pay')).toBeVisible();
-  // the per-label table and the pseudonym rows come from the same response
-  await expect(page.getByTestId('by-label-0to8').locator('[data-col="earned"]').getByTestId('money')).toHaveAttribute('title', '25');
-  await expect(page.getByTestId(`balance-artist-${k.artists.NG}`).locator('[data-col="recouped"]').getByTestId('money')).toHaveAttribute('title', '25');
-});
-
+// D-232: S23 G29 (the sublabel recipient NG-231) removed with the sublabel rule
 test('the tabs: pseudonyms and tracks link to their cards, documents list the contract, history and publishing render', async ({ page }) => {
   const k = sc(24, 1);
   const ownerId = k.owners.A ?? '';

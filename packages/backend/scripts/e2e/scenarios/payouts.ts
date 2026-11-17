@@ -1,7 +1,7 @@
 import { single } from '../lib';
 import type { Scenario } from './index';
 
-// S22 (G27, G27b payout), S23 (G29 sublabel advance), S24 (G28, G39 negative payable). Payout threshold 0 (seed.ts).
+// S22 (G27, G27b payout), S24 (G28, G39 negative payable). Payout threshold 0 (seed.ts).
 
 export const payouts: Scenario[] = [
   {
@@ -19,19 +19,7 @@ export const payouts: Scenario[] = [
       }
     },
   },
-  {
-    id: 'S23',
-    async run(_f, { seed }) {
-      const c = seed.sc(23, 1); // G29: the sublabel NoGhost Records 23 -> NG-231, advance 50
-      await single(c, async () => {
-        await c.person('A');
-        await c.company('NG');
-        await c.sublabel('NoGhost Records 23', '0to8', 'NG');
-        await c.split(1, [['A', '50']]);
-      }, '100', 'NoGhost Records 23');
-      await c.advance('NG', '50', { kind: 'any' });
-    },
-  },
+  // D-232: the sublabel rule model removed (S23 G29: an advance on the sublabel pseudonym NG)
   {
     id: 'S24',
     async run(_f, { seed }) {

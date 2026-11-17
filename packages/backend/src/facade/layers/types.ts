@@ -22,19 +22,19 @@ export interface MasterUnit {
   net: Decimal;
 }
 
-/** Where an allocation comes from: a split row, a participation of a kind, or the sublabel rule. */
-export type AllocationKind = 'row' | 'top' | 'artist_pool' | 'artist_share' | 'label_share' | 'sublabel';
+/** Where an allocation comes from: a split row or a participation of a kind (no sublabel rule since D-232). */
+export type AllocationKind = 'row' | 'top' | 'artist_pool' | 'artist_share' | 'label_share';
 
-/** Why an allocation is an assumption (C `assumption`): its document, Q11 or R1 (10 §3 layer 6). */
-export type AssumptionBasis = 'document' | 'q11' | 'r1';
+/** Why an allocation is an assumption (C `assumption`): its document (Q11 and R1 of the sublabel rule left with D-232). */
+export type AssumptionBasis = 'document';
 
 export interface Allocation {
   /** The recipient pseudonym (merged ids resolved to the surviving artist). */
   artistId: string;
   ownerId: string | null;
-  layer: 'split' | 'top' | 'carve' | 'sublabel';
+  layer: 'split' | 'top' | 'carve';
   kind: AllocationKind;
-  /** Split id for a row, participation id for top and carves, label rule id for the sublabel. */
+  /** Split id for a row, participation id for top and carves. */
   ruleId: string;
   /** The document in force for this allocation (a row: its own, else the split's). */
   documentId: string | null;
@@ -62,23 +62,11 @@ export interface Shortfall {
   why: 'bucket_short' | 'no_source_row' | 'top_above_100';
 }
 
-export interface SublabelRule {
-  id: string;
-  percent: Decimal;
-  recipientArtistId: string;
-  documentId: string | null;
-}
-
 export interface UnitState {
   unit: MasterUnit;
-  /** The own label whose share this is (a sublabel's own label); null for an unmapped label string. */
+  /** The own label whose share this is; null for an unmapped label string. */
   ourLabelId: string | null;
   ourLabelName: string | null;
-  /** The sublabel the label string maps to (null for an own label or an unmapped string), rule or not. */
-  sublabelId: string | null;
-  sublabelName: string | null;
-  /** The sublabel rule in force at the report month (null for an own label or when none is in force). */
-  rule: SublabelRule | null;
   status: UnitStatus;
   /** net minus the off-the-top allocations. */
   scaledNet: Decimal;
@@ -102,7 +90,7 @@ export type DocumentStatusOf = (
 
 /** Everything a layer may know, as plain functions and maps (one snapshot of the modules). */
 export interface LayerContext {
-  labelOf(labelString: string, date: IsoDate): LabelOfRecord | undefined;
+  labelOf(labelString: string): LabelOfRecord | undefined;
   labelName(labelId: string): string | undefined;
   /** `isrc|upc` pairs of module 1. */
   knownPairs: Set<string>;

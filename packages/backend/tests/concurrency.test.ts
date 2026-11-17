@@ -130,7 +130,7 @@ describe('B17 uploads: two processes, two organizations (D-170)', () => {
     const stack = await testStack();
     const sources = sourcesFor({ pool: stack.pg.pool, columnar: stack.columnar }, orgId, dataDir);
     const f = openFacade({ db: stack.db, orgId, dataDir, payoutThresholdCents: 0, sources });
-    const label = labelId ?? (await f.modules.labels.createLabel({ name: '0to8', kind: 'own' })).id;
+    const label = labelId ?? (await f.modules.labels.createLabel({ name: '0to8' })).id;
     return { f, label };
   }
 

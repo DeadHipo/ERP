@@ -260,10 +260,7 @@ describe('exactness of the layer chain (10 §3)', () => {
       '5.000000000001',
       '0',
     ]);
-    // the same under NoGhost: NG gets 0, never -1 pico
-    expect(run(cases[1]!.w, unit('10.000000000001', { labelName: 'NoGhost Records' })).amount('NG')).toBe(
-      '0',
-    );
+    // D-232: the sublabel rule model removed (the same under NoGhost: NG got 0, never -1 pico)
   });
 
   it('10,000 seeded random units: Σ allocations + label share = net after every layer, ≤ 12 decimals', () => {

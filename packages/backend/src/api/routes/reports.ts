@@ -36,8 +36,6 @@ export function reportsRouter(facade: Facade) {
       ambiguousWriters: cut(s.ambiguousWriters),
       unfunded: cut(s.unfunded),
       labelUnmapped: cut(s.labelUnmapped),
-      sublabelWithoutRule: cut(s.sublabelWithoutRule),
-      ruleRecipientIsRow: cut(s.ruleRecipientIsRow),
       twoRowsOneOwner: cut(s.twoRowsOneOwner),
       mcRowBearsCarve: cut(s.mcRowBearsCarve),
       tracksWithNote: cut(s.tracksWithNote),

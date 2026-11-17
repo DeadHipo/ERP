@@ -323,10 +323,6 @@ export const labels = {
   /** Removes an account from an own label while no file of it is loaded (D-169; 409 `account_has_files`). */
   removeAccount: (labelId: string, account: string) =>
     call('POST', `/labels/${id(labelId)}/accounts/${id(account)}/remove`, { schema: R.labelSchema }),
-  setRule: (labelId: string, body: z.input<typeof S.createLabelRuleBody>) =>
-    call('POST', `/labels/${id(labelId)}/rules`, { body, schema: R.labelRuleSchema }),
-  closeRule: (ruleId: string, body: z.input<typeof S.closeValidToBody>) =>
-    call('POST', `/labels/rules/${id(ruleId)}/close`, { body, schema: R.labelRuleSchema }),
 };
 
 export const sources = {

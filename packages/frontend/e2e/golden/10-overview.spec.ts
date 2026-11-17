@@ -29,19 +29,8 @@ const ROWS: [number, number, number, string, string][] = [
   [4, 2, 0, M, '100 / 50 / 0 / 50'],
   [4, 3, 0, '2026-01', '100 / 50 / 0 / 50'],
   [4, 3, 0, '2026-02', '100 / 50 / 0 / 50'],
-  [5, 1, 0, M, '100 / 75 / 0 / 25'],
-  [5, 2, 0, M, '100 / 85 / 0 / 15'],
-  [5, 3, 0, M, '100 / 100 / 0 / 0'],
-  [5, 4, 0, M, '100 / 50 / 0 / 50'],
   [6, 1, 0, M, '100 / 50 / 0 / 50'],
   [6, 2, 0, M, '100 / 50 / 0 / 50'],
-  [6, 3, 0, M, '100 / 75 / 0 / 25'],
-  [6, 3, 0, '2026-04', '100 / 50 / 0 / 50'],
-  [7, 1, 0, M, '-100 / -78.75 / 0 / -21.25'],
-  [7, 2, 0, M, '0 / 0 / 0 / 0'],
-  [8, 1, 0, M, '100 / 57.5 / 23.375 / 19.125'],
-  [8, 2, 0, M, '100 / 57.5 / 23.375 / 19.125'],
-  [8, 3, 0, M, '100 / 50 / 25 / 25'],
   [8, 4, 0, M, '100 / 0 / 100 / 0'], // D-175: the no-split share waits in C
   [9, 1, 0, M, '100 / 49.8 / 0 / 50.2'],
   [9, 2, 0, M, '100 / 10 / 0 / 90'],
@@ -55,10 +44,8 @@ const ROWS: [number, number, number, string, string][] = [
 /** ourShareByLabel where 19 gives it: [scenario, case, account index, label, amount]. */
 const BY_LABEL: [number, number, number, string, string][] = [
   [1, 1, 0, '0to8', '50'],
-  [5, 1, 0, '0to8', '25'],
   [6, 1, 0, '0to8', '50'],
   [6, 2, 0, 'Echo8', '50'],
-  [8, 3, 0, 'Echo8', '25'],
   [10, 1, 0, '0to8', '50'],
   [10, 1, 1, 'Echo8', '25'],
   [10, 2, 0, 'Echo8', '50'],
@@ -73,8 +60,7 @@ test('P1 rows of S01–S11: A / B / C / ours exact, discrepancy 0', async ({ pag
   for (const [nn, k, a, month, abco] of ROWS) await expectP1(page, account(nn, k, a), month, abco);
   for (const [nn, k, a, label, amount] of BY_LABEL)
     await expect(overviewRow(page, 'believe', account(nn, k, a), M).getByTestId(`by-label-${label}`).getByTestId('money')).toHaveAttribute('title', amount);
-  // S08: the C breakdown by reason; S08/4: the no-split part (C `no_split` since D-175)
-  await expect(overviewRow(page, 'believe', account(8, 1), M).getByTestId('c-reason-assumption').getByTestId('money')).toHaveAttribute('title', '23.375');
+  // S08/4: the no-split part (C `no_split` since D-175); S05, S06/3, S07, S08/1–3 left with the sublabel rule (D-232)
   await expect(overviewRow(page, 'believe', account(8, 4), M).locator('[data-col="noSplit"]').getByTestId('money')).toHaveAttribute('title', '100');
   // no totals row: the page shows rows only
   await expect(page.getByTestId('overview-table').locator('tfoot')).toHaveCount(0);
@@ -125,9 +111,9 @@ test('P1 links: B → tracks of the account and month, the account → its repor
 });
 
 test('P1 period filter is kept in the URL', async ({ page }) => {
-  await openAs(page, '/?from=2026-04&to=2026-04');
+  await openAs(page, '/?from=2026-01&to=2026-01');
   await settled(page);
-  await expect(overviewRow(page, 'believe', account(6, 3), '2026-04')).toBeVisible();
+  await expect(overviewRow(page, 'believe', account(4, 1), '2026-01')).toBeVisible();
   await expect(overviewRow(page, 'believe', account(1, 1), M)).toHaveCount(0);
 });
 

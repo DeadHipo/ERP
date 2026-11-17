@@ -28,7 +28,7 @@ export function useApproveLines(
           doc.title,
           kind,
           formatMoney(u.waiting.amount),
-          c.confirms(u.splits.length, u.rowsOnly.length, u.participations.length, u.labelRules.length, u.contracts.length),
+          c.confirms(u.splits.length, u.rowsOnly.length, u.participations.length, u.contracts.length),
         ),
       ],
       loading: false,

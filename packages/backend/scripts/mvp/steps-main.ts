@@ -634,27 +634,8 @@ async function ensureTrackPair(ctx: Ctx, isrc: string, upc: string, title: strin
 export async function stepLabelFixes(ctx: Ctx) {
   const { log } = ctx;
   log.h('0to8/lost: a representative paid by split rows (M7), not a sublabel');
-  const lost = (await ctx.labels.listLabels()).find((l) => l.name.toLowerCase() === 'lost');
-  if (!lost) {
-    log.count('label_lost_absent');
-    return;
-  }
-  const open = lost.rules.filter((r) => r.validTo === null);
-  if (open.length === 0) {
-    log.count('already_done');
-    return;
-  }
-  for (const r of open) {
-    const to = new Date(`${r.validFrom}T00:00:00Z`);
-    to.setUTCMonth(to.getUTCMonth() + 1);
-    const validTo = to.toISOString().slice(0, 10);
-    if (ctx.apply) await ctx.f.closeLabelRule(r.id, validTo);
-    log.event(
-      'rule_closed',
-      `lost rule ${r.percent}% from ${r.validFrom} closed at ${validTo}: that one month stays an assumption; later months of "0to8/lost" have no sublabel rule, so the whole label share stays with 0to8`,
-    );
-  }
-  log.p('The labels service has no call to re-point an alias to another label (alias "0to8/lost" stays an alias of label "lost"); closing the rule gives the same money result from the second month.');
+  // D-232: the sublabel rule model removed; there is no rule of «lost» to close, the step is a no-op
+  log.count('no_label_rules');
 }
 
 // ---- 3. lunar: LUNAR MEDIA 10 % vocal licence

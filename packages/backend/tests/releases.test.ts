@@ -272,8 +272,7 @@ describe('the release registry on the stack (D-172, D-195)', () => {
     await expect(f.previewReleases({ ...exportFile(BASE), labelId: undefined, source: 'believe' })).rejects.toMatchObject({ statusCode: 400, code: 'label_required' });
     await expect(f.applyReleases({ labelId: undefined, changes: [] })).rejects.toMatchObject({ statusCode: 400, code: 'label_required' });
     await expect(importOf(w, BASE, 'no-such-label')).rejects.toMatchObject({ statusCode: 404 });
-    const sub = await f.modules.labels.createLabel({ name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: zero });
-    await expect(importOf(w, BASE, sub.id)).rejects.toMatchObject({ statusCode: 400, code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a sublabel label refused as label_not_own)
     // a manager of Echo8 under 0to8
     await expect(importOf(w, BASE, zero, labelsViewer([echo]))).rejects.toMatchObject({ statusCode: 403, code: 'label_forbidden' });
     await expect(f.applyReleases({ labelId: zero, changes: [] }, labelsViewer([echo]))).rejects.toMatchObject({ statusCode: 403, code: 'label_forbidden' });

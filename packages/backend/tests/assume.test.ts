@@ -108,8 +108,7 @@ describe('assume: one assumption document for the splits without a document', ()
     await expect(assume(f, { isrcs: ['QZTST2600299'] })).rejects.toMatchObject({ code: 'nothing_to_assume' });
     await expect(assume(f, { splitIds: ['no-such-split'] })).rejects.toMatchObject({ statusCode: 404, code: 'not_found' });
     await expect(assume(f, { isrcs: [I1] }, undefined, 'no-such-label')).rejects.toMatchObject({ statusCode: 404, code: 'not_found' });
-    const sub = await f.modules.labels.createLabel({ name: 'Sub Assume', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
-    await expect(assume(f, { isrcs: [I1] }, undefined, sub.id)).rejects.toMatchObject({ statusCode: 400, code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a sublabel label refused as label_not_own)
     await expect(assume(f, { isrcs: ['bad'] })).rejects.toMatchObject({ code: 'validation_error' });
     // a viewer of some labels (D-171): the label must be its own, every ISRC in its files or in none
     await f.ingestBelieve(writeBelieve('2026-07', [{ isrc: I5, upc: UPC, net: '1' }], { account: '1055956' }), f.testLabels.Echo8);

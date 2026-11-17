@@ -6,7 +6,7 @@ const rows = (...s: [string, string, string?][]): World['splits'] => ({ [I1]: [{
 const totalMissing = (o: ReturnType<typeof run>) =>
   o.state.shortfalls.reduce((s, x) => s.add(x.missing), new Decimal(0)).toFixed();
 
-describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
+describe('layer 5: carves (pool, artist share, label share)', () => {
   it('G03b: two MCs 13 + 13 from the pool 50 pro rata', () => {
     const o = run(
       {
@@ -53,12 +53,7 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     expect(['MO', 'LU', 'K'].map(all.amount)).toEqual(['8', '8', '4']);
     expect(exactAfterEveryLayer(o, new Decimal('100'))).toBeNull();
   });
-  it('G05a / G05b: the sublabel half of the label share', () => {
-    const a = run({ splits: rows(['A', '50']) }, unit('100', { labelName: 'NoGhost Records' }));
-    expect([a.amount('A'), a.amount('NG'), a.B, a.ours]).toEqual(['50', '25', '75', '25']);
-    const b = run({ splits: rows(['A', '70']) }, unit('100', { labelName: 'NoGhost Records' }));
-    expect([b.amount('NG'), b.B, b.ours]).toEqual(['15', '85', '15']);
-  });
+  // D-232: the sublabel rule model removed (G05a / G05b: the sublabel half of the label share)
   it('G11: (bucket, label_share) 15 of the label share 50', () => {
     const o = run(
       {
@@ -97,59 +92,8 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     const apr = run(w, unit('100', { reportingMonth: '2026-04' }));
     expect([mar.amount('P'), mar.ours, apr.amount('P'), apr.ours]).toEqual(['7.5', '42.5', undefined, '50']);
   });
-  it('G15 (E1): a negative unit through top, rows and sublabel', () => {
-    const o = run(
-      { splits: rows(['A', '25'], ['B', '25']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] },
-      unit('-100', { labelName: 'NoGhost Records' }),
-    );
-    expect(['R', 'A', 'B', 'NG'].map(o.amount)).toEqual(['-15', '-21.25', '-21.25', '-21.25']);
-    expect([o.B, o.C, o.ours]).toEqual(['-78.75', '0', '-21.25']);
-  });
-  it('G16 (E2): a zero unit emits zero allocations', () => {
-    const o = run(
-      { splits: rows(['A', '25'], ['B', '25']), parts: [{ artist: 'R', percent: '15', funded: 'top' }] },
-      unit('0', { labelName: 'NoGhost Records' }),
-    );
-    expect(['R', 'A', 'B', 'NG'].map(o.amount)).toEqual(['0', '0', '0', '0']);
-    expect([o.B, o.C, o.ours, o.state.shortfalls.length]).toEqual(['0', '0', '0', 0]);
-  });
-  const g18: PartSpec[] = [
-    { artist: 'R', percent: '15', funded: 'top' },
-    { artist: 'M', percent: '13', funded: 'artist_pool' },
-    { artist: 'P', percent: '10', funded: 'label_share', base: 'bucket' },
-  ];
-  it('G18 (E18, Q11): every kind on one unit', () => {
-    const o = run(
-      { splits: rows(['A', '25'], ['B', '25']), parts: g18 },
-      unit('100', { labelName: 'NoGhost Records' }),
-    );
-    expect(['R', 'A', 'B', 'M', 'P', 'NG'].map(o.amount)).toEqual([
-      '15',
-      '14.75',
-      '14.75',
-      '13',
-      '4.25',
-      '19.125',
-    ]);
-    expect([o.reason('P'), o.reason('NG'), o.B, o.C, o.ours]).toEqual([
-      'assumption',
-      'assumption',
-      '57.5',
-      '23.375',
-      '19.125',
-    ]);
-  });
-  it('G18b: plus E 10 of A after the pool carve', () => {
-    const o = run(
-      {
-        splits: rows(['A', '25'], ['B', '25']),
-        parts: [...g18, { artist: 'E', percent: '10', funded: 'artist_share', from: 'A' }],
-      },
-      unit('100', { labelName: 'NoGhost Records' }),
-    );
-    expect(['E', 'A', 'B', 'P', 'NG'].map(o.amount)).toEqual(['1.475', '13.275', '14.75', '4.25', '19.125']);
-    expect([o.B, o.ours]).toEqual(['57.5', '19.125']);
-  });
+  // D-232: the sublabel rule model removed (G15 / G16: a negative and a zero unit through top, rows and the sublabel)
+  // D-232: the sublabel rule model removed (G18 / G18b: every kind on one unit incl. the sublabel and Q11)
   it('G22 (E3): a pool smaller than the carve: P takes the pool, shortfall 10', () => {
     const o = run(
       { splits: rows(['A', '10']), parts: [{ artist: 'P', percent: '20', funded: 'artist_pool' }] },
@@ -181,10 +125,7 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
       '22.5',
     ]);
   });
-  it('G31 (E4): rows 100 and a sublabel: NG 0 is emitted', () => {
-    const o = run({ splits: rows(['A', '100']) }, unit('100', { labelName: 'NoGhost Records' }));
-    expect([o.amount('A'), o.amount('NG'), o.B, o.ours]).toEqual(['100', '0', '100', '0']);
-  });
+  // D-232: the sublabel rule model removed (G31: rows 100 and a sublabel, NG 0 is emitted)
   it('G34: a non-terminating pro rata, residue to the largest row (tie: first by id)', () => {
     const o = run(
       {
@@ -284,8 +225,5 @@ describe('layer 5: carves (pool, artist share, label share, sublabel)', () => {
     );
     expect([o.amount('P'), o.ours]).toEqual([undefined, '50']);
   });
-  it('the sublabel never runs on an unmapped string', () => {
-    const o = run({ splits: rows(['A', '50']) }, unit('100', { labelName: 'Unknown Imprint' }));
-    expect([o.amount('NG'), o.C]).toEqual([undefined, '50']);
-  });
+  // D-232: the sublabel rule model removed (the sublabel never ran on an unmapped string)
 });

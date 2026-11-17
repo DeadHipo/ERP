@@ -26,7 +26,6 @@
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
 import { connectOrg, takeOrgArgument } from '../src/connect-sources';
-import { monthStart } from '../src/shared/dates';
 import type { LabelSource } from '../src/modules/settlements';
 
 // the organization (D-170): --org <id> anywhere on the line, else ERP_ORG / ERP_DEFAULT_ORG
@@ -54,8 +53,7 @@ try {
   const isrcLabels = new Map<string, Set<string>>();
   const { units } = await sources.snapshot();
   for (const u of units) {
-    const l = labelIndex.labelOf(u.labelName, monthStart(u.reportingMonth));
-    const own = l ? (l.kind === 'own' ? l.id : l.ownLabelId) : null;
+    const own = labelIndex.labelOf(u.labelName)?.id ?? null; // D-232: every label is own
     if (!own || !u.isrc) continue;
     let set = isrcLabels.get(u.isrc);
     if (!set) isrcLabels.set(u.isrc, (set = new Set()));

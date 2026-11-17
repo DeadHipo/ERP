@@ -339,9 +339,7 @@ describe.runIf(postgresUp && clickhouseUp)('a Believe file is loaded under a lab
     expect([missing.status, missing.body.error.code]).toEqual([400, 'label_required']);
     const unknown = await send({ label: 'no-such-label' });
     expect([unknown.status, unknown.body.error.code]).toEqual([404, 'not_found']);
-    const sub = await f.modules.labels.createLabel({ name: 'Sub Upload', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
-    const notOwn = await send({ label: sub.id });
-    expect([notOwn.status, notOwn.body.error.code]).toEqual([400, 'label_not_own']);
+    // D-232: the sublabel rule model removed (a sublabel label refused as label_not_own)
     const b17 = await writer(app).post('/api/v1/publishing/b17').set('Content-Type', 'text/plain').send('not a multipart body');
     expect([b17.status, b17.body.error.code]).toEqual([400, 'label_required']);
     // nothing was received: the upload directory was never created

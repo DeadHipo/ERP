@@ -1,4 +1,3 @@
-import { ValidationError } from '../shared/errors';
 import { normalizeName } from '../shared/identifiers';
 import { parseSongwriters } from '../modules/publishing';
 import type { SettlementsService } from '../modules/settlements';
@@ -17,12 +16,10 @@ export interface LabelBook {
   fileIds: string[];
 }
 
-/** The book of an own label; 404 for an unknown id, 400 `label_not_own` for a sublabel. */
+/** The book of an own label; 404 for an unknown id. */
 export async function labelBook(modules: Pick<Modules, 'labels' | 'sources'>, labelId: string): Promise<LabelBook> {
   const { labels, sources } = modules;
   const l = await labels.getLabel(labelId);
-  if (l.kind !== 'own')
-    throw new ValidationError(`Label "${l.name}" is a sublabel; a label view takes an own label`, { labelId }, 'label_not_own');
   return { id: l.id, name: l.name, fileIds: (await sources.filesOfLabel(l.id)).map((f) => f.id) };
 }
 
@@ -60,7 +57,7 @@ export async function labelVisibility(
   modules: Pick<Modules, 'owners' | 'splits' | 'labels' | 'sources' | 'ads' | 'publishing'> & { settlements: SettlementsService },
   book: LabelBook,
 ): Promise<LabelVisibility> {
-  const { owners, splits, labels, ads, settlements, publishing } = modules;
+  const { owners, splits, ads, settlements, publishing } = modules;
   const isrcs = new Set(await labelIsrcs(modules, book));
   const idx = await owners.artistIndex();
   const canon = (id: string) => idx.get(id)?.id ?? id;
@@ -74,8 +71,6 @@ export async function labelVisibility(
     artistIds.add(canon(p.artistId));
     if (p.fromArtistId !== null) artistIds.add(canon(p.fromArtistId));
   }
-  for (const l of await labels.listLabels())
-    if (l.ownLabelId === book.id) for (const r of l.rules) artistIds.add(canon(r.recipientArtistId));
   for (const ad of paid) if (ad.artistId) artistIds.add(canon(ad.artistId));
   const ownerIds = new Set<string>();
   for (const o of await settlements.listOperations({ labelId: book.id, active: true })) {

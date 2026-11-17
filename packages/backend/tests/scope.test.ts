@@ -21,7 +21,10 @@ async function world() {
   await c.split(I(1), [['A', '50']]);
   await c.split(I(2), [['B', '30']], { doc: null }); // waits in C: split_unconfirmed
   await c.split(I(3), []); // «100 % label» (D-175: without a split the sublabel carve does not run)
-  await c.sublabel('Sub One', '0to8', 'R');
+  // D-232: the sublabel rule model removed: R reached I(3) by the rule of «Sub One» (50 % of the label share of its
+  // strings); the same money now comes by a label-share participation of March, «Sub One» is an alias of 0to8
+  await c.f.modules.labels.addAlias(c.f.testLabels['0to8'], 'Sub One');
+  await c.part(I(3), 'R', '50', 'bucket', 'label_share', { validTo: '2026-04-01' });
   await c.load('2026-03', [
     { isrc: I(1), net: '100' },
     { isrc: I(2), net: '50' },
@@ -148,7 +151,7 @@ describe('unit scope of the facade (D-161)', () => {
       full.map((i) => [i.isrc, i.upcs, i.hasSplit, i.hasParticipations, i.isrc !== I(5)]),
     );
     expect(catalog.map((i) => [i.title, i.artistName, i.artists])).toEqual(full.map((i) => [i.title, i.artistName, i.artists]));
-    expect(full.map((i) => i.artists.map((a) => a.pseudonym))).toEqual([['A'], ['B'], [], [], []]); // D-166: rows and links, merged ids resolved
+    expect(full.map((i) => i.artists.map((a) => a.pseudonym))).toEqual([['A'], ['B'], ['R'], [], []]); // D-166: rows and links, merged ids resolved; D-232: R is a participant of I(3)
     await expect(f.trackSummary({ isrcs: 'not-an-isrc' })).rejects.toThrow();
     await expect(f.trackSummary({ isrcs: Array.from({ length: 501 }, (_, n) => I(n)).join(',') })).rejects.toThrow(/at most 500/);
   });
@@ -187,8 +190,7 @@ describe('unit scope of the facade (D-161)', () => {
   it('the balance from the units of the owner reach equals the full balance (D-163)', async () => {
     const { c } = await world();
     const f = c.f;
-    // A: a split of I(1); B: a split of I(2); R: the recipient of the sublabel rule of «Sub One» (I(3) carries it; its
-    // split has no rows), so its reach comes from the label strings alone
+    // A: a split of I(1); B: a split of I(2); R: a label-share participation on I(3) (its split has no rows; D-232)
     const reach = async (name: string) => (await f.ownerReach(c.owners.get(name) as string)).isrcs;
     expect(await reach('A')).toEqual([I(1)]);
     expect(await reach('B')).toEqual([I(2)]);
@@ -275,7 +277,10 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     await c.split(I(2), [['B', '30']], { doc: null }); // waits in C: split_unconfirmed
     await c.split(I(3), []); // «100 % label» (D-175: without a split the sublabel carve does not run)
     await c.split(I(4), [['A2', '40']]);
-    await c.sublabel('Sub One', '0to8', 'R');
+    // D-232: the sublabel rule model removed: R reached I(3) by the rule of «Sub One» (50 % of the label share of its
+    // strings); the same money now comes by a label-share participation of March, «Sub One» is an alias of 0to8
+    await c.f.modules.labels.addAlias(c.f.testLabels['0to8'], 'Sub One');
+    await c.part(I(3), 'R', '50', 'bucket', 'label_share', { validTo: '2026-04-01' });
     await c.load('2026-03', [
       { isrc: I(1), net: '100' },
       { isrc: I(2), net: '50' },
@@ -351,7 +356,7 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     const b = await f.artistBalance(c.id('B'));
     expect([b.total.earned.toFixed(), b.total.waiting.toFixed(), b.period.waitingBreakdown.split_unconfirmed?.toFixed()]).toEqual(['0', '15', '15']);
     const r = await f.artistBalance(c.id('R'));
-    // the carve of the sublabel reached the recipient: 50 % of 20 (the split of I(3) has no rows: the whole net is the label share), earned
+    // the label-share carve reached the recipient (D-232: before, the sublabel rule): 50 % of 20 (the split of I(3) has no rows: the whole net is the label share), earned
     expect([r.total.earned.toFixed(), r.total.waiting.toFixed(), r.period.waitingBreakdown.assumption?.toFixed()]).toEqual(['10', '0', undefined]);
     expect(Object.keys(r.byLabel)).toEqual(['0to8']);
     const p = await f.artistBalance(c.id('P'));
@@ -397,7 +402,7 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     expect(row('A2')).toEqual([c.owners.get('A'), 'confirmed', 0, 1, 1, 0, 0, 0]);
     expect(row('B')).toEqual([c.owners.get('B'), 'confirmed', 0, 1, 1, 0, 1, 1]); // the split of I(2) has no document
     expect(row('P')).toEqual([c.owners.get('P'), 'confirmed', 0, 1, 0, 1, 1, 0]);
-    expect(row('R')).toEqual([c.owners.get('R'), 'confirmed', 0, 0, 0, 0, 1, 0]);
+    expect(row('R')).toEqual([c.owners.get('R'), 'confirmed', 0, 1, 0, 0, 1, 0]); // D-232: the participation of I(3) is a track of R
     expect(rows.map((r) => r.pseudonym)).toEqual([...rows.map((r) => r.pseudonym)].sort((x, y) => x.localeCompare(y)));
     // a merged id answers for the survivor once, an unknown id is left out, more than 200 ids are refused
     await f.modules.owners.mergeArtists(c.id('A2'), c.id('A'), 'same person');
@@ -447,8 +452,8 @@ describe('the money of a pseudonym from its reach (D-165)', () => {
     expect(detail.tracks.map((t) => t.isrc).sort()).toEqual([I(1), I(4)]);
     expect(detail.contracts.length).toBe(1);
     expect(detail.documents.map((d) => d.kind).sort()).toEqual(['appendix', 'contract']);
-    const r = await f.artistDetail(c.id('R'));
-    expect(r.labelRules.map((x) => [x.labelName, x.recipientArtistId])).toEqual([['Sub One', c.id('R')]]);
+    await f.artistDetail(c.id('R'));
+    // D-232: the sublabel rule model removed (the label rules of the artist card)
     await expect(f.artistDetail('no-such-artist')).rejects.toThrow();
     await expect(f.artistBalance('no-such-artist')).rejects.toThrow();
   });
@@ -560,10 +565,7 @@ describe('the label as a book (D-168)', () => {
     for (const k of ['earned', 'waiting', 'recouped', 'unrecouped', 'recoupedFromMaster', 'adsCharged', 'paid'] as const)
       expect(sum(Object.values(m.byLabel).map((b) => b[k])), k).toBe(m.total[k].toFixed());
     await c.verify();
-    // a sublabel or an unknown id is refused as a view
-    await c.sublabel('Sub One', '0to8', 'B');
-    const sub = await c.labelId('Sub One');
-    await expect(f.ownerBalance(c.owners.get('A') as string, {}, sub)).rejects.toMatchObject({ code: 'label_not_own' });
+    // an unknown id is refused as a view (D-232: the sublabel rule model removed, a sublabel view was label_not_own)
     await expect(f.ownerBalance(c.owners.get('A') as string, {}, 'no-such-label')).rejects.toMatchObject({ statusCode: 404 });
   });
 
@@ -588,17 +590,16 @@ describe('the label as a book (D-168)', () => {
     const deduction = { direction: 'in' as const, amount: '1', artistId: c.id('A'), date: '2026-05-01', documentId: basis, comment: 'deduction' };
     await expect(f.createOperation(deduction)).rejects.toMatchObject({ code: 'label_required' });
     await expect(f.createOperation({ ...deduction, labelId: 'no-such-label' })).rejects.toMatchObject({ statusCode: 404 });
-    await c.sublabel('Sub One', '0to8', 'B');
-    await expect(f.createOperation({ ...deduction, labelId: await c.labelId('Sub One') })).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (an operation under a sublabel label was label_not_own)
     const d = await f.createOperation({ ...deduction, labelId: zero });
     expect(d.labelId).toBe(zero);
     // an ad without an ISRC needs a label; an own one
     await expect(f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-05', amount: '1' }])).rejects.toMatchObject({ code: 'label_required' });
-    await expect(f.createAds([{ isrc: null, artistId: c.id('A'), month: '2026-05', amount: '1', labelId: await c.labelId('Sub One') }])).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (an ad under a sublabel label was label_not_own)
     // the accounts of a label
     await expect(f.modules.labels.addAccount(echo, ACC1)).rejects.toMatchObject({ code: 'account_taken' });
-    await expect(f.modules.labels.addAccount(await c.labelId('Sub One'), '9')).rejects.toMatchObject({ code: 'account_for_sublabel' });
-    expect((await f.listLabels()).map((l) => [l.name, l.accounts])).toEqual(expect.arrayContaining([['0to8', [ACC1]], ['Echo8', [ACC2]], ['Sub One', []]]));
+    // D-232: the sublabel rule model removed (an account of a sublabel label was account_for_sublabel)
+    expect((await f.listLabels()).map((l) => [l.name, l.accounts])).toEqual(expect.arrayContaining([['0to8', [ACC1]], ['Echo8', [ACC2]]]));
   });
 
   it('setting the label of an operation without one makes it recoup from that label only (D-168)', async () => {
@@ -707,9 +708,9 @@ describe('the label as a book (D-168)', () => {
 
 describe('the book by the account of the file (D-169)', () => {
   /**
-   * A: rows A 50 on I(1) and I(2); R: the recipient of the rule of the sublabel «Sub Echo» of Echo8 (50 of the label
-   * share). The 0to8 account carries I(1) 100 with the string «Sub Echo» (it leads to Echo8 through the sublabel); the
-   * Echo8 account carries I(2) 40 with the string `Echo8`. One month.
+   * A: rows A 50 on I(1) and I(2); R: a label-share participation of 50 on I(1) (D-232: before, the rule of the sublabel
+   * «Sub Echo» of Echo8, the same money). The 0to8 account carries I(1) 100 with the string «Sub Echo» (an alias of
+   * Echo8); the Echo8 account carries I(2) 40 with the string `Echo8`. One month.
    */
   async function bookWorld() {
     const c = await Case.start();
@@ -718,7 +719,8 @@ describe('the book by the account of the file (D-169)', () => {
     await c.track(I(2));
     await c.split(I(1), [['A', '50']]);
     await c.split(I(2), [['A', '50']]);
-    await c.sublabel('Sub Echo', 'Echo8', 'R');
+    await c.f.modules.labels.addAlias(c.f.testLabels.Echo8, 'Sub Echo');
+    await c.part(I(1), 'R', '50', 'bucket', 'label_share');
     await c.load('2026-03', [{ isrc: I(1), net: '100', label: 'Sub Echo' }]);
     await c.load('2026-03', [{ isrc: I(2), net: '40', label: 'Echo8' }], ACC2);
     return { c, f: c.f, zero: c.f.testLabels['0to8'], echo: c.f.testLabels.Echo8 };
@@ -728,14 +730,15 @@ describe('the book by the account of the file (D-169)', () => {
   const earnedBooks = (b: { byLabel: Record<string, { earned: Decimal }> }) =>
     Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, x.earned.toFixed()]));
 
-  it('the book of a unit is the label of its file, the sublabel rule still follows the label string', async () => {
+  it('the book of a unit is the label of its file, the label of record follows the label string', async () => {
     const { c, f, zero, echo } = await bookWorld();
-    // the unit: book 0to8 (its file), label of record Echo8 and the rule of «Sub Echo» (its string)
+    // the unit: book 0to8 (its file), label of record Echo8 (its string); D-232: no sublabel name and rule, the
+    // participation of R is a carve (before: the sublabel layer)
     const [m] = (await f.trackMoney(I(1))).months;
-    expect(m && [m.bookLabelId, m.bookLabelName, m.ourLabelName, m.sublabelName, m.rule !== null]).toEqual([zero, '0to8', 'Echo8', 'Sub Echo', true]);
+    expect(m && [m.bookLabelId, m.bookLabelName, m.ourLabelName]).toEqual([zero, '0to8', 'Echo8']);
     expect(m?.allocations.map((a) => [a.pseudonym, a.layer, a.amount.toFixed()])).toEqual([
       ['A', 'split', '50'],
-      ['R', 'sublabel', '25'],
+      ['R', 'carve', '25'],
     ]);
     // the reconciliation: one book per Believe row, ourShareByLabel by the string (the reference invariant)
     const recon = await f.reconciliation();
@@ -743,7 +746,7 @@ describe('the book by the account of the file (D-169)', () => {
     expect(Object.keys(row(ACC1)?.byLabel ?? {})).toEqual(['0to8']);
     expect(Object.keys(row(ACC2)?.byLabel ?? {})).toEqual(['Echo8']);
     expect(Object.fromEntries(Object.entries(row(ACC1)?.ourShareByLabel ?? {}).map(([k, v]) => [k, v.toFixed()]))).toEqual({ Echo8: '25' });
-    // the balances: R's rule money sits in the 0to8 book
+    // the balances: R's carve sits in the 0to8 book
     expect(earnedBooks(await f.ownerBalance(c.owners.get('R') as string))).toEqual({ '0to8': '25' });
     expect(earnedBooks(await f.ownerBalance(c.owners.get('A') as string))).toEqual({ '0to8': '50', Echo8: '20' });
     // the signal: the string leads to Echo8 inside the file of 0to8; seen whole and under 0to8, not under Echo8
@@ -791,7 +794,7 @@ describe('the book by the account of the file (D-169)', () => {
       const item = (await f.ownerPayables({ label: id })).items.find((i) => i.ownerId === a);
       expect(item?.earned.toFixed(), name).toBe(book?.earned.toFixed());
     }
-    // R's rule money is in the 0to8 book: nothing of it under Echo8, though the rule is of an Echo8 sublabel
+    // R's carve is in the 0to8 book: nothing of it under Echo8, though the string leads to Echo8
     expect((await f.ownerBalance(c.owners.get('R') as string, {}, echo)).total.earned.toFixed()).toBe('0');
   });
 

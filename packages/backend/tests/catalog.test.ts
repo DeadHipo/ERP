@@ -209,8 +209,7 @@ describe('the label history on the stack (D-172)', () => {
       statusCode: 400,
       code: 'empty_period',
     });
-    const sub = await f.modules.labels.createLabel({ name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: zero });
-    await expect(f.setTrackLabel(I(2), { labelId: sub.id, from: '2026-05-01' })).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a sublabel label refused as label_not_own)
     await expect(f.setTrackLabel(I(2), { labelId: 'no-such-label', from: '2026-05-01' })).rejects.toMatchObject({ statusCode: 404 });
     // nothing was left by the refusals
     expect((await f.trackLabels(I(2))).map((r) => r.source)).toEqual(['files', 'operator', 'files']);

@@ -35,23 +35,7 @@ test('S24/1 A-241: the row names the owner (a link), its tracks, rules and contr
   expectMoneyCalls(page, 1);
 });
 
-test('S23 NG-231: the sublabel recipient earned 25 and recouped 25 of its advance, so nothing is left; the search finds a pseudonym by its owner', async ({ page }) => {
-  const k = sc(23);
-  await openAs(page, '/artists?q=NG-231');
-  const row = page.getByTestId(`artist-${k.artists.NG}`);
-  await expect(row).toBeVisible();
-  await expect(page.getByTestId(`artist-owner-${k.artists.NG}`).getByRole('link')).toHaveAttribute('href', `/owners/${k.owners.NG}`);
-  await expect(cell(row, 'splitRows')).toHaveText('0');
-  await settled(page);
-  await expectMoney(row, { earned: '25', recouped: '25', remaining: '0' });
-  expectMoneyCalls(page, 1);
-  // the search matches the owner's name too
-  const a = sc(24, 1);
-  await openAs(page, '/artists?q=Owner A-241');
-  await expect(page.getByTestId(`artist-${a.artists.A}`)).toBeVisible();
-  await expect(page.getByTestId('artists-count')).toContainText('1');
-});
-
+// D-232: S23 NG-231 removed with the sublabel rule
 test('the links open the pseudonym (P12) and the owner (P10); «Посчитать все» is one calculation of every pseudonym', async ({ page }) => {
   const k = sc(24, 1);
   await openAs(page, '/artists?q=A-241');

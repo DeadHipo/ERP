@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 async function freshLabel(f: TestFacade) {
-  return f.modules.labels.createLabel({ name: 'Fresh', kind: 'own' });
+  return f.modules.labels.createLabel({ name: 'Fresh' });
 }
 
 async function load(f: TestFacade, labelId: string, month: string, rows: { isrc: string; label: string }[]) {
@@ -160,11 +160,10 @@ describe('the label checklist (D-172)', () => {
     expect(s.publishing).toMatchObject({ state: 'info', count: 1, counts: { statements: 1, quarters: 1 } });
   });
 
-  it('no label = 400 label_required; a sublabel 400 label_not_own; a viewer of another label 403', async () => {
+  it('no label = 400 label_required; a viewer of another label 403', async () => {
     const f = await newFacade();
     await expect(f.labelChecklist(undefined)).rejects.toMatchObject({ code: 'label_required' });
-    const sub = await f.modules.labels.createLabel({ name: 'Onb Sub', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
-    await expect(f.labelChecklist(sub.id)).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a sublabel label refused as label_not_own)
     await expect(f.labelChecklist(f.testLabels.Echo8, labelsViewer([f.testLabels['0to8']]))).rejects.toMatchObject({ code: 'label_forbidden' });
     expect((await f.labelChecklist(f.testLabels['0to8'], labelsViewer([f.testLabels['0to8']]))).label.name).toBe('0to8');
   });

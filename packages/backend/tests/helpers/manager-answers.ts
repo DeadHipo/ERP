@@ -51,8 +51,6 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'POST /labels/:id/accounts': 'x',
   'POST /labels/:id/accounts/:account/remove': 'x',
   'POST /labels/:id/aliases': 'x',
-  'POST /labels/:id/rules': 'x',
-  'POST /labels/rules/:id/close': 'x',
   // the sublabels (D-217, D-218): rights to be revised with the owner; for now the catalogue reads, no writes
   'GET /sublabels': 'O',
   'POST /sublabels': 'x',

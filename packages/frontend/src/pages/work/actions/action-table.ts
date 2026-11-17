@@ -20,7 +20,7 @@ export const REASON_ACTIONS: Record<CReason, ActionEntry> = {
   // Groups of the q11 / r1 bases are read-only in the queue (decisions still open); the rest are replaced by a document.
   assumption: { action: 'ReplaceDocumentDialog' },
   artist_without_owner: { action: 'AssignOwnerDialog' },
-  label_unmapped: { action: 'LabelAliasDialog', also: ['SublabelRuleDialog'] },
+  label_unmapped: { action: 'LabelAliasDialog' },
   // An unapproved document is approved; a rule without a document is recreated with one.
   rule_unconfirmed: { action: 'ApproveDocumentDialog', also: ['ReplaceDocumentDialog'] },
   unknown_pair: { action: 'RegisterTrackDialog' },
@@ -38,9 +38,7 @@ export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   isrcsWithoutSplit: { action: 'CreateSplitDialog' },
   ambiguousWriters: { action: 'MapWriterDialog' },
   unfunded: { action: 'RecreateParticipationDialog' },
-  labelUnmapped: { action: 'LabelAliasDialog', also: ['SublabelRuleDialog'] },
-  sublabelWithoutRule: { action: 'SetRuleDialog' },
-  ruleRecipientIsRow: { action: 'CloseRuleDialog' },
+  labelUnmapped: { action: 'LabelAliasDialog' },
   mcRowBearsCarve: { information: true, note: 'a row named like an MC without the MC mark bears the pool carve of another MC (D-216): mark it MC in a new split version on the track page' },
   twoRowsOneOwner: { information: true, note: 'two split rows of one owner on a unit: shown for the head, no action' },
   tracksWithNote: { action: 'NoteDialog' },

@@ -31,7 +31,7 @@ try {
       const statement = await b.f.modules.publishing.ingestB17(input);
       out = { statement, writers: await b.f.resolveWriters() };
     } else {
-      const own = (await b.f.modules.labels.listLabels()).find((l) => l.kind === 'own' && l.name === labelName);
+      const own = (await b.f.modules.labels.listLabels()).find((l) => l.name === labelName);
       if (!own) throw new Error(`No own label named "${labelName}"`);
       out = await b.f.ingestB17(input, own.id);
     }

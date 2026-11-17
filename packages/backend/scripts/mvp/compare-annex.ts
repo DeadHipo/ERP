@@ -115,7 +115,7 @@ for (const u of calc.units) {
   if (u.status === 'no_split') c.noSplit = true;
   if (u.labelShareCategory === 'label_unmapped') c.unmapped = true;
   for (const a of u.allocations) {
-    if (a.layer === 'sublabel' && (a.assumption !== null || a.category === 'C')) c.sublabelAssumption = true;
+    // D-232: the sublabel rule model removed (no sublabel layer: `sublabelAssumption` stays false)
     const who = calc.artistIndex.get(a.artistId)?.pseudonym ?? a.artistId.slice(0, 8);
     addTo(c.alloc, `${who} ${a.layer}/${a.kind}${a.category === 'C' ? ' C' : ''}`, a.amount);
   }

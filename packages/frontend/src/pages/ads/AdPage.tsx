@@ -123,11 +123,7 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
             )}
             <Fact testId="ad-unrecovered" label={d.unrecovered} value={a.unrecovered} />
             <Text testId="ad-borne" label={d.borne}>
-              {a.borneBy.kind === 'sublabel' ? (
-                <EntityLink kind="artist" id={a.borneBy.artistId} label={a.sublabelName ?? a.borneBy.artistId} />
-              ) : (
-                t.borneUs
-              )}
+              {t.borneUs}
             </Text>
           </Section>
         ) : null}

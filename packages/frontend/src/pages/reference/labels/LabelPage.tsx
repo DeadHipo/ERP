@@ -7,19 +7,14 @@ import { useAction } from '../../../api/queries/core';
 import { labelQueries } from '../../../api/queries/labels';
 import { ActionButton } from '../../../components/ActionButton';
 import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
-import { EntityLink } from '../../../components/EntityLink';
 import { FormDialog } from '../../../components/FormDialog';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
 import { AddAccountDialog, RemoveAccountDialog } from './AccountDialogs';
-import { CloseRuleDialog, SetRuleDialog } from '../../work/actions/dialogs';
-import { DocumentCell, period } from '../shared';
 
 const t = ru.reference.labels;
-type Rule = LabelListItem['rules'][number];
 
 function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
   const [alias, setAlias] = useState('');
@@ -43,12 +38,12 @@ function AddAliasDialog(props: { label: LabelListItem; onClose: () => void }) {
   );
 }
 
-/** P17 «Лейбл» `/labels/:id`: aliases, accounts and rules of one label; add alias, add account, set rule, close rule. */
+/** P17 «Лейбл» `/labels/:id`: the Believe strings and accounts of one own label (D-232: no rules). */
 export function LabelPage() {
   const id = useParams().id ?? '';
   const query = useQuery(labelQueries.list());
   const label = query.data?.find((l) => l.id === id);
-  const [dialog, setDialog] = useState<{ kind: 'alias' } | { kind: 'account' } | { kind: 'remove'; account: string } | { kind: 'rule' } | { kind: 'close'; rule: Rule } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'alias' } | { kind: 'account' } | { kind: 'remove'; account: string } | null>(null);
   useBreadcrumbLabel(label?.name ?? id);
   const close = () => setDialog(null);
   return (
@@ -57,18 +52,9 @@ export function LabelPage() {
         {(all) => {
           const l = all.find((x) => x.id === id);
           if (!l) return <p className="text-sm text-muted" data-testid="label-missing">{ru.common.notFound}</p>;
-          const own = l.ownLabelId ? all.find((x) => x.id === l.ownLabelId) : undefined;
           return (
             <div className="flex flex-col gap-6">
               <PageHeader title={l.name} subtitle={t.detailSubtitle} />
-              <div className="flex flex-wrap gap-4 text-sm" data-testid="label-header">
-                <span data-testid="label-kind">{t.kind[l.kind]}</span>
-                {own ? (
-                  <span>
-                    {t.ownerOf}: <EntityLink kind="label" id={own.id} label={own.name} />
-                  </span>
-                ) : null}
-              </div>
               <section>
                 <div className="mb-2 flex items-center gap-3">
                   <h2 className="text-sm font-medium">{t.aliases}</h2>
@@ -88,8 +74,7 @@ export function LabelPage() {
                   </ul>
                 )}
               </section>
-              {l.kind === 'own' ? (
-                <section>
+              <section>
                   <div className="mb-2 flex items-center gap-3">
                     <h2 className="text-sm font-medium">{t.accounts}</h2>
                     <ActionButton name="add-account" op="POST /labels/:id/accounts" variant="secondary" onPress={() => setDialog({ kind: 'account' })}>
@@ -111,41 +96,9 @@ export function LabelPage() {
                     </ul>
                   )}
                 </section>
-              ) : null}
-              <section>
-                <div className="mb-2 flex items-center gap-3">
-                  <h2 className="text-sm font-medium">{t.rules}</h2>
-                  {l.kind === 'sublabel' ? (
-                    <ActionButton name="set-rule" op="POST /labels/:id/rules" variant="secondary" onPress={() => setDialog({ kind: 'rule' })}>
-                      {t.setRule}
-                    </ActionButton>
-                  ) : null}
-                </div>
-                {l.rules.length === 0 ? (
-                  <p className="text-sm text-muted">{t.noRules}</p>
-                ) : (
-                  <SimpleTable testId="label-rules" headers={[t.ruleCols.recipient, t.ruleCols.percent, t.ruleCols.period, t.ruleCols.document, t.ruleCols.actions]}>
-                    {l.rules.map((x) => (
-                      <tr key={x.id} data-testid={`label-rule-${x.id}`} className="border-t border-border">
-                        <Td col="recipient"><EntityLink kind="artist" id={x.recipientArtistId} label={x.recipientPseudonym} /></Td>
-                        <Td col="percent">{x.percent}</Td>
-                        <Td col="period">{period(x.validFrom, x.validTo)}</Td>
-                        <Td col="document"><DocumentCell id={x.documentId} status={x.documentStatus} /></Td>
-                        <Td>
-                          <ActionButton name="close-rule" op="POST /labels/rules/:id/close" variant="secondary" onPress={() => setDialog({ kind: 'close', rule: x })}>
-                            {t.closeRule}
-                          </ActionButton>
-                        </Td>
-                      </tr>
-                    ))}
-                  </SimpleTable>
-                )}
-              </section>
               {dialog?.kind === 'alias' ? <AddAliasDialog label={l} onClose={close} /> : null}
               {dialog?.kind === 'account' ? <AddAccountDialog label={l} onClose={close} /> : null}
               {dialog?.kind === 'remove' ? <RemoveAccountDialog label={l} account={dialog.account} onClose={close} /> : null}
-              {dialog?.kind === 'rule' ? <SetRuleDialog labelString={l.name} month="" onClose={close} /> : null}
-              {dialog?.kind === 'close' ? <CloseRuleDialog labelId={l.id} ruleId={dialog.rule.id} onClose={close} /> : null}
             </div>
           );
         }}

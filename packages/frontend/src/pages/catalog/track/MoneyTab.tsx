@@ -88,20 +88,6 @@ function MonthRow({ month, isOpen, onToggle }: { month: Month; isOpen: boolean; 
         <div data-testid="label-string">{month.labelName}</div>
         <div className="text-xs text-muted">
           → <span data-testid="label-of-record">{month.ourLabelName ?? '—'}</span>
-          {month.sublabelName ? (
-            <>
-              {' · '}
-              <span data-testid="sublabel">{month.sublabelName}</span>
-              {month.rule ? (
-                <>
-                  {' · '}
-                  <Link to="?tab=rules" className="text-accent hover:underline" data-testid="label-rule-link">
-                    {t.rule}
-                  </Link>
-                </>
-              ) : null}
-            </>
-          ) : null}
         </div>
       </Td>
       <Td col="net">

@@ -68,7 +68,7 @@ test('S58 the report of P37 equals the API; the document confirms it; the csv', 
 
   await openAs(page, `/sublabels/${sublabelId}?tab=report`);
   const total = page.getByTestId('sublabel-report-total');
-  for (const k of ['labelShare', 'amount', 'confirmed', 'waiting', 'currentAmount'])
+  for (const k of ['labelShare', 'amount', 'confirmed', 'waiting'])
     await expect(total.locator(`[data-col="${k}"]`)).toHaveAttribute('data-value', before.total[k] ?? '');
   // by month (the default): one row per month, its tracks open below it
   await expect(page.getByTestId('sublabel-report')).toHaveAttribute('data-view', 'months');

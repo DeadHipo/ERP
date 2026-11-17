@@ -43,9 +43,9 @@ describe('abilities (D-171)', () => {
     // D-176: + GET /settlements/admission (L), six admission writes and PATCH /contracts/:id (x)
     // D-198: + seven cut operations (the list L, six x); D-200: + GET /owners/:id/cuts (L)
     // D-218: + eight sublabel operations (the two lists O, six writes x)
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([133, 40, 16, 9, 68]); // D-219: + report, suggestions (x)
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([131, 40, 16, 9, 66]); // D-232: − the two label rule routes (x); D-219: + report, suggestions (x)
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([22, 33, 18, 29, 15, 16]); // D-219: + 2 read_money; // D-218: + 2 read (the lists), + 4 approve (the terms), + 2 admin (the register); D-205: − 1 read_money, − 2 pay (the start); D-200: + 1 read_money (the owner's cuts); D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([22, 33, 18, 29, 15, 14]); // D-232: − 2 admin (the label rule routes); D-219: + 2 read_money; // D-218: + 2 read (the lists), + 4 approve (the terms), + 2 admin (the register); D-205: − 1 read_money, − 2 pay (the start); D-200: + 1 read_money (the owner's cuts); D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {
@@ -170,8 +170,7 @@ describe('abilities (D-171)', () => {
     expect(key('GET', '/owners/some-id')).toBe('GET /owners/:id');
     expect(key('GET', '/artists/duplicates')).toBe('GET /artists/duplicates');
     expect(key('GET', '/ads/summary')).toBe('GET /ads/summary');
-    expect(key('POST', '/labels/rules/r1/close')).toBe('POST /labels/rules/:id/close');
-    expect(key('POST', '/labels/l1/rules')).toBe('POST /labels/:id/rules');
+    // D-232: the sublabel rule model removed (POST /labels/rules/:id/close before POST /labels/:id/rules)
     expect(key('HEAD', '/owners')).toBe('GET /owners');
     expect(key('GET', '/owners/merge')).toBe('GET /owners/:id'); // the GET route Express would serve
     for (const [m, p] of [

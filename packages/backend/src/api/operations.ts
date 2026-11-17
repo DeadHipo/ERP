@@ -186,7 +186,6 @@ const operations: ApiOperation[] = [
     errors: [
       '404 org_not_found',
       '404 not_found: a label that is not of the organization',
-      '400 label_not_own: a sublabel',
       '400 validation_error: a label_manager without labels, an org_admin with labels',
       '409 login_taken: the login exists (any case)',
     ],
@@ -204,7 +203,6 @@ const operations: ApiOperation[] = [
     errors: [
       '404 org_not_found',
       '404 not_found: an unknown login, or a label that is not of the organization',
-      '400 label_not_own: a sublabel',
       '400 validation_error: a system administrator (never a member), a label_manager without labels, an org_admin with labels',
       '409 already_member',
     ],
@@ -222,7 +220,6 @@ const operations: ApiOperation[] = [
     errors: [
       '404 org_not_found',
       '404 not_found: not a member, or a label that is not of the organization',
-      '400 label_not_own',
       '409 last_org_admin: the organization would keep no active administrator',
     ],
   },
@@ -297,7 +294,6 @@ const operations: ApiOperation[] = [
     errors: [
       '403 forbidden',
       '404 not_found: a label that is not of the organization',
-      '400 label_not_own: a sublabel',
       '400 validation_error: a label_manager without labels, an org_admin with labels',
       '409 login_taken: the login exists (any case, any organization)',
     ],
@@ -315,7 +311,6 @@ const operations: ApiOperation[] = [
     errors: [
       '403 forbidden',
       '404 not_found: not a member of the organization, or a label that is not of it',
-      '400 label_not_own',
       '409 last_org_admin: the organization would keep no active administrator',
     ],
   },
@@ -394,7 +389,7 @@ const operations: ApiOperation[] = [
     summary: 'Owners (merged ones are hidden); under a label (`label=`) those visible under it (D-168)',
     query: S.ownersQuery,
     response: R.listOrPage(R.ownerSchema),
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'post',
@@ -448,7 +443,7 @@ const operations: ApiOperation[] = [
       'The cuts of an owner (D-200): per label with cuts (label=, or every label the owner has a book in), per cut by date its positions at the cut (D-181), the operations of the owner attributed to it and the movement of the book since the previous cut (earned, paid, ads, the rest, payable); last «after the last cut» = now less the last cut. calculate() and payable are unchanged',
     query: S.cutListQuery,
     response: R.ownerCutsSchema,
-    errors: ['404 not_found: the owner or the label', '400 label_not_own'],
+    errors: ['404 not_found: the owner or the label'],
   },
   {
     method: 'get',
@@ -533,7 +528,7 @@ const operations: ApiOperation[] = [
     ability: { action: 'read', subject: 'artists', scope: 'record' },
     tag: 'artists',
     summary:
-      'The card of a pseudonym (P12, D-165): owner, the ids merged into it, tracks, contracts, split rows and participations by every id, sublabel rules where it is the recipient, the documents they cite; a merged id answers for the survivor',
+      'The card of a pseudonym (P12, D-165): owner, the ids merged into it, tracks, contracts, split rows and participations by every id, the documents they cite; a merged id answers for the survivor',
     response: R.artistDetailSchema,
   },
   {
@@ -674,7 +669,7 @@ const operations: ApiOperation[] = [
       'Documents, filtered by owner, status, kind and a title substring (17 N12); under a label (`label=`) those of the label and those without a label (D-169)',
     query: S.documentsQuery,
     response: R.listOrPage(R.documentSchema),
-    errors: ['400 label_not_own', '404 not_found: label'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'post',
@@ -686,7 +681,7 @@ const operations: ApiOperation[] = [
     body: S.createDocumentBody,
     status: 201,
     response: R.documentSchema,
-    errors: ['400 label_not_own', '404 not_found: label'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'patch',
@@ -697,7 +692,7 @@ const operations: ApiOperation[] = [
     summary: 'Set or clear (null = any label) the own label of a document (D-169)',
     body: S.setDocumentLabelBody,
     response: R.documentSchema,
-    errors: ['400 label_not_own', '404 not_found: label or document'],
+    errors: ['404 not_found: label or document'],
   },
   {
     method: 'post',
@@ -780,7 +775,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
       '400 validation_error: not a .csv or .xlsx',
       '413 import_too_large: more than 5000 rows or 10 MB',
@@ -850,7 +844,7 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read', subject: 'labels', scope: 'org' },
     tag: 'labels',
-    summary: 'Labels with aliases and rules (recipient pseudonym and document status included)',
+    summary: 'Own labels with their Believe strings and accounts (no sublabel since D-232: the register is GET /sublabels)',
     response: list(R.labelListItemSchema),
   },
   {
@@ -859,7 +853,7 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'admin', subject: 'labels', scope: 'org' },
     tag: 'labels',
-    summary: 'Create an own label or a sublabel of an own label',
+    summary: 'Create an own label',
     body: S.createLabelBody,
     status: 201,
     response: R.labelSchema,
@@ -875,7 +869,7 @@ const operations: ApiOperation[] = [
     body: S.addAccountBody,
     status: 201,
     response: R.labelSchema,
-    errors: ['409 account_taken: the account already belongs to a label', '422 account_for_sublabel'],
+    errors: ['409 account_taken: the account already belongs to a label'],
   },
   {
     method: 'post',
@@ -901,28 +895,6 @@ const operations: ApiOperation[] = [
     status: 201,
     response: R.labelSchema,
     errors: ['409 alias_taken: the string already belongs to a label'],
-  },
-  {
-    method: 'post',
-    path: '/labels/:id/rules',
-    access: 'org',
-    ability: { action: 'admin', subject: 'labels', scope: 'org' },
-    tag: 'labels',
-    summary: 'Set a sublabel rule: percent of the label share goes to the recipient pseudonym',
-    body: S.createLabelRuleBody,
-    status: 201,
-    response: R.labelRuleSchema,
-    errors: ['409 rule_overlap', '422 rule_for_own_label'],
-  },
-  {
-    method: 'post',
-    path: '/labels/rules/:id/close',
-    access: 'org',
-    ability: { action: 'admin', subject: 'labels', scope: 'org' },
-    tag: 'labels',
-    summary: 'End a sublabel rule at a date (exclusive)',
-    body: S.closeValidToBody,
-    response: R.labelRuleSchema,
   },
 
   // ---- the sublabels (D-217, D-218): a register of names and the terms on a track; the money does not read them yet ----
@@ -1057,7 +1029,7 @@ const operations: ApiOperation[] = [
     summary: 'Believe files and B17 statements, each with its label; under a label (`label=`) those loaded under it (D-169)',
     query: S.sourceFilesQuery,
     response: R.sourceFilesSchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'get',
@@ -1068,7 +1040,7 @@ const operations: ApiOperation[] = [
     summary: 'Lines of the Believe reports with filters, sorting and totals; under a label (`label=`) over its files only (D-169)',
     query: S.sourceLinesQuery,
     response: R.sourceLinesPageSchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'get',
@@ -1079,7 +1051,7 @@ const operations: ApiOperation[] = [
     summary: 'Values for the filters of the lines page; under a label (`label=`) over its files only (D-169)',
     query: S.sourceFacetsQuery,
     response: R.sourceFacetsSchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'post',
@@ -1096,7 +1068,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 validation_error: the file name is not <reportId>_<account>_<from>_<to>.csv[.zip]',
       '422 account_unregistered: the account of the file is registered under no label (details { account })',
       '422 account_of_other_label: the account belongs to another own label (details { account, labelId, labelName })',
@@ -1119,7 +1090,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 validation_error: not an .xlsx statement',
       '409 duplicate_period: a statement for this quarter is already loaded (details { existingStatementId })',
       '409 duplicate_file: the same file (sha256) is already loaded',
@@ -1236,7 +1206,6 @@ const operations: ApiOperation[] = [
     response: R.operationSchema,
     errors: [
       '400 label_required: no labelId',
-      '400 label_not_own',
       '404 not_found: label',
       '400 kind_direction: the direction is not the kind\'s (details { kind, expected })',
       '400 kind_sign: the sign of the amount is not the kind\'s (details { kind, sign })',
@@ -1266,7 +1235,7 @@ const operations: ApiOperation[] = [
       'Set the label of an existing operation (the history before the split, D-168) with a reason (D-173): the label source becomes operator; the reason and the previous label (`fromLabelId`, also in the answer) go into the audit summary',
     body: S.setOperationLabelBody,
     response: R.operationSchema,
-    errors: ['400 reason_required: no reason', '400 label_not_own', '404 not_found', '409 cut_transfer_pair: a row of a transfer of a cut (D-199)'],
+    errors: ['400 reason_required: no reason', '404 not_found', '409 cut_transfer_pair: a row of a transfer of a cut (D-199)'],
   },
   {
     method: 'post',
@@ -1344,7 +1313,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 import_header: a required column is missing or a column is unknown (details { missing, unknown })',
       '400 validation_error: not a .csv',
       '413 import_too_large: more than 5000 rows or 10 MB',
@@ -1371,7 +1339,7 @@ const operations: ApiOperation[] = [
       'The trail of writes that touched an entity (newest first); without entityId the latest writes; `label=` only the writes recorded under that label (D-169)',
     query: S.auditQuery,
     response: R.auditListSchema,
-    errors: ['400 label_not_own', '404 not_found: label'],
+    errors: ['404 not_found: label'],
   },
 
   {
@@ -1394,7 +1362,7 @@ const operations: ApiOperation[] = [
     body: S.createAdsBody,
     status: 201,
     response: R.adsCreatedSchema,
-    errors: ['404 not_found: an artistId or the label', '400 validation_error: item N', '400 label_required: item N (the payer, D-169)', '400 label_not_own'],
+    errors: ['404 not_found: an artistId or the label', '400 validation_error: item N', '400 label_required: item N (the payer, D-169)'],
   },
   {
     method: 'get',
@@ -1425,7 +1393,7 @@ const operations: ApiOperation[] = [
     summary: 'Change the recovery percent, the scope (at any time, D-155) and/or the payer label (D-169) of an expense',
     body: S.updateAdBody,
     response: R.adExpenseSchema,
-    errors: ['404 not_found: the expense or the label', '400 label_not_own'],
+    errors: ['404 not_found: the expense or the label'],
   },
   {
     method: 'post',
@@ -1461,7 +1429,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 validation_error: not an ISRC or a bad date',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel',
       '400 empty_period: the period is empty after flooring',
       '409 catalog_overlap: overlaps another operator interval of the ISRC (details { interval })',
       '409 catalog_same_label: the replacement changes nothing (details { interval })',
@@ -1483,7 +1450,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no labelId',
       '404 not_found: label or split',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 validation_error: not an ISRC, or not exactly one of isrcs / splitIds',
       '422 nothing_to_assume: no split of the group is without a document (details { skipped }); nothing is written',
       '403 label_forbidden: an ISRC of another book',
@@ -1505,7 +1471,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 release_import_header: a column of the export is missing (details { missing })',
       '413 import_too_large: more than 20000 rows or 10 MB',
       '403 label_forbidden: a label manager names another label',
@@ -1526,7 +1491,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 duplicate_upc: a UPC is listed twice',
       '409 release_changed: the registry changed since the preview (details { upcs }): preview again',
       '403 label_forbidden: a label manager names another label',
@@ -1542,7 +1506,7 @@ const operations: ApiOperation[] = [
       'The release registry (D-172), no money: under a label its rows, under «Все» the rows of every label (a moved UPC is a row per label); isrcsInUnits = the distinct ISRCs of the UPC in the loaded files of the row label; q filters UPC, title, version, artist, catalog number',
     query: S.releaseRegistryQuery,
     response: R.releaseRegistrySchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   // ---- the onboarding checklists (D-172, stage 4 commit 6): reads only, no calculation ----
   {
@@ -1555,7 +1519,7 @@ const operations: ApiOperation[] = [
       'The onboarding checklist of one own label (D-172): label, accounts, files (months and gaps per account), label strings without an alias, catalog (label history, release registry), ISRCs without a split, pseudonyms without an owner, rows without an approved document and owners without a contract under the label, publishing statements. Each step: key, state (done / todo / info, decided by the backend), count, counts, link. No calculation: at most three ClickHouse reads over the files of the label',
     query: S.onboardingQuery,
     response: R.onboardingSchema,
-    errors: ['400 label_required: no label (under «Все»)', '404 not_found: label', '400 label_not_own: a sublabel', '403 label_forbidden: a label manager names another label'],
+    errors: ['400 label_required: no label (under «Все»)', '404 not_found: label', '403 label_forbidden: a label manager names another label'],
   },
   {
     method: 'get',
@@ -1584,7 +1548,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label or statement',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 validation_error: not an .xlsx statement',
       '409 replace_not_loaded: the statement is not loaded (superseded already) (details { status })',
       '409 replace_label_differs: the statement is loaded under another label (details { labelId })',
@@ -1604,7 +1567,7 @@ const operations: ApiOperation[] = [
     summary: 'The cuts (D-198) of a book (label=) or of every book (no money: a manager reads the cuts of its labels), by label and date: the name, the moment and the bounds per source (first days, «before it is inside»)',
     query: S.cutListQuery,
     response: R.cutListSchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel'],
+    errors: ['404 not_found: label'],
   },
   {
     method: 'post',
@@ -1617,7 +1580,7 @@ const operations: ApiOperation[] = [
     body: S.createCutBody,
     status: 201,
     response: R.cutSchema,
-    errors: ['404 not_found: label', '400 label_not_own: the label is a sublabel', '400 validation_error', '409 cut_name_taken', '409 cut_order: two cuts on one day or a later cut with an earlier bound (details { cutIds, bound })'],
+    errors: ['404 not_found: label', '400 validation_error', '409 cut_name_taken', '409 cut_order: two cuts on one day or a later cut with an earlier bound (details { cutIds, bound })'],
   },
   {
     method: 'patch',
@@ -1722,7 +1685,7 @@ const operations: ApiOperation[] = [
     body: S.createHoldBody,
     status: 201,
     response: R.holdSchema,
-    errors: ['404 not_found: the owner or the label', '400 label_not_own', '400 kind_unknown', '400 reason_required'],
+    errors: ['404 not_found: the owner or the label', '400 kind_unknown', '400 reason_required'],
   },
   {
     method: 'post',
@@ -1781,7 +1744,7 @@ const operations: ApiOperation[] = [
     query: S.payrollQuery,
     csv: true,
     response: R.payrollSchema,
-    errors: ['400 label_required: no label=', '404 not_found: label', '400 label_not_own: the label is a sublabel (details { labelId })', '403 label_forbidden: a label of another manager'],
+    errors: ['400 label_required: no label=', '404 not_found: label', '403 label_forbidden: a label of another manager'],
   },
   {
     method: 'get',
@@ -1807,7 +1770,6 @@ const operations: ApiOperation[] = [
     errors: [
       '400 label_required: no label=',
       '404 not_found: label',
-      '400 label_not_own: the label is a sublabel (details { labelId })',
       '400 validation_error: no summary in the file, or its quarter is unknown',
       '409 duplicate_file: the same bytes are already loaded',
       '409 period_loaded: a quarter is held by a loaded file of the label (details { files }); replace=1 takes it over',

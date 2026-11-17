@@ -7,7 +7,6 @@ import { adPositionsByOwner, adsOutsideBook, adSummary, allocateAd, isMcPseudony
 import {
   approvedAppendix,
   confirmedOwner,
-  labelOwner,
   newFacade,
   writeBelieve,
   type TestFacade,
@@ -40,8 +39,8 @@ const ad = (over: Partial<AdExpense> = {}): AdExpense => ({
   ...over,
 });
 
-/** A hand-built context: artists a, b (persons), mc (MC pseudonym), brand (a label owner), sub (sublabel pseudonym). */
-function world(opts: { split?: [string, string][] | null; label?: 'own' | 'sublabel'; rulePercent?: string } = {}) {
+/** A hand-built context: artists a, b (persons), mc (MC pseudonym), brand (a label owner), sub (a label owner's pseudonym). */
+function world(opts: { split?: [string, string][] | null } = {}) {
   const artists = new Map(
     [
       ['a', 'Artist A', 'oa'],
@@ -64,16 +63,8 @@ function world(opts: { split?: [string, string][] | null; label?: 'own' | 'subla
             documentId: null,
           })),
         };
-  const label: LabelOfRecord =
-    opts.label === 'sublabel'
-      ? {
-          id: 'L-sub',
-          name: 'Sub',
-          kind: 'sublabel',
-          ownLabelId: 'L-own',
-          rule: { id: 'r1', percent: D(opts.rulePercent ?? '50'), recipientArtistId: 'sub', documentId: null },
-        }
-      : { id: 'L-own', name: '0to8', kind: 'own', ownLabelId: null, rule: null };
+  // D-232: the sublabel rule model removed (a sublabel label of record with a rule)
+  const label: LabelOfRecord = { id: 'L-own', name: '0to8' };
   const ctx: AdContext = {
     splitAt: () => split,
     labelOf: () => label,
@@ -112,18 +103,10 @@ describe('ads: allocation of one expense (pure)', () => {
     expect(r.borneBy).toEqual({ kind: 'ours', amount: D('50') });
   });
 
-  it('a sublabel with a rule bears the unrecovered part as a debt on its pseudonym', () => {
-    const r = allocateAd(ad({ recoveryPercent: '0' }), world({ label: 'sublabel' }));
-    expect(r.parts.map((p) => p.recovered.toFixed())).toEqual(['0', '0']);
-    expect(r.borneBy).toMatchObject({ kind: 'sublabel', artistId: 'sub', ownerId: 'osub' });
-    expect(r.borneBy.amount.toFixed()).toBe('100');
-    const pos = adPositionsByOwner([r]);
-    expect(pos.get('osub')?.map((p) => [p.role, p.amount.toFixed(), p.scope.kind])).toEqual([['sublabel', '100', 'any']]);
-    expect(pos.has('oa')).toBe(false);
-  });
+  // D-232: the sublabel rule model removed (a sublabel with a rule bore the unrecovered part as a debt on its pseudonym)
 
-  it('no split: the whole expense is ours (even on a sublabel), status no_split', () => {
-    const r = allocateAd(ad(), world({ split: null, label: 'sublabel' }));
+  it('no split: the whole expense is ours, status no_split', () => {
+    const r = allocateAd(ad(), world({ split: null }));
     expect(r.status).toBe('no_split');
     expect(r.parts).toEqual([]);
     expect(r.borneBy).toEqual({ kind: 'ours', amount: D('100') });
@@ -153,12 +136,11 @@ describe('ads: allocation of one expense (pure)', () => {
     expect(recovered.add(r.unrecovered).toFixed()).toBe('100');
   });
 
-  it('the payer is the record label (D-169); the line decides only the sublabel rule; adsOutsideBook compares it with the income book', () => {
-    const ctx = { ...world({ label: 'sublabel', rulePercent: '50' }), labelName: (id: string) => ({ 'L-own': '0to8', 'L-echo': 'Echo8' })[id], bookOf: () => 'L-echo' };
+  it('the payer is the record label (D-169); adsOutsideBook compares it with the income book', () => {
+    const ctx = { ...world(), labelName: (id: string) => ({ 'L-own': '0to8', 'L-echo': 'Echo8' })[id], bookOf: () => 'L-echo' };
     const r = allocateAd(ad({ recoveryPercent: '0', labelId: 'L-own' }), ctx);
-    expect([r.ourLabelId, r.ourLabelName, r.incomeBookLabelId, r.incomeBookLabelName, r.sublabelName]).toEqual(['L-own', '0to8', 'L-echo', 'Echo8', 'Sub']);
-    expect(r.borneBy).toMatchObject({ kind: 'sublabel', artistId: 'sub' });
-    expect(adPositionsByOwner([r]).get('osub')?.map((p) => p.labelId)).toEqual(['L-own']);
+    expect([r.ourLabelId, r.ourLabelName, r.incomeBookLabelId, r.incomeBookLabelName]).toEqual(['L-own', '0to8', 'L-echo', 'Echo8']);
+    // D-232: the sublabel rule model removed (the line decided the sublabel rule: the sublabel bore the unrecovered part on its pseudonym)
     expect(adsOutsideBook([r]).map((x) => [x.adId, x.isrc, x.month, x.amount.toFixed(), x.payerLabelName, x.bookLabelName])).toEqual([
       ['ad1', I1, '2026-07', '100', '0to8', 'Echo8'],
     ]);
@@ -243,48 +225,16 @@ describe('ads: the owner balance (stack)', () => {
     await expect(f.getAd('nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('a sublabel bears the unrecovered part; a repeated external ref is skipped; the list and summary show it', async () => {
+  // D-232: the sublabel rule model removed (a sublabel rule bore the unrecovered part, shown in the list and summary)
+  it('a repeated external ref is skipped', async () => {
     const f = await newFacade();
-    const { a } = await stackWorld(f);
-    const own = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8');
-    const sub = await f.modules.labels.createLabel({ name: 'Sub One', kind: 'sublabel', ownLabelId: own?.id ?? null });
-    await f.modules.labels.addAlias(sub.id, 'Sub One');
-    const subOwner = await labelOwner(f, 'Sub One');
-    // the sublabel's income counts (B) only with its contract
-    const o = f.modules.owners;
-    const doc = await o.createDocument({ kind: 'contract', title: 'Dummy sublabel contract', fileRef: 'dummy://sub.pdf', ownerId: subOwner.owner.id, requiresApproval: true });
-    await o.approveDocument(doc.id, 'manager');
-    await o.createContract({ ownerId: subOwner.owner.id, documentId: doc.id, artistIds: [subOwner.artist.id] });
-    await f.createLabelRule({
-      labelId: sub.id,
-      percent: '50',
-      recipientArtistId: subOwner.artist.id,
-      validFrom: '2020-01-01',
-      documentId: (await approvedAppendix(f, subOwner.owner.id)).id,
-    });
-    await f.ingestBelieve(writeBelieve('2026-08', [{ isrc: I2, upc: UPC, net: '40', labelName: 'Sub One' }]), f.testLabels['0to8']);
-    const first = await f.createAds([
-      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1', labelId: own?.id ?? null },
-    ]);
-    const again = await f.createAds([
-      { isrc: I2, month: '2026-08', amount: '10', recoveryPercent: '30', externalRef: 'post-1', labelId: own?.id ?? null },
-    ]);
+    await stackWorld(f);
+    const rec = { isrc: I2, month: '2026-07', amount: '10', recoveryPercent: '30', externalRef: 'post-1', labelId: f.testLabels['0to8'] };
+    const first = await f.createAds([rec]);
+    const again = await f.createAds([rec]);
     expect(first.created).toHaveLength(1);
     expect(again).toEqual({ created: [], skipped: ['post-1'] });
-    const list = await f.listAds({ ownerId: subOwner.owner.id });
-    expect(list.items[0]?.allocation?.borneBy).toMatchObject({ kind: 'sublabel', artistId: subOwner.artist.id });
-    expect(list.items[0]?.allocation?.parts.map((p) => [p.pseudonym, p.recovered.toFixed()])).toEqual([['A1', '3']]);
-    const subBalance = await f.ownerBalance(subOwner.owner.id);
-    expect(subBalance.total.adsCharged.toFixed()).toBe('7');
-    expect(subBalance.total.payable.toFixed()).toBe('3'); // its sublabel share of I2 in August is 10
-    expect((await f.ownerBalance(a.owner.id)).total.adsCharged.toFixed()).toBe('3');
-    const summary = await f.adsSummary();
-    expect(summary.totals.count).toBe(1);
-    expect(summary.totals.amount.toFixed()).toBe('10');
-    expect((await f.getAd(first.created[0]?.id as string)).allocation?.parts[0]?.pseudonym).toBe('A1');
-    expect(summary.rows.map((r) => [r.month, r.label, r.borneBySublabels.toFixed(), r.recoveredFromArtists.toFixed()])).toEqual([
-      ['2026-08', '0to8', '7', '3'],
-    ]);
+    expect((await f.adsSummary()).totals.count).toBe(1);
   });
 
   it('refuses a bad record: no ISRC and no pseudonym, amount 0, percent above 100, an unknown pseudonym', async () => {
@@ -310,9 +260,7 @@ describe('ads: the owner balance (stack)', () => {
     await expect(
       f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: f.testLabels['0to8'] }, { isrc: I2, month: '2026-07', amount: '5' }]),
     ).rejects.toMatchObject({ code: 'label_required', message: expect.stringMatching(/^Item 2: /) });
-    const own = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8');
-    const sub = await f.modules.labels.createLabel({ name: 'Sub One', kind: 'sublabel', ownLabelId: own?.id ?? null });
-    await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: sub.id }])).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a record under a sublabel label was label_not_own)
     await expect(f.createAds([{ isrc: I1, month: '2026-07', amount: '5', labelId: 'no-such-label' }])).rejects.toMatchObject({ statusCode: 404 });
     expect((await f.listAds()).count).toBe(0);
   });
@@ -355,9 +303,7 @@ describe('ads: the owner balance (stack)', () => {
     expect(await books()).toEqual({ '0to8': ['0', '60'], Echo8: ['40', '-40'] });
     expect((await f.getAd(id)).allocation).toMatchObject({ ourLabelId: echo, ourLabelName: 'Echo8', incomeBookLabelId: zero, incomeBookLabelName: '0to8' });
     expect((await f.signals()).adOutsideBook.map((x) => [x.adId, x.payerLabelName, x.bookLabelName])).toEqual([[id, 'Echo8', '0to8']]);
-    const own = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8');
-    const sub = await f.modules.labels.createLabel({ name: 'Sub One', kind: 'sublabel', ownLabelId: own?.id ?? null });
-    await expect(f.updateAd(id, { labelId: sub.id })).rejects.toMatchObject({ code: 'label_not_own' });
+    // D-232: the sublabel rule model removed (a PATCH to a sublabel label was label_not_own)
     await expect(f.updateAd(id, { labelId: 'no-such-label' })).rejects.toMatchObject({ statusCode: 404 });
     await expect(f.updateAd(id, {})).rejects.toMatchObject({ statusCode: 400 });
     expect((await f.getAd(id)).labelId).toBe(echo);

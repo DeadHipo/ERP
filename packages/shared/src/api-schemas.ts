@@ -22,7 +22,7 @@ export type PeriodQuery = z.infer<typeof periodQuery>;
  * pseudonyms and owners visible under it, the operations and advertising under it); without it: «Все» (every label).
  */
 export const labelQuery = z.object({
-  label: z.string().optional().describe('Id of an own label: the answer restricted to that label (D-168); 404 unknown, 400 label_not_own'),
+  label: z.string().optional().describe('Id of an own label: the answer restricted to that label (D-168); 404 unknown'),
 });
 export const labelPeriodQuery = periodQuery.extend(labelQuery.shape);
 /**
@@ -313,7 +313,7 @@ export const uploadLabelQuery = z.object({
   label: z
     .string()
     .optional()
-    .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown, 400 label_not_own'),
+    .describe('Id of the own label the file is loaded under (D-169); 400 label_required without it, 404 unknown'),
 });
 
 /** The operator's decision (D-183): this songwriter of publishing v2 is this owner. */
@@ -356,22 +356,11 @@ export const mapWriterBody = z.object({ ownerId: z.string().nullish(), createNew
 
 // ---- labels (D-125, D-129) ----
 
-export const createLabelBody = z.object({
-  name: z.string().min(1),
-  kind: z.enum(['own', 'sublabel']),
-  ownLabelId: z.string().nullish(),
-});
+/** An own label (D-232: the only kind; a sublabel is the register, D-217). */
+export const createLabelBody = z.object({ name: z.string().min(1) });
 export const addAliasBody = z.object({ alias: z.string().min(1) });
 /** `POST /labels/:id/accounts` (D-168): a Believe account of an own label. */
 export const addAccountBody = z.object({ account: z.string().min(1) });
-export const createLabelRuleBody = z.object({
-  percent,
-  recipientArtistId: z.string().min(1),
-  validFrom: date,
-  validTo: date.nullish(),
-  documentId: z.string().nullish(),
-  note: z.string().nullish(),
-});
 export const closeValidToBody = z.object({ validTo: date });
 
 // ---- participations (D-126, D-129) ----
@@ -399,7 +388,7 @@ export const auditQuery = z.object({
   label: z
     .string()
     .optional()
-    .describe('Id of an own label: only the writes recorded under it (D-169; writes without a label only without it); 404 unknown, 400 label_not_own'),
+    .describe('Id of an own label: only the writes recorded under it (D-169; writes without a label only without it); 404 unknown'),
 });
 export type AuditQuery = z.infer<typeof auditQuery>;
 
@@ -460,7 +449,7 @@ export const adExpenseInput = z.object({
   externalRef: z.string().nullish().describe('A post link or a source row; a known one is skipped'),
   source: z.string().optional(),
   comment: z.string().optional(),
-  labelId: z.string().nullish().describe('The payer, required (D-169): the own label whose book the expense charges; 400 label_required without it, 400 label_not_own for a sublabel'),
+  labelId: z.string().nullish().describe('The payer, required (D-169): the own label whose book the expense charges; 400 label_required without it'),
   bearerSublabelId: z.string().nullish().describe('Who bears the unrecovered part (D-231): a sublabel of the register; none = the payer label'),
 });
 export const createAdsBody = z.object({ items: z.array(adExpenseInput).min(1).max(20000) });
@@ -512,7 +501,7 @@ export const changeOwnPasswordBody = z.object({
 export const memberRole = z.enum(['org_admin', 'label_manager']);
 /**
  * `POST /orgs/:id/users` (D-171): a new user as a member of that organization with a role; a `label_manager` needs at
- * least one own label, an `org_admin` none (409 login_taken, 400 label_not_own, 404 not_found for a label).
+ * least one own label, an `org_admin` none (409 login_taken, 404 not_found for a label).
  */
 export const createMemberUserBody = z.object({
   login: z

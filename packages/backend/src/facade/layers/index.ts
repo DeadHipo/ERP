@@ -32,7 +32,7 @@ export { DEFAULT_AUTHOR_PERCENT } from './writer-parts';
 
 /**
  * The master layers in their fixed order (10 §3): label of record → perimeter → off the top → split → carves (pool,
- * artist share, label share, sublabel) → categorise. The only place the order is written.
+ * artist share, label share) → categorise. The only place the order is written.
  */
 export const MASTER_LAYERS: readonly NamedLayer[] = [
   { name: 'label-of-record', run: labelOfRecord },

@@ -125,41 +125,16 @@ describe('JSON API', () => {
   it('labels, participations and assumption documents: business errors keep their codes', async () => {
     const { app } = await setup();
     const post = (url: string, body: object) => writer(app).post(`/api/v1${url}`).send(body);
-    const own = (await post('/labels', { name: 'Own Synthetic', kind: 'own' }).expect(201)).body;
-    const sub = (await post('/labels', { name: 'Sub Synthetic', kind: 'sublabel', ownLabelId: own.id }).expect(201))
-      .body;
+    const own = (await post('/labels', { name: 'Own Synthetic' }).expect(201)).body;
+    // D-232: the sublabel rule model removed (the rule routes, their 404 and the D-130 floors of the rule dates); the
+    // second label is an own one
+    const sub = (await post('/labels', { name: 'Sub Synthetic' }).expect(201)).body;
     await post(`/labels/${sub.id}/aliases`, { alias: 'Sub Imprint' }).expect(201);
     const taken = await post(`/labels/${own.id}/aliases`, { alias: '  sub   IMPRINT ' });
     expect(taken.status).toBe(409);
     expect(taken.body.error.code).toBe('alias_taken');
-    const rule = await post(`/labels/${sub.id}/rules`, {
-      percent: '10',
-      recipientArtistId: 'no-such-artist',
-      validFrom: '2026-01-01',
-    });
-    expect(rule.status).toBe(404);
 
     const art = (await post('/artists', { pseudonym: 'Synth One' }).expect(201)).body;
-    // D-130: the rule close goes through the facade and floors the end date; an empty period is a 400
-    const okRule = (
-      await post(`/labels/${sub.id}/rules`, { percent: '50', recipientArtistId: art.id, validFrom: '2026-01-10' }).expect(
-        201,
-      )
-    ).body;
-    expect(okRule.validFrom).toBe('2026-01-01');
-    const closed = await post(`/labels/rules/${okRule.id}/close`, { validTo: '2026-04-15' }).expect(200);
-    expect(closed.body.validTo).toBe('2026-04-01');
-    const empty = await post(`/labels/rules/${okRule.id}/close`, { validTo: '2026-01-20' });
-    expect(empty.status).toBe(400);
-    expect(empty.body.error.code).toBe('empty_period');
-    const emptyRule = await post(`/labels/${sub.id}/rules`, {
-      percent: '50',
-      recipientArtistId: art.id,
-      validFrom: '2027-03-03',
-      validTo: '2027-03-30',
-    });
-    expect(emptyRule.status).toBe(400);
-    expect(emptyRule.body.error.code).toBe('empty_period');
     const bad = await post('/participations', {
       isrc: I1,
       artistId: art.id,

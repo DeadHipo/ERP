@@ -106,7 +106,7 @@ try {
       storageDir: orgFilesDir(dataDir, orgB.id, 'sources'),
     }),
   });
-  const labelB = await facadeB.modules.labels.createLabel({ name: 'Label B e2e', kind: 'own' });
+  const labelB = await facadeB.modules.labels.createLabel({ name: 'Label B e2e' });
   const ownerB = await facadeB.modules.owners.createOwner({ name: 'Owner B e2e', kind: 'person' });
   const authKeys: SeedAuthKeys = {
     users,

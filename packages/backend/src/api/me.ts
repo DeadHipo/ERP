@@ -32,7 +32,6 @@ export function createMe(deps: {
   async function ownLabels(orgId: string): Promise<{ id: string; name: string }[]> {
     const all = await (await facadeOf(orgId)).modules.labels.listLabels();
     return all
-      .filter((l) => l.kind === 'own')
       .map((l) => ({ id: l.id, name: l.name }))
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }

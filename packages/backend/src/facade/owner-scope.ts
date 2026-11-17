@@ -1,4 +1,3 @@
-import { normalizeLabelString } from '../modules/labels';
 import type { Modules } from './calculation';
 
 /**
@@ -51,17 +50,13 @@ export async function artistsReach(modules: Modules, artistIds: readonly string[
 
 /** The ISRCs that can carry money to any of the pseudonym ids (every id, merged ones included). */
 async function reachOf(modules: Modules, artistIds: readonly string[]): Promise<{ artistIds: string[]; isrcs: string[] }> {
-  const { splits, labels, sources, ads } = modules;
+  const { splits, ads } = modules;
   const unique = new Set(artistIds);
   const isrcs = new Set<string>();
   // one read of every split and participation, filtered here: a read per pseudonym would load all splits each time
   for (const s of await splits.listSplits()) if (s.shares.some((sh) => unique.has(sh.artistId))) isrcs.add(s.isrc);
   for (const p of await splits.listParticipations())
     if (unique.has(p.artistId) || (p.fromArtistId !== null && unique.has(p.fromArtistId))) isrcs.add(p.isrc);
-  const aliases = (await labels.listLabels())
-    .filter((l) => l.rules.some((r) => unique.has(r.recipientArtistId)))
-    .flatMap((l) => l.aliases.map(normalizeLabelString));
-  for (const isrc of await sources.isrcsOfLabelAliases(aliases, normalizeLabelString)) isrcs.add(isrc);
   if (unique.size > 0)
     for (const ad of await ads.list({ artistIds: [...unique], active: true })) if (ad.isrc) isrcs.add(ad.isrc);
   return { artistIds: [...unique].sort(), isrcs: [...isrcs].sort() };

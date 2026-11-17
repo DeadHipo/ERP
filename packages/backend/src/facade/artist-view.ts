@@ -193,9 +193,6 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
         ].sort((a, b) => (a.isrc ?? '').localeCompare(b.isrc ?? '') || a.id.localeCompare(b.id));
         const byIsrcAndDate = <T extends { isrc: string; validFrom: string; id: string }>(a: T, b: T) =>
           a.isrc.localeCompare(b.isrc) || a.validFrom.localeCompare(b.validFrom) || a.id.localeCompare(b.id);
-        const labelRules = (await splitsPart.listLabels()).flatMap((l) =>
-          l.rules.filter((r) => ids.includes(r.recipientArtistId)).map((r) => ({ ...r, labelName: l.name })),
-        );
         const docIds = new Set<string>();
         for (const s of splits.values()) {
           if (s.documentId) docIds.add(s.documentId);
@@ -203,7 +200,6 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
         }
         for (const p of participations.values()) if (p.documentId) docIds.add(p.documentId);
         for (const c of contracts) docIds.add(c.documentId);
-        for (const r of labelRules) if (r.documentId) docIds.add(r.documentId);
         const documents = [];
         for (const id of docIds) documents.push(await owners.getDocument(id));
         documents.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -217,7 +213,6 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           contracts,
           splits: [...splits.values()].sort(byIsrcAndDate),
           participations: [...participations.values()].sort(byIsrcAndDate),
-          labelRules,
           documents,
         };
       });

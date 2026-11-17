@@ -287,7 +287,7 @@ describe('the login of stage 3: memberships, the limit, Origin (D-171)', () => {
     const app = serverApp();
     const signed = await request(app).post('/api/v1/auth/login').send({ login: MULTI, password: PASSWORD, orgId: orgA }).expect(200);
     const cookie = pair(cookieOf(signed));
-    const label = (await (await orgs.get(orgA)).facade.modules.labels.listLabels()).find((l) => l.kind === 'own');
+    const label = (await (await orgs.get(orgA)).facade.modules.labels.listLabels())[0];
     await pool.query(`UPDATE auth.memberships SET role = 'label_manager' WHERE org_id = $1 AND user_id = ${userIdOf}`, [orgA, MULTI]);
     await pool.query(
       `INSERT INTO auth.user_labels (user_id, org_id, label_id, created_by) SELECT id, $1, $3, 'tests' FROM auth.users WHERE login = $2`,

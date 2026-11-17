@@ -34,7 +34,6 @@ describe('the users of an organization (D-171)', () => {
   const cookie = { a: '', b: '', sys: '' };
   let zero = '';
   let echo = '';
-  let sub = '';
   let labelB = '';
 
   const signIn = async (login: string, password = PASSWORD, orgId?: string) => {
@@ -67,14 +66,13 @@ describe('the users of an organization (D-171)', () => {
     const labels = (await as(cookie.a, 'get', '/labels').expect(200)).body as { id: string; name: string }[];
     zero = labels.find((l) => l.name === '0to8')?.id as string;
     echo = labels.find((l) => l.name === 'Echo8')?.id as string;
-    sub = ((await as(cookie.a, 'post', '/labels', { name: `Users Sub ${suffix}`, kind: 'sublabel', ownLabelId: zero }).expect(201)).body as { id: string }).id;
-    labelB = ((await as(cookie.b, 'post', '/labels', { name: `Users B Own ${suffix}`, kind: 'own' }).expect(201)).body as { id: string }).id;
+    // D-232: the sublabel rule model removed (a sublabel label `sub`, refused as label_not_own)
+    labelB = ((await as(cookie.b, 'post', '/labels', { name: `Users B Own ${suffix}` }).expect(201)).body as { id: string }).id;
   });
 
-  it('org_admin creates a manager with own labels; a sublabel, a label of B, none and a taken login are refused', async () => {
+  it('org_admin creates a manager with own labels; a label of B, none and a taken login are refused', async () => {
     const login = `users-m1-${suffix}`;
     const body = (labelIds: string[], l = login) => ({ login: l.toUpperCase(), password: PASSWORD, role: 'label_manager', labelIds });
-    expect(answer(await as(cookie.a, 'post', '/users', body([sub])))).toBe('400 label_not_own');
     expect(answer(await as(cookie.a, 'post', '/users', body([labelB])))).toBe('404 not_found');
     expect(answer(await as(cookie.a, 'post', '/users', body([])))).toBe('400 validation_error');
     expect(answer(await as(cookie.a, 'post', '/users', { ...body([]), role: 'org_admin', labelIds: [zero] }))).toBe('400 validation_error');
@@ -115,8 +113,7 @@ describe('the users of an organization (D-171)', () => {
     const adminId = ((await as(cookie.a, 'get', '/users').expect(200)).body as { id: string; login: string }[]).find((u) => u.login === ADMIN_A)?.id as string;
     expect(answer(await as(cookie.a, 'patch', `/users/${adminId}`, { role: 'label_manager', labelIds: [zero] }))).toBe('409 last_org_admin');
     expect(answer(await as(cookie.a, 'patch', `/users/${adminId}`, { active: false }))).toBe('409 last_org_admin');
-    // labels replaced, a sublabel refused, nothing to change refused
-    expect(answer(await as(cookie.a, 'patch', `/users/${id}`, { labelIds: [sub] }))).toBe('400 label_not_own');
+    // labels replaced, nothing to change refused (D-232: no sublabel to refuse)
     expect(answer(await as(cookie.a, 'patch', `/users/${id}`, {}))).toBe('400 validation_error');
     const relabelled = await as(cookie.a, 'patch', `/users/${id}`, { labelIds: [echo] }).expect(200);
     expect(relabelled.body).toMatchObject({ role: 'label_manager', labelIds: [echo] });

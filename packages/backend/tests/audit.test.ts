@@ -156,21 +156,7 @@ describe('operator header hook', () => {
     await writer(app).get('/api/v1/audit').query({ label: 'no-such-label' }).expect(404);
   });
 
-  it('a sublabel id of a rule response is not recorded (D-169)', async () => {
-    const { f, app } = await setup();
-    const sub = await f.modules.labels.createLabel({ name: 'Sub Audit Synthetic', kind: 'sublabel', ownLabelId: f.testLabels['0to8'] });
-    const artist = await f.modules.owners.createArtist({ pseudonym: 'Rule Recipient', ownerId: null });
-    const rule = await writer(app)
-      .post(`/api/v1/labels/${sub.id}/rules`)
-      .send({ percent: '20', recipientArtistId: artist.id, validFrom: '2026-01-01' })
-      .expect(201);
-    expect(rule.body.labelId).toBe(sub.id);
-    const [created] = await f.auditOf(rule.body.id as string);
-    expect(created).toMatchObject({ route: '/labels/:id/rules', labelId: null });
-    await writer(app).post(`/api/v1/labels/rules/${rule.body.id as string}/close`).send({ validTo: '2026-06-01' }).expect(200);
-    const [closed] = await f.recentActions(1);
-    expect(closed).toMatchObject({ route: '/labels/rules/:id/close', labelId: null });
-  });
+  // D-232: the sublabel rule model removed (a sublabel id of a rule response was not recorded)
 
   it('a cleared document label is in the summary (D-169)', async () => {
     const { f, app } = await setup();

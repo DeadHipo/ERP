@@ -91,26 +91,6 @@ export function ArtistRulesTab(props: { detail: ArtistDetail }) {
           </SimpleTable>
         )}
       </Section>
-      <Section title={t.rules.labelRules} testId="artist-label-rules">
-        {d.labelRules.length === 0 ? (
-          <span className="text-sm text-muted">{t.rules.noLabelRules}</span>
-        ) : (
-          <SimpleTable head={[t.rules.cols.label, t.rules.cols.percent, t.rules.cols.period, t.rules.cols.document]}>
-            {d.labelRules.map((x) => (
-              <tr key={x.id} data-testid={`label-rule-${x.id}`}>
-                <Td>
-                  <EntityLink kind="label" id={x.labelId} label={x.labelName} />
-                </Td>
-                <Td>{x.percent} %</Td>
-                <Td>{period(x.validFrom, x.validTo)}</Td>
-                <Td>
-                  <DocumentCell id={x.documentId} status={x.documentStatus} />
-                </Td>
-              </tr>
-            ))}
-          </SimpleTable>
-        )}
-      </Section>
       {d.merges.length > 0 ? (
         <Section title={t.rules.merges} testId="artist-merges">
           <ul className="list-disc pl-5 text-sm">

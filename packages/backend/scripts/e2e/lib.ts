@@ -428,27 +428,14 @@ export class Sc {
     if (!l) throw new Error(`no label ${name}`);
     return l.id;
   }
-  /** A sublabel of an own label with its alias (the string = its name) and a rule of `percent` to a pseudonym. */
-  async sublabel(
-    name: string,
-    own: '0to8' | 'Echo8',
-    recipient: string,
-    o: { percent?: string; doc?: string; validFrom?: string } = {},
-  ) {
-    const labels = this.f.modules.labels;
-    const l = await labels.createLabel({ name, kind: 'sublabel', ownLabelId: await this.labelId(own) });
-    await labels.addAlias(l.id, name);
-    const doc = o.doc ?? (await this.doc('contract', `rule-contract:${name}`));
-    const rule = await labels.setRule({
-      labelId: l.id,
-      percent: o.percent ?? '50',
-      recipientArtistId: this.id(recipient),
-      validFrom: o.validFrom ?? '2020-01-01',
-      documentId: doc,
-    });
-    this.keys.labels[name] = l.id;
-    this.keys.labelRules[name] = (rule as { id: string }).id;
-    return { label: l, rule };
+  /**
+   * D-232: the sublabel rule model removed (a sublabel label with a rule to a pseudonym): a Believe string `name` is an
+   * alias of the own label, so its units stay ours.
+   */
+  async labelString(name: string, own: '0to8' | 'Echo8') {
+    const id = await this.labelId(own);
+    await this.f.modules.labels.addAlias(id, name);
+    this.keys.labels[name] = id;
   }
 
   // ---- Believe files, operations, B17 ----

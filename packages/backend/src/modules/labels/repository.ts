@@ -1,17 +1,12 @@
 import { asc, eq, or, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { Db } from '../../shared/pg-db';
-import { Decimal } from '../../shared/money';
 import { orgFree, orgRow, orgWhere, type OrgFree, type OrgScope } from '../../shared/org-scope';
-import { labelAccounts, labelAliases, labelRules, labels, sublabels } from './schema';
+import { labelAccounts, labelAliases, labels, sublabels } from './schema';
 
 export type LabelRow = OrgFree<typeof labels.$inferSelect>;
 export type AliasRow = OrgFree<typeof labelAliases.$inferSelect>;
-export type RuleRow = OrgFree<typeof labelRules.$inferSelect>;
 export type AccountRow = OrgFree<typeof labelAccounts.$inferSelect>;
 export type SublabelRow = OrgFree<typeof sublabels.$inferSelect>;
-
-/** PostgreSQL pads numeric(9,6) with zeros; the application keeps percents as they were entered. */
-const canonicalRule = (r: RuleRow): RuleRow => ({ ...r, percent: new Decimal(r.percent).toFixed() });
 
 const containsText = (col: AnyColumn, q: string): SQL =>
   sql`lower(${col}) like ${`%${q.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`} escape '\\'`;
@@ -22,7 +17,6 @@ export function createLabelsRepository(db: Db, org: OrgScope) {
   const C = {
     labels: orgFree(labels),
     labelAliases: orgFree(labelAliases),
-    labelRules: orgFree(labelRules),
     labelAccounts: orgFree(labelAccounts),
     sublabels: orgFree(sublabels),
   };
@@ -70,34 +64,6 @@ export function createLabelsRepository(db: Db, org: OrgScope) {
         .from(labelAliases)
         .where(orgWhere(org, labelAliases))
         .orderBy(asc(labelAliases.aliasNorm)),
-    insertRule: async (row: OrgFree<typeof labelRules.$inferInsert>) => {
-      await orm().insert(labelRules).values(orgRow(org, row));
-    },
-    getRule: async (id: string) => {
-      const r = (
-        await orm().select(C.labelRules).from(labelRules).where(orgWhere(org, labelRules, eq(labelRules.id, id)))
-      )[0];
-      return r ? canonicalRule(r) : undefined;
-    },
-    rulesOfLabel: async (labelId: string) =>
-      (
-        await orm()
-          .select(C.labelRules)
-          .from(labelRules)
-          .where(orgWhere(org, labelRules, eq(labelRules.labelId, labelId)))
-          .orderBy(asc(labelRules.validFrom))
-      ).map(canonicalRule),
-    allRules: async () =>
-      (
-        await orm()
-          .select(C.labelRules)
-          .from(labelRules)
-          .where(orgWhere(org, labelRules))
-          .orderBy(asc(labelRules.labelId), asc(labelRules.validFrom))
-      ).map(canonicalRule),
-    setRuleValidTo: async (id: string, validTo: string | null) => {
-      await orm().update(labelRules).set({ validTo }).where(orgWhere(org, labelRules, eq(labelRules.id, id)));
-    },
     /** The Believe accounts of the labels (D-168). */
     allAccounts: () =>
       orm()

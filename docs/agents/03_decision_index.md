@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-231 by topic)
+# Decision index (D-001 … D-232 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -213,6 +213,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-229 The sublabels counted only by their terms: the aliases of the sublabel labels move to their own label, the rules and the 15 sublabel labels deleted (data, `scripts/sublabels/switch-off-rules.sql`); no recipient: the part is the sublabel's report, the money stays ours (+57 474,51 by the shadow run); hints learn the strings from the sublabel's own tracks · in force, the live switch after the owner's look
 - D-230 The switch of D-229 applied to the live store (backup of `labels` in `data/backups/`); the live money equals the shadow «after» exactly · done; the dead code of the rules waits for removal
 - D-231 The bearer of the unrecovered part of an ad set by hand (`bearer_sublabel_id`, migration 0035: a sublabel of the register, null = the payer label); the money does not read it; the sublabel's report lists the ads it bears and `amountAfterAds` · in force
+- D-232 The old sublabel model removed from the code: `label_rules`, `labels.kind`, `own_label_id` dropped (migration 0036), no sublabel carve, Q11/R1, rule routes, the two rule signals or the rule screens; every label is own; 13 golden cases and 10 e2e seed scenarios of the rule deleted · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force

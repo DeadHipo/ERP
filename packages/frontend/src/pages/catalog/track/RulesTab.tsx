@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { TrackMoney } from '@erp/shared/api-responses';
-import { labelQueries } from '../../../api/queries/labels';
 import { ActionButton } from '../../../components/ActionButton';
 import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
@@ -151,7 +149,6 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
           </SimpleTable>
         )}
       </section>
-      <LabelRules data={data} />
       {open?.kind === 'create-split' ? <SplitDialog mode="create" isrc={isrc} splits={splits} onClose={close} /> : null}
       {open?.kind === 'change-split' ? <SplitDialog mode="change" isrc={isrc} splits={splits} onClose={close} /> : null}
       {open?.kind === 'buyout' ? <BuyoutDialog isrc={isrc} splits={splits} onClose={close} /> : null}
@@ -165,49 +162,3 @@ export function RulesTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   );
 }
 
-/** The sublabel rule in force at each report month (`months[].rule`), resolved against the label list. */
-function LabelRules({ data }: { data: TrackMoney }) {
-  const labels = useQuery(labelQueries.list());
-  const seen = new Set<string>();
-  const rows = data.months.filter((m) => {
-    if (!m.rule) return false;
-    const key = `${m.reportingMonth}|${m.rule}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  const ruleOf = (id: string) => labels.data?.flatMap((l) => l.rules.map((rule) => ({ label: l, rule }))).find((x) => x.rule.id === id);
-  return (
-    <section>
-      <h2 className="mb-2 text-sm font-medium">{r.labelRules}</h2>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted">{r.noLabelRules}</p>
-      ) : (
-        <SimpleTable testId="label-rules" headers={[r.month, r.sublabel, r.recipient, r.percent, r.period, r.document]}>
-          {rows.map((m) => {
-            const found = m.rule ? ruleOf(m.rule) : undefined;
-            return (
-              <tr key={`${m.reportingMonth}-${m.rule}`} data-testid={`label-rule-${m.reportingMonth}`} className="border-t border-border">
-                <Td>{m.reportingMonth}</Td>
-                <Td>{found ? <EntityLink kind="label" id={found.label.id} label={found.label.name} /> : (m.sublabelName ?? '—')}</Td>
-                <Td>
-                  {found ? <EntityLink kind="artist" id={found.rule.recipientArtistId} label={found.rule.recipientPseudonym} /> : '—'}
-                </Td>
-                <Td col="percent">{found?.rule.percent ?? '—'}</Td>
-                <Td>{found ? periodText(found.rule.validFrom, found.rule.validTo, r.open) : '—'}</Td>
-                <Td>
-                  {found ? (
-                    <span className="flex items-center gap-1">
-                      {found.rule.documentId ? <EntityLink kind="document" id={found.rule.documentId} label="→" /> : null}
-                      <StatusChip kind="documentStatus" value={found.rule.documentStatus} />
-                    </span>
-                  ) : null}
-                </Td>
-              </tr>
-            );
-          })}
-        </SimpleTable>
-      )}
-    </section>
-  );
-}

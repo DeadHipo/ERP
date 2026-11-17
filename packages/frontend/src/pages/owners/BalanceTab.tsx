@@ -42,7 +42,7 @@ function operationText(op: Operation | undefined, id: string): string {
 
 const pendingWhy = (why: string) => (Object.hasOwn(t.pendingWhy, why) ? t.pendingWhy[why] : undefined) ?? why;
 
-const LAYERS = ['split', 'top', 'carve', 'sublabel'] as const;
+const LAYERS = ['split', 'top', 'carve'] as const;
 
 /**
  * D-212: the money of the requested period, the master income by the layer that allocated it (the backend's sums: the
@@ -88,7 +88,7 @@ function PeriodMonths(props: { period: Balance['period'] }) {
       {p.byMonth.length === 0 ? (
         <span className="text-sm text-muted" data-testid="balance-period-months-empty">{pb.byMonthEmpty}</span>
       ) : (
-        <SimpleTable head={[c.month, c.earnedMaster, c.split, c.top, c.carve, c.sublabel, c.earnedPublishing, c.waiting]}>
+        <SimpleTable head={[c.month, c.earnedMaster, c.split, c.top, c.carve, c.earnedPublishing, c.waiting]}>
           {p.byMonth.map((m) => (
             <tr key={m.month} data-testid={`balance-period-month-${m.month}`}>
               <Td col="month">{m.month}</Td>

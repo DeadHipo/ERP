@@ -125,7 +125,7 @@ const D = {
   approvedAt: 'When the document was approved',
   approvedBy: 'Who approved the document',
   area: 'master, publishing or all',
-  assumptionBasis: 'Why it waits as an assumption: document, or the council rules q11, r1; null = not an assumption',
+  assumptionBasis: 'Why it waits as an assumption: its document; null = not an assumption',
   bookBMatches: 'bookB equals reconciliationB',
   catalogNumber: 'The catalog number of the release',
   channel: 'The payment channel',
@@ -365,33 +365,14 @@ export type ParticipationListItem = z.infer<typeof participationListSchema>['ite
 
 // ---- labels ----
 
-export const labelRuleSchema = z.object({
-  id: z.string(),
-  labelId: z.string().describe(D.labelId),
-  percent: z.string().describe('The percent of the label share'),
-  recipientArtistId: z.string().describe('The pseudonym of the sublabel that receives it'),
-  validFrom: date.describe(D.validFrom),
-  validTo: date.nullable().describe('Exclusive; null = open-ended'),
-  documentId: z.string().nullable().describe(D.documentId),
-  note: z.string().nullable(),
-});
 export const labelSchema = z.object({
   id: z.string(),
   name: z.string(),
-  kind: z.enum(['own', 'sublabel']).describe('own: ours, it has a book; sublabel: an imprint under an own label'),
-  ownLabelId: z.string().nullable().describe('The own label of a sublabel'),
   aliases: z.array(z.string()).describe('Believe label strings that lead to this label'),
-  rules: z.array(labelRuleSchema).describe('Sublabel rules: the share of a sublabel by period'),
-  accounts: z.array(z.string()).describe('The Believe accounts registered under the own label (D-168); empty for a sublabel'),
+  accounts: z.array(z.string()).describe('The Believe accounts registered under the label (D-168)'),
 });
-export const labelListItemSchema = labelSchema.extend({
-  rules: z.array(
-    labelRuleSchema.extend({
-      recipientPseudonym: z.string().describe(D.recipientPseudonym),
-      documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
-    }),
-  ),
-});
+/** Every label is an own label since D-232; the list item is the label. */
+export const labelListItemSchema = labelSchema;
 export type LabelListItem = z.infer<typeof labelListItemSchema>;
 
 export const splitListItemSchema = splitSchema.extend({
@@ -484,8 +465,7 @@ export const artistDetailSchema = z.object({
   contracts: z.array(contractSchema).describe('The contracts of the owner that name the pseudonym'),
   splits: z.array(splitListItemSchema).describe('Every split with a row of the pseudonym (any period, every id)'),
   participations: z.array(participationListSchema.shape.items.element),
-  labelRules: z.array(labelListItemSchema.shape.rules.element.extend({ labelName: z.string().describe(D.labelName) })).describe('Sublabel rules whose recipient is the pseudonym'),
-  documents: z.array(documentSchema).describe('The documents the splits, rows, participations, contracts and rules above cite'),
+  documents: z.array(documentSchema).describe('The documents the splits, rows, participations and contracts above cite'),
 });
 export type ArtistDetail = z.infer<typeof artistDetailSchema>;
 
@@ -870,12 +850,6 @@ export const signalsSchema = z.object({
     )
     .describe('Carves larger than their bucket: the missing part is not money (10 §3)'),
   labelUnmapped: z.array(z.object({ labelName: z.string().describe(D.labelName), net: money.describe(D.net) })),
-  sublabelWithoutRule: z
-    .array(z.object({ label: z.string().describe(D.label), month, net: money.describe(D.net) }))
-    .describe('Units of a sublabel with no rule in force at the report month (the imprint has no deal yet)'),
-  ruleRecipientIsRow: z
-    .array(z.object({ isrc: z.string().describe(D.isrc), artistId: z.string().describe(D.artistId), pseudonym: z.string().describe(D.pseudonym), month }))
-    .describe('The sublabel rule recipient also has a split row on the same unit: the double-pay shape'),
   mcRowBearsCarve: z
     .array(
       z.object({
@@ -912,7 +886,7 @@ export const signalsSchema = z.object({
   assumptions: z.array(
     z.object({
       documentId: z.string().nullable().describe(D.documentId),
-      basis: z.enum(['document', 'q11', 'r1']).describe('Why it is an assumption: document, or the council rules q11, r1'),
+      basis: z.enum(['document']).describe('Why it is an assumption: its document'),
       amount: money,
       isrcs: z.array(z.string()),
     }),
@@ -1099,7 +1073,7 @@ export const queueGroupSchema = z.object({
   isrcCount: z.number().int().describe('ISRCs of the group'),
   months: z.object({ from: month, to: month }).describe('The report months it spans'),
   isrcs: z.array(z.object({ isrc: z.string().describe(D.isrc), amount: money })).describe('Top 20 by |amount|'),
-  assumptionBasis: z.enum(['document', 'q11', 'r1']).nullable().describe(D.assumptionBasis),
+  assumptionBasis: z.enum(['document']).nullable().describe(D.assumptionBasis),
 });
 export type QueueGroup = z.infer<typeof queueGroupSchema>;
 
@@ -1323,7 +1297,6 @@ export const balanceSchema = z.object({
           split: money.describe('From the rows of the main split'),
           top: money.describe('From participations off the top'),
           carve: money.describe('From participations carved out of a share (artist pool, artist share, label share)'),
-          sublabel: money.describe('From a sublabel rule'),
         })
         .describe('D-212: earnedMaster by the layer that allocated it; the sum is earnedMaster'),
       byMonth: z
@@ -1336,7 +1309,6 @@ export const balanceSchema = z.object({
                 split: money.describe('From the rows of the main split'),
                 top: money.describe('From participations off the top'),
                 carve: money.describe('From participations carved out of a share'),
-                sublabel: money.describe('From a sublabel rule'),
               })
               .describe('earnedMaster of the month by layer'),
             earnedPublishing: money.describe('Confirmed publishing income of the month'),
@@ -1433,7 +1405,7 @@ export const balanceSchema = z.object({
         isrc: z.string().nullable().describe(D.isrc),
         month,
         artistId: z.string().describe(D.artistId),
-        role: z.enum(['artist', 'sublabel']).describe('artist: the recovered part of a pseudonym; sublabel: the unrecovered part borne by a sublabel').describe(D.role),
+        role: z.enum(['artist']).describe('artist: the recovered part of a pseudonym (the sublabel bearer left with D-232)').describe(D.role),
         amount: money.describe('The charge'),
         labelId: z.string().nullable().describe("The label of record of the expense (D-168); null = none"),
       }),
@@ -1517,15 +1489,15 @@ export type ArtistBalanceItem = z.infer<typeof artistBalanceItemSchema>;
 export const allocationSchema = z.object({
   artistId: z.string().describe(D.artistId),
   ownerId: z.string().nullable().describe(D.ownerId),
-  layer: z.enum(['split', 'top', 'carve', 'sublabel']).describe('The layer that made the allocation').describe(D.layer),
-  kind: z.enum(['row', 'top', 'artist_pool', 'artist_share', 'label_share', 'sublabel']).describe('row: a split row; top: off the top of net; artist_pool, artist_share, label_share: carved from that bucket; sublabel: by a sublabel rule'),
+  layer: z.enum(['split', 'top', 'carve']).describe('The layer that made the allocation').describe(D.layer),
+  kind: z.enum(['row', 'top', 'artist_pool', 'artist_share', 'label_share']).describe('row: a split row; top: off the top of net; artist_pool, artist_share, label_share: carved from that bucket'),
   ruleId: z.string().describe('split id (row), participation id (top, carve), label rule id (sublabel)'),
   documentId: z.string().nullable().describe(D.documentId),
   percent: money.describe('The percent applied'),
   amount: money.describe('The money allocated'),
   category: z.enum(['B', 'C']).describe('B = confirmed, C = waits'),
   reason: cReasonSchema.nullable().describe('The C reason; null in B'),
-  assumption: z.enum(['document', 'q11', 'r1']).nullable().describe('Why it waits as an assumption: document, or the council rules q11, r1; null = not an assumption'),
+  assumption: z.enum(['document']).nullable().describe('Why it waits as an assumption: document, or the council rules q11, r1; null = not an assumption'),
 });
 
 const shortfallSchema = z.object({
@@ -1548,14 +1520,6 @@ export const layerStateSchema = z.object({
   status: unitStatus,
   ourLabelId: z.string().nullable().describe(D.ourLabelId),
   ourLabelName: z.string().nullable().describe(D.ourLabelName),
-  rule: z
-    .object({
-      id: z.string(),
-      percent: money.describe(D.percent),
-      recipientArtistId: z.string().describe(D.recipientArtistId),
-      documentId: z.string().nullable().describe(D.documentId),
-    })
-    .nullable(),
   scaledNet: money.describe('Net minus the off-the-top allocations'),
   labelShare: money.describe(D.labelShare),
   labelShareCategory,
@@ -1750,11 +1714,9 @@ export const trackMoneyMonthSchema = z.object({
   reportingMonth: month.describe(D.reportingMonth),
   salesMonth: month.describe(D.salesMonth),
   labelName: z.string().describe(D.labelName),
-  ourLabelName: z.string().nullable().describe('The own label the label string leads to: decides the sublabel rule and «ours»'),
+  ourLabelName: z.string().nullable().describe('The own label the label string leads to: decides «ours»'),
   bookLabelId: z.string().nullable().describe("The book of the unit: the label its file was loaded under (D-169); null = '?'"),
   bookLabelName: z.string().nullable().describe(D.bookLabelName),
-  sublabelName: z.string().nullable().describe(D.sublabelName),
-  rule: z.string().nullable().describe('Id of the sublabel rule in force at the report month'),
   net: money.describe(D.net),
   labelShare: money.describe(D.labelShare),
   labelShareCategory,
@@ -1855,7 +1817,6 @@ export const documentUsesSchema = z.object({
     .array(z.object({ splitId: z.string().describe(D.splitId), isrc: z.string().describe(D.isrc), artistId: z.string().describe(D.artistId) }))
     .describe('Split rows confirmed by this document alone (the split itself has another or none)'),
   participations: participationListSchema.shape.items,
-  labelRules: labelListItemSchema.shape.rules,
   contracts: z.array(contractSchema),
   operations: z.array(operationSchema),
   waiting: z
@@ -1933,7 +1894,7 @@ export const searchResultSchema = z.object({
   documents: z.array(
     z.object({ id: z.string(), title: z.string(), kind: z.string(), status: documentSchema.shape.status }),
   ),
-  labels: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['own', 'sublabel']) })),
+  labels: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 export type SearchResult = z.infer<typeof searchResultSchema>;
 
@@ -2013,13 +1974,10 @@ export const adViewSchema = adExpenseSchema.extend({
       ourLabelName: z.string().nullable().describe(D.ourLabelName),
       incomeBookLabelId: z.string().nullable().describe('The book of the ISRC income at the month of the expense (information, D-169)'),
       incomeBookLabelName: z.string().nullable().describe(D.incomeBookLabelName),
-      sublabelName: z.string().nullable().describe('The sublabel of the ISRC label string at the month: its rule bears the unrecovered part'),
+      bearerSublabelId: z.string().nullable().describe('Who bears the unrecovered part for a sublabel report, set by hand (D-231); the money never reads it'),
       parts: z.array(adPartSchema),
       unrecovered: money.describe(D.unrecovered),
-      borneBy: z.discriminatedUnion('kind', [
-        z.object({ kind: z.literal('sublabel'), artistId: z.string().describe(D.artistId), ownerId: z.string().nullable().describe(D.ownerId), amount: money }),
-        z.object({ kind: z.literal('ours'), amount: money }),
-      ]),
+      borneBy: z.object({ kind: z.literal('ours'), amount: money }).describe('The unrecovered part is the label\'s in the money (D-232)'),
     })
     .nullable()
     .describe('What the calculation decides for the record (null when it is deactivated)'),
@@ -2585,7 +2543,6 @@ const sublabelReportSumFields = {
   amount: money.describe('The part of the sublabel by its terms'),
   confirmed: money.describe('The part confirmed by an approved document'),
   waiting: money.describe('The part that waits (no document, not approved, an assumption, no split)'),
-  currentAmount: money.describe('What the sublabel rules in force give the sublabel today on the same units (the money paid today)'),
 };
 
 /** The report of a sublabel by its terms (D-219): track × report month, its own part only. */
@@ -2608,7 +2565,6 @@ export const sublabelReportSchema = z.object({
         .enum(['no_document', 'document_not_approved', 'assumption', 'no_split', 'not_allocated'])
         .nullable()
         .describe('Why the part waits; null = confirmed'),
-      currentAmount: money.describe('What the sublabel rules give the sublabel today on these units'),
     }),
   ),
   months: z.array(z.object({ month, ...sublabelReportSumFields })),

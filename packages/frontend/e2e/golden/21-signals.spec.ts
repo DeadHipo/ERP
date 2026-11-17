@@ -23,10 +23,10 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 27 lists with their counts and links (D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled; D-196: + releasesWithoutDate; D-200: + cutsUnsettled; D-216: + mcRowBearsCarve)', async ({ page }) => {
+test('the index lists the 25 lists with their counts and links (D-232: − sublabelWithoutRule, ruleRecipientIsRow; D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled; D-196: + releasesWithoutDate; D-200: + cutsUnsettled; D-216: + mcRowBearsCarve)', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(27);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(25);
   // D-200: the seed has no cut (48-cuts makes the first), so «Незакрытые на срезе» is empty
   await expect(page.getByTestId('signal-list-cutsUnsettled').getByTestId('signal-count')).toHaveText('0');
   // D-173: the seed marks no label source and records no forgiveness or relabel
@@ -52,21 +52,14 @@ test('D-169 «Выписки B17 без лейбла» renders empty on the seed
   await expect(page.locator('[data-testid^="signal-row-statementsWithoutLabel-"]')).toHaveCount(0);
 });
 
-test('rows of other scenarios: unfunded S03/8, isrcsWithoutSplit S08/4 and S30, assumptions S08', async ({ page }) => {
+test('rows of other scenarios: unfunded S03/8, isrcsWithoutSplit S08/4 and S30', async ({ page }) => {
   await openList(page, 'unfunded');
   const g37 = `${isrc(3, 8, 1)}|${M}|`;
   await expect(page.locator(`[data-testid^="signal-row-unfunded-${g37}"]`).locator('[data-col="missing"]').getByTestId('money')).toHaveAttribute('title', '20');
   await openList(page, 'isrcsWithoutSplit');
   await expect(money(page, 'isrcsWithoutSplit', isrc(8, 4, 1), 'net')).toHaveAttribute('title', '100');
   await expect(money(page, 'isrcsWithoutSplit', isrc(30, 1, 1), 'net')).toHaveAttribute('title', '100');
-  await openList(page, 'assumptions');
-  const s081 = sc(8, 1);
-  // q11 rows keyed by document: the participation's appendix (4.25) and the NG-081 rule's contract (19.125)
-  await expect(money(page, 'assumptions', `${s081.documents.appendix}|q11`, 'amount')).toHaveAttribute('title', '4.25');
-  await expect(money(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`, 'amount')).toHaveAttribute('title', '19.125');
-  await expect(row(page, 'assumptions', `${s081.documents['rule-contract:NoGhost Records 08a']}|q11`).getByTestId('read-only')).toContainText('⚠ Q11');
-  // S08/4 (D-175): the label rule on the ISRC without a split carves nothing: no r1 row any more
-  await expect(page.locator('[data-testid^="signal-row-assumptions-"][data-testid$="|r1"]')).toHaveCount(0);
+  // D-232: the Q11 / R1 rows of S08 left with the sublabel rule
 });
 
 test('S20 unallocated: the pair with ISRC → register the track; the pair without ISRC stays read-only', async ({ page, request }) => {
@@ -129,15 +122,7 @@ test('S21 unfunded → close the participation at 2026-03 and re-create it at 10
   expect([again.status, again.code]).toEqual([409, 'participation_overlap']);
 });
 
-test('S35/1 sublabel without a rule and a rule recipient that is a row; S35/2 two rows of one owner', async ({ page }) => {
-  await openList(page, 'sublabelWithoutRule');
-  await expect(money(page, 'sublabelWithoutRule', `Ghost Label 35|${M}`, 'net')).toHaveAttribute('title', '140');
-  await expect(row(page, 'sublabelWithoutRule', `Ghost Label 35|${M}`).getByTestId('action-set-rule')).toBeVisible();
-  await openList(page, 'ruleRecipientIsRow');
-  const r = row(page, 'ruleRecipientIsRow', `${isrc(35, 1, 1)}|2026-06`);
-  await expect(r).toContainText('R-351');
-  await expect(r.getByRole('link', { name: 'Правила трека' })).toHaveAttribute('href', `/tracks/${isrc(35, 1, 1)}?tab=rules`);
-  await expect(r.getByTestId('action-close-rule')).toBeVisible();
+test('S35/2 two rows of one owner (S35/1 left with the sublabel rule, D-232)', async ({ page }) => {
   await openList(page, 'twoRowsOneOwner');
   const two = row(page, 'twoRowsOneOwner', `${isrc(35, 2, 1)}|${M}`);
   await expect(two).toContainText('A-352, A2-352');

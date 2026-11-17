@@ -57,9 +57,6 @@ export interface UnitResult {
   bookLabelId: string | null;
   bookLabelName: string | null;
   /** The sublabel of the label string and the rule in force at the report month (signals only, no amount). */
-  sublabelId: string | null;
-  sublabelName: string | null;
-  ruleId: string | null;
   /** What remains of the net after every allocation (the layer state, D-127). */
   labelShare: Decimal;
   labelShareCategory: LabelShareCategory;
@@ -176,7 +173,6 @@ export async function calculate(
       const terms = pubData.terms;
       const docIds = [
         ...splitIndex.documentIds(),
-        ...labelIndex.documentIds(),
         ...terms.map((t) => t.documentId).filter((x): x is string => !!x),
         ...extraDocumentIds,
       ];
@@ -204,7 +200,7 @@ export async function calculate(
 
   // The pure context of the layers: plain functions over this one snapshot (10 §3).
   const ctx: LayerContext = {
-    labelOf: (s, date) => labelIndex.labelOf(s, date),
+    labelOf: (s) => labelIndex.labelOf(s),
     labelName: (id) => labelIndex.labelName(id),
     knownPairs,
     splitAt: (isrc, date) => splitIndex.at(isrc, date),
@@ -242,9 +238,6 @@ export async function calculate(
       ourLabelName: state.ourLabelName,
       bookLabelId: u.labelId,
       bookLabelName: u.labelId === null ? null : (labelIndex.labelName(u.labelId) ?? null),
-      sublabelId: state.sublabelId,
-      sublabelName: state.sublabelName,
-      ruleId: state.rule?.id ?? null,
       labelShare: state.labelShare,
       labelShareCategory: state.labelShareCategory,
       ours: state.labelShareCategory === 'ours' ? state.labelShare : ZERO,

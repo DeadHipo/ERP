@@ -88,6 +88,6 @@ function pickItems(kind: PickerKind, data: SearchResult | undefined): PickerItem
     case 'documents':
       return data.documents.map((d) => ({ id: d.id, label: d.title, kind: d.kind, status: d.status }));
     case 'labels':
-      return data.labels.map((l) => ({ id: l.id, label: l.name, kind: l.kind }));
+      return data.labels.map((l) => ({ id: l.id, label: l.name }));
   }
 }
