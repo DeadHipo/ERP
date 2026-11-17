@@ -305,7 +305,7 @@ export const sourceFacetsQuery = z.object({ fileId: z.string().optional().descri
 export const sourceFilesQuery = labelQuery;
 
 /**
- * `POST /sources/believe`, `POST /publishing/b17`: the own label the file is loaded under (D-169). Optional here so that
+ * `POST /sources/believe`: the own label the file is loaded under (D-169). Optional here so that
  * a missing label is the facade's 400 `label_required`, not a `validation_error`; checked before the body is received.
  */
 export const uploadLabelQuery = z.object({

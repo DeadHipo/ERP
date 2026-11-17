@@ -35,7 +35,7 @@ test('S34 before: the files table has no file of the account; the seeded files a
   await expect(page.getByTestId('sources-page')).toBeVisible();
   await expect(page.locator('[data-testid^="source-file-"][row-id]').first()).toBeVisible();
   await expect(page.locator('[data-testid^="source-file-"][row-id]').filter({ hasText: ACCT })).toHaveCount(0);
-  // the B17 statement of the seed
+  // the report files of publishing of the seed (D-234: v2, loaded on P32)
   await expect(page.locator('[data-testid^="statement-"][row-id]').first()).toContainText('Publishing_Statement');
   await page.getByTestId('field-sources-q').fill(account(1, 1));
   const seeded = page.locator('[data-testid^="source-file-"][row-id]').filter({ hasText: account(1, 1) });
@@ -50,7 +50,7 @@ test('S34 under «Все» the upload is closed: a write is made under a label',
   await expect(page.getByTestId('upload-closed-reason')).toContainText('выберите лейбл');
   await page.getByTestId('field-upload-believe').setInputFiles({ name: fixture(ACCT).name, mimeType: 'text/csv', buffer: fixture(ACCT).buffer });
   await expect(page.getByTestId('action-upload-believe')).toBeDisabled();
-  await expect(page.getByTestId('action-upload-b17')).toBeDisabled();
+  await expect(page.getByTestId('b17-upload-v2')).toHaveAttribute('href', '/publishing-v2'); // D-234: B17 is loaded on P32
 });
 
 test('S34 upload under 0to8: account_unregistered → register → loaded under 0to8; P1 2734100 / 2026-03 is 100 / 50 / 0 / 50; again: 409 duplicate_period', async ({ page }) => {

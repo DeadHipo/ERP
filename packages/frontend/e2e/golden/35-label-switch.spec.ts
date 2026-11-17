@@ -158,14 +158,14 @@ test('S38 P21 «Операции без лейбла»: the old advance, set to 
   await expect(page.getByTestId(`track-${isrc(38, 1, 2)}`)).toBeVisible();
 });
 
-test('D-169 P9 payouts view: the publishing owner S18 W2 is listed under 0to8 (payable 70), not under Echo8', async ({ page }) => {
+test('D-169 P9 payouts view: the publishing owner S18 W2 is listed under 0to8 (payable 90, D-234: its row at its term 90 %), not under Echo8', async ({ page }) => {
   const ownerId = sc(18).owners.W2 ?? '';
   const grid = JSON.stringify({ f: { name: { filterType: 'text', type: 'contains', filter: 'W2-181' } } });
   await openAs(page, `/owners?view=payouts&grid=${encodeURIComponent(grid)}&label=${labelOf('0to8')}`);
   await settled(page);
   const row = page.getByTestId(`owner-${ownerId}`);
   await expect(row).toBeVisible();
-  await expect(row.locator('[data-col="payable"]').getByTestId('money')).toHaveAttribute('title', '70');
+  await expect(row.locator('[data-col="payable"]').getByTestId('money')).toHaveAttribute('title', '90');
   await openAs(page, `/owners?view=payouts&grid=${encodeURIComponent(grid)}&label=${labelOf('Echo8')}`);
   await settled(page);
   await expect(page.getByTestId('owners-page')).toBeVisible();

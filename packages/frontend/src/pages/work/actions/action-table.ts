@@ -36,7 +36,6 @@ export type SignalName = Exclude<keyof Signals, 'counts'>;
 export const SIGNAL_ACTIONS: Record<SignalName, ActionEntry> = {
   unallocated: { action: 'RegisterTrackDialog' },
   isrcsWithoutSplit: { action: 'CreateSplitDialog' },
-  ambiguousWriters: { action: 'MapWriterDialog' },
   unfunded: { action: 'RecreateParticipationDialog' },
   labelUnmapped: { action: 'LabelAliasDialog' },
   mcRowBearsCarve: { information: true, note: 'a row named like an MC without the MC mark bears the pool carve of another MC (D-216): mark it MC in a new split version on the track page' },

@@ -23,7 +23,7 @@ import { TMP } from './helpers/tmp-root';
 // other's rows. Synthetic data only.
 
 const SRC = join(process.cwd(), 'src');
-const MODULES = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'pubv2', 'links', 'audit', 'ads'];
+const MODULES = ['owners', 'splits', 'labels', 'settlements', 'pubv2', 'links', 'audit', 'ads']; // D-234: − publishing (its tables stay until stage 2)
 const REPOSITORIES = [
   ...MODULES.map((m) => join(SRC, 'modules', m, 'repository.ts')),
   join(SRC, 'modules', 'sources', 'registry.ts'),
@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(41); // D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(36); // D-234: − the five tables of `publishing` from the walked schemas (they stay in the database until stage 2); D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
@@ -161,7 +161,7 @@ describe('two organizations in one database (D-170)', () => {
   }
 
   /** The same catalogue, rows and files in an organization: everything that is unique within one. */
-  async function fill(o: Awaited<ReturnType<typeof openOrg>>, believe: { path: string; fileName: string }, b17: { path: string; fileName: string }) {
+  async function fill(o: Awaited<ReturnType<typeof openOrg>>, believe: { path: string; fileName: string }, b17: Awaited<ReturnType<typeof writeB17>>) {
     const { f, label } = o;
     const { owner, artists } = await confirmedOwner(f as never, 'Owner Same', ['Pseudonym Same']);
     const artist = artists[0]!;
@@ -180,7 +180,7 @@ describe('two organizations in one database (D-170)', () => {
       documentId: appendix.id,
     });
     await f.ingestBelieve(believe, label);
-    await f.ingestB17(b17, label);
+    for (const x of b17.files) await f.modules.pubv2.ingest({ ...x, labelId: label, replace: false }); // D-234: v2
     await f.createAds([{ isrc: ISRC, month: '2026-07', amount: '5', labelId: label, externalRef: 'ref-same' }]);
     return { owner, artist };
   }
@@ -242,14 +242,12 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const sfx = randomUUID().slice(0, 8);
   const ISRC_B = 'QZTST2699901';
   const UPC_B = '2699900000001';
-  const B_NAMES = ['B Owner Secret', 'B Pseudo Secret', 'B Second Secret', 'B Label Secret', 'B Sub Secret', 'B WRITER SECRET', 'B Song Secret', 'B Track Secret'];
+  const B_NAMES = ['B Owner Secret', 'B Pseudo Secret', 'B Second Secret', 'B Label Secret', 'B Sub Secret', 'B Track Secret'];
 
   type Ids = {
     owner: string; artist: string; artist2: string; track: string; document: string; split: string;
-    participation: string; label: string; sublabel: string; file: string; norm: string;
+    participation: string; label: string; sublabel: string; file: string;
     operation: string; ad: string; isrc: string; upc: string; account: string; member: string; grant: string;
-    /** D-173: a B17 statement */
-    statement: string;
     pubFile: string;
     songwriter: string;
     song: string;
@@ -272,7 +270,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
   let orgB = '';
   let B: Ids;
   /** The corrected file of the replacement walk (D-173). */
-  let replaceFile: { path: string; fileName: string };
   let A: { label: string; owner: string; artist: string; document: string; buyout: string };
 
   const users = { a: `scope-a-${sfx}`, b: `scope-b-${sfx}`, sys: `scope-sys-${sfx}` };
@@ -340,9 +337,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const believe = writeBelieve('2026-07', [{ isrc: ISRC_B, upc: UPC_B, net: '100' }], { account: '2799555' });
     const fb = await as('b', request(app).post('/api/v1/sources/believe')).query({ label: lb.id }).attach('file', believe.path, believe.fileName);
     expect(fb.status, JSON.stringify(fb.body)).toBe(201);
-    const b17 = await writeB17('Q22026', [{ writer: 'B WRITER SECRET', title: 'B Song Secret', payable: 10 }]);
-    const sb17 = await as('b', request(app).post('/api/v1/publishing/b17')).query({ label: lb.id }).attach('file', b17.path, b17.fileName);
-    expect(sb17.status, JSON.stringify(sb17.body)).toBe(201);
     const pubBook = new ExcelJS.Workbook();
     pubBook.addWorksheet('Songwriter Breakdown').addRows([
       ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
@@ -355,9 +349,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     expect(pubFile.status, JSON.stringify(pubFile.body)).toBe(201);
     const pubWriters = (await ok('b', 'get', '/publishing-v2/songwriters')) as unknown as { id: string }[];
     const pubSongs = (await ok('b', 'get', '/publishing-v2/songs')) as unknown as { songId: string }[];
-    const writers = (await ok('b', 'get', '/publishing/writers')) as unknown as { writerNorm: string }[];
-    replaceFile = await writeB17('Q22026', [{ writer: 'A WRITER', title: 'A Song', payable: 11 }], 'scope_replace_Q22026.xlsx');
-    await ok('b', 'post', '/publishing/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
+    await ok('b', 'post', '/publishing-v2/terms', { ownerId: ob.id, percent: '50', validFrom: '2026-01-01' });
     const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
     const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
     const sublB = await ok('b', 'post', '/sublabels', { name: 'B Sublabel Secret' });
@@ -367,8 +359,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     expect(sublTermsB.status, JSON.stringify(sublTermsB.body)).toBe(201);
     B = {
       owner: ob.id, artist: ab.id, artist2: ab2.id, track: tb.id, document: db_.id, split: spb.id, participation: pb.id,
-      label: lb.id, sublabel: sb.id, file: fb.body.id, norm: writers[0]?.writerNorm ?? '', operation: opb.id,
-      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', statement: sb17.body.statement.id, pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string,
+      label: lb.id, sublabel: sb.id, file: fb.body.id, operation: opb.id,
+      ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
       subl: sublB.id, sublTerm: sublTermsB.body.termIds[0],
       cut: (await ok('b', 'post', '/settlements/cuts', { labelId: lb.id, name: 'B cut Secret', cutDate: '2026-08-15' })).id,
@@ -383,8 +375,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const u = () => randomUUID();
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
-      sublabel: u(), file: u(), norm: 'NOBODY KNOWN', operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), statement: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(),
+      sublabel: u(), file: u(), operation: u(), ad: u(), isrc: 'QZTST2698888',
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(),
     };
   };
 
@@ -444,7 +436,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /sources/files': (x) => ({ query: { label: x.label } }),
     'GET /sources/lines': (x) => ({ query: { fileId: x.file } }),
     'GET /sources/lines/facets': (x) => ({ query: { fileId: x.file } }),
-    'GET /publishing/writers': () => ({}),
     'GET /publishing-v2/files': (x) => ({ query: { label: x.label } }),
     'GET /publishing-v2/songwriters': (x) => ({ query: { label: x.label } }),
     'GET /publishing-v2/songs': (x) => ({ query: { label: x.label } }),
@@ -456,8 +447,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /publishing-v2/links': (x) => ({ body: { songwriterId: x.songwriter, ownerId: x.owner } }),
     'GET /publishing-v2/songwriters/:id': (x) => ({ params: { id: x.songwriter } }),
     'POST /publishing-v2/files/:id/remove': (x) => ({ params: { id: x.pubFile } }),
-    'POST /publishing/writers/:norm/map': (x) => ({ params: { norm: x.norm }, body: { ownerId: A.owner } }),
-    'POST /publishing/terms': (x) => ({ body: { ownerId: x.owner, percent: '10', validFrom: '2026-01-01' } }),
     'GET /reconciliation': () => ({}),
     'GET /signals': (x) => ({ query: { ownerId: x.owner } }),
     'GET /overview': () => ({}),
@@ -483,8 +472,6 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /tracks/:isrc/label': (x) => ({ params: { isrc: x.isrc }, body: { labelId: x.label, from: '2026-07-01' } }),
     'GET /releases/registry': (x) => ({ query: { label: x.label } }),
     'GET /onboarding': (x) => ({ query: { label: x.label } }),
-    // stage 5 (D-173): B's statement replaced under A's label answers as an unknown statement (404)
-    'POST /publishing/statements/:id/replace': (x) => ({ params: { id: x.statement }, query: { label: A.label }, file: replaceFile }),
     // the payroll (D-173): B's label is an unknown label (404)
     'GET /owners/payroll': (x) => ({ query: { label: x.label } }),
     // the admission (D-176): B's owner, label and rows are unknown in A
@@ -527,9 +514,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const ID_LESS = [
     'POST /owners',
     'POST /sources/believe',
-    'POST /publishing/b17',
     'POST /publishing-v2/files',
-    'POST /publishing/writers/resolve',
     'POST /splits/import',
     // D-195: the preview reads a file; the apply writes rows of A keyed by UPC under the label the guard checked
     'POST /releases/preview',
@@ -550,7 +535,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
    * Where the lookup itself answers an unknown key with `validation_error` today: an unknown file id («Not a loaded
    * Believe file», F10) and an unknown writer («Unknown writer»). Everywhere else the unknown id must reach the lookup.
    */
-  const VALIDATION_ALLOWED = ['GET /sources/lines', 'GET /sources/lines/facets', 'POST /publishing/writers/:norm/map'];
+  const VALIDATION_ALLOWED = ['GET /sources/lines', 'GET /sources/lines/facets'];
 
   const secrets = () => [...Object.entries(B).filter(([k]) => k !== 'account').map(([, v]) => v), ...B_NAMES];
   /** The text of an answer without the values the request itself sent (an error message names the id it got). */
@@ -563,7 +548,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const url = (path: string, params: Record<string, string> = {}) =>
     path.replace(/:([A-Za-z]+)/g, (_m, n: string) => encodeURIComponent(params[n] ?? 'x'));
   const bView = async () => {
-    const reads = [`/owners/${B.owner}`, `/artists/${B.artist}`, '/labels', `/splits?isrc=${ISRC_B}`, `/participations?isrc=${ISRC_B}`, '/settlements/operations', '/ads', '/documents', '/publishing/writers', '/sources/files', `/owners/${B.owner}/balance`];
+    const reads = [`/owners/${B.owner}`, `/artists/${B.artist}`, '/labels', `/splits?isrc=${ISRC_B}`, `/participations?isrc=${ISRC_B}`, '/settlements/operations', '/ads', '/documents', '/sources/files', `/owners/${B.owner}/balance`];
     const out = [];
     for (const r of reads) out.push((await api('b', 'get', r)).body);
     return JSON.stringify(out).replace(/"calculatedAt":"[^"]*"/g, '');
@@ -600,7 +585,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const audit = await api('a', 'get', '/audit', { query: { limit: '500' } });
     expect(audit.body.items.length).toBeGreaterThan(0);
     expect(leaks(audit, {})).toEqual([]);
-    for (const r of ['/search?q=Secret', '/labels', '/sources/files', '/publishing/writers', '/overview', '/reconciliation', '/tracks', '/artists'])
+    for (const r of ['/search?q=Secret', '/labels', '/sources/files', '/overview', '/reconciliation', '/tracks', '/artists'])
       expect(leaks(await api('a', 'get', r), {}), r).toEqual([]);
 
     const notFound = (res: request.Response) => [res.status, res.body.error?.code];

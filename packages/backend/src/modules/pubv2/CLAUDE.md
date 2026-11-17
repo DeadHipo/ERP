@@ -1,7 +1,8 @@
 # pubv2 module (publishing v2, D-182)
 
-Stands beside `publishing`: the report summaries as they are, for a list of songwriters, songs and quarterly accruals.
-`calculate()`, the layers and the balance never read it (`tests/boundaries.test.ts`); the old module keeps the money.
+The report summaries as they are: songwriters, songs and quarterly accruals. Since D-234 the only publishing (the old
+module is gone): `calculate()` reads it only through `facade/publishing-source.ts` with the links of `links`
+(`tests/pubv2.test.ts`: the layers and the balance never import it).
 
 - Knows nothing outside the reports: no owner, no ISRC. A link to an owner or an ISRC belongs above the module and does not exist yet.
 - `summary-format.ts` reads a sheet by its shape, never by its name: `periods` (Q4 2024 + Q1 2025; the writer is the one

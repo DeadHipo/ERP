@@ -367,6 +367,8 @@ describe('publishing completeness check', () => {
     const a = await confirmedOwner(f, 'Owner A', ['A1']);
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     await f.modules.owners.createOwner({ name: 'Ivan Testov', kind: 'person' });
+    // D-234: «New Writer» is an owner without a contract linked by the operator (v1 created it by itself)
+    await f.modules.owners.createOwner({ name: 'New Writer', kind: 'person' });
     await f.ingestB17(
       await writeB17('Q22026', [
         { writer: 'OWNER, A', title: 'S1', payable: '100' }, // confirmed owner, default terms -> C

@@ -112,8 +112,6 @@ export const OPERATION_COVERAGE = {
   'GET /sources/lines': { page: 'P19', route: '/sources/lines', note: 'label= of the switch: the files of the label only (D-169)' },
   'GET /sources/lines/facets': { page: 'P19', route: '/sources/lines', note: 'label= of the switch (D-169)' },
   'POST /sources/believe': { page: 'P19', route: '/sources', note: 'field-upload-believe under the label of the switch, closed under «Все» (upload-closed-reason); account_unregistered opens register-account-dialog and repeats (D-169)' },
-  'POST /publishing/b17': { page: 'P19', route: '/sources', note: 'field-upload-b17 under the label of the switch, closed under «Все» (D-169)' },
-  'POST /publishing/statements/:id/replace': { page: 'P19', route: '/sources', note: 'D-173: action-replace-statement-<id> on a loaded statement → ReplaceStatementDialog (the shared UploadForm field-replace-statement-file, action-replace-statement-submit) under the label of the switch; the superseded row shows chip-superseded and statement-replaced-by-<id>' },
 
   'GET /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: the files section' },
   'POST /publishing-v2/files': { page: 'P32', route: '/publishing-v2', note: 'D-182: upload-publishing-v2 under the label of the switch; 409 period_loaded asks to replace' },
@@ -139,10 +137,6 @@ export const OPERATION_COVERAGE = {
   'POST /publishing-v2/links': { page: 'P32', route: '/publishing-v2', note: 'D-183: action-confirm-link, action-link-submit' },
   'GET /publishing-v2/songwriters': { page: 'P32', route: '/publishing-v2' },
   'GET /publishing-v2/songwriters/:id': { page: 'P33', route: '/publishing-v2/:id' },
-  'GET /publishing/writers': { page: 'P18', route: '/publishing' },
-  'POST /publishing/writers/:norm/map': { page: 'P18', route: '/publishing', note: 'action-map-writer; also the queue and the signals' },
-  'POST /publishing/writers/resolve': { page: 'P18', route: '/publishing', note: 'action-resolve-writers' },
-  'POST /publishing/terms': { page: 'P18', route: '/publishing', note: 'action-set-terms; also the queue' },
 
   'GET /reconciliation': { refusal: 'superseded by /overview, which returns the same rows with the queue and signal counts (one money call, P1)' },
   'GET /signals': { page: 'P21', route: '/signals/:name', note: 'one call with limit 5000 (the API cap) for the index and the lists; the grids page on the client; the label lists (filesWithoutLabel, statementsWithoutLabel, adsWithoutLabel, adOutsideBook, D-169) in pages/work/signals/label-signals.tsx' },
@@ -197,5 +191,6 @@ export type OperationKey = keyof typeof OPERATION_COVERAGE;
 export const PAGES_WITHOUT_OPERATIONS: Record<string, string> = {
   P3: 'the open questions are the static list OPEN_QUESTIONS of @erp/shared/open-questions',
   P4: 'revision 1 had a payouts page; it is the payouts view of P9 (/owners?view=payouts), one question and one endpoint',
+  P18: 'D-234 removed the old publishing page «Паблишинг» (the B17 writers and the terms by operation type): publishing is P32 «Паблишинг v2»',
   P30: 'D-174 had the page «Старт 15.10» (the opening balances); D-205 removed it: the start is the cut «Кабинет 15.10» (P34 / P35)',
 };

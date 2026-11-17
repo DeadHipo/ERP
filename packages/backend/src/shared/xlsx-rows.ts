@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 
-// The streaming xlsx reader shared by the B17 statements (`modules/publishing/b17-format.ts`) and the split import
+// The streaming xlsx reader of the split import
 // (`facade/split-import.ts`, D-172). Pure: no module, no storage.
 
 export interface SheetRow {

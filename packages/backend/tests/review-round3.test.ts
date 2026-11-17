@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
-import ExcelJS from 'exceljs';
+
 import {
   approvedDoc,
   believeCsv,
   confirmedOwner,
   newFacade,
   tmpPath,
-  writeB17,
   writeBelieve,
 } from './helpers/fixtures';
 import { testFileTotals } from './helpers/test-sources';
@@ -146,41 +145,7 @@ describe('publishing: terms, merges, statement checks', () => {
     return { f, a };
   }
 
-  it('terms with an unapproved document wait; changing open terms needs a document; terms follow the report date', async () => {
-    const { f, a } = await setup();
-    const doc = await f.modules.owners.createDocument({
-      kind: 'contract',
-      title: 'Dummy publishing terms',
-      fileRef: 'dummy://t',
-      ownerId: a.owner.id,
-      requiresApproval: true,
-    });
-    await f.setPublishingTerms({
-      ownerId: a.owner.id,
-      percent: '50',
-      validFrom: '2020-01-01',
-      documentId: doc.id,
-    });
-    await expect(
-      async () => await f.setPublishingTerms({ ownerId: a.owner.id, percent: '60', validFrom: '2026-04-01' }),
-    ).rejects.toThrow(/requires a document/);
-    await f.setPublishingTerms({
-      ownerId: a.owner.id,
-      percent: '0',
-      validFrom: '2026-04-01',
-      documentId: (await approvedDoc(f, 'buyout', a.owner.id)).id,
-    });
-    await f.ingestB17(
-      await writeB17('Q12026', [{ writer: 'OWNER, A', title: 'S', payable: '100', period: '1Q26' }]), f.testLabels['0to8'],
-    );
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'S', payable: '100' }]), f.testLabels['0to8']);
-    const rows = (await f.reconciliation()).filter((r) => r.source === 'b17');
-    expect(rows.find((r) => r.month === '2026-03')?.C_breakdown.publishing_terms_unconfirmed?.toFixed()).toBe(
-      '50',
-    );
-    expect(rows.find((r) => r.month === '2026-06')?.ourShare.toFixed()).toBe('100'); // 0% after the buyout date
-  });
-
+  // D-234: «terms with an unapproved document wait» was a test of the old B17 module (removed)
   it('publishing terms are refused for a label and for a document of another owner', async () => {
     const { f, a } = await setup();
     const label = await f.modules.owners.createOwner({ name: 'Some Label', kind: 'label' });
@@ -211,60 +176,7 @@ describe('publishing: terms, merges, statement checks', () => {
     );
   });
 
-  it('the surviving owner keeps its own terms after a merge', async () => {
-    const { f, a } = await setup();
-    await f.setPublishingTerms({
-      ownerId: a.owner.id,
-      percent: '40',
-      validFrom: '2020-01-01',
-      documentId: a.contractDocId,
-    });
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Writer Stub', title: 'S', payable: '100' }]), f.testLabels['0to8']);
-    const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing') as {
-      id: string;
-    };
-    await f.setPublishingTerms({ ownerId: stub.id, percent: '90', validFrom: '2020-01-01' });
-    await f.mergeOwners(stub.id, a.owner.id, 'same person');
-    expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('40');
-  });
-
-  it('statement checks: Period differs from the file quarter, non-USD, Payable column, same file again', async () => {
-    const f = await newFacade();
-    await expect(
-      f.ingestB17(await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1', period: '1Q26' }]), f.testLabels['0to8']),
-    ).rejects.toThrow(/differs/);
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('D');
-    ws.addRow(['Period', 'asset title', 'rights-holder name', 'Payable', 'currency']);
-    ws.addRow(['3Q25', 'S', 'W', 5, 'USD']);
-    const p1 = tmpPath('0to8_Q32025_Pub.xlsx');
-    await wb.xlsx.writeFile(p1);
-    const ok = await f.ingestB17({ path: p1, fileName: '0to8_Q32025_Pub.xlsx' }, f.testLabels['0to8']);
-    expect(ok.statement.totalPayable).toBe('5');
-    const p2 = tmpPath('0to8_copy.xlsx');
-    writeFileSync(p2, readFileSync(p1));
-    await expect(f.ingestB17({ path: p2, fileName: '0to8_copy.xlsx' }, f.testLabels['0to8'])).rejects.toMatchObject({
-      code: 'duplicate_file',
-    });
-    const wb2 = new ExcelJS.Workbook();
-    const ws2 = wb2.addWorksheet('D');
-    ws2.addRow(['Period', 'asset title', 'rights-holder name', 'Total Payable', 'currency']);
-    ws2.addRow(['4Q25', 'S', 'W', 5, 'EUR']);
-    const p3 = tmpPath('0to8_Q42025_Publishing_Statement.xlsx');
-    await wb2.xlsx.writeFile(p3);
-    await expect(
-      f.ingestB17({ path: p3, fileName: '0to8_Q42025_Publishing_Statement.xlsx' }, f.testLabels['0to8']),
-    ).rejects.toThrow(/only USD/);
-  });
-
-  it('two simultaneous uploads of the same statement: one loads, the other is refused, the kept original survives', async () => {
-    const f = await newFacade();
-    const file = await writeB17('Q22026', [{ writer: 'W', title: 'S', payable: '1' }]);
-    const results = await Promise.allSettled([f.ingestB17(file, f.testLabels['0to8']), f.ingestB17(file, f.testLabels['0to8'])]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    const kept = (await f.modules.publishing.listStatements())[0];
-    expect(kept).toBeDefined();
-  });
+  // D-234: «the surviving owner keeps its own terms after a merge» was a test of the old B17 module (removed)
 });
 
 describe('final review: dates, adjustment documents, label guard, contracts', () => {
@@ -299,18 +211,7 @@ describe('final review: dates, adjustment documents, label guard, contracts', ()
     ).rejects.toThrow(/basis document/);
   });
 
-  it('a writer mapped to a label owner is never paid as B: it stays unmapped (C)', async () => {
-    const f = await newFacade();
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Label Writer', title: 'S', payable: '100' }]), f.testLabels['0to8']);
-    const label = await confirmedOwner(f, 'Label Co', []);
-    const labelOwner = await f.modules.owners.createOwner({ name: 'Real Label', kind: 'label' });
-    void label;
-    await f.modules.publishing.mapWriter('label writer', labelOwner.id, 'manual'); // a module-level mapping bypassing the facade check
-    const r = (await f.reconciliation()).find((x) => x.source === 'b17');
-    expect(r?.B_notOurs.toFixed()).toBe('0');
-    expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('100');
-  });
-
+  // D-234: «a writer mapped to a label owner is never paid» was a test of the old B17 module (removed)
   it('a contract rejects duplicated, merged or foreign artists, and a document of another owner', async () => {
     const f = await newFacade();
     const o = f.modules.owners;
@@ -430,120 +331,10 @@ describe('final module reviews: advances are payouts, smaller checks', () => {
     ).rejects.toThrow(/before its payout/);
   });
 
-  it('a B17 statement with two detail sheets loads (line numbers are unique across sheets); sha256 and generation date are stored', async () => {
-    const f = await newFacade();
-    const wb = new ExcelJS.Workbook();
-    for (const name of ['Part 1', 'Part 2']) {
-      const ws = wb.addWorksheet(name);
-      ws.addRow(['Period', 'asset title', 'rights-holder name', 'Total Payable']);
-      ws.addRow(['2Q26', `S ${name}`, 'W', 10]);
-    }
-    const path = tmpPath('0to8_Q22026_Publishing_Statement.xlsx');
-    await wb.xlsx.writeFile(path);
-    const res = await f.ingestB17({
-      path,
-      fileName: '0to8_Q22026_Publishing_Statement.xlsx',
-      generatedAt: '2026-08-01',
-    }, f.testLabels['0to8']);
-    expect(res.statement.lineCount).toBe(2);
-    expect(res.statement.totalPayable).toBe('20');
-    expect(res.statement.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(res.statement.generatedAt).toBe('2026-08-01T00:00:00.000Z');
-    expect(res.statement.generatedAtSource).toBe('provided');
-  });
+  // D-234: «a B17 statement with two detail sheets» tested the reader of the old module (removed)
 });
 
-describe('B17 songwriters: lines belong to our writers (D-087)', () => {
-  it('a line is split equally among our listed writers; external co-writers are ignored; no writer of ours -> rights-holder', async () => {
-    const f = await newFacade();
-    const a = await confirmedOwner(f, 'Owner A', ['A1']);
-    const b = await confirmedOwner(f, 'Owner B', ['B1']);
-    await f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
-    await f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
-    for (const o of [a, b])
-      await f.setPublishingTerms({
-        ownerId: o.owner.id,
-        percent: '50',
-        validFrom: '2020-01-01',
-        documentId: o.contractDocId,
-      });
-    const res = await f.ingestB17(
-      await writeB17('Q22026', [
-        {
-          writer: 'SOME PUBLISHER LTD',
-          title: 'Song 1',
-          payable: '300',
-          songwriters: 'ANNA SYNTHETIC, Testov Boris, External Person',
-        },
-        { writer: 'SOME PUBLISHER LTD', title: 'Song 2', payable: '40', songwriters: 'Unknown Cowriter' },
-      ]), f.testLabels['0to8'],
-    );
-    expect(res.writers).toMatchObject({ matched: 2, external: 2, created: 1 });
-    // Song 1: 300 split between A and B (150 each), author 50% -> 75 each. Song 2: rights-holder owner (waiting).
-    expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('75');
-    expect((await f.ownerBalance(b.owner.id)).total.earned.toFixed()).toBe('75');
-    const r = (await f.reconciliation()).find((x) => x.source === 'b17');
-    expect(r?.A_received.toFixed()).toBe('340');
-    expect(r?.B_notOurs.toFixed()).toBe('150');
-    expect(r?.C_breakdown.owner_unconfirmed?.toFixed()).toBe('20');
-    expect(r?.discrepancy.toFixed()).toBe('0');
-  });
-});
-
-describe('B17 songwriters: final review fixes', () => {
-  it('a name seen first as a songwriter and later as a rights-holder gets an owner (unknown author rule)', async () => {
-    const f = await newFacade();
-    await f.ingestB17(
-      await writeB17('Q12026', [
-        { writer: 'PUB LTD', title: 'S1', payable: '10', period: '1Q26', songwriters: 'Nora Newcomer' },
-      ]), f.testLabels['0to8'],
-    );
-    expect(
-      (await f.modules.publishing.listWriters()).find((w) => w.displayName === 'Nora Newcomer')?.resolution,
-    ).toBe('external');
-    await f.ingestB17(await writeB17('Q22026', [{ writer: 'Nora Newcomer', title: 'S2', payable: '20' }]), f.testLabels['0to8']);
-    const w = (await f.modules.publishing.listWriters()).find((x) => x.displayName === 'Nora Newcomer');
-    expect(w?.role).toBe('holder');
-    expect(w?.ownerId).toBeTruthy();
-    const r = (await f.reconciliation()).find((x) => x.month === '2026-06');
-    expect(r?.C_breakdown.writer_unmapped).toBeUndefined();
-    expect(r?.C_breakdown.owner_unconfirmed?.toFixed()).toBe('10');
-  });
-
-  it("an ambiguous songwriter's part stays unmapped; a three-way split adds up exactly", async () => {
-    const f = await newFacade();
-    const a = await confirmedOwner(f, 'Owner A', ['A1']);
-    const b = await confirmedOwner(f, 'Owner B', ['B1']);
-    await f.modules.owners.addOwnerAlias(a.owner.id, 'Anna Synthetic');
-    await f.modules.owners.addOwnerAlias(b.owner.id, 'Boris Testov');
-    // two owners carry the same name: that songwriter is ambiguous and waits for the operator
-    const c1 = await confirmedOwner(f, 'Twin One', ['T1']);
-    const c2 = await confirmedOwner(f, 'Twin Two', ['T2']);
-    await f.modules.owners.addOwnerAlias(c1.owner.id, 'Ivan Twin');
-    await f.modules.owners.addOwnerAlias(c2.owner.id, 'Ivan Twin');
-    for (const o of [a, b])
-      await f.setPublishingTerms({
-        ownerId: o.owner.id,
-        percent: '100',
-        validFrom: '2020-01-01',
-        documentId: o.contractDocId,
-      });
-    await f.ingestB17(
-      await writeB17('Q22026', [
-        {
-          writer: 'PUB LTD',
-          title: 'S',
-          payable: '100',
-          songwriters: 'Anna Synthetic, Boris Testov, Ivan Twin',
-        },
-      ]), f.testLabels['0to8'],
-    );
-    const r = (await f.reconciliation()).find((x) => x.source === 'b17');
-    expect(r?.C_breakdown.writer_unmapped?.toFixed()).toBe('33.333333333334');
-    expect(r?.B_notOurs.toFixed()).toBe('66.666666666666');
-    expect(r?.discrepancy.toFixed()).toBe('0');
-  });
-});
+// D-234: «B17 songwriters» (D-087 equal parts, the unknown-author rule, an ambiguous songwriter) left with the old module
 
 describe('sources: units', () => {
   it('equal keys are summed per unit (ISRC + UPC + report month + sales month)', async () => {

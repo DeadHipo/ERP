@@ -2,37 +2,30 @@ import { ConflictError, NotFoundError } from '../shared/errors';
 import { assertIsrc, normalizeName } from '../shared/identifiers';
 import type { LinksService } from '../modules/links';
 import type { PubV2Service } from '../modules/pubv2';
-import type { PublishingService } from '../modules/publishing';
 import type { FacadeContext } from './context';
 import { monthStart, todayIso } from '../shared/dates';
 import { isrcTermOf, ownerTermAt, type IsrcTermState } from './pubv2-isrc-terms';
 
-export type RecommendationReason = 'songs' | 'old_map' | 'exact_name' | 'same_words';
+export type RecommendationReason = 'songs' | 'exact_name' | 'same_words';
 
 /** A title without its version: `Song (Slowed)`, `Song [Live]` and `Song - Artist` are one song. */
 export const baseTitle = (title: string): string =>
   normalizeName(title.replace(/[([].*?[)\]]/g, ' ').replace(/\s-\s.*$/, ' '));
 
 /**
- * The links of publishing v2 to owners (D-183). The facade only suggests: the old map of `pub_writers`, then one
- * person-owner with this name or alias, then one with the same words in another order. A link is written only by the
+ * The links of publishing v2 to owners (D-183). The facade only suggests (the old map of `pub_writers` left with the old
+ * module, D-234): one person-owner with this name or alias, then one with the same words in another order. A link is written only by the
  * operator's confirmation; nothing here is set on its own.
  */
-export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; links: LinksService; publishing: PublishingService }) {
+export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; links: LinksService }) {
   const { owners, splits } = ctx;
-  // the old module itself (its writer map is a hint), never the source of the money of `ctx`
-  const { pubv2, links, publishing } = m;
+  const { pubv2, links } = m;
 
   async function recommend(
     name: string,
-    aliases: string[],
-    oldMap: Map<string, string | null>,
+    _aliases: string[],
     isPerson: (id: string) => boolean,
   ): Promise<{ ownerId: string; reason: RecommendationReason } | null> {
-    for (const alias of aliases) {
-      const mapped = oldMap.get(normalizeName(alias));
-      if (mapped) return { ownerId: await owners.resolveOwnerId(mapped), reason: 'old_map' };
-    }
     const exact = (await owners.findOwnersByWriter(name)).filter(isPerson);
     if (exact.length === 1) return { ownerId: exact[0] as string, reason: 'exact_name' };
     if (exact.length > 1) return null;
@@ -47,7 +40,6 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
     return {
       byId,
       isPerson: (id: string) => byId.get(id)?.kind === 'person',
-      oldMap: new Map((await publishing.listWriters()).map((w) => [w.writerNorm, w.ownerId])),
     };
   };
 
@@ -277,7 +269,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
 
     /** Every songwriter with its link and its recommendation: the ones without a link first, largest first. */
     async pubV2Links(labelId?: string) {
-      const { byId, isPerson, oldMap } = await context();
+      const { byId, isPerson } = await context();
       const { ownersOfTitle } = await catalog();
       const songsOf = new Map<string, string[]>();
       for (const s of await pubv2.listSongs()) songsOf.set(s.songwriterId, [...(songsOf.get(s.songwriterId) ?? []), s.title]);
@@ -314,7 +306,7 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
         const songs = bySongs(w.id);
         const hint = songs.leader
           ? { ownerId: songs.leader, reason: 'songs' as const }
-          : await recommend(w.name, w.aliases, oldMap, isPerson);
+          : await recommend(w.name, w.aliases, isPerson);
         const linkedOwner = link ? await owners.resolveOwnerId(link.ownerId) : null;
         rows.push({
           songwriterId: w.id,
@@ -347,8 +339,8 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
       const ownerId = await owners.resolveOwnerId(input.ownerId);
       const owner = await owners.getOwner(ownerId);
       if (owner.kind !== 'person') throw new ConflictError('Publishing goes only to a person, not to a label', 'owner_is_label');
-      const { isPerson, oldMap } = await context();
-      const hint = await recommend(w.name, w.aliases, oldMap, isPerson);
+      const { isPerson } = await context();
+      const hint = await recommend(w.name, w.aliases, isPerson);
       const row = await links.setSongwriterOwner({
         songwriterId: w.id,
         ownerId,

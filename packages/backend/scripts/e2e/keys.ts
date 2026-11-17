@@ -15,7 +15,12 @@ export const pseudonym = (letter: string, nn: number, k: number) => `${letter}-$
 /** Person owner of a letter: `Owner A-011`. */
 export const ownerName = (letter: string, nn: number, k: number) => `Owner ${pseudonym(letter, nn, k)}`;
 /** The one B17 statement of the whole seed (no quarter in the name: one quarter would be forced on every row). */
-export const B17_FILE_NAME = '0to8_e2e_Publishing_Statement.xlsx';
+/** The report summary of v2 of one seed quarter `1Q26` (D-234: one file per quarter, the quarter in the name). */
+export const b17FileName = (period: string): string => {
+  const m = /^([1-4])Q(\d{2})$/.exec(period);
+  if (!m) throw new Error(`a seed quarter ${period} is not like 1Q26`);
+  return `0to8_e2e_Q${m[1]}20${m[2]}_Publishing_Statement.xlsx`;
+};
 
 /** What `seed.ts` writes to `data/test-tmp/e2e-keys.json` and `packages/frontend/e2e/.seed-keys.json`. */
 export interface CaseKeys {
@@ -41,7 +46,7 @@ export interface CaseKeys {
   /** D-232: always empty (no label rules any more); kept while the e2e specs read it. */
   labelRules: Record<string, string>;
   /** B17 lines of the case: title -> { writer, payable, period }. */
-  b17: Record<string, { writer: string; payable: string; period: string; songwriters: string; operationType: string }>;
+  b17: Record<string, { writer: string; payable: string; period: string }>;
   /** Free text facts a spec needs (the label string, the operation ids ...). */
   extra: Record<string, string>;
 }
@@ -55,5 +60,6 @@ export interface SeedKeys {
   /** The organization the seed is made in (D-170): the API of the run opens it (`ERP_DEFAULT_ORG`). */
   orgId: string;
   dataDir: string;
-  b17FileName: string;
+  /** The report summaries of v2 of the seed (one per quarter, D-234). */
+  b17FileNames: string[];
 }

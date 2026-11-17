@@ -865,7 +865,7 @@ describe('golden master cases (12 §Master cases), end to end', () => {
       });
       const owner = c.owners.get('A') as string;
       await c.f.modules.owners.addOwnerAlias(owner, 'OWNER, A');
-      await c.f.modules.publishing.setTerms({
+      await c.f.setPublishingTerms({
         ownerId: owner,
         percent: '50',
         validFrom: '2020-01-01',
@@ -1172,8 +1172,7 @@ describe('G55 (D-169): a B17 statement sits in the book of its label', () => {
     await f.modules.owners.addOwnerAlias(owner, 'OWNER, A');
     await f.setPublishingTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: contractDoc?.id as string });
     const r = await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]), echo);
-    await f.resolveWriters();
-    expect(r.statement.labelId).toBe(echo);
+        expect(r.statement?.labelId).toBe(echo);
     const b = await c.balance('A');
     expect(Object.fromEntries(Object.entries(b.byLabel).map(([k, x]) => [k, [x.earned, x.payable].map((v) => v.toFixed())]))).toEqual({
       '0to8': ['50', '50'],
@@ -1341,7 +1340,7 @@ describe('G57–G60 (D-173): buyout, forgiveness, write-off and adjustment in th
     const zero = f.testLabels['0to8'];
     const owner = c.owners.get('A') as string;
     await f.modules.owners.addOwnerAlias(owner, 'OWNER, A');
-    await f.modules.publishing.setTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', owner)).id });
+    await f.setPublishingTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', owner)).id });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'OWNER, A', title: 'Song', payable: '60' }]), zero);
     const basis = await approvedDoc(f, 'adjustment_basis', owner);
     const writeoff = (amount: string, area?: 'master' | 'publishing') =>
@@ -1503,20 +1502,16 @@ describe('a layer that loses money shows as a discrepancy (10 §6)', () => {
   });
 });
 
-describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', () => {
+describe('publishing golden cases G26 under v2 (12 §Publishing cases), end to end', () => {
+  // D-234: a line of a report summary belongs to its rights-holder (the songwriter of v2 linked to an owner). G26a, G26b,
+  // G26c (the equal parts of the B17 «songwriters», the typed term of an operation type, an external co-writer) and
+  // G26e (their sums) left with the old module; G26d stays; G26f is the reconciliation under v2.
   const lines = [
-    { title: 'T-A', writer: 'HOLDER H', songwriters: 'W1, W2', payable: '100', operationType: 'Mechanical' },
-    {
-      title: 'T-B',
-      writer: 'HOLDER H',
-      songwriters: 'W1, W2',
-      payable: '100',
-      operationType: 'Synchronization',
-    },
-    { title: 'T-C', writer: 'HOLDER H', songwriters: 'W1, X', payable: '100', operationType: 'Mechanical' },
-    { title: 'T-D', writer: 'HOLDER H', songwriters: 'W3', payable: '100', operationType: 'Mechanical' },
+    { title: 'T-A', writer: 'W1', payable: '100' },
+    { title: 'T-B', writer: 'W2', payable: '100' },
+    { title: 'T-D', writer: 'W3', payable: '100' },
   ];
-  /** W1 50 (no type); W2 90 (no type) and 50 (Synchronization); W3 has no terms. All owners confirmed. */
+  /** W1 50, W2 90, W3 without a term. All owners confirmed; every holder is linked to its owner. */
   async function world(which: string[]) {
     const c = await Case.start();
     const owner: Record<string, string> = {};
@@ -1525,27 +1520,9 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
       await c.f.modules.owners.addOwnerAlias(o.id, w);
       owner[w] = o.id;
     }
-    const pub = c.f.modules.publishing;
     const doc = async (w: string) => (await approvedDoc(c.f, 'contract', owner[w] as string)).id;
-    await pub.setTerms({
-      ownerId: owner.W1 as string,
-      percent: '50',
-      validFrom: '2020-01-01',
-      documentId: await doc('W1'),
-    });
-    await pub.setTerms({
-      ownerId: owner.W2 as string,
-      percent: '90',
-      validFrom: '2020-01-01',
-      documentId: await doc('W2'),
-    });
-    await pub.setTerms({
-      ownerId: owner.W2 as string,
-      percent: '50',
-      validFrom: '2020-01-01',
-      documentId: await doc('W2'),
-      operationType: 'Synchronization',
-    });
+    await c.f.setPublishingTerms({ ownerId: owner.W1 as string, percent: '50', validFrom: '2020-01-01', documentId: await doc('W1') });
+    await c.f.setPublishingTerms({ ownerId: owner.W2 as string, percent: '90', validFrom: '2020-01-01', documentId: await doc('W2') });
     await c.f.ingestB17(
       await writeB17(
         'Q12026',
@@ -1569,26 +1546,6 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
     return { c, pick };
   }
 
-  it('G26a: Mechanical, two writers: parts 50 / 50; W1 author 25, W2 author 45 (the untyped 90)', async () => {
-    const { pick } = await world(['T-A']);
-    expect(pick('T-A')).toEqual([
-      { writer: 'W1', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
-      { writer: 'W2', payable: '50', percent: '90', author: '45', label: '5', category: 'B', reason: null },
-    ]);
-  });
-  it('G26b: Synchronization: the typed 50 wins for W2', async () => {
-    const { pick } = await world(['T-B']);
-    expect(pick('T-B')).toEqual([
-      { writer: 'W1', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
-      { writer: 'W2', payable: '50', percent: '50', author: '25', label: '25', category: 'B', reason: null },
-    ]);
-  });
-  it('G26c: an external co-writer takes nothing: W1 gets the whole line', async () => {
-    const { pick } = await world(['T-C']);
-    expect(pick('T-C')).toEqual([
-      { writer: 'W1', payable: '100', percent: '50', author: '50', label: '50', category: 'B', reason: null },
-    ]);
-  });
   it('G26d: a writer without terms: default 50, C publishing_terms_unconfirmed', async () => {
     const { pick } = await world(['T-D']);
     expect(pick('T-D')).toEqual([
@@ -1603,12 +1560,13 @@ describe('publishing golden cases G26a-e (12 §Publishing cases), end to end', (
       },
     ]);
   });
-  it('G26e: the four lines together reconcile: A 400, B 170, C 50, ours 180, discrepancy 0', async () => {
-    const { c } = await world(['T-A', 'T-B', 'T-C', 'T-D']);
+  it('G26f: three holders reconcile under v2: A 300, B 140, C 50, ours 110, discrepancy 0', async () => {
+    const { c, pick } = await world(['T-A', 'T-B', 'T-D']);
+    expect(pick('T-B')).toEqual([{ writer: 'W2', payable: '100', percent: '90', author: '90', label: '10', category: 'B', reason: null }]);
     const r = (await c.f.reconciliation()).find((x) => x.source === 'b17' && x.account === 'b17');
     expect(r).toBeDefined();
     expect(
       [r?.A_received, r?.B_notOurs, r?.C_waiting, r?.ourShare, r?.discrepancy].map((x) => x?.toFixed()),
-    ).toEqual(['400', '170', '50', '180', '0']);
+    ).toEqual(['300', '140', '50', '110', '0']);
   });
 });

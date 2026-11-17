@@ -385,25 +385,6 @@ export const publishingV2 = {
     call('GET', `/publishing-v2/songwriters/${id(songwriterId)}`, { query, schema: R.pubV2SongwriterDetailSchema }),
 };
 
-export const publishing = {
-  /** Loaded under an own label (D-169). */
-  uploadB17: (file: File, labelId: string) =>
-    call('POST', '/publishing/b17', { query: uploadQuery(labelId), body: fileForm(file), schema: R.b17UploadSchema }),
-  writers: () => call('GET', '/publishing/writers', { schema: list(R.publishingWriterSchema) }),
-  mapWriter: (norm: string, body: z.input<typeof S.mapWriterBody>) =>
-    call('POST', `/publishing/writers/${id(norm)}/map`, { body, schema: R.ownerSchema }),
-  resolveWriters: () => call('POST', '/publishing/writers/resolve', { schema: R.resolveWritersSchema }),
-  /** A corrected file of the same quarters for a loaded statement, under the same own label (D-173). */
-  replaceStatement: (statementId: string, file: File, labelId: string) =>
-    call('POST', `/publishing/statements/${id(statementId)}/replace`, {
-      query: uploadQuery(labelId),
-      body: fileForm(file),
-      schema: R.b17ReplaceSchema,
-    }),
-  setTerms: (body: z.input<typeof S.publishingTermsBody>) =>
-    call('POST', '/publishing/terms', { body, schema: R.publishingTermsSchema }),
-};
-
 export const reports = {
   reconciliation: (query: z.input<typeof S.periodQuery> = {}) =>
     call('GET', '/reconciliation', { query, schema: list(R.reconciliationRowSchema) }),

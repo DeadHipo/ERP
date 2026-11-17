@@ -17,7 +17,6 @@ import {
   AssignOwnerDialog,
   CreateSplitDialog,
   LabelAliasDialog,
-  MapWriterDialog,
   NoteDialog,
   RecreateParticipationDialog,
   RegisterTrackDialog,
@@ -142,22 +141,6 @@ function renderList(name: Exclude<SignalName, LabelSignalName>, data: Signals, c
             isrcCol((r) => r.isrc),
             moneyCol('net', c.net, (r) => r.net),
             actionCol((r) => btn('create-split', a.createSplit, () => open(<CreateSplitDialog isrc={r.isrc} onClose={close} />))),
-          ]}
-        />
-      );
-    }
-    case 'ambiguousWriters': {
-      type R = Signals['ambiguousWriters'][number];
-      return (
-        <Grid<R>
-          name={name}
-          count={count}
-          rows={data.ambiguousWriters}
-          rowKey={(r) => r.writerNorm}
-          columns={[
-            textCol('writer', c.writer, (r) => r.displayName),
-            textCol('norm', c.norm, (r) => r.writerNorm),
-            actionCol((r) => btn('map-writer', a.mapWriter, () => open(<MapWriterDialog writer={r.writerNorm} onClose={close} />))),
           ]}
         />
       );

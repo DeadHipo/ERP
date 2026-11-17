@@ -223,66 +223,55 @@ test('S16 label_unmapped → alias of 0to8', async ({ page, request }) => {
 
 // D-232: S17 «label_unmapped → sublabel with a rule» removed with the sublabel rule
 
-test('S18 publishing_terms_unconfirmed → terms of W3 from 2020-01-01', async ({ page, request }) => {
+test('S18 publishing_terms_unconfirmed → the term of W3 from 2020-01-01 (D-234: the rows of v2, one per holder)', async ({ page, request }) => {
   const k = sc(18);
   const ownerId = k.owners.W3 ?? '';
   const [w1, w2] = [k.owners.W1 ?? '', k.owners.W2 ?? ''];
-  await expectOverview(page, [['b17', M, '400 / 170 / 50 / 180']], 'b17');
-  // G26a-c: the publishing lines per writer (amount / percent / category) and the earned total
-  await expectPublishing(page, w1, [['T-A-181', '25', '50', 'B'], ['T-B-181', '25', '50', 'B'], ['T-C-181', '50', '50', 'B']]);
-  await expectOwner(page, w1, { earned: '100' });
-  await expectPublishing(page, w2, [['T-A-181', '45', '90', 'B'], ['T-B-181', '25', '50', 'B']]);
-  await expectOwner(page, w2, { earned: '70' });
+  await expectOverview(page, [['b17', M, '300 / 140 / 50 / 110']], 'b17');
+  // G26 under v2: a row belongs to its holder at its term (W1 50 %, W2 90 %); W3 has no term (the default 50 %, C)
+  await expectPublishing(page, w1, [['T-A-181', '50', '50', 'B']]);
+  await expectOwner(page, w1, { earned: '50' });
+  await expectPublishing(page, w2, [['T-B-181', '90', '90', 'B']]);
+  await expectOwner(page, w2, { earned: '90' });
   await expectPublishing(page, ownerId, [['T-D-181', '50', '50', 'C']]);
   await expectOwner(page, ownerId, { earned: '0', waiting: '50' });
   // earnedPublishing is not on the card: the API carries it (17 N1 balance), the screen shows the same earned
   const earnedPublishing = async (id: string) =>
     ((await (await request.get(`/api/v1/owners/${id}/balance`)).json()) as { period: { earnedPublishing: string } }).period.earnedPublishing;
-  expect([await earnedPublishing(w1), await earnedPublishing(w2)]).toEqual(['100', '70']);
+  expect([await earnedPublishing(w1), await earnedPublishing(w2)]).toEqual(['50', '90']);
   await openReason(page, 'publishing_terms_unconfirmed');
   await expectAmount(page, 'ownerTerms', ownerId, '50');
   await group(page, 'ownerTerms', ownerId).getByTestId('action-publishing-terms').click();
   const dialog = page.getByTestId('form-dialog');
-  await dialog.getByTestId('field-terms-percent').fill('50');
-  await dialog.getByTestId('field-terms-from').fill('2020-01-01');
-  await pick(page, 'terms-document', 'Contract Owner W3-181');
-  await dialog.getByTestId('action-terms-submit').click();
-  await toastOk(page, 'Условия паблишинга 50 % с 2020-01-01');
+  await dialog.getByTestId('field-term-percent').fill('50');
+  await dialog.getByTestId('field-term-from').fill('2020-01-01');
+  await pick(page, 'term-document', 'Contract Owner W3-181');
+  await dialog.getByTestId('action-term-submit').click();
+  await toastOk(page, 'Новый процент 50% с 2020-01-01');
   await expectGone(page, 'ownerTerms', ownerId);
-  await p1(page, 'b17', M, '400 / 220 / 0 / 180', 'b17');
+  await p1(page, 'b17', M, '300 / 190 / 0 / 110', 'b17');
   await expectPublishing(page, ownerId, [['T-D-181', '50', '50', 'B']]);
   await expectOwner(page, ownerId, { earned: '50', waiting: '0', payable: '50' });
-  await expectOwner(page, w1, { earned: '100' });
-  await expectOwner(page, w2, { earned: '70' });
-  const again = await apiPost(request, '/publishing/terms', {
-    ownerId,
-    percent: '50',
-    validFrom: '2020-01-01',
-    documentId: k.documents['contract:W3'],
-  });
-  expect([again.status, again.code]).toEqual([409, 'terms_overlap']);
+  await expectOwner(page, w1, { earned: '50' });
+  await expectOwner(page, w2, { earned: '90' });
+  // second press: a term from the same date again is refused
+  const again = await apiPost(request, '/publishing-v2/terms', { ownerId, percent: '50', validFrom: '2020-01-01', documentId: k.documents['contract:W3'] });
+  expect(again.status).toBe(409);
 });
 
-test('S19 writer_unmapped → map the ambiguous holder to W4a', async ({ page, request }) => {
+test('S19 writer_unmapped → link the songwriter HOLDER W4 to W4a (D-234: the link of v2)', async ({ page }) => {
   const w4a = sc(19).owners.W4a ?? '';
   await expectOverview(page, [['b17', '2025-12', '100 / 0 / 100 / 0']], 'b17');
-  await openSignalList(page, 'ambiguousWriters');
-  await expect(signalRow(page, 'ambiguousWriters', 'holder w4')).toContainText('HOLDER W4');
   await expectOwner(page, w4a, { earned: '0' });
   await openReason(page, 'writer_unmapped');
   await expectAmount(page, 'writer', 'HOLDER W4', '100');
   await group(page, 'writer', 'HOLDER W4').getByTestId('action-map-writer').click();
-  await pick(page, 'writer-owner', 'Owner W4a-191');
-  await page.getByTestId('form-dialog').getByTestId('action-writer-submit').click();
-  await toastOk(page, 'Автор связан');
+  await pick(page, 'link-owner', 'Owner W4a-191');
+  await page.getByTestId('form-dialog').getByTestId('action-link-submit').click();
+  await toastOk(page, /связан с владельцем/);
   await expectGone(page, 'writer', 'HOLDER W4');
   await p1(page, 'b17', '2025-12', '100 / 50 / 0 / 50', 'b17');
-  await openSignalList(page, 'ambiguousWriters');
-  await expect(signalRow(page, 'ambiguousWriters', 'holder w4')).toHaveCount(0);
   await expectOwner(page, w4a, { earned: '50' });
-  // second press (19 §8 point 6, verified here): the same owner again is accepted
-  const again = await apiPost(request, `/publishing/writers/${encodeURIComponent('holder w4')}/map`, { ownerId: sc(19).owners.W4a });
-  expect(again.status).toBe(200);
 });
 
 test('S20 perimeter: unknown_pair offers the track, no_isrc is read-only (⚠ D-035)', async ({ page }) => {

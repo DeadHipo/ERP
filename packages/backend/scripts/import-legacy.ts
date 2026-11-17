@@ -51,7 +51,13 @@ const ISRC_RE = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 const stack = await connectOrg({ dataDir: dataDir, org: ORG });
 const { db } = stack;
 const f = openFacade({ db, orgId: stack.orgId, dataDir, payoutThresholdCents: 10000, sources: stack.sources });
-const { owners, splits, publishing } = f.modules;
+const { owners, splits, links } = f.modules;
+// D-234: publishing terms are the terms of v2 (`links.publishing_terms`)
+const publishing = {
+  setTerms: (t: { ownerId: string; percent: string; validFrom: string; documentId?: string | null }) =>
+    links.setPublishingTerm({ ...t, isrc: null, decidedBy: 'import-legacy' }),
+  termsOf: async (ids: string[]) => (await links.ownerTerms()).filter((t) => ids.includes(t.ownerId)),
+};
 
 // The old script recreated the module files; a PostgreSQL database is never wiped here: it must be empty.
 const existing = {

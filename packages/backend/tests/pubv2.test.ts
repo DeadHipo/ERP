@@ -5,7 +5,7 @@ import ExcelJS from 'exceljs';
 import { quarterOfFileName, readB17Summary } from '../src/modules/pubv2';
 import { statementSchema } from '@erp/shared/api-responses';
 import { calculate } from '../src/facade/calculation';
-import { pubV2Source } from '../src/facade/pubv2-source';
+import { pubV2Source } from '../src/facade/publishing-source';
 import { ownerTermAt } from '../src/facade/pubv2-isrc-terms';
 import { approvedDoc, confirmedOwner, newFacade, tmpPath } from './helpers/fixtures';
 
@@ -342,7 +342,7 @@ describe('the source of the calculation (D-185)', () => {
     expect(again.cancelledAt).toBeNull();
   });
 
-  it('v2: the whole line goes to the linked owner with the percent of links; without a link it waits; v1 stays as it was', async () => {
+  it('v2: the whole line goes to the linked owner with the percent of links; without a link it waits', async () => {
     const f = await newFacade();
     const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
     const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
@@ -353,7 +353,7 @@ describe('the source of the calculation (D-185)', () => {
 
     const { owners, splits, labels, sources, publishing, ads, pubv2, links } = f.modules;
     const base = { db: f.db, owners, splits, labels, sources, ads };
-    const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, publishing, { pubv2, links, owners }) });
+    const v2 = await calculate({ ...base, publishing: pubV2Source(f.db, { pubv2, links, owners }) });
     const parts = v2.publishing
       .map((p) => [p.writerName, p.ownerId, p.payable.toFixed(), p.authorAmount.toFixed(), p.reason])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
@@ -361,13 +361,14 @@ describe('the source of the calculation (D-185)', () => {
       ['Nobody Linked', null, '40', '0', 'writer_unmapped'],
       ['Writer Synth One', owner.id, '100', '90', 'owner_unconfirmed'],
     ]);
-    expect((await calculate({ ...base, publishing })).publishing).toEqual([]);
+    // D-234: the facade's own publishing is this very source
+    expect((await calculate({ ...base, publishing })).publishing.length).toBe(2);
   });
 });
 
 describe('the source v2 around the calculation (D-189)', () => {
-  it('the statements, the terms of the owner card and the writers come from v2; the old module takes no writes', async () => {
-    const f = await newFacade(0, { publishingSource: 'v2' });
+  it('the statements, the terms of the owner card and the writers come from v2', async () => {
+    const f = await newFacade(0);
     const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
     const owner = await f.modules.owners.createOwner({ name: 'Writer Synth One', kind: 'person', origin: 'test' });
     const file = await f.modules.pubv2.ingest({
@@ -382,16 +383,12 @@ describe('the source v2 around the calculation (D-189)', () => {
     expect(b17.map((s) => [s.id, s.status, s.totalPayable, s.labelId])).toEqual([[file.id, 'loaded', '2', label.id]]);
     expect(statementSchema.safeParse(b17[0]).success).toBe(true);
     expect((await f.ownerDetail(owner.id)).publishingTerms.map((t) => [t.percent, t.operationType])).toEqual([['50', null]]);
-    await expect(f.setPublishingTerms({ ownerId: owner.id, percent: '10', validFrom: '2026-01-01' })).rejects.toMatchObject({ code: 'publishing_v2_active' });
-    await expect(f.resolveWriters()).rejects.toMatchObject({ code: 'publishing_v2_active' });
-    const old = await newFacade(0, { publishingSource: 'v1' });
-    expect((await old.sourceFiles()).b17).toEqual([]);
   });
 });
 
 describe('a merge of owners under v2 (D-194)', () => {
   it('moves the songwriters of the merged owner to the survivor; the survivor\'s own term wins over the merged one', async () => {
-    const f = await newFacade(0, { publishingSource: 'v2' });
+    const f = await newFacade(0);
     const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
     const into = await confirmedOwner(f, 'Writer Synth Into', ['Synth Into']);
     const stub = await f.modules.owners.createOwner({ name: 'Writer Synth Stub', kind: 'person', origin: 'test' });
@@ -431,9 +428,10 @@ describe('the boundary of publishing v2 (D-182)', () => {
       return statSync(p).isDirectory() ? files(p) : p.endsWith('.ts') ? [p] : [];
     });
 
-  it('the calculation, the layers, the balance and the old module never read it', () => {
+  it('the calculation, the layers and the balance never read it but through the publishing source', () => {
     const src = join(process.cwd(), 'src');
-    const money = [...files(join(src, 'facade', 'layers')), ...files(join(src, 'modules', 'publishing'))].concat(
+    // D-234: the old module is gone; the money reads v2 only through `facade/publishing-source.ts`
+    const money = [...files(join(src, 'facade', 'layers'))].concat(
       ['calculation.ts', 'balance.ts', 'context.ts', 'payouts.ts', 'payroll.ts', 'owner-scope.ts'].map((f) => join(src, 'facade', f)),
     );
     for (const f of money) expect(readFileSync(f, 'utf8'), f).not.toMatch(/pubv2|modules\/links/i);
@@ -443,7 +441,7 @@ describe('the boundary of publishing v2 (D-182)', () => {
 describe('the terms of an ISRC (D-192)', () => {
   const I = ['QZTST2600301', 'QZTST2600302', 'QZTST2600303'];
   const world = async () => {
-    const f = await newFacade(0, { publishingSource: 'v2' });
+    const f = await newFacade(0);
     const label = (await f.modules.labels.listLabels()).find((l) => l.name === '0to8') as { id: string };
     const { owner } = await confirmedOwner(f, 'Writer Synth One', ['SYNTH ONE']);
     for (const [i, t] of [[0, 'Song A'], [1, 'Song A (Slowed)'], [2, 'Song B']] as const)
@@ -470,7 +468,7 @@ describe('the terms of an ISRC (D-192)', () => {
     await f.setPubV2SongIsrcs(id('Song B'), [I[2] as string], 'tester');
     const money = async () =>
       Object.fromEntries(
-        (await calculate({ ...f.modules, db: f.db, publishing: pubV2Source(f.db, f.modules.publishing, f.modules) })).publishing.map((p) => [p.workTitle, [p.percent.toFixed(), p.authorAmount.toFixed(), p.reason]]),
+        (await calculate({ ...f.modules, db: f.db, publishing: f.modules.publishing })).publishing.map((p) => [p.workTitle, [p.percent.toFixed(), p.authorAmount.toFixed(), p.reason]]),
       );
     return { f, owner, doc, id, money };
   };

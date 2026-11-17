@@ -854,6 +854,8 @@ describe('the book by the account of the file (D-169)', () => {
     await c.person('P'); // an owner with publishing only: visible under the label of its statement (D-169)
     await f.modules.owners.addOwnerAlias(c.owners.get('P') as string, 'OWNER, P');
     await f.setPublishingTerms({ ownerId: a, percent: '50', validFrom: '2020-01-01', documentId: (await approvedDoc(f, 'contract', a)).id });
+    // D-234: the unknown holders are owners without a contract linked by the operator (v1 created them by itself)
+    for (const name of ['HOLDER, Z', 'HOLDER, Y']) await f.modules.owners.createOwner({ name, kind: 'person' });
     // Q1 under 0to8 (only an unknown holder), Q2 under Echo8 (A's 60 and an unknown holder's 10)
     await f.ingestB17(await writeB17('Q12026', [{ writer: 'HOLDER, Z', title: 'Z', payable: '4', period: '1Q26' }]), zero);
     const q2 = await f.ingestB17(
@@ -892,7 +894,7 @@ describe('the book by the account of the file (D-169)', () => {
     const p = await f.createPayout(a, { labelId: echo, area: 'all' });
     expect([p.amountCents, p.labelId]).toEqual([5000, echo]);
     const snapshot = (await f.modules.settlements.getSnapshot(p.id)) as { files: { believe: { id: string }[]; b17: { id: string }[] } };
-    expect(snapshot.files.b17.map((x) => x.id)).toEqual([q2.statement.id]);
+    expect(snapshot.files.b17.map((x) => x.id)).toEqual([q2.statement?.id]);
     expect(snapshot.files.believe.length).toBe(1);
     await f.attachPaymentProof(p.id, { fileRef: 'dummy://proof.pdf' });
     const after = await f.ownerBalance(a);

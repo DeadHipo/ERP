@@ -413,7 +413,7 @@ export const reference = {
     noBelieve: 'Файлов Believe нет: загрузите отчёт.',
     noB17: 'Выписок B17 нет: загрузите выписку.',
     uploadBelieve: 'Загрузить отчёт Believe (.csv, .csv.zip)',
-    uploadB17: 'Загрузить выписку B17 (.xlsx)',
+    uploadB17V2: 'Выписки B17 загружаются на странице «Паблишинг v2»',
     file: 'Файл',
     upload: 'Загрузить',
     chooseFile: 'Выбрать файл',

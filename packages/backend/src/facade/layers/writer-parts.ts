@@ -1,13 +1,10 @@
 import { Decimal } from '../../shared/money';
-import { normalizeName } from '../../shared/identifiers';
-import { parseSongwriters } from '../../modules/publishing';
-import { SCALE } from './exact';
 import type { CReason } from './types';
 
 // The pure publishing layers (10 §4): writer parts → author share → categorise. Same style as the master layers:
 // no storage access, the context is built by calculate() from one snapshot (or by hand in the tests).
 
-/** One aggregated B17 line (period, holder, songwriters, work, operation type; payable summed). */
+/** One accrual of a report summary (period, rights-holder = songwriter of v2, work, the ISRC-term slot; payable summed). */
 export interface PublishingLine {
   period: string;
   /** The report month of a quarterly statement: the last month of the quarter. */
@@ -15,7 +12,6 @@ export interface PublishingLine {
   writerNorm: string;
   writerName: string;
   workTitle: string;
-  songwriters: string | null;
   operationType: string | null;
   payable: Decimal;
 }
@@ -84,29 +80,17 @@ export interface NamedPublishingLayer {
 export const DEFAULT_AUTHOR_PERCENT = '50';
 
 /**
- * Layer 1: the line belongs to our writers listed in "songwriters" (registered by us), in equal parts (D-087).
- * External co-writers are not ours. Without any of our writers the line goes to its rights-holder. An ambiguous
- * writer keeps a part with owner null (it stays unmapped, never goes to the others). Equal parts are cut at
- * 12 decimals (the exactness rule of 10 §3, ROUND_DOWN so no part exceeds its equal share, D-130); the last writer
- * takes the remainder so the parts add up to the line exactly.
+ * Layer 1: the line belongs to its rights-holder (D-186; the equal parts of the B17 «songwriters» of D-087 left with the
+ * old module, D-234): one part, the owner of the holder's writer (merges resolved) or none (it waits).
  */
 export const writerParts: PublishingLayer = (s, ctx) => {
   const r = s.line;
-  const ours = new Map<string, { norm: string; name: string; owner: string | null }>();
-  for (const name of parseSongwriters(r.songwriters)) {
-    const w = ctx.writers.get(normalizeName(name));
-    if (w?.ownerId) {
-      const owner = ctx.resolveOwner(w.ownerId);
-      if (!ours.has(owner)) ours.set(owner, { norm: w.writerNorm, name: w.displayName, owner });
-    } else if (w?.resolution === 'ambiguous') {
-      ours.set(`ambiguous:${w.writerNorm}`, { norm: w.writerNorm, name: w.displayName, owner: null });
-    }
-  }
-  const make = (norm: string, name: string, ownerId: string | null, payable: Decimal): PublishingPart => ({
-    writerNorm: norm,
-    writerName: name,
-    ownerId,
-    payable,
+  const h = ctx.writers.get(r.writerNorm);
+  const part: PublishingPart = {
+    writerNorm: r.writerNorm,
+    writerName: r.writerName,
+    ownerId: h?.ownerId ? ctx.resolveOwner(h.ownerId) : null,
+    payable: r.payable,
     percent: new Decimal(DEFAULT_AUTHOR_PERCENT),
     authorAmount: new Decimal(0),
     labelAmount: new Decimal(0),
@@ -115,22 +99,6 @@ export const writerParts: PublishingLayer = (s, ctx) => {
     defaultTerms: true,
     category: 'C',
     reason: null,
-  });
-  if (ours.size === 0) {
-    const h = ctx.writers.get(r.writerNorm);
-    return {
-      ...s,
-      parts: [make(r.writerNorm, r.writerName, h?.ownerId ? ctx.resolveOwner(h.ownerId) : null, r.payable)],
-    };
-  }
-  const part = r.payable.div(ours.size).toDecimalPlaces(SCALE, Decimal.ROUND_DOWN);
-  let left = r.payable;
-  let i = 0;
-  const parts: PublishingPart[] = [];
-  for (const w of ours.values()) {
-    const amount = ++i === ours.size ? left : part;
-    left = left.sub(amount);
-    parts.push(make(w.norm, w.name, w.owner, amount));
-  }
-  return { ...s, parts };
+  };
+  return { ...s, parts: [part] };
 };

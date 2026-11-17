@@ -33,7 +33,6 @@ export function reportsRouter(facade: Facade) {
       ...s,
       unallocated: { ...s.unallocated, count: s.unallocated.pairs.length, pairs: cut(s.unallocated.pairs) },
       isrcsWithoutSplit: { count: s.isrcsWithoutSplit.length, items: cut(s.isrcsWithoutSplit) },
-      ambiguousWriters: cut(s.ambiguousWriters),
       unfunded: cut(s.unfunded),
       labelUnmapped: cut(s.labelUnmapped),
       twoRowsOneOwner: cut(s.twoRowsOneOwner),

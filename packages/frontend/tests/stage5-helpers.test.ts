@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { API_OPERATIONS } from '../../backend/src/api/operations';
 import { routeLabel } from '../src/components/AuditTable';
@@ -6,8 +5,7 @@ import { ru } from '../src/i18n/ru';
 import { compareDecimal } from '../src/lib/money';
 import { monthRowId, type Month } from '../src/pages/catalog/track/types';
 
-// Unit tests of the stage 5 helpers (D-151): decimal text order, the month row id, the audit route labels and the
-// publishing resolution labels.
+// Unit tests of the stage 5 helpers (D-151): decimal text order, the month row id, the audit route labels.
 
 describe('compareDecimal', () => {
   const lt: [string, string][] = [
@@ -83,21 +81,4 @@ describe('routeLabel (audit table)', () => {
   });
 });
 
-describe('publishing resolution labels', () => {
-  const labels = ru.reference.publishing.resolution as Record<string, string>;
-  const backend = (p: string) => readFileSync(new URL(`../../backend/src/${p}`, import.meta.url), 'utf8');
-  const emitted = new Set<string>(['unmapped']); // the SQL default of a new writer (repository.ts)
-  const service = backend('modules/publishing/service.ts');
-  const union = /resolution: ((?:'[a-z_]+'(?: \| )?)+),/.exec(service)?.[1] ?? '';
-  for (const m of union.matchAll(/'([a-z_]+)'/g)) emitted.add(m[1] as string);
-  for (const m of service.matchAll(/setWriterResolution\(\w+, '([a-z_]+)'\)/g)) emitted.add(m[1] as string);
-  for (const m of backend('facade/sources.ts').matchAll(/mapWriter\([^;]*?'([a-z_]+)'\)/g)) emitted.add(m[1] as string);
-  emitted.add('merged'); // repository.ts: merge of owners
-
-  it('found the values the backend emits', () => {
-    expect([...emitted].sort()).toEqual(['ambiguous', 'created_waiting_documents', 'external', 'manual', 'matched', 'merged', 'unmapped']);
-  });
-  it('has a Russian label for each', () => {
-    for (const v of emitted) expect(labels[v], v).toMatch(/[а-яё]/i);
-  });
-});
+// D-234: the resolution labels of the writers of the old publishing left with it

@@ -4,19 +4,17 @@ import type { LabelsService } from '../modules/labels';
 import type { SplitsService } from '../modules/splits';
 import type { SourcesService } from '../modules/sources';
 import type { SettlementsService } from '../modules/settlements';
-import type { PublishingService } from '../modules/publishing';
 import type { PubV2Service } from '../modules/pubv2';
 import type { LinksService } from '../modules/links';
 import type { AuditService } from '../modules/audit';
 import type { AdsService } from '../modules/ads';
 import { orgScope } from '../shared/org-scope';
-import { publishingSourceOf } from '../shared/publishing-source';
 import { openModules } from './modules';
 import { createFacadeContext, type FacadeConfig } from './context';
 import { splitsApi } from './splits';
 import { sourcesApi } from './sources';
 import { pubV2LinksApi } from './pubv2-links';
-import { pubV2Source } from './pubv2-source';
+import { pubV2Source } from './publishing-source';
 import { reportsApi } from './reports';
 import { ownerViewApi } from './owner-view';
 import { artistViewApi } from './artist-view';
@@ -59,21 +57,20 @@ export function openFacade(config: FacadeConfig) {
   const labels: LabelsService = opened.labels;
   const sources: SourcesService = config.sources;
   const settlements: SettlementsService = opened.settlements;
-  const publishing: PublishingService = opened.publishing;
   const pubv2: PubV2Service = opened.pubv2;
   const links: LinksService = opened.links;
   const audit: AuditService = opened.audit;
   const ads: AdsService = opened.ads;
-  // D-185: one switch of the source of the money; `calculate()` and the layers do not know it
-  const source = config.publishingSource ?? publishingSourceOf();
-  const ctx = createFacadeContext({ ...config, publishingSource: source }, {
+  // D-234: the publishing of the money is the report summaries of v2 and the links (the old module is gone)
+  const publishing = pubV2Source(db, { pubv2, links, owners });
+  const ctx = createFacadeContext(config, {
     db,
     owners,
     splits,
     labels,
     sources,
     settlements,
-    publishing: source === 'v2' ? pubV2Source(db, publishing, { pubv2, links, owners }) : publishing,
+    publishing,
     audit,
     ads,
   });
@@ -104,7 +101,7 @@ export function openFacade(config: FacadeConfig) {
     ...operationImportApi(ctx, payoutsPart),
     ...admissionApi(ctx),
     ...cutsApi(ctx, payoutsPart),
-    ...pubV2LinksApi(ctx, { pubv2, links, publishing }),
+    ...pubV2LinksApi(ctx, { pubv2, links }),
     ...sublabelsApi(ctx, { links }),
     ...sublabelReportApi(ctx, { links }),
   };

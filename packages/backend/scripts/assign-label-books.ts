@@ -93,26 +93,9 @@ async function ownLabel(f: Facade, name: string): Promise<string | undefined> {
   return l?.id;
 }
 
-/** Every loaded B17 statement without a label → 0to8 (R8, the owner's decision). */
-const statements: Step = async (f) => {
-  const zero = await ownLabel(f, '0to8');
-  if (!zero) return false;
-  const { publishing } = f.modules;
-  const all = await publishing.activeStatements();
-  const todo = all.filter((s) => s.labelId === null);
-  const nameOf = (id: string) => (id === zero ? '0to8' : id);
-  console.log(`step statements: ${all.length} loaded B17 statements, ${all.reduce((n, s) => n + s.periods.length, 0)} quarters`);
-  console.log(`  already_done: ${all.length - todo.length}`);
-  for (const s of all) if (s.labelId !== null) console.log(`    ${s.id} ${s.periods.join(',')} under ${nameOf(s.labelId)}`);
-  console.log(`  → 0to8: ${todo.length}`);
-  for (const s of todo) console.log(`    ${s.id} ${s.periods.join(',')}`);
-  if (!apply) return true;
-  // the view is refreshed on every --apply, even with nothing to mark: a run that stopped between the labels and the
-  // refresh leaves pub_lines_by_key stale, and the rerun says already_done
-  let n = 0;
-  for (const s of todo) if ((await publishing.assignStatementLabel(s.id, zero, { refresh: false })) === 'assigned') n += 1;
-  await publishing.refreshLinesByKey();
-  console.log(`  applied ${n} labels; pub_lines_by_key refreshed`);
+/** D-234: the B17 statements of the old module are gone; a report of v2 is always loaded under a label. */
+const statements: Step = async () => {
+  console.log('step statements: nothing to do (D-234: the old B17 statements left with their module)');
   return true;
 };
 

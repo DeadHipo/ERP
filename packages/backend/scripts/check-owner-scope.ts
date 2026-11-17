@@ -10,7 +10,6 @@
  */
 import { join, resolve } from 'node:path';
 import { openFacade } from '../src/facade';
-import { pubV2Source } from '../src/facade/pubv2-source';
 import { connectOrg, takeOrgArgument } from '../src/connect-sources';
 import { calculate } from '../src/facade/calculation';
 import { ownerBalance } from '../src/facade/balance';
@@ -30,9 +29,8 @@ const text = (x: unknown) => JSON.stringify(x, (k, v: unknown) => (k === 'calcul
 
 try {
   const { owners: ownersModule, settlements } = f.modules;
-  // D-189: the source of publishing follows PUBLISHING_SOURCE, as in the facade
-  const publishing = process.env.PUBLISHING_SOURCE === 'v2' ? pubV2Source(stack.db, f.modules.publishing, f.modules) : f.modules.publishing;
-  const modules = { ...f.modules, publishing, db: stack.db };
+  // D-234: the publishing of the facade is v2 only
+  const modules = { ...f.modules, db: stack.db };
   const owners = await ownersModule.listOwners();
   const list = limit > 0 ? owners.slice(0, limit) : owners;
   console.log(`${list.length} owners of ${owners.length}`);

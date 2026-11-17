@@ -1075,65 +1075,6 @@ const operations: ApiOperation[] = [
       '409 duplicate_file: the same file (sha256) is already loaded (details { existingFileId })',
     ],
   },
-  {
-    method: 'post',
-    path: '/publishing/b17',
-    access: 'org',
-    ability: { action: 'write', subject: 'sources', scope: 'label' },
-    tag: 'publishing',
-    summary:
-      'Upload a B17 statement (xlsx) under an own label (D-169); writers are resolved to owners. The label is checked before the body is received',
-    query: S.uploadLabelQuery,
-    upload: true,
-    status: 201,
-    response: R.b17UploadSchema,
-    errors: [
-      '400 label_required: no label=',
-      '404 not_found: label',
-      '400 validation_error: not an .xlsx statement',
-      '409 duplicate_period: a statement for this quarter is already loaded (details { existingStatementId })',
-      '409 duplicate_file: the same file (sha256) is already loaded',
-    ],
-  },
-  {
-    method: 'get',
-    path: '/publishing/writers',
-    access: 'org',
-    ability: { action: 'read', subject: 'publishing', scope: 'org' },
-    tag: 'publishing',
-    summary: 'Writers found in the statements',
-    response: list(R.publishingWriterSchema),
-  },
-  {
-    method: 'post',
-    path: '/publishing/writers/:norm/map',
-    access: 'org',
-    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
-    tag: 'publishing',
-    summary: 'Link a writer to an owner (or create one)',
-    body: S.mapWriterBody,
-    response: R.ownerSchema,
-  },
-  {
-    method: 'post',
-    path: '/publishing/writers/resolve',
-    access: 'org',
-    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
-    tag: 'publishing',
-    summary: 'Retry matching of the writers without an owner',
-    response: R.resolveWritersSchema,
-  },
-  {
-    method: 'post',
-    path: '/publishing/terms',
-    access: 'org',
-    ability: { action: 'approve', subject: 'publishing', scope: 'org' },
-    tag: 'publishing',
-    summary: 'Set the author percent of an owner from a date, for all operation types or one (operationType)',
-    body: S.publishingTermsBody,
-    status: 201,
-    response: R.publishingTermsSchema,
-  },
 
   // ---- reports ----
   {
@@ -1533,29 +1474,6 @@ const operations: ApiOperation[] = [
     errors: ['403 forbidden: not an organization administrator'],
   },
   // the replacement of a B17 statement (D-173): approve, its own operation (the upload stays write)
-  {
-    method: 'post',
-    path: '/publishing/statements/:id/replace',
-    access: 'org',
-    ability: { action: 'approve', subject: 'publishing', scope: 'label' },
-    tag: 'publishing',
-    summary:
-      'Replace a loaded B17 statement by a corrected file (xlsx) of the same quarters under the same own label (D-173): in one transaction the old statement becomes superseded (its lines and sha stay: the payout snapshots reference it), its quarters go to the new statement, the grouped lines are refreshed; writers are resolved as on the upload. The label is checked before the body is received',
-    query: S.uploadLabelQuery,
-    upload: true,
-    status: 201,
-    response: R.b17ReplaceSchema,
-    errors: [
-      '400 label_required: no label=',
-      '404 not_found: label or statement',
-      '400 validation_error: not an .xlsx statement',
-      '409 replace_not_loaded: the statement is not loaded (superseded already) (details { status })',
-      '409 replace_label_differs: the statement is loaded under another label (details { labelId })',
-      '409 periods_differ: the quarters of the new file differ from those of the statement (details { old, new })',
-      '409 duplicate_period: a quarter of the file name belongs to another statement (details { existingStatementId })',
-      '409 duplicate_file: the same file (sha256) is already loaded',
-    ],
-  },
   // the payroll export (D-173 §1.4): read_money under a label (a manager under its own label)
   // ---- the cuts (D-198): the state of a label's book at a moment ----
   {

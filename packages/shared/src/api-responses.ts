@@ -669,8 +669,8 @@ export const pubV2LinkSchema = z.object({
       ownerId: z.string().describe(D.ownerId),
       ownerName: z.string().describe(D.ownerName),
       reason: z
-        .enum(['songs', 'old_map', 'exact_name', 'same_words'])
-        .describe('songs = the owner behind most of its songs (title → track → split → pseudonym); old_map = the writer map of the old module; exact_name = one person-owner with this name or alias; same_words = one with the same words in another order'),
+        .enum(['songs', 'exact_name', 'same_words'])
+        .describe('songs = the owner behind most of its songs (title → track → split → pseudonym); exact_name = one person-owner with this name or alias; same_words = one with the same words in another order'),
       hasTerms: z.boolean().describe('The suggested owner has a publishing term'),
     })
     .nullable()
@@ -832,7 +832,6 @@ export const signalsSchema = z.object({
     count: z.number().int(),
     items: z.array(z.object({ isrc: z.string().describe(D.isrc), net: money.describe(D.net) })),
   }),
-  ambiguousWriters: z.array(z.object({ writerNorm: z.string().describe(D.writerNorm), displayName: z.string().describe(D.displayName) })),
   unfunded: z
     .array(
       z.object({
@@ -2037,10 +2036,6 @@ export const meSchema = z.object({
   abilities: z
     .array(z.string())
     .describe('The keys `METHOD /path` of the operations the session may call, without the data (D-171): the UI closes the others'),
-  publishingSource: z
-    .enum(['v1', 'v2'])
-    .default('v1')
-    .describe('The source of the money of publishing (D-189): v2 = /publishing-v2 takes the links and terms, the old /publishing refuses writes (D-194)'),
 });
 export type Me = z.infer<typeof meSchema>;
 export const orgSchema = z.object({ id: z.string(), name: z.string(), createdAt: timestamp, createdBy: z.string() });

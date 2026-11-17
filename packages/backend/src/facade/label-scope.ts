@@ -1,5 +1,3 @@
-import { normalizeName } from '../shared/identifiers';
-import { parseSongwriters } from '../modules/publishing';
 import type { SettlementsService } from '../modules/settlements';
 import type { Calculation, Modules } from './calculation';
 
@@ -86,7 +84,6 @@ export async function labelVisibility(
   for (const l of pub.lines) {
     if (l.labelId !== book.id) continue;
     writerNorms.add(l.writerNorm);
-    for (const name of parseSongwriters(l.songwriters)) writerNorms.add(normalizeName(name));
   }
   if (writerNorms.size > 0) {
     const resolve = await owners.ownerResolver();

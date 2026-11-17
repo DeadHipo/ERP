@@ -15,13 +15,11 @@ export const operations: Scenario[] = [
           await c.track(2); // a second track without income
           await c.split(1, [['A', '50']]);
         });
-        await f.setPublishingTerms({
-          ownerId: c.owner('A'),
-          percent: '50',
-          validFrom: '2020-01-01',
-          documentId: await c.doc('contract', 'terms-A', 'A'),
-        });
-        c.b17({ title: `Song-31${k}`, writer: holder, payable: '60', period: '2Q26' });
+        await f.setPublishingTerm(
+          { ownerId: c.owner('A'), percent: '50', validFrom: '2020-01-01', documentId: await c.doc('contract', 'terms-A', 'A') },
+          'e2e-seed',
+        );
+        c.b17({ title: `Song-31${k}`, writer: holder, owner: c.owner('A'), payable: '60', period: '2Q26' });
         if (k === 3) await c.migrationPayout('A', '20');
       }
       const c4 = seed.sc(31, 4); // G01 base, Owner A-314 payable 50

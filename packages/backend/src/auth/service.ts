@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { publishingSourceOf } from '../shared/publishing-source';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from '../shared/errors';
 import type { Db } from '../shared/pg-db';
 import { dummyHash, hashPassword, needsRehash, verifyPassword } from './password';
@@ -558,6 +557,5 @@ export function meOf(input: {
     memberships: input.memberships,
     support: input.support ?? null,
     abilities: input.abilities,
-    publishingSource: publishingSourceOf(),
   };
 }

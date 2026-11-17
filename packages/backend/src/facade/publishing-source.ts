@@ -5,27 +5,72 @@ import type { LinksService } from '../modules/links';
 import type { OwnersService } from '../modules/owners';
 import { isrcTermOf, ownerTermAt } from './pubv2-isrc-terms';
 import { DEFAULT_AUTHOR_PERCENT } from './layers/writer-parts';
-import type { PublishingService } from '../modules/publishing';
 import type { PubV2Service } from '../modules/pubv2';
 
-type Snapshot = Awaited<ReturnType<PublishingService['snapshotForCalculation']>>;
+/** A songwriter of v2 as the publishing layers read it: its owner by the operator's link, or none (it waits). */
+export interface PublishingWriterRow {
+  writerNorm: string;
+  displayName: string;
+  ownerId: string | null;
+  resolution: string;
+  role: string;
+}
+
+/** A term of the layers: the owner's percent from a date; `operationType` is only the slot of an ISRC term (D-192). */
+export interface PublishingTermRow {
+  id: string;
+  ownerId: string;
+  percent: string;
+  validFrom: string;
+  validTo: string | null;
+  documentId: string | null;
+  operationType: string | null;
+  createdAt: string;
+}
+
+/** One accrual of a report summary: a songwriter and a song in a quarter, under the label of its file. */
+export interface PublishingLineRow {
+  period: string;
+  writerNorm: string;
+  writerName: string;
+  workTitle: string;
+  operationType: string | null;
+  labelId: string | null;
+  payablePico: bigint;
+}
+
+/** A loaded report file of v2 in the shape the payout snapshot, the sources and the overview list (D-189). */
+export interface StatementView {
+  id: string;
+  source: string;
+  periods: string[];
+  fileName: string;
+  sha256: string;
+  generatedAt: string;
+  generatedAtSource: string;
+  uploadedAt: string;
+  status: string;
+  lineCount: number;
+  totalPayable: string;
+  warnings: string[];
+  labelId: string | null;
+  replacedBy: string | null;
+}
+
+type Snapshot = { writers: PublishingWriterRow[]; terms: PublishingTermRow[]; lines: PublishingLineRow[] };
 
 /**
- * The publishing of the calculation read from the report summaries and the links (D-185), in the shape of the old
- * module: `calculate()` and the layers stay as they are, the service is only answered differently, as in `scope.ts`.
- * The money goes to the owner of the songwriter: a line has no `songwriters`, so D-087 has nothing to divide, and no
- * `operationType`, and the terms of v2 carry none (D-188). A songwriter without a link waits as `writer_unmapped`.
+ * The publishing of the calculation, read from the report summaries and the links (D-185; the only source since D-234,
+ * the old module of the B17 lines is gone). The money goes to the owner of the songwriter (the rights-holder of the
+ * summary row, D-186); a line carries no operation type and the terms of v2 none (D-188). A songwriter without a link
+ * waits as `writer_unmapped`.
  *
  * D-192: a term of an ISRC wins over the owner's own percent on the songs linked to that ISRC. It rides the typed-term
  * slot of the layer (`operationType`, D-128) without a layer change: the line gets the key `isrc:<termId>` and the term
  * is copied with that key. A song whose ISRCs disagree gets a term of its own without a document, so the line waits as
  * `publishing_terms_unconfirmed`, at the highest percent in question (the owner's or one of the ISRCs').
  */
-export function pubV2Source(
-  db: Db,
-  publishing: PublishingService,
-  m: { pubv2: PubV2Service; links: LinksService; owners: OwnersService },
-): PublishingService {
+export function pubV2Source(db: Db, m: { pubv2: PubV2Service; links: LinksService; owners: OwnersService }) {
   const snapshotForCalculation = (o: { lines?: boolean } = {}): Promise<Snapshot> =>
     db.snapshot(async () => {
       const decided = new Map((await m.links.songwriterOwners()).map((l) => [l.songwriterId, l.ownerId]));
@@ -73,7 +118,6 @@ export function pubV2Source(
           writerNorm: l.songwriterId,
           writerName: l.songwriter,
           workTitle: l.title,
-          songwriters: null,
           operationType,
           labelId: l.labelId,
           payablePico: l.payablePico,
@@ -81,7 +125,7 @@ export function pubV2Source(
       });
       return { writers, terms: [...terms, ...typed.values()], lines };
     });
-  type Statement = Awaited<ReturnType<PublishingService['listStatements']>>[number];
+  type Statement = StatementView;
   /** A file of v2 in the shape of an old statement (D-189): the payout snapshot, the sources and the overview list it. */
   const statementOf = (f: Awaited<ReturnType<PubV2Service['listFiles']>>[number]): Statement => ({
     id: f.id,
@@ -108,16 +152,18 @@ export function pubV2Source(
       .map(({ decidedBy: _b, cancelledAt: _c, cancelledBy: _cb, cancelReason: _r, isrc: _i, basis: _s, ...t }) => ({ ...t, operationType: null }));
   /** The songwriters of v2 with their links: nothing is ambiguous, a songwriter without a link waits. */
   const listWriters = async () => (await snapshotForCalculation({ lines: false })).writers;
-  return Object.assign(Object.create(publishing) as PublishingService, {
+  return {
     snapshotForCalculation,
     listStatements,
     activeStatements,
     termsOf,
     listWriters,
-    /** D-194: a merge of owners moves the links of v2 too (the old module's writers follow as before). */
+    /** D-194: a merge of owners moves the links of v2. */
     async reassignOwner(fromOwnerId: string, intoOwnerId: string) {
-      await publishing.reassignOwner(fromOwnerId, intoOwnerId);
       await m.links.reassignOwner(fromOwnerId, intoOwnerId);
     },
-  });
+  };
 }
+
+/** The publishing of a facade (D-234: the report summaries of v2 and the links). */
+export type PublishingSource = ReturnType<typeof pubV2Source>;

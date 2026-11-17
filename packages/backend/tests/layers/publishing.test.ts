@@ -9,7 +9,8 @@ import {
   type PublishingWriter,
 } from '../../src/facade/layers';
 
-// The pure publishing layers (D-128 part 2, 12 G26a-d): no stack, hand-built context. Synthetic data only.
+// The pure publishing layers (D-128 part 2, D-234: a line goes wholly to its rights-holder): no stack, hand-built
+// context. Synthetic data only.
 
 const writer = (name: string, ownerId: string | null, resolution = 'matched'): PublishingWriter => ({
   writerNorm: name.toLowerCase(),
@@ -47,17 +48,13 @@ function ctx(
       o.documentStatus ?? ((id) => (id === 'ok' ? 'approved' : id ? 'not_approved' : 'missing')),
   };
 }
-const line = (
-  songwriters: string | null,
-  payable: string,
-  operationType: string | null = 'Mechanical',
-): PublishingLine => ({
+/** A line of its rights-holder `holder` (D-234: a line belongs to its holder, the equal parts of D-087 are gone). */
+const line = (holder: string | null, payable: string, operationType: string | null = null): PublishingLine => ({
   period: '2026-Q1',
   reportMonth: '2026-03',
-  writerNorm: 'h',
-  writerName: 'H',
+  writerNorm: holder ?? 'h',
+  writerName: holder ?? 'H',
   workTitle: 'T',
-  songwriters,
   operationType,
   payable: new Decimal(payable),
 });
@@ -82,30 +79,18 @@ describe('publishing layers', () => {
     ]);
   });
 
-  it('G26a: equal parts, the untyped term for Mechanical', () => {
-    expect(run(line('w1, w2', '100'), ctx())).toEqual([
-      { w: 'w1', owner: 'o1', part: '50', pct: '50', author: '25', label: '25', cat: 'B', reason: null },
-      { w: 'w2', owner: 'o2', part: '50', pct: '90', author: '45', label: '5', cat: 'B', reason: null },
+  it('the line goes wholly to its holder at the untyped term', () => {
+    expect(run(line('w2', '100'), ctx())).toEqual([
+      { w: 'w2', owner: 'o2', part: '100', pct: '90', author: '90', label: '10', cat: 'B', reason: null },
     ]);
   });
 
-  it('G26b: a typed term wins for its type', () => {
-    expect(
-      run(line('w1, w2', '100', 'Synchronization'), ctx()).map((p) => [p.pct, p.author, p.label]),
-    ).toEqual([
-      ['50', '25', '25'],
-      ['50', '25', '25'],
-    ]);
+  it('a typed term (the slot of an ISRC term, D-192) wins for its key', () => {
+    expect(run(line('w2', '100', 'Synchronization'), ctx()).map((p) => [p.pct, p.author, p.label])).toEqual([['50', '50', '50']]);
   });
 
   it('a line without a type uses only the untyped term', () => {
     expect(run(line('w2', '100', null), ctx()).map((p) => p.pct)).toEqual(['90']);
-  });
-
-  it('G26c: an external co-writer takes nothing', () => {
-    expect(run(line('w1, x', '100'), ctx())).toEqual([
-      { w: 'w1', owner: 'o1', part: '100', pct: '50', author: '50', label: '50', cat: 'B', reason: null },
-    ]);
   });
 
   it('G26d: no terms means the default 50 and C publishing_terms_unconfirmed', () => {
@@ -123,21 +108,10 @@ describe('publishing layers', () => {
     ]);
   });
 
-  it('three writers: parts cut at 12 decimals, the last takes the remainder, the parts add up (D-130)', () => {
-    const c = ctx({ writers: [writer('w1', 'o1'), writer('w2', 'o2'), writer('w3', 'o3')] });
-    const parts = allocateLine(line('w1, w2, w3', '100'), c).parts;
-    expect(parts.map((p) => p.payable.toFixed())).toEqual([
-      '33.333333333333',
-      '33.333333333333',
-      '33.333333333334',
-    ]);
-    expect(parts.reduce((s, p) => s.add(p.payable), new Decimal(0)).toFixed()).toBe('100');
-  });
-
-  it('12 decimals in every publishing amount: parts, author q(part × percent / 100), label by subtraction (D-130)', () => {
+  it('12 decimals in every publishing amount: author q(payable × percent / 100), label by subtraction (D-130)', () => {
     const c = ctx({ terms: [term('o1', '33.333333'), term('o2', '66.666667'), term('o3', '12.345678')] });
     for (const payable of ['100.000000000001', '-7.123456789013', '0.000000000002', '1']) {
-      const parts = allocateLine(line('w1, w2, w3', payable), c).parts;
+      const parts = allocateLine(line('w1', payable), c).parts;
       for (const p of parts) {
         for (const d of [p.payable, p.authorAmount, p.labelAmount])
           expect(d.decimalPlaces()).toBeLessThanOrEqual(12);
@@ -147,8 +121,8 @@ describe('publishing layers', () => {
         new Decimal(payable).toFixed(),
       );
     }
-    // 100 / 3 = 33.333333333333 (cut), × 33.333333 % = 11.111110999999888889 → 11.111111 at 12 decimals, half up
-    const [first] = allocateLine(line('w1, w2, w3', '100'), c).parts;
+    // 33.333333333333 × 33.333333 % = 11.111110999999888889 → 11.111111 at 12 decimals, half up
+    const [first] = allocateLine(line('w1', '33.333333333333'), c).parts;
     expect([first?.payable.toFixed(), first?.authorAmount.toFixed(), first?.labelAmount.toFixed()]).toEqual([
       '33.333333333333',
       '11.111111',
@@ -156,27 +130,9 @@ describe('publishing layers', () => {
     ]);
   });
 
-  it('an ambiguous writer keeps a part with owner null (C writer_unmapped, nothing accrued)', () => {
-    const c = ctx({ writers: [writer('w1', 'o1'), writer('w2', null, 'ambiguous')] });
-    expect(run(line('w1, w2', '100'), c)).toEqual([
-      { w: 'w1', owner: 'o1', part: '50', pct: '50', author: '25', label: '25', cat: 'B', reason: null },
-      {
-        w: 'w2',
-        owner: null,
-        part: '50',
-        pct: '50',
-        author: '0',
-        label: '0',
-        cat: 'C',
-        reason: 'writer_unmapped',
-      },
-    ]);
-  });
-
-  it('no writer of ours: the line goes to the rights-holder', () => {
+  it('a holder without an owner waits in C writer_unmapped', () => {
     const c = ctx({ writers: [writer('h', 'o1')] });
-    expect(run(line('x, y', '100'), c).map((p) => [p.w, p.owner, p.part])).toEqual([['H', 'o1', '100']]);
-    expect(run(line(null, '100'), c).map((p) => p.owner)).toEqual(['o1']);
+    expect(run(line(null, '100'), c).map((p) => [p.w, p.owner, p.part])).toEqual([['H', 'o1', '100']]);
     expect(run(line(null, '100'), ctx({ writers: [] })).map((p) => [p.owner, p.reason])).toEqual([
       [null, 'writer_unmapped'],
     ]);

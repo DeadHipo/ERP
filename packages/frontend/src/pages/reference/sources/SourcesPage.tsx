@@ -7,7 +7,6 @@ import type { sourceFileSchema, statementSchema } from '@erp/shared/api-response
 import * as api from '../../../api/client';
 import { useAction } from '../../../api/queries/core';
 import { sourceQueries } from '../../../api/queries/sources';
-import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
@@ -22,7 +21,6 @@ import { fmt, ru } from '../../../i18n/ru';
 import { useWriteLabel } from '../../../lib/label';
 import { useUrlParam } from '../../catalog/components/url';
 import { AddAccountDialog } from '../labels/AccountDialogs';
-import { ReplaceStatementDialog } from './ReplaceStatementDialog';
 
 const t = ru.reference.sources;
 type BelieveFile = z.output<typeof sourceFileSchema>;
@@ -61,7 +59,7 @@ function SourceUpload(props: {
         testId={`upload-${props.name}`}
         field={`upload-${props.name}`}
         action={`upload-${props.name}`}
-        op={props.name === 'believe' ? 'POST /sources/believe' : 'POST /publishing/b17'}
+        op="POST /sources/believe"
         label={props.label}
         accept={props.accept}
         isPending={run.isPending}
@@ -98,7 +96,6 @@ export function SourcesPage() {
   const ownKey = JSON.stringify(own.map((l) => [l.id, l.name]));
   const names = useMemo(() => new Map(JSON.parse(ownKey) as [string, string][]), [ownKey]);
   const [q, setQ] = useUrlParam('q');
-  const [replacing, setReplacing] = useState<Statement | null>(null);
   // the replacing statement of a superseded one is named by its file (D-173); the link filters the list to it
   const statementNames = useMemo(() => new Map((query.data?.b17 ?? []).map((s) => [s.id, s.fileName])), [query.data]);
   const needle = q.trim().toLocaleLowerCase('ru');
@@ -142,11 +139,8 @@ export function SourcesPage() {
               </Link>
             );
           }
-          return st.status === 'loaded' ? (
-            <ActionButton name={`replace-statement-${st.id}`} op="POST /publishing/statements/:id/replace" variant="secondary" compact onPress={() => setReplacing(st)}>
-              {ru.operations.replace.action}
-            </ActionButton>
-          ) : null;
+          // D-234: a report of publishing is loaded and replaced on P32 «Паблишинг v2»
+          return null;
         },
       },
     ],
@@ -181,13 +175,14 @@ export function SourcesPage() {
         </section>
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">{t.b17}</h2>
-          <SourceUpload name="b17" label={t.uploadB17} accept=".xlsx" send={(f, labelId) => api.publishing.uploadB17(f, labelId).then((r) => ({ fileName: r.statement.fileName }))} />
+          <Link to="/publishing-v2" className="text-sm text-accent hover:underline" data-testid="b17-upload-v2">
+            {t.uploadB17V2}
+          </Link>
           <QueryView query={query} isEmpty={(d) => d.b17.length === 0} emptyMessage={t.noB17}>
             {(d) => <DataGrid rowData={d.b17.filter((f) => needle === '' || [f.fileName, ...f.periods].some((x) => x.toLocaleLowerCase('ru').includes(needle)))} columnDefs={b17Cols} getRowId={(f) => f.id} rowTestId={(f) => `statement-${f.id}`} gridStateKey="b17" height="260px" />}
           </QueryView>
         </section>
       </div>
-      {replacing ? <ReplaceStatementDialog statement={replacing} onClose={() => setReplacing(null)} /> : null}
     </div>
   );
 }

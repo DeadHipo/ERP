@@ -8,9 +8,8 @@ import type { OperationKey } from '../../../api/coverage';
 import { useAction } from '../../../api/queries/core';
 import { documentQueries } from '../../../api/queries/documents';
 import { labelQueries } from '../../../api/queries/labels';
-import { usePublishingV2 } from '../../../api/queries/auth';
 import { ownerQueries } from '../../../api/queries/owners';
-import { publishingQueries, publishingV2Queries } from '../../../api/queries/publishing';
+import { publishingV2Queries } from '../../../api/queries/publishing';
 import { ChooseOwnerDialog } from '../../reference/publishing-v2/LinksTab';
 import { TermDialog } from '../../reference/publishing-v2/TermDialog';
 import { splitQueries } from '../../../api/queries/splits';
@@ -314,13 +313,8 @@ export function RegisterTrackDialog(props: { isrc: string; upc: string; title?: 
 
 // ---- writer_unmapped, ambiguousWriters ----
 
-/** D-194: under publishing v2 the songwriter is linked on its v2 dialog; the old map refuses writes. */
+/** The queue names the songwriter of v2 by its name (unique per organization): its row of the links, then «Владелец автора» (D-234: v2 only). */
 export function MapWriterDialog(props: { writer: string; onClose: () => void }) {
-  return usePublishingV2() ? <LinkSongwriterDialog {...props} /> : <MapWriterDialogV1 {...props} />;
-}
-
-/** The queue names the songwriter of v2 by its name (unique per organization): its row of the links, then «Владелец автора». */
-function LinkSongwriterDialog(props: { writer: string; onClose: () => void }) {
   const links = useQuery(publishingV2Queries.links(''));
   const row = links.data?.find((x) => x.songwriterId === props.writer || x.name === props.writer);
   if (row) return <ChooseOwnerDialog row={row} onClose={props.onClose} />;
@@ -333,102 +327,12 @@ function LinkSongwriterDialog(props: { writer: string; onClose: () => void }) {
   );
 }
 
-function MapWriterDialogV1(props: { writer: string; onClose: () => void }) {
-  const writers = useQuery(publishingQueries.writers());
-  const w = writers.data?.find((x) => x.writerNorm === props.writer || x.displayName === props.writer);
-  const [owner, setOwner] = useState<string | null>(null);
-  const run = useAction(
-    async (norm: string) => {
-      await api.publishing.mapWriter(norm, { ownerId: owner });
-      return api.publishing.resolveWriters();
-    },
-    { invalidate: 'all', success: (r) => fmt(a.toast.writerMapped, { matched: r.matched, created: r.created, ambiguous: r.ambiguous }) },
-  );
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={a.mapWriter}
-      subtitle={ru.reasonActions.writer_unmapped}
-      footer={
-        <Submit
-          name="writer-submit" op="POST /publishing/writers/:norm/map"
-          label={a.mapWriter}
-          disabled={!w || !owner}
-          reason={!w && writers.data ? a.hints.noWriter : undefined}
-          pending={run.isPending}
-          onPress={() => w && run.mutate(w.writerNorm, { onSuccess: props.onClose })}
-        />
-      }
-    >
-      <div className="text-sm">
-        {ru.signalsPage.cols.writer}: <b>{w?.displayName ?? props.writer}</b>
-      </div>
-      <EntityPicker name="writer-owner" label={f.owner} kind="owners" value={owner} onChange={(id) => setOwner(id)} />
-    </FormDialog>
-  );
-}
-
 // ---- publishing_terms_unconfirmed ----
 
-/** D-194: under publishing v2 the percent is a term of `links` (no operation type); the old terms refuse writes. */
+/** The percent of the owner is a term of `links` (D-185, no operation type; D-234: v2 only). */
 export function PublishingTermsDialog(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
-  return usePublishingV2() ? <OwnerTermV2Dialog {...props} /> : <PublishingTermsDialogV1 {...props} />;
-}
-
-function OwnerTermV2Dialog(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
   const detail = useQuery(ownerQueries.detail(props.ownerId));
   return <TermDialog ownerId={props.ownerId} ownerName={props.ownerLabel} terms={detail.data?.publishingTerms ?? []} onClose={props.onClose} />;
-}
-
-function PublishingTermsDialogV1(props: { ownerId: string; ownerLabel: string; onClose: () => void }) {
-  const [percent, setPercent] = useState('');
-  const [validFrom, setValidFrom] = useState('');
-  const [operationType, setOperationType] = useState('');
-  const [document, setDocument] = useState<string | null>(null);
-  const run = useAction(
-    () =>
-      api.publishing.setTerms({
-        ownerId: props.ownerId,
-        percent: percent.trim(),
-        validFrom,
-        documentId: document,
-        ...(operationType.trim() ? { operationType: operationType.trim() } : {}),
-      }),
-    { invalidate: 'all', success: (t) => fmt(a.toast.termsSet, { percent: t.percent, from: t.validFrom }) },
-  );
-  return (
-    <FormDialog
-      isOpen
-      onOpenChange={(o) => (o ? null : props.onClose())}
-      title={a.publishingTerms}
-      subtitle={ru.reasonActions.publishing_terms_unconfirmed}
-      footer={
-        <Submit
-          name="terms-submit" op="POST /publishing/terms"
-          label={a.publishingTerms}
-          disabled={percent.trim() === '' || validFrom === ''}
-          pending={run.isPending}
-          onPress={() => run.mutate(undefined, { onSuccess: props.onClose })}
-        />
-      }
-    >
-      <div className="text-sm">
-        {f.owner}: <b>{props.ownerLabel}</b>
-      </div>
-      <TextField name="terms-percent" label={f.percent} value={percent} onChange={setPercent} isRequired />
-      <DateField name="terms-from" label={f.validFrom} value={validFrom} onChange={setValidFrom} isRequired />
-      <TextField name="terms-operation" label={f.operationType} value={operationType} onChange={setOperationType} />
-      <EntityPicker
-        name="terms-document"
-        label={f.document}
-        kind="documents"
-        value={document}
-        accept={(i) => i.status === 'approved' && i.kind !== 'assumption'}
-        onChange={(id) => setDocument(id)}
-      />
-    </FormDialog>
-  );
 }
 
 // ---- isrcsWithoutSplit ----

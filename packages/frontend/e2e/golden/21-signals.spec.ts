@@ -23,10 +23,10 @@ async function p1(page: Page, acct: string, abco: string) {
   await expectP1(page, acct, M, abco);
 }
 
-test('the index lists the 25 lists with their counts and links (D-232: − sublabelWithoutRule, ruleRecipientIsRow; D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled; D-196: + releasesWithoutDate; D-200: + cutsUnsettled; D-216: + mcRowBearsCarve)', async ({ page }) => {
+test('the index lists the 24 lists with their counts and links (D-234: − ambiguousWriters; D-232: − sublabelWithoutRule, ruleRecipientIsRow; D-172: + catalogOutsideAccount, tracksWithoutLabel, releasesIncomplete, releasesUnknown; D-173: + operationsDefaultLabel, forgivenessReduced, operationsRelabelled; D-196: + releasesWithoutDate; D-200: + cutsUnsettled; D-216: + mcRowBearsCarve)', async ({ page }) => {
   await openAs(page, '/signals');
   await settled(page);
-  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(25);
+  await expect(page.getByTestId('signals-index').locator('li')).toHaveCount(24);
   // D-200: the seed has no cut (48-cuts makes the first), so «Незакрытые на срезе» is empty
   await expect(page.getByTestId('signal-list-cutsUnsettled').getByTestId('signal-count')).toHaveText('0');
   // D-173: the seed marks no label source and records no forgiveness or relabel

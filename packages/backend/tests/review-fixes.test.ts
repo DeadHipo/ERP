@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
-import ExcelJS from 'exceljs';
+
 import {
   approvedAppendix,
   approvedDoc,
@@ -416,42 +416,8 @@ describe('sources: robustness', () => {
   });
 });
 
-describe('publishing: labels, similar names, numeric cells', () => {
-  it('a writer is never mapped to a label owner; a similar name goes to the operator', async () => {
-    const f = await newFacade();
-    const o = f.modules.owners;
-    await o.createOwner({ name: 'Label Writer', kind: 'label' });
-    await o.createOwner({ name: 'Ivan Testov', kind: 'person' });
-    const res = await f.ingestB17(
-      await writeB17('Q22026', [
-        { writer: 'Label Writer', title: 'S1', payable: '10' },
-        { writer: 'TESTOV, IVAN', title: 'S2', payable: '10' },
-      ]), f.testLabels['0to8'],
-    );
-    expect(res.writers).toMatchObject({ matched: 0, created: 1, ambiguous: 1 });
-    expect((await f.signals()).ambiguousWriters.map((w) => w.displayName)).toEqual(['TESTOV, IVAN']);
-    const target = (await o.listOwners()).find((x) => x.name === 'Ivan Testov');
-    await f.mapWriter('testov ivan', { ownerId: target?.id as string });
-    expect(
-      (await f.modules.publishing.listWriters()).find((w) => w.writerNorm === 'testov ivan')?.ownerId,
-    ).toBe(target?.id);
-  });
-
-  it('numeric and formula cells keep 15 significant digits', async () => {
-    const f = await newFacade();
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Detail');
-    ws.addRow(['Period', 'asset title', 'rights-holder name', 'Total Payable']);
-    ws.addRow(['2Q26', 'S', 'W', 0.1 + 0.2]);
-    ws.addRow(['2Q26', 'S2', 'W', { formula: 'D2*2', result: 12.340000000000002 }]);
-    ws.addRow(['', '', '', 12.64]); // total row without title and writer
-    const path = tmpPath('0to8_Q22026_Publishing_Statement.xlsx');
-    await wb.xlsx.writeFile(path);
-    const res = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' }, f.testLabels['0to8']);
-    expect(res.statement.totalPayable).toBe('12.64');
-    expect(res.statement.lineCount).toBe(2);
-  });
-});
+// D-234: «publishing: labels, similar names, numeric cells» tested the resolution and the B17 Detail reader of the old
+// module; v2 links by the operator and its readers are tested in pubv2.test.ts
 
 describe('payout snapshot attribution', () => {
   it('a publishing-scoped advance reduces the publishing part; the statement of 0to8 sits in the 0to8 book, so the payout under 0to8 pays master + publishing (D-168, D-169 R8)', async () => {

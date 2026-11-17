@@ -314,7 +314,7 @@ describe('facade: publishing B17 (08)', () => {
     const { a } = await world(f);
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     const termsDoc = await approvedDoc(f, 'contract', a.owner.id);
-    await f.modules.publishing.setTerms({
+    await f.setPublishingTerms({
       ownerId: a.owner.id,
       percent: '50',
       validFrom: '2020-01-01',
@@ -326,7 +326,7 @@ describe('facade: publishing B17 (08)', () => {
         { writer: 'Unknown Writer', title: 'Song Two', payable: '80' },
       ]), f.testLabels['0to8'],
     );
-    expect(res.writers).toMatchObject({ matched: 1, created: 1, ambiguous: 0 });
+    expect(res.linked).toEqual(['OWNER, A']); // D-234: the holder linked to its one owner; the unknown one waits
     const b = await f.ownerBalance(a.owner.id);
     expect(b.total.earned.toFixed()).toBe('100');
     expect(b.publishing[0]?.amount.toFixed()).toBe('100');
@@ -334,37 +334,18 @@ describe('facade: publishing B17 (08)', () => {
     expect(pubRow?.month).toBe('2026-06');
     expect(pubRow?.A_received.toFixed()).toBe('280');
     expect(pubRow?.B_notOurs.toFixed()).toBe('100');
-    expect(pubRow?.C_waiting.toFixed()).toBe('40'); // unknown author: default 50% of 80, waiting for documents
-    expect(pubRow?.ourShare.toFixed()).toBe('140');
+    // D-234: an unknown holder is a songwriter without a link: its whole line waits (v1 made a stub owner at the default 50 %)
+    expect(pubRow?.C_waiting.toFixed()).toBe('80');
+    expect(pubRow?.ourShare.toFixed()).toBe('100');
   });
 
-  it('unknown author: an owner without documents is created and accrued to; later merged into the confirmed owner', async () => {
-    const f = await newFacade();
-    const { a } = await world(f);
-    const termsDoc = await approvedDoc(f, 'contract', a.owner.id);
-    await f.modules.publishing.setTerms({
-      ownerId: a.owner.id,
-      percent: '50',
-      validFrom: '2020-01-01',
-      documentId: termsDoc.id,
-    });
-    await f.ingestB17(
-      await writeB17('Q22026', [{ writer: 'Writer Unknown', title: 'Song', payable: '100' }]), f.testLabels['0to8'],
-    );
-    const stub = (await f.modules.owners.listOwners()).find((o) => o.origin === 'publishing');
-    expect(stub?.status).toBe('waiting_documents');
-    expect((await f.ownerBalance(stub?.id as string)).total.waiting.toFixed()).toBe('50');
-    await expect(f.createPayout(stub?.id as string, { labelId: f.testLabels['0to8'] })).rejects.toThrow(/approved contract/);
-    await f.mergeOwners(stub?.id as string, a.owner.id, 'same person');
-    expect((await f.ownerBalance(a.owner.id)).total.earned.toFixed()).toBe('50');
-  });
-
+  // D-234: «unknown author → an owner waiting for documents» was the resolution of the old module (v2 links by the operator)
   it('owner publishing recoups a publishing-only advance of any of its artists', async () => {
     const f = await newFacade();
     const { a, a1 } = await world(f);
     await f.modules.owners.addOwnerAlias(a.owner.id, 'OWNER, A');
     const termsDoc = await approvedDoc(f, 'contract', a.owner.id);
-    await f.modules.publishing.setTerms({
+    await f.setPublishingTerms({
       ownerId: a.owner.id,
       percent: '50',
       validFrom: '2020-01-01',
@@ -400,6 +381,6 @@ describe('facade: publishing B17 (08)', () => {
           '0to8_Q22026_Publishing_Statement_Updated.xlsx',
         ), f.testLabels['0to8'],
       ),
-    ).rejects.toMatchObject({ code: 'duplicate_period' });
+    ).rejects.toMatchObject({ code: 'period_loaded' }); // D-234: the refusal of v2
   });
 });

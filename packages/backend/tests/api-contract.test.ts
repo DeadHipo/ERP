@@ -13,7 +13,7 @@ import { buildOpenApiDocument } from '../src/api/openapi';
 import { createAuthService } from '../src/auth/service';
 import { createOrgFacades } from '../src/orgs/facades';
 import { createOrgsService } from '../src/orgs/service';
-import { newFacade, tmpPath, TMP, writeB17, writeBelieve } from './helpers/fixtures';
+import { newFacade, tmpPath, TMP, writeBelieve } from './helpers/fixtures';
 import { MANAGER_ANSWER } from './helpers/manager-answers';
 import { testStack } from './helpers/test-sources';
 
@@ -519,15 +519,7 @@ const OPERATOR = 'contract-test';
     await call('get', '/sources/lines/facets');
     const zeroFacets = await call('get', '/sources/lines/facets', { query: { label: zero.id } });
     expect(zeroFacets.files.map((x: { id: string }) => x.id)).toEqual([loaded.id]);
-    const b17File = await writeB17('Q22026', [{ writer: 'Writer Synthetic', title: 'Song', payable: 100 }]);
-    expect((await refused('/api/v1/publishing/b17', {}, b17File)).error.code).toBe('label_required');
-    const b17 = await call('post', '/publishing/b17', { query: { label: zero.id }, file: b17File });
-    expect(b17.statement.labelId).toBe(zero.id);
-    // the replacement of the statement (D-173): the same quarter and amounts, other bytes; the old one superseded
-    const b17Fix = await writeB17('Q22026', [{ writer: 'Writer Synthetic', title: 'Song', payable: 100 }, { writer: 'Writer Synthetic', title: 'Song', payable: 0 }], '0to8_Q22026_Publishing_Statement_Fix.xlsx');
-    expect((await refused(`/api/v1/publishing/statements/${b17.statement.id}/replace`, {}, b17Fix)).error.code).toBe('label_required');
-    const b17Replaced = await call('post', '/publishing/statements/:id/replace', { params: { id: b17.statement.id }, query: { label: zero.id }, file: b17Fix, labelId: zero.id });
-    expect([b17Replaced.superseded.status, b17Replaced.superseded.replacedBy, b17Replaced.statement.totalPayable]).toEqual(['superseded', b17Replaced.statement.id, '100']);
+    // D-234: the B17 upload and replacement of the old module are gone (publishing is v2 only)
     // publishing v2 (D-182): a report summary as a partition, the list, the removal
     const pubV2Book = new ExcelJS.Workbook();
     pubV2Book.addWorksheet('Songwriter Breakdown').addRows([
@@ -589,19 +581,7 @@ const OPERATOR = 'contract-test';
     // the assumption (D-172): the imported split has no document; one assumption document under the label
     const assumed = await call('post', '/splits/assume', { body: { labelId: zero.id, isrcs: ['QZTST2600088'], reason: 'contract synthetic' }, labelId: zero.id });
     expect([assumed.assigned, assumed.skipped]).toEqual([imported.result.splitIds, []]);
-    const writers = await call('get', '/publishing/writers');
-    await call('post', '/publishing/writers/resolve');
-    await call('post', '/publishing/writers/:norm/map', {
-      params: { norm: (writers as unknown as { writerNorm: string }[])[0]?.writerNorm ?? '' },
-      body: { ownerId: owner.id },
-    });
-    await call('post', '/publishing/terms', {
-      body: { ownerId: owner.id, percent: '50', validFrom: '2026-01-01' },
-    });
-    const typed = await call('post', '/publishing/terms', {
-      body: { ownerId: owner.id, percent: '60', validFrom: '2026-02-01', operationType: 'Performance' },
-    });
-    expect(typed.operationType).toBe('Performance');
+    // D-234: the writers and the typed terms of the old module are gone
 
     // views
     await call('get', '/owners/:id', { params: { id: owner.id } });

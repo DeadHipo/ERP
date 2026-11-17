@@ -224,12 +224,12 @@ test('S31/1 under 0to8 the Pay dialog: master 50,00 by default, the whole book 8
   await expect(dialog).toHaveCount(0);
 });
 
-test('S18 W1 (publishing only) under 0to8: master has nothing to pay; the area «паблишинг» pays 100.00; Echo8 has nothing to pay', async ({ page, request }) => {
+test('S18 W1 (publishing only) under 0to8: master has nothing to pay; the area «паблишинг» pays 50.00 (D-234: its row T-A at 50 %); Echo8 has nothing to pay', async ({ page, request }) => {
   const ownerId = sc(18).owners.W1 ?? '';
   const echo = await apiPost(request, `/owners/${ownerId}/payouts`, { labelId: labelOf('Echo8') });
   expect([echo.status, echo.code]).toEqual([422, 'nothing_to_pay']);
   await openOwner(page, ownerId);
-  await expectTotals(page, { earned: '100', payable: '100' });
+  await expectTotals(page, { earned: '50', payable: '50' });
   await expect(gate(page, 'allowed')).toBeVisible();
   await page.getByTestId('action-pay').click();
   const dialog = page.getByTestId('confirm-dialog');
@@ -237,19 +237,19 @@ test('S18 W1 (publishing only) under 0to8: master has nothing to pay; the area �
   await expect(dialog.getByTestId('confirm-dialog-blocked')).toContainText('нечего выплачивать');
   await expect(dialog.getByTestId('confirm-dialog-ok')).toBeDisabled();
   await choose(page, 'pay-area', 'паблишинг');
-  await expect(dialog).toContainText('К выплате: 100,00 (будет отправлено 10000 центов)');
+  await expect(dialog).toContainText('К выплате: 50,00 (будет отправлено 5000 центов)');
   await expect(dialog.getByTestId('confirm-dialog-blocked')).toHaveCount(0);
   const paid = page.waitForResponse((r) => r.url().endsWith(`/owners/${ownerId}/payouts`) && r.request().method() === 'POST');
   await dialog.getByTestId('confirm-dialog-ok').click();
   const body = (await (await paid).json()) as { id: string; amountCents: number; labelId: string };
-  expect([body.amountCents, body.labelId]).toEqual([10000, labelOf('0to8')]);
-  await toastOk(page, 'Выплачено: 100,00');
+  expect([body.amountCents, body.labelId]).toEqual([5000, labelOf('0to8')]);
+  await toastOk(page, 'Выплачено: 50,00');
   const proof = await apiPost(request, `/settlements/operations/${body.id}/proof`, { fileRef: 'dummy://e2e-proof-181.pdf' });
   expect(proof.status).toBe(200);
   await openOwner(page, ownerId);
-  await expectTotals(page, { paid: '100', payable: '0' });
+  await expectTotals(page, { paid: '50', payable: '0' });
   await openAs(page, `/owners/${ownerId}?tab=balance&label=`);
   await settled(page);
-  await expect(page.getByTestId('by-label-0to8').locator('[data-col="paid"]').getByTestId('money')).toHaveAttribute('title', '100');
+  await expect(page.getByTestId('by-label-0to8').locator('[data-col="paid"]').getByTestId('money')).toHaveAttribute('title', '50');
   await expect(page.getByTestId('by-label-?')).toHaveCount(0);
 });

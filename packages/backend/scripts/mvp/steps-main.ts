@@ -366,7 +366,7 @@ export async function stepTerms(ctx: Ctx) {
     return;
   }
   const rows = readJson<TermsRow[]>('terms.json');
-  const existing = await ctx.publishing.allTerms();
+  const existing = (await ctx.f.modules.links.ownerTerms()).map((t) => ({ ...t, operationType: null as string | null })); // D-234: the terms of v2
   for (const t of rows) {
     if (existing.some((e) => e.ownerId === t.ownerId && e.validFrom === t.validFrom && (e.operationType ?? null) === (t.operationType ?? null))) {
       log.count('already_done');
@@ -383,14 +383,18 @@ export async function stepTerms(ctx: Ctx) {
           ref: 'mvp-load:terms',
         });
       }
+      // D-234: a term of v2 has no operation type; a typed row is skipped
+      if (t.operationType) {
+        log.count('typed_term_skipped');
+        continue;
+      }
       if (ctx.apply)
-        await ctx.f.setPublishingTerms({
+        await ctx.f.setPublishingTerm({
           ownerId: t.ownerId,
           percent: t.percent,
           validFrom: t.validFrom,
           documentId,
-          operationType: t.operationType,
-        });
+        }, 'mvp-load');
       log.event('terms_set', `${t.ownerId} ${t.percent}% ${t.operationType ?? 'any type'} from ${t.validFrom}`);
     } catch (e) {
       log.event('terms_error', `${t.ownerId}: ${errText(e)}`);
@@ -741,7 +745,7 @@ export async function stepB17Holders(ctx: Ctx) {
   const owners = await ctx.owners.listOwners();
   const holders = owners.filter((o) => o.origin === 'publishing');
   log.count('holders', holders.length);
-  const terms = await ctx.publishing.allTerms();
+  const terms = (await ctx.f.modules.links.ownerTerms()).map((t) => ({ ...t, operationType: null as string | null })); // D-234: the terms of v2
   const LABEL = { co_pub: 'Co-publishing agreement', admin: 'Publishing administration agreement', recording: 'Recording agreement' } as const;
   let termsSet = 0;
   for (const o of holders) {
@@ -788,7 +792,8 @@ export async function stepB17Holders(ctx: Ctx) {
         log.event('holder_no_effective_date', `${id8} ${k}: no date in the index, no terms`);
         continue;
       }
-      const wanted: { type: string | null; percent: string }[] = k === 'co_pub' ? [{ type: null, percent: '50' }] : [{ type: null, percent: '90' }, { type: 'Synchronization', percent: '50' }];
+      // D-234: no typed term in v2 (the 50 % of Synchronization left with the old module, the owner's answer of 2026-11-18)
+      const wanted: { type: string | null; percent: string }[] = k === 'co_pub' ? [{ type: null, percent: '50' }] : [{ type: null, percent: '90' }];
       for (const w of wanted) {
         const key = `${w.type ?? ''}`;
         if (termsDone.has(key)) continue;
@@ -798,7 +803,7 @@ export async function stepB17Holders(ctx: Ctx) {
           continue;
         }
         try {
-          if (ctx.apply) await ctx.f.setPublishingTerms({ ownerId: o.id, percent: w.percent, validFrom: from, documentId: docId, operationType: w.type });
+          if (ctx.apply) await ctx.f.setPublishingTerm({ ownerId: o.id, percent: w.percent, validFrom: from, documentId: docId }, 'mvp-load');
           terms.push({ ownerId: o.id, operationType: w.type, validFrom: from } as (typeof terms)[number]);
           termsDone.add(key);
           termsSet++;

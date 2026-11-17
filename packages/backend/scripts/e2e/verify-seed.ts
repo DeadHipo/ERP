@@ -177,7 +177,8 @@ check(`one named book on all ${believe.length} Believe rows`, unbooked.length, 0
 // ---- B17 rows (keyed by month) ----
 const b17 = (m: string) => find('b17', 'b17', m);
 for (const [m, exp, bd] of [
-  ['2026-03', ['400', '170', '50', '180'], undefined],
+  // D-234: three summary rows of S18 under v2 (W1 50 %, W2 90 %, W3 linked without a term: C 50 at the default 50 %)
+  ['2026-03', ['300', '140', '50', '110'], undefined],
   ['2025-12', ['100', '0', '100', '0'], { writer_unmapped: '100' }],
 ] as const) {
   const r = b17(m);
@@ -233,8 +234,8 @@ await balCheck('S31/3 A', 'S31', 3, 'A', { paid: '20', payable: '60' });
 await balCheck('S31/4 A', 'S31', 4, 'A', { payable: '50' });
 await balCheck('S33 X', 'S33', 1, 'X', { earned: '50' });
 await balCheck('S33 Y', 'S33', 1, 'Y', { earned: '0', waiting: '50' });
-await balCheck('S18 W1 (G26)', 'S18', 1, 'W1', { earnedPublishing: '100' });
-await balCheck('S18 W2 (G26)', 'S18', 1, 'W2', { earnedPublishing: '70' });
+await balCheck('S18 W1 (G26, v2)', 'S18', 1, 'W1', { earnedPublishing: '50' });
+await balCheck('S18 W2 (G26, v2)', 'S18', 1, 'W2', { earnedPublishing: '90' });
 await balCheck('S18 W3 before (G26d)', 'S18', 1, 'W3', { waiting: '50', earned: '0' });
 await balCheck('S19 W4a (before mapping)', 'S19', 1, 'W4a', { earned: '0', waiting: '0' });
 
@@ -266,7 +267,7 @@ check(
   sig.participantsWithoutOwner.map((p) => [p.isrc, p.pseudonym, p.fundedFrom, p.amount.toFixed()]),
   [[case$('S35', 4).isrcs[0], case$('S35', 4).names.P, 'label_share', '5']],
 );
-check('signals ambiguousWriters S19', sig.ambiguousWriters.map((w) => w.displayName), ['HOLDER W4']);
+// D-234: the signal ambiguousWriters left with the old module (S19's songwriter simply waits unlinked)
 // D-232: the sublabel rule model removed (S08/3 QQ 25 and the q11 rows of S08/1, S08/2)
 check(
   'signals assumptions: S13 Q1 40',

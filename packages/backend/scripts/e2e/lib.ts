@@ -9,7 +9,7 @@ import type { Facade } from '../../src/facade';
 import { BELIEVE_COLUMNS } from '../../src/modules/sources';
 import type { DocumentKind } from '../../src/modules/owners';
 import type { FundedFrom, ParticipationBase } from '../../src/modules/splits';
-import { account, B17_FILE_NAME, isrc, ownerName, pseudonym, type CaseKeys, upc } from './keys';
+import { account, b17FileName, isrc, ownerName, pseudonym, type CaseKeys, upc } from './keys';
 
 export type Scope = { kind: 'any' | 'publishing' | 'master' | 'master_publishing' } | { kind: 'isrcs'; isrcs: string[] };
 
@@ -24,13 +24,14 @@ export interface BelieveRow {
   artist?: string;
 }
 
+/** A row of a report summary of v2 (D-234): the rights-holder, the song, the quarter `1Q26`; `owner` = the operator's link. */
 export interface B17Line {
   writer: string;
   title: string;
   payable: string;
   period: string;
-  songwriters?: string;
-  operationType?: string;
+  /** The owner the songwriter is linked to (the operator's decision of v2); none = the songwriter waits unlinked. */
+  owner?: string;
 }
 
 const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -117,44 +118,32 @@ export class Seed {
     return { path, fileName };
   }
 
-  /** The one B17 statement of the seed, loaded last (after every owner and alias exists). */
+  /**
+   * The B17 reports of the seed as report summaries of v2 (D-234), one file per quarter, loaded last under 0to8; then
+   * every songwriter with an owner is linked to it (the operator's decision; the old module matched names by itself).
+   */
   async loadB17(): Promise<{ lines: number }> {
     if (this.b17Lines.length === 0) return { lines: 0 };
-    const wb = new ExcelJS.Workbook();
-    wb.addWorksheet('Cover').addRow(['Statement', 'Synthetic']);
-    const ws = wb.addWorksheet('Detail');
-    ws.addRow([
-      'Period',
-      'asset title',
-      'rights-holder name',
-      'work identifier',
-      'songwriters',
-      'operation type',
-      'retailer / service',
-      'country',
-      'net amount',
-      'Withholding',
-      'Total Payable',
-    ]);
-    for (const r of this.b17Lines) {
-      ws.addRow([
-        r.period,
-        r.title,
-        r.writer,
-        'W-' + r.title.length,
-        r.songwriters ?? '',
-        r.operationType ?? 'Performance',
-        'Spotify',
-        'US',
-        Number(r.payable),
-        0,
-        r.payable,
-      ]);
-    }
     mkdirSync(this.tmpDir, { recursive: true });
-    const path = join(this.tmpDir, B17_FILE_NAME);
-    await wb.xlsx.writeFile(path);
-    await this.f.ingestB17({ path, fileName: B17_FILE_NAME }, this.label('0to8'));
+    const quarters = [...new Set(this.b17Lines.map((l) => l.period))].sort();
+    for (const period of quarters) {
+      const fileName = b17FileName(period);
+      const wb = new ExcelJS.Workbook();
+      wb.addWorksheet('Cover').addRow(['Name', 'Total Gross', 'Total Withholding', 'Total Net']);
+      const ws = wb.addWorksheet('Songwriter Breakdown');
+      ws.addRow(['Songwriter', 'Song Title', 'Gross', 'Withholding', 'Net']);
+      for (const r of this.b17Lines.filter((l) => l.period === period)) ws.addRow([r.writer, r.title, Number(r.payable), 0, Number(r.payable)]);
+      const path = join(this.tmpDir, fileName);
+      await wb.xlsx.writeFile(path);
+      await this.f.modules.pubv2.ingest({ path, fileName, labelId: this.label('0to8'), replace: false });
+    }
+    const writers = await this.f.modules.pubv2.listSongwriters();
+    for (const l of this.b17Lines) {
+      if (!l.owner) continue;
+      const w = writers.find((x) => x.name === l.writer);
+      if (!w) throw new Error(`the songwriter ${l.writer} of the seed is not in the summaries`);
+      await this.f.linkSongwriter({ songwriterId: w.id, ownerId: l.owner }, 'e2e-seed');
+    }
     return { lines: this.b17Lines.length };
   }
 }
@@ -512,8 +501,6 @@ export class Sc {
       writer: line.writer,
       payable: line.payable,
       period: line.period,
-      songwriters: line.songwriters ?? '',
-      operationType: line.operationType ?? 'Performance',
     };
   }
 }

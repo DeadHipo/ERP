@@ -43,9 +43,9 @@ describe('abilities (D-171)', () => {
     // D-176: + GET /settlements/admission (L), six admission writes and PATCH /contracts/:id (x)
     // D-198: + seven cut operations (the list L, six x); D-200: + GET /owners/:id/cuts (L)
     // D-218: + eight sublabel operations (the two lists O, six writes x)
-    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([131, 40, 16, 9, 66]); // D-232: − the two label rule routes (x); D-219: + report, suggestions (x)
+    expect([orgOps.length, count('L'), count('R'), count('O'), count('x')]).toEqual([125, 39, 16, 8, 62]); // D-234: − the six routes of the old publishing (L b17, O writers, x resolve / map / terms / replace); D-232: − the two label rule routes (x); D-219: + report, suggestions (x)
     const byAction = (a: string) => orgOps.filter((o) => o.ability.action === a).length;
-    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([22, 33, 18, 29, 15, 14]); // D-232: − 2 admin (the label rule routes); D-219: + 2 read_money; // D-218: + 2 read (the lists), + 4 approve (the terms), + 2 admin (the register); D-205: − 1 read_money, − 2 pay (the start); D-200: + 1 read_money (the owner's cuts); D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
+    expect(['read', 'read_money', 'write', 'approve', 'pay', 'admin'].map(byAction)).toEqual([21, 33, 17, 25, 15, 14]); // D-234: − 1 read, 1 write, 4 approve (the old publishing); D-232: − 2 admin (the label rule routes); D-219: + 2 read_money; // D-218: + 2 read (the lists), + 4 approve (the terms), + 2 admin (the register); D-205: − 1 read_money, − 2 pay (the start); D-200: + 1 read_money (the owner's cuts); D-198: + 1 read (the list), + 1 read_money (the state), + 5 approve
   });
 
   it('a label manager gets exactly the literal on every operation of an organization', () => {
@@ -139,7 +139,7 @@ describe('abilities (D-171)', () => {
         .map(([k]) => k)
         .sort(),
     );
-    expect(orgAllowed).toHaveLength(65); // D-218: + GET /sublabels, GET /sublabels/terms; D-205: − GET /settlements/start; D-198: + GET /settlements/cuts; D-200: + GET /owners/:id/cuts
+    expect(orgAllowed).toHaveLength(63); // D-234: − POST /publishing/b17, GET /publishing/writers; // D-218: + GET /sublabels, GET /sublabels/terms; D-205: − GET /settlements/start; D-198: + GET /settlements/cuts; D-200: + GET /owners/:id/cuts
     // D-174: + GET /settlements/start; D-176: + GET /settlements/admission; D-195: the release preview and apply instead of the import
     expect(m).toEqual(expect.arrayContaining(['GET /auth/me', 'POST /auth/password']));
     expect(m.filter((k) => k.startsWith('GET /orgs') || k.startsWith('POST /orgs'))).toEqual([]);

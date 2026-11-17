@@ -2,12 +2,6 @@ import { queryOptions } from '@tanstack/react-query';
 import * as api from '../client';
 import { MONEY_QUERY } from './core';
 
-export const publishingKeys = { writers: () => ['publishing', 'writers'] as const };
-
-export const publishingQueries = {
-  writers: () => queryOptions({ queryKey: publishingKeys.writers(), queryFn: () => api.publishing.writers() }),
-};
-
 /** Publishing v2 (D-182): sums of the reports, money keys (`MONEY_KEYS`), never fresh. */
 export const publishingV2Keys = {
   files: (label: string) => ['publishingV2', 'files', label] as const,

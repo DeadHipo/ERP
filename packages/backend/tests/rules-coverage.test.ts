@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import ExcelJS from 'exceljs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { quartersFromFileName } from '../src/modules/publishing';
+import { quarterOfFileName } from '../src/modules/pubv2';
 import {
   approvedAppendix,
   approvedDoc,
@@ -142,26 +142,19 @@ describe('README 5: operations', () => {
 });
 
 describe('README 5: B17 amount column', () => {
-  it('Total Payable is used, not the net amount column', async () => {
+  it('Total Payable is used, not the gross or the withholding (D-234: the summaries of v2)', async () => {
     const f = await newFacade();
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Detail');
-    ws.addRow([
-      'Period',
-      'asset title',
-      'rights-holder name',
-      'songwriters',
-      'net amount',
-      'Withholding',
-      'Total Payable',
+    wb.addWorksheet('Songwriter Breakdown').addRows([
+      ['SONG', 'GROSS', 'WITHHOLDING', 'TOTAL PAYABLE'],
+      ['SONGWRITER: Synthetic Holder', 999, 989, 10],
+      ['  Song', 999, 989, 10],
     ]);
-    ws.addRow(['2Q26', 'Song', 'Synthetic Holder', '', 999, 989, 10]);
     const path = tmpPath('0to8_Q22026_Publishing_Statement.xlsx');
     await wb.xlsx.writeFile(path);
-    const r = await f.ingestB17({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx' }, f.testLabels['0to8']);
-    expect(r.statement.totalPayable.toString()).toBe('10');
+    const r = await f.modules.pubv2.ingest({ path, fileName: '0to8_Q22026_Publishing_Statement.xlsx', labelId: f.testLabels['0to8'] });
+    expect(r.payable).toBe('10');
   });
-
   it('the author gets the contract percent of Total Payable and the label keeps the rest', async () => {
     const f = await newFacade();
     const { owner } = await confirmedOwner(f, 'Writer Owner', ['Writer']);
@@ -173,7 +166,6 @@ describe('README 5: B17 amount column', () => {
       documentId: (await approvedDoc(f, 'contract', owner.id)).id,
     });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'Synthetic Writer', title: 'S', payable: '100' }]), f.testLabels['0to8']);
-    await f.resolveWriters();
     expect((await f.ownerBalance(owner.id)).total.earned.toFixed()).toBe('70');
   });
 });
@@ -349,22 +341,18 @@ describe('README 5: payout snapshot and B17 file names (D-100)', () => {
     const r = await f.ingestB17(
       await writeB17('Q22026', [{ writer: 'Snapshot Writer', title: 'S', payable: '40' }]), f.testLabels['0to8'],
     );
-    await f.resolveWriters();
     const payout = await f.createPayout(owner.id, { labelId: f.testLabels['0to8'] });
     const snap = (await f.modules.settlements.getSnapshot(payout.id)) as {
       files: { b17: { sha256: string }[] };
     };
     expect(snap.files.b17[0]?.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(snap.files.b17[0]?.sha256).toBe(r.statement.sha256);
+    expect(snap.files.b17[0]?.sha256).toBe(r.statement?.sha256);
   });
 
-  it('a quarter in a B17 file name must stand alone', async () => {
-    expect(quartersFromFileName('0to8_Q42024_Q12025_Publishing_Breakdown.xlsx')).toEqual([
-      '2024-Q4',
-      '2025-Q1',
-    ]);
-    expect(quartersFromFileName('0to8_2Q26_Statement.xlsx')).toEqual(['2026-Q2']);
-    expect(quartersFromFileName('report_Q120265.xlsx')).toEqual([]);
-    expect(quartersFromFileName('AQ12026.xlsx')).toEqual([]);
+  it('a quarter in a B17 file name must stand alone (D-234: the reader of v2 takes one quarter per file)', async () => {
+    expect(quarterOfFileName('0to8_Q42024_Q12025_Publishing_Breakdown.xlsx')).toBeUndefined();
+    expect(quarterOfFileName('0to8_2Q26_Statement.xlsx')).toBe('2026-Q2');
+    expect(quarterOfFileName('report_Q120265.xlsx')).toBeUndefined();
+    expect(quarterOfFileName('AQ12026.xlsx')).toBeUndefined();
   });
 });

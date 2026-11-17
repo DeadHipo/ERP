@@ -22,7 +22,7 @@ arithmetic in §7), `packages/backend/tests/golden.test.ts` (how each case is se
 | Pseudonyms, owners | the letter of 12 plus `-<nn><k>`: `A-011`, `M1-031`; owner `Owner A-011` (person, confirmed: approved contract). Tables write the bare letter. `Case.ordered` artists (S09) and the default approved appendix are created per scenario. Shared read-only: `NG` (owner `Company NG`, kind label) as recipient of `NoGhost Records`, `QQ` of `qaraqshy records`, brand pseudonym `0to8` |
 | Labels (seeded once) | own `0to8` (aliases `Test Label`, `0to8`, `Ahh Music`), own `Echo8` (alias `Echo8`); sublabel `NoGhost Records` of 0to8, rule 50 → NG from 2020-01-01 (approved contract); sublabel `qaraqshy records` of Echo8, rule 50 → QQ under an `assumption` document. A case whose queue group, balance or action touches a sublabel has its own string and recipient: `NoGhost Records 08a/08b/08d` → `NG-081/082/084` (S08), `NoGhost Records 23` → `NG-231`, `Mystery Records` (S16), `Mystery Records B` (S17), `Ghost Label 35` (S35), `Close Label 37` (S37) |
 | Shared mutations | the exact list of what a spec may change outside its own scenario (fresh stores per run); no spec asserts a list these touch (the alias list or sublabels of 0to8, the document list totals): (1) `20-queue` S16 adds the alias `Mystery Records` to 0to8; (2) `29-labels` creates the sublabel `Ref Spec Sublabel` under 0to8; (3) `14-documents` creates, attaches and approves the document `Ref spec doc` (no owner, nothing uses it); (4) `15-publishing` adds the terms `Print` 20 % from 2021-01-01 to W1 of S18 (an operation type the statement does not use, so no S18 number moves). Anything else a spec creates belongs to a scenario's own entities (the alias `Close Label 37 Alt` of S37, the second `Owner DUP-361` and artist `A-361` of S36) |
-| B17 | one statement for the whole seed, loaded last (after every owner and alias) under the label 0to8 (D-169: its lines sit in the book 0to8, `statementsWithoutLabel` is empty), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
+| B17 | D-234: the report summaries of v2, one file per quarter, loaded last (after every owner and alias) under the label 0to8 (D-169: its lines sit in the book 0to8, `statementsWithoutLabel` is empty), file name **without a quarter** (`0to8_e2e_Publishing_Statement.xlsx`: one quarter in the name is forced onto every row, `b17-format.ts`); periods per row: G26 1Q26 (b17 row 2026-03), G43 2Q26 (2026-06), S19 4Q25 (2025-12). b17 P1 rows are keyed by month only, so each month belongs to one scenario family |
 | Isolation | every scenario owns its ISRCs, UPCs, accounts, owners, pseudonyms, documents. **Never asserted**: queue reason totals, signal counts, P1 totals, P3 items, queue groups keyed by a shared entity (the NoGhost rule, QQ rule, 0to8), and N3 has no `isrc` filter (a spec finds its group by key, `ownerId` or `month`) |
 | Operator | `e2e-operator` in `localStorage` before every spec; every write sends `X-Operator: e2e-operator` |
 | Payout threshold | `scripts/e2e/start.sh` sets `PAYOUT_THRESHOLD_CENTS=0` (default 5000 since D-175 → `below_threshold` for G27) |
@@ -69,8 +69,8 @@ not trivial; `discrepancy` is `0` on every row.
 | G23 | P6 Правила errors | S29 |
 | G24 | P8, P10 | S11 |
 | G25 | P16 create, toast date | S28 |
-| G26a–c, G26e | P10 Паблишинг, P1 b17 row | S18 |
-| G26d | P2 `publishing_terms_unconfirmed`, P18 | S18 |
+| G26f | P10 Паблишинг, P1 b17 row | S18 |
+| G26d | P2 `publishing_terms_unconfirmed` | S18 |
 | G27, G27b | P10 payout, P4, P20, deferred | S22 |
 | G28, G39 | P10 / P4 negative payable shown 0 | S24 |
 | G29 | P10 sublabel advance | S23 |
@@ -193,26 +193,25 @@ NG-171. Before: group `50`; P1 2717100 100 / 50 / 50 / 0. Action: `POST /labels`
 string) → rules (50 → NG-171 from 2020-01-01, approved contract). After: P17 shows the rule; P6 A 50, NG-171 25 B,
 ours 25; P1 100 / 75 / 0 / 25.
 
-**S18 Publishing (G26a–e), `publishing_terms_unconfirmed` → terms (G26d).** Seed as the G26 test: owners W1, W2, W3
-with aliases; terms W1 50, W2 90 and 50 (Synchronization), approved; W3 none; lines T-A (W1, W2; Mechanical 100), T-B
-(Synchronization 100), T-C (W1, X; 100), T-D (W3; 100), holder `HOLDER H`, period 1Q26.
+**S18 Publishing (G26d, G26f under v2), `publishing_terms_unconfirmed` → the term of W3 (G26d).** D-234: the rows of
+the report summaries of v2 (one file per quarter, loaded under 0to8), every holder linked to its owner by the seed.
+Owners W1, W2, W3; terms W1 50, W2 90, approved; W3 none; rows T-A (holder W1-181, 100), T-B (W2-181, 100), T-D (W3-181,
+100), period 1Q26.
 
 | Page | before | after W3 terms |
 |---|---|---|
 | P2 `publishing_terms_unconfirmed` | owner W3 `50` | gone |
-| P10 W1 Паблишинг | T-A 50 / 50 / 25 B; T-B 50 / 50 / 25 B; T-C 100 / 50 / 50 B; earnedPublishing `100` | unchanged |
-| P10 W2 | T-A 50 / 90 / 45 B; T-B 50 / 50 / 25 B; `70` | unchanged |
-| P10 W3 | T-D 100 / 50 / 50 C; waiting `50` | T-D B; earned `50`, payable `50` |
-| P1 b17 / 2026-03 | 400 / 170 / 50 / 180 | 400 / 220 / 0 / 180 |
+| P10 W1 Паблишинг | T-A 50 / 50 B; earnedPublishing `50` | unchanged |
+| P10 W2 | T-B 90 / 90 B; `90` | unchanged |
+| P10 W3 | T-D 50 / 50 C; waiting `50` | T-D B; earned `50`, payable `50` |
+| P1 b17 / 2026-03 | 300 / 140 / 50 / 110 | 300 / 190 / 0 / 110 |
 
-Action: `POST /publishing/terms` {W3, 50, validFrom 2020-01-01, approved contract of W3}; no dialog.
+Action: the dialog «Сплит» of v2 from the queue (`field-term-percent`, `field-term-from`, `term-document`, `action-term-submit`).
 
-**S19 `writer_unmapped` → map the writer.** An unknown holder gets an auto-created owner and an unknown songwriter is
-marked external, so the testable state is an **ambiguous** writer (or a label-kind owner). Seed: confirmed owners
-W4a-191, W4b-191, both with alias `HOLDER W4`; W4a has approved terms 50; one line, holder `HOLDER W4`, no songwriters,
-payable 100, period 4Q25. Before: P18 `HOLDER W4` ambiguous; P21 `ambiguousWriters` lists it; P2 (key writer)
-`HOLDER W4` `100`; P1 b17 / 2025-12 100 / 0 / 100 / 0 {writer_unmapped: 100}. Action `POST /publishing/writers/:norm/map`
-{ownerId W4a}. After: resolution manual; signal and group gone; P1 100 / 50 / 0 / 50; W4a earned `50`.
+**S19 `writer_unmapped` → link the songwriter (D-234: v2).** The songwriter `HOLDER W4` of v2 is not linked; confirmed
+owners W4a-191, W4b-191; W4a has approved terms 50; one row, payable 100, period 4Q25. Before: P2 (key writer) `HOLDER W4`
+`100`; P1 b17 / 2025-12 100 / 0 / 100 / 0 {writer_unmapped: 100}. Action: «Владелец автора» (`link-owner`,
+`action-link-submit`, `POST /publishing-v2/links` {W4a}). After: the group gone; P1 100 / 50 / 0 / 50; W4a earned `50`.
 
 **S20 Perimeter (G30).** Seed: account 2720100, lines without ISRC (UPC `2720100000001`) net 2 and `QZTST2720109`
 (unregistered) net 7. Before: P2 `no_isrc` pair `2` read-only "⚠ D-035"; `unknown_pair` `QZTST2720109` `7`, action
@@ -407,14 +406,14 @@ doc A/B/C`): created under 0to8 (`field-document-label` defaults to the switch, 
 0to8 only needs a second B17 file, and the e2e specs have no reusable synthetic B17 workbook (the seed builds its one
 statement in `scripts/e2e/lib.ts` `loadB17`, under 0to8). The screens assert the R8 side of the seed instead: every B17
 line is in the book 0to8 and no book «без лейбла» is left. `15-publishing` (reads): the P1 b17 rows 2025-12, 2026-03,
-2026-06 have `data-book="0to8"` (`book-0to8`), no `overview-label-?`; P19 `statement-label` 0to8; P10 S18 W1 under «Все»
-`by-label-0to8` earned `100`, no `by-label-?`; under 0to8 earned `100`, payable `100`, three `publishing-line` rows
-(T-A, T-B, T-C); under Echo8 earned `0`, no `publishing-line`. `21-signals`: `statementsWithoutLabel` `0`, the list
+2026-06 have `data-book="0to8"` (`book-0to8`), no `overview-label-?`; P19 three report files (one per quarter), each `statement-label` 0to8; P10 S18 W1 under «Все»
+`by-label-0to8` earned `50` (D-234: its row T-A at 50 %), no `by-label-?`; under 0to8 earned `50`, payable `50`, one
+`publishing-line` row (T-A); under Echo8 earned `0`, no `publishing-line`. `21-signals`: `statementsWithoutLabel` `0`, the list
 renders empty. `26-payout`: S31/1 (read only, `27-operations` acts on it) under «Все» `by-label-0to8` earned `80`, no
 `by-label-?`; under 0to8 earned `80`, payable `80`, one `publishing-line` `30`, the Pay dialog «К выплате: 80,00 (будет
 отправлено 8000 центов)» (master 50 + publishing 30), cancelled; S18 W1 under Echo8 `POST /owners/:id/payouts` → 422
-`nothing_to_pay`, under 0to8 the payout of `10000` cents with `labelId` 0to8, after the proof paid `100`, payable `0`
-(`by-label-0to8` paid `100`). `35-label-switch`: P9 payouts view, S18 W2 listed under 0to8 with payable `70`, absent
+`nothing_to_pay`, under 0to8 the payout of `5000` cents with `labelId` 0to8, after the proof paid `50`, payable `0`
+(`by-label-0to8` paid `50`). `35-label-switch`: P9 payouts view, S18 W2 listed under 0to8 with payable `90`, absent
 under Echo8.
 
 **S28 M52 (G25).** Row A 50; unit 03. Create P 15 (bucket, label_share) with `validFrom` 2026-03-15: response
@@ -638,7 +637,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | 41 | `41-operation-kinds.spec.ts` | S49 (a buyout and an adjustment from the dialog, S24/1), S50 (the forgiveness of the S22/2 advance), S51 (the relabel with a reason and its audit) | acts (S24/1: a buyout under Echo8, an adjustment; S22/2: a forgiveness) |
 | 42 | `42-payroll.spec.ts` | S52 (the payroll csv and json of 0to8, the area, `asOf` on P9 / P10) | reads |
 | 43 | `43-operation-import.spec.ts` | S53 (P29: classes, apply, replay) | acts (A: `Owner S53 e2e` with two migrated payouts) |
-| 44 | `44-b17-replace.spec.ts` | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
+| 44 | ~~`44-b17-replace.spec.ts`~~ (D-234: removed with the old module) | S54 (the replace action of the seeded statement; a refused file) | reads (a refused upload only) |
 | 46 | `46-admission.spec.ts` | S56 (P10 «Допуск»: the payee turns the admission on, the answer, the hold, the threshold, no payee) | acts (A: `Owner S56 e2e`; the first payee row of the organization: the admission is on from here) |
 | 48 | `48-cuts.spec.ts` | S57 (P34 / P35: a cut, the transfer, the owner's tab «Срезы», an operation attributed from its row, the delete refused) | acts (A: `Owner S57 e2e` with an adjustment and a transfer; one cut of 0to8 stays) |
 | 49 | `49-sublabels.spec.ts` | S58 (P36 / P37, D-220: a sublabel, a term with a preview and an error row, the report = the API, the csv, a document attached, the cancel) | acts (a sublabel «S58 Sublabel e2e» stays, its term cancelled; the money does not read the terms) |

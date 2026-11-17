@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { openFacade } from '../src/facade';
 import { orgFilesDir, sourcesFor } from '../src/connect-sources';
 import { createOrgsService } from '../src/orgs/service';
-import { writeB17, writeBelieve } from './helpers/fixtures';
+import { writeBelieve } from './helpers/fixtures';
 import { testQuery, testStack } from './helpers/test-sources';
 import { TMP } from './helpers/tmp-root';
 
@@ -124,69 +123,4 @@ describe('Believe uploads: two processes, two organizations (D-170)', () => {
   });
 });
 
-describe('B17 uploads: two processes, two organizations (D-170)', () => {
-  /** A facade of an organization over the shared stores, with one own label (created once per organization). */
-  async function openOrg(orgId: string, dataDir: string, labelId?: string) {
-    const stack = await testStack();
-    const sources = sourcesFor({ pool: stack.pg.pool, columnar: stack.columnar }, orgId, dataDir);
-    const f = openFacade({ db: stack.db, orgId, dataDir, payoutThresholdCents: 0, sources });
-    const label = labelId ?? (await f.modules.labels.createLabel({ name: '0to8' })).id;
-    return { f, label };
-  }
-
-  const statement = () =>
-    writeB17('Q22026', [
-      { writer: 'WRITER ONE', title: 'Song One', payable: '60' },
-      { writer: 'WRITER TWO', title: 'Song Two', payable: '15.25' },
-    ]);
-
-  it('two loads of one quarter in one organization by two processes give exactly one loaded statement', async () => {
-    const stack = await freshStack();
-    const orgId = stack.orgId;
-    const dataDir = newDataDir();
-    const p1 = await openOrg(orgId, dataDir);
-    const p2 = await openOrg(orgId, dataDir, p1.label); // the second process sees the label of the first
-    const file = await statement();
-
-    const results = await Promise.allSettled([p1.f.ingestB17(file, p1.label), p2.f.ingestB17(file, p2.label)]);
-    expect(results.filter((r) => r.status === 'fulfilled').length).toBe(1);
-    // The loser is refused by the quarter pre-check, by the check inside the write transaction (the advisory lock
-    // orders the two), or by the key of pub_statement_periods: all three are `duplicate_period`.
-    expect(results.map(codeOf).sort()).toEqual(['duplicate_period', 'fulfilled']);
-
-    const statements = await p1.f.modules.publishing.listStatements();
-    expect(statements.map((s) => [s.status, s.periods, s.lineCount, s.totalPayable])).toEqual([
-      ['loaded', ['2026-Q2'], 2, '75.25'],
-    ]);
-    expect(await p2.f.modules.publishing.listStatements()).toEqual(statements);
-
-    // the kept original of the loaded statement is still there (the loser must not remove it), and nothing else
-    const dir = orgFilesDir(dataDir, orgId, 'publishing');
-    expect(filesIn(dir)).toEqual([`${statements[0]?.sha256}-${file.fileName}`]);
-  });
-
-  it('the same statement and quarter in two organizations are both loaded', async () => {
-    const stack = await freshStack();
-    const orgB = await newOrg('Org B concurrency B17');
-    const dataDir = newDataDir();
-    const a = await openOrg(stack.orgId, dataDir);
-    const b = await openOrg(orgB, dataDir);
-    const file = await statement();
-
-    const [ra, rb] = await Promise.all([a.f.ingestB17(file, a.label), b.f.ingestB17(file, b.label)]);
-    expect(ra.statement.status).toBe('loaded');
-    expect(rb.statement.status).toBe('loaded');
-    expect(ra.statement.sha256).toBe(rb.statement.sha256);
-    expect(ra.statement.id).not.toBe(rb.statement.id);
-
-    expect((await a.f.modules.publishing.listStatements()).map((s) => s.id)).toEqual([ra.statement.id]);
-    expect((await b.f.modules.publishing.listStatements()).map((s) => s.id)).toEqual([rb.statement.id]);
-    for (const [o, org] of [
-      [a, stack.orgId],
-      [b, orgB],
-    ] as const) {
-      expect(filesIn(orgFilesDir(dataDir, org, 'publishing'))).toEqual([`${ra.statement.sha256}-${file.fileName}`]);
-      expect((await o.f.modules.publishing.listStatements())[0]?.totalPayable).toBe('75.25');
-    }
-  });
-});
+// D-234: the B17 uploads of the old module (its locks and kept files) left with it; v2 loads are tested in pubv2.test.ts

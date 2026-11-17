@@ -96,60 +96,39 @@ export interface B17RowSpec {
   writer: string;
   title: string;
   payable: string | number;
+  /** `2Q26` (default) */
   period?: string;
-  /** comma-separated writers of the work (B17 "songwriters"); empty by default */
-  songwriters?: string;
-  /** B17 "operation type" column; 'Performance' by default */
-  operationType?: string;
 }
 
-export async function writeB17(
-  quarterLabel: string,
-  rows: B17RowSpec[],
-  fileName = `0to8_${quarterLabel}_Publishing_Statement.xlsx`,
-) {
-  const wb = new ExcelJS.Workbook();
-  wb.addWorksheet('Cover').addRow(['Statement', 'Synthetic']);
-  const ws = wb.addWorksheet('Detail');
-  ws.addRow([
-    'Period',
-    'asset title',
-    'rights-holder name',
-    'work identifier',
-    'songwriters',
-    'operation type',
-    'retailer / service',
-    'country',
-    'net amount',
-    'Withholding',
-    'Total Payable',
-  ]);
-  for (const r of rows) {
-    const payable = typeof r.payable === 'number' ? r.payable : Number(r.payable);
-    ws.addRow([
-      r.period ?? '2Q26',
-      r.title,
-      r.writer,
-      'W-' + r.title.length,
-      r.songwriters ?? '',
-      r.operationType ?? 'Performance',
-      'Spotify',
-      'US',
-      payable,
-      0,
-      typeof r.payable === 'string' ? r.payable : payable,
-    ]);
+/**
+ * A B17 report as the summaries of v2 (D-234: the only publishing): one flat «Songwriter Breakdown» file per quarter of
+ * the rows (the quarter is in the file name); a row belongs to its rights-holder. `fileName` names the first file.
+ */
+export async function writeB17(quarterLabel: string, rows: B17RowSpec[], fileName = `0to8_${quarterLabel}_Publishing_Statement.xlsx`) {
+  const periods = [...new Set(rows.map((r) => r.period ?? '2Q26'))];
+  const files: { path: string; fileName: string }[] = [];
+  for (const period of periods) {
+    const name = periods.length === 1 && /Q\d/.test(fileName) && fileName.includes(period) ? fileName : `0to8_${period}_Publishing_Statement.xlsx`;
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Cover').addRow(['Name', 'Total Gross', 'Total Withholding', 'Total Net']);
+    const ws = wb.addWorksheet('Songwriter Breakdown');
+    ws.addRow(['Songwriter', 'Song Title', 'Gross', 'Withholding', 'Net']);
+    for (const r of rows.filter((x) => (x.period ?? '2Q26') === period)) {
+      const payable = typeof r.payable === 'number' ? r.payable : Number(r.payable);
+      ws.addRow([r.writer, r.title, payable, 0, payable]);
+    }
+    const path = tmpPath(`${randomUUID()}-${name}`);
+    await wb.xlsx.writeFile(path);
+    files.push({ path, fileName: name });
   }
-  const path = tmpPath(fileName);
-  await wb.xlsx.writeFile(path);
-  return { path, fileName };
+  return { path: files[0]?.path ?? '', fileName: files[0]?.fileName ?? fileName, files };
 }
 
 /**
  * A facade on the private PostgreSQL database of this test file (D-121): the module tables and the sources are emptied
  * first, so every facade starts from nothing. Two facades of one test that must see the same data share one facade.
  */
-export async function newFacade(threshold = 0, opts: { paymentService?: PaymentService; publishingSource?: 'v1' | 'v2' } = {}) {
+export async function newFacade(threshold = 0, opts: { paymentService?: PaymentService } = {}) {
   const stack = await testStack();
   await stack.resetModules();
   const dataDir = join(TMP, `facade-${randomUUID()}`);
@@ -173,7 +152,29 @@ export async function newFacade(threshold = 0, opts: { paymentService?: PaymentS
   await labels.addAccount(zero.id, '1052428');
   await labels.addAccount(echo.id, '1055956');
   // every operation and payout is made under a label (D-168): the tests use the seeded 0to8 unless they say otherwise
-  return Object.assign(facade, { testLabels: { '0to8': zero.id, Echo8: echo.id } });
+  /**
+   * D-234: the loads of B17 go to v2. `ingestB17` loads the summary files and links every songwriter whose name is
+   * the name or alias of exactly one person-owner (what the old module's resolution did by itself; under v2 it is the
+   * operator's link). `setPublishingTerms` sets a term of v2 (no operation type).
+   */
+  const ingestB17 = async (file: Awaited<ReturnType<typeof writeB17>>, labelId: string | undefined, o: { replace?: boolean } = {}) => {
+    const statements = [];
+    for (const x of file.files) statements.push(await facade.modules.pubv2.ingest({ ...x, labelId: labelId ?? '', replace: o.replace ?? false }));
+    const linked: string[] = [];
+    const decided = new Set((await facade.modules.links.songwriterOwners()).map((l) => l.songwriterId));
+    for (const w of await facade.modules.pubv2.listSongwriters()) {
+      if (decided.has(w.id)) continue;
+      const persons = [];
+      for (const id of await facade.modules.owners.findOwnersByWriter(w.name)) if ((await facade.modules.owners.ownerKind(id)) === 'person') persons.push(id);
+      if (persons.length !== 1) continue;
+      await facade.linkSongwriter({ songwriterId: w.id, ownerId: persons[0] as string }, 'tester');
+      linked.push(w.name);
+    }
+    return { statement: statements[0], statements, linked };
+  };
+  const setPublishingTerms = (t: { ownerId: string; percent: string; validFrom: string; documentId?: string | null }) =>
+    facade.setPublishingTerm({ ownerId: t.ownerId, percent: t.percent, validFrom: t.validFrom, documentId: t.documentId ?? null }, 'tester');
+  return Object.assign(facade, { testLabels: { '0to8': zero.id, Echo8: echo.id }, ingestB17, setPublishingTerms });
 }
 
 export type TestFacade = Awaited<ReturnType<typeof newFacade>>;

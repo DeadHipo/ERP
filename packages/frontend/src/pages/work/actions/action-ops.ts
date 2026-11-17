@@ -15,8 +15,8 @@ export const ACTION_OPS = {
   'assign-owner': 'POST /artists/:id/owner',
   'label-alias': 'POST /labels/:id/aliases',
   'register-track': 'POST /tracks',
-  'map-writer': 'POST /publishing/writers/:norm/map',
-  'publishing-terms': 'POST /publishing/terms',
+  'map-writer': 'POST /publishing-v2/links', // D-234: the songwriter of v2 linked to an owner
+  'publishing-terms': 'POST /publishing-v2/terms',
   'create-split': 'POST /splits',
   'recreate-participation': 'POST /participations/:id/close',
   'add-note': 'PATCH /tracks/:id',

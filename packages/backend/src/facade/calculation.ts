@@ -4,7 +4,7 @@ import type { OwnersService } from '../modules/owners';
 import type { LabelsService } from '../modules/labels';
 import type { SplitsService } from '../modules/splits';
 import type { ActiveFile, SourcesService } from '../modules/sources';
-import type { PublishingService } from '../modules/publishing';
+import type { PublishingSource } from './publishing-source';
 import type { AdExpense, AdsService } from '../modules/ads';
 import type { Db } from '../shared/pg-db';
 import { timed, timedStep, timedSync } from '../shared/timing';
@@ -122,7 +122,7 @@ export interface Modules {
   splits: SplitsService;
   labels: LabelsService;
   sources: SourcesService;
-  publishing: PublishingService;
+  publishing: PublishingSource;
   /** Advertising expenses (D-156). */
   ads: AdsService;
 }
@@ -270,7 +270,6 @@ export async function calculate(
         writerNorm: l.writerNorm,
         writerName: l.writerName,
         workTitle: l.workTitle,
-        songwriters: l.songwriters,
         operationType: l.operationType,
         payable: picoToDecimal(l.payablePico),
       };

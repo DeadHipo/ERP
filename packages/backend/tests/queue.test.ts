@@ -55,22 +55,9 @@ async function world() {
   await c.f.modules.owners.createOwner({ name: 'Ivan Testov', kind: 'person' });
   await c.f.ingestB17(
     await writeB17('Q12026', [
-      {
-        title: 'T-D',
-        writer: 'HOLDER H',
-        songwriters: 'W3',
-        payable: '100',
-        operationType: 'Mechanical',
-        period: '1Q26',
-      },
-      {
-        title: 'T-X',
-        writer: 'TESTOV, IVAN',
-        songwriters: '',
-        payable: '30',
-        operationType: 'Mechanical',
-        period: '1Q26',
-      },
+      // D-234: the line belongs to its holder W3 (the songwriter of v2 linked to Owner W3)
+      { title: 'T-D', writer: 'W3', payable: '100', period: '1Q26' },
+      { title: 'T-X', writer: 'TESTOV, IVAN', payable: '30', period: '1Q26' },
     ]), c.f.testLabels['0to8'],
   );
   const calc = await calculate({ ...c.f.modules, db: c.f.db });

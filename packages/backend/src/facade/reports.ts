@@ -356,7 +356,6 @@ export async function signalsFrom(
     isrcsWithoutSplit: [...noSplit.entries()]
       .map(([isrc, net]) => ({ isrc, net }))
       .sort((a, b) => b.net.cmp(a.net)),
-    ambiguousWriters: (await publishing.listWriters()).filter((w) => w.resolution === 'ambiguous'),
     unfunded: unfunded.map((u) => {
       const part = partById.get(u.ruleId);
       return {

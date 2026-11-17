@@ -6,7 +6,7 @@ import { type SplitsService } from '../modules/splits';
 import { type LabelsService } from '../modules/labels';
 import type { SourcesService } from '../modules/sources';
 import { type CutView, type OperationView, type SettlementsService } from '../modules/settlements';
-import { type PublishingService } from '../modules/publishing';
+import type { PublishingSource } from './publishing-source';
 import { type AuditService } from '../modules/audit';
 import { type AdsService } from '../modules/ads';
 import { artistReach, ownerReach } from './owner-scope';
@@ -39,8 +39,6 @@ export interface FacadeConfig {
   dataDir: string;
   /** The sources module of the same organization: Believe files in PostgreSQL + ClickHouse. The caller owns the connections and closes them. */
   sources: SourcesService;
-  /** Where the calculation reads publishing (D-185): `v1` the old module (default), `v2` the report summaries and the links. */
-  publishingSource?: 'v1' | 'v2';
   /** Payout threshold: not part of the calculation, below it the payout button is unavailable. */
   payoutThresholdCents: number;
   paymentService?: PaymentService;
@@ -111,7 +109,7 @@ export function createFacadeContext(
     labels: LabelsService;
     sources: SourcesService;
     settlements: SettlementsService;
-    publishing: PublishingService;
+    publishing: PublishingSource;
     audit: AuditService;
     ads: AdsService;
   },

@@ -4,7 +4,6 @@ import type { signalsSchema } from '@erp/shared/api-responses';
 export const signals = {
   unallocated: 'Не распределено (пары вне каталога, строки без ISRC)',
   isrcsWithoutSplit: 'ISRC без сплита',
-  ambiguousWriters: 'Неоднозначные авторы',
   unfunded: 'Вырезы больше своей корзины',
   labelUnmapped: 'Строки лейбла без сопоставления',
   mcRowBearsCarve: 'Строка MC без пометки несёт вырез другого MC',

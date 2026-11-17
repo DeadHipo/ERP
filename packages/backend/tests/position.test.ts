@@ -95,7 +95,7 @@ describe('the position per pseudonym (D-181)', () => {
     // the owner is a writer of a B17 line (the publishing of the owner has no pseudonym)
     await f.modules.owners.addOwnerAlias(owner, 'WRITER, P');
     const doc = await approvedDoc(f, 'contract', owner);
-    await f.modules.publishing.setTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: doc.id });
+    await f.setPublishingTerms({ ownerId: owner, percent: '50', validFrom: '2020-01-01', documentId: doc.id });
     await f.ingestB17(await writeB17('Q22026', [{ writer: 'WRITER, P', title: 'W', payable: '40' }]), zero);
     const b = await f.ownerBalance(owner);
     expect(b.total.ownerPosition.toFixed()).toBe('20'); // the author part 40 × 50 %

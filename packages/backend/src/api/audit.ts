@@ -189,22 +189,6 @@ export const RESPONSE_SUMMARY_ROUTES: ReadonlyMap<
     },
   ],
   [
-    // the replacement of a B17 statement (D-173): the old and the new statement and the quarters, from the response
-    'POST /publishing/statements/:id/replace',
-    {
-      preview: () => false,
-      summary: (response: unknown) => {
-        const r = asRecord(response);
-        const s = asRecord(r.statement);
-        return { superseded: asRecord(r.superseded).id, statement: s.id, periods: s.periods };
-      },
-      ids: (response: unknown) => {
-        const r = asRecord(response);
-        return [asRecord(r.superseded).id, asRecord(r.statement).id].filter((x): x is string => typeof x === 'string');
-      },
-    },
-  ],
-  [
     // the relabel of an operation (D-173): the new label and the reason from the body (the one free text the audit
     // keeps, by the plan: the operator's reason for moving money between books), the previous label from the response
     'PATCH /settlements/operations/:id',

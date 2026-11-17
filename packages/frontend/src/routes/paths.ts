@@ -28,7 +28,6 @@ export const ROUTE_PATHS = {
   sublabels: 'sublabels',
   /** P37 (D-220): one sublabel: its tracks and its report. */
   sublabel: 'sublabels/:id',
-  publishing: 'publishing',
   /** P32 (D-182): the songwriters and files of the report summaries, no owner link. */
   publishingV2: 'publishing-v2',
   /** P33 (D-182): one songwriter. */

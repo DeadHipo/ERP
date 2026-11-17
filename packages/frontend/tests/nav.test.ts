@@ -7,7 +7,7 @@ describe('nav.ts', () => {
     expect(NAV.map((s) => s.items.map((i) => i.path))).toEqual([
       ['/', '/queue', '/signals', '/questions', '/owners?view=payouts'],
       ['/tracks', '/releases', '/owners', '/artists'],
-      ['/splits', '/participations', '/labels', '/sublabels', '/publishing', '/publishing-v2', '/documents'],
+      ['/splits', '/participations', '/labels', '/sublabels', '/publishing-v2', '/documents'],
       ['/sources', '/operations', '/operations/cuts', '/ads'],
     ]);
     expect(new Set(ALL_ITEMS.map((i) => i.id)).size).toBe(ALL_ITEMS.length);
@@ -40,10 +40,8 @@ describe('navFor (D-171)', () => {
     expect(ids(admin)).toEqual(['overview', 'queue', 'questions', 'users', 'claude']);
   });
 
-  it('hides the old publishing page under publishing v2 and keeps v2 (D-194)', () => {
-    const session = { isSystemAdmin: false, inOrg: true };
-    expect(ids(navFor(session, { authMode: 'off', abilities: [], publishingSource: 'v1' }))).toEqual(expect.arrayContaining(['publishing', 'publishingV2']));
-    const v2 = ids(navFor(session, { authMode: 'off', abilities: [], publishingSource: 'v2' }));
+  it('lists publishing v2 and no old publishing page (D-234)', () => {
+    const v2 = ids(navFor({ isSystemAdmin: false, inOrg: true }, { authMode: 'off', abilities: [] }));
     expect(v2).toContain('publishingV2');
     expect(v2).not.toContain('publishing');
   });

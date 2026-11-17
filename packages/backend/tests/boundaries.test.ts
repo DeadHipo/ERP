@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { testStack } from './helpers/test-sources';
 
 const SRC = join(process.cwd(), 'src');
-const MODULES = ['owners', 'splits', 'labels', 'sources', 'settlements', 'publishing', 'pubv2', 'links', 'audit', 'ads'];
+const MODULES = ['owners', 'splits', 'labels', 'sources', 'settlements', 'pubv2', 'links', 'audit', 'ads']; // D-234: − publishing
 
 function filesOf(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -63,7 +63,6 @@ describe('module boundaries (README 4)', () => {
   it('the layers import only the shared helpers, each other and the fixed shapes of four modules (D-169: the book is no layer input)', () => {
     const allowed = new Set([
       '../../modules/labels',
-      '../../modules/publishing',
       '../../modules/settlements',
       '../../modules/splits',
       '../../shared/dates',

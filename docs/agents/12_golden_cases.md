@@ -84,11 +84,8 @@ G29, G31, G38, G41, G62. G21 keeps its numbers without the sublabel.
 
 | # | Scenario | Expected | Case |
 |---|---|---|---|
-| G26a | B17 line, period 2026-Q1, holder H, songwriters "W1, W2" (both ours), work T, `operation_type` Mechanical, payable 100; terms: W1's owner 50 (no type); W2's owner 90 (no type) and 50 (Synchronization) | parts 50 / 50; W1 author 25 (B), label 25; W2 author 45 (B), label 5 | M15, M16, M17 |
-| G26b | the same with `operation_type` Synchronization | W1 25 / 25; W2 25 / 25 | M16 |
-| G26c | songwriters "W1, X" where X is external; payable 100 | W1 gets the whole line (external writers take nothing, D-087): author 50, label 50 | M17 |
-| G26d | songwriters "W3" alone (a third writer of ours whose owner has no terms), payable 100 | author 50 C `publishing_terms_unconfirmed` (default), label 50 | D-043 |
-| G26e | reconciliation of the four lines G26a–d loaded together: A 400; B 170 (25 + 45 + 25 + 25 + 50); C 50; ours 180 (25 + 5 + 25 + 25 + 50 + 50); discrepancy 0 | | §6 |
+| G26d | a report-summary row of v2 (D-234), period 2026-Q1, holder W3 (a writer of ours linked to its owner, who has no terms), payable 100 | author 50 C `publishing_terms_unconfirmed` (default), label 50 | D-043 |
+| G26f | (D-234, replaces G26a–c, G26e: the equal parts of the B17 «songwriters», the typed term and an external co-writer left with the old module) three rows of v2 loaded together, holders W1 (term 50), W2 (term 90), W3 (no term), 100 each: A 300; B 140 (50 + 90); C 50; ours 110 (50 + 10 + 50); discrepancy 0 | W2: author 90 B, label 10 | §6 |
 
 ## Checks every master case also asserts
 

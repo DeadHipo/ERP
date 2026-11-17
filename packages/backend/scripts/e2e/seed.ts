@@ -27,7 +27,7 @@ import { orgScope } from '../../src/shared/org-scope';
 import { orgFilesDir } from '../../src/connect-sources';
 import { createAuthService } from '../../src/auth/service';
 import { createOrgsService } from '../../src/orgs/service';
-import { B17_FILE_NAME, type SeedKeys } from './keys';
+import { b17FileName, type SeedKeys } from './keys';
 import { Seed } from './lib';
 import { scenarios } from './scenarios';
 
@@ -120,7 +120,7 @@ try {
     stores: stores.names,
     orgId: stores.orgId,
     dataDir,
-    b17FileName: B17_FILE_NAME,
+    b17FileNames: [...new Set(seed.b17Lines.map((l) => l.period))].sort().map(b17FileName),
   };
   const keysPath = join(testTmp, name === 'e2e' ? 'e2e-keys.json' : `e2e-keys-${name}.json`);
   writeFileSync(keysPath, JSON.stringify(keys, null, 2));
