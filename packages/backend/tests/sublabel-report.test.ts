@@ -84,6 +84,20 @@ describe('the report of a sublabel by its terms (D-219)', () => {
       '﻿"month";"isrc";"title";"artists";"label_share";"percent";"amount";"status";"reason"',
       `"2026-07";"${T1}";"Song 1";"Report Artist";"50";"50";"25";"confirmed";""`,
     ]);
+    // advertising borne by the sublabel by hand (D-231): its unrecovered part is shown and taken off the part
+    expect(r.ads).toEqual([]);
+    const made = await f.createAds([
+      { isrc: T1, month: '2026-07', amount: '10.00', recoveryPercent: '50', labelId: f.testLabels['0to8'], bearerSublabelId: sub },
+      { isrc: T1, month: '2026-07', amount: '4.00', recoveryPercent: '50', labelId: f.testLabels['0to8'] },
+    ]);
+    const borne = await f.sublabelReport(sub);
+    expect(borne.ads.map((x) => [x.adId, x.amount, x.unrecovered])).toEqual([[made.created[0]?.id, '10', '5']]);
+    expect([borne.adsTotal, borne.amountAfterAds]).toEqual(['5', '21.25']);
+    expect(JSON.stringify(borne.total)).toBe(JSON.stringify(r.total));
+    // the bearer is a sublabel of the register, changed or cleared by hand
+    await expect(f.updateAd(made.created[1]!.id, { bearerSublabelId: 'nope' })).rejects.toMatchObject({ code: 'not_found' });
+    expect((await f.updateAd(made.created[0]!.id, { bearerSublabelId: null })).bearerSublabelId).toBeNull();
+    expect((await f.sublabelReport(sub)).adsTotal).toBe('0');
     await expect(f.sublabelReport('nope')).rejects.toMatchObject({ code: 'not_found' });
   });
 

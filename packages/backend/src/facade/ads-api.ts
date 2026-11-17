@@ -47,7 +47,12 @@ function viewOf(rec: AdExpense, r: AdResult | undefined, artistIndex: Calculatio
 
 /** Advertising expenses (D-155, D-156): records in the ads module, allocation recalculated from scratch. */
 export function adsApi(ctx: FacadeContext) {
-  const { ads, owners, modules, assertOwnLabel } = ctx;
+  const { ads, owners, modules, assertOwnLabel, labels } = ctx;
+
+  /** The bearer of the unrecovered part (D-231): a sublabel of the register, else 404. */
+  async function checkBearers(ids: (string | null | undefined)[]) {
+    for (const id of new Set(ids.filter((x): x is string => !!x))) await labels.getSublabel(id);
+  }
 
   async function checkArtists(ids: (string | null | undefined)[]) {
     const unique = [...new Set(ids.filter((x): x is string => !!x))];
@@ -61,6 +66,7 @@ export function adsApi(ctx: FacadeContext) {
     /** A batch of expenses: every arrival of data is a new record; a known external ref is skipped. */
     async createAds(items: AdExpenseInput[]) {
       await checkArtists(items.map((i) => i.artistId));
+      await checkBearers(items.map((i) => i.bearerSublabelId));
       for (const id of new Set(items.map((i) => i.labelId).filter((x): x is string => !!x))) await assertOwnLabel(id);
       return ads.createMany(items);
     },
@@ -69,13 +75,18 @@ export function adsApi(ctx: FacadeContext) {
      * The recovery percent, the scope (D-155) and the payer (D-169: an own label). A viewer of some labels (D-171):
      * a record its labels pay (else 403 `label_forbidden`); moving it to another payer is the administrator's (403 `forbidden`).
      */
-    async updateAd(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }, viewer: Viewer = ALL_VIEWER) {
+    async updateAd(
+      id: string,
+      patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string; bearerSublabelId?: string | null },
+      viewer: Viewer = ALL_VIEWER,
+    ) {
       if (viewer.kind !== 'all') {
         assertViewerHolds(viewer, (await ads.get(id)).labelId);
         if (patch.labelId !== undefined)
           throw new ForbiddenError('Moving an expense to another payer is for the organization administrator', 'forbidden');
       }
       if (patch.labelId !== undefined) await assertOwnLabel(patch.labelId);
+      await checkBearers([patch.bearerSublabelId]);
       return ads.update(id, patch);
     },
 

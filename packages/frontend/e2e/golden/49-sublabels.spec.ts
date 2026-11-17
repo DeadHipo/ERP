@@ -112,6 +112,21 @@ test('S58 the report of P37 equals the API; the document confirms it; the csv', 
   await expect(page.getByTestId(`report-row-2026-03-${I}`)).toHaveAttribute('data-status', row?.status ?? '');
 });
 
+test('S58 advertising borne by the sublabel by hand: on the card and in the report', async ({ page }) => {
+  const made = await apiPost(page.request, '/ads', {
+    items: [{ isrc: I, month: '2026-03', amount: '10.00', recoveryPercent: '50', labelId: labelOf('0to8'), bearerSublabelId: sublabelId }],
+  });
+  expect(made.status).toBe(201);
+  const adId = (made.body as unknown as { created: { id: string }[] }).created[0]?.id ?? '';
+  await openAs(page, `/ads/${adId}`);
+  await expect(page.getByTestId('ad-bearer')).toContainText(NAME);
+  const report = (await (await page.request.get(`/api/v1/sublabels/${sublabelId}/report`)).json()) as { adsTotal: string; amountAfterAds: string };
+  expect(report.adsTotal).toMatch(/^5(\.0*)?$/);
+  await openAs(page, `/sublabels/${sublabelId}?tab=report`);
+  await expect(page.getByTestId(`report-ad-${adId}`)).toBeVisible();
+  await expect(page.getByTestId('sublabel-report-total').locator('[data-col="amountAfterAds"]')).toHaveAttribute('data-value', report.amountAfterAds);
+});
+
 test('S58 the history: the cancel of the latest term', async ({ page }) => {
   await openAs(page, `/sublabels/${sublabelId}`);
   await page.locator(`[data-testid^="sublabel-term-"][data-isrc="${I}"]`).getByTestId('action-sublabel-term-history').click();

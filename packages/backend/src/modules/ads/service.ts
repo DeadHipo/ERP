@@ -32,6 +32,8 @@ export interface AdExpense {
    * migrated record with an ISRC until the script `assign-label-books --step ads` labels it.
    */
   labelId: string | null;
+  /** Who bears the unrecovered part (D-231): a sublabel of the register (the facade checks it); null = the payer label. */
+  bearerSublabelId: string | null;
 }
 
 export interface AdExpenseInput {
@@ -47,6 +49,7 @@ export interface AdExpenseInput {
   migration?: boolean;
   comment?: string;
   labelId?: string | null;
+  bearerSublabelId?: string | null;
 }
 
 export interface AdExpenseFilter {
@@ -93,6 +96,7 @@ const view = (r: ExpenseRow): AdExpense => ({
   active: r.deactivatedAt === null,
   deactivatedReason: r.deactivatedReason,
   labelId: r.labelId,
+  bearerSublabelId: r.bearerSublabelId,
 });
 
 const toRepoFilter = (f: AdExpenseFilter): ExpenseFilter => ({
@@ -141,6 +145,7 @@ export function createAdsService(db: Db, org: OrgScope) {
       deactivatedAt: null,
       deactivatedReason: null,
       labelId,
+      bearerSublabelId: input.bearerSublabelId?.trim() || null,
     };
   }
 
@@ -192,12 +197,15 @@ export function createAdsService(db: Db, org: OrgScope) {
      * The fields that may change at any time: the recovery percent and the scope (D-155), the payer (D-169; the facade
      * checks that it is an own label).
      */
-    async update(id: string, patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string }): Promise<AdExpense> {
+    async update(
+      id: string,
+      patch: { recoveryPercent?: string; scope?: AdScope; labelId?: string; bearerSublabelId?: string | null },
+    ): Promise<AdExpense> {
       return repo.transaction(async () => {
         const cur = await this.get(id);
         if (!cur.active) throw new ValidationError(`Ad expense ${id} is deactivated`);
-        if (patch.recoveryPercent === undefined && patch.scope === undefined && patch.labelId === undefined)
-          throw new ValidationError('Nothing to change (recoveryPercent, scope or labelId)');
+        if (patch.recoveryPercent === undefined && patch.scope === undefined && patch.labelId === undefined && patch.bearerSublabelId === undefined)
+          throw new ValidationError('Nothing to change (recoveryPercent, scope, labelId or bearerSublabelId)');
         const scope = patch.scope === undefined ? cur.scope : parseScope(patch.scope);
         if (scope === 'isrc' && !cur.isrc) throw new ValidationError('Scope "isrc" needs an ISRC');
         const labelId = patch.labelId?.trim();
@@ -207,6 +215,7 @@ export function createAdsService(db: Db, org: OrgScope) {
           recoveryPercent:
             patch.recoveryPercent === undefined ? cur.recoveryPercent : parseRecoveryPercent(patch.recoveryPercent),
           ...(patch.labelId === undefined ? {} : { labelId }),
+          ...(patch.bearerSublabelId === undefined ? {} : { bearerSublabelId: patch.bearerSublabelId?.trim() || null }),
         });
         return this.get(id);
       });

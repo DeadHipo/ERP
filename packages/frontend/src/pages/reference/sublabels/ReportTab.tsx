@@ -247,7 +247,7 @@ export function ReportTab(props: { sublabelId: string }) {
         </ActionButton>
       </div>
       <p className="text-xs text-muted">{t.reportNote}</p>
-      <QueryView query={query} isEmpty={(d) => d.rows.length === 0} emptyMessage={t.reportEmpty}>
+      <QueryView query={query} isEmpty={(d) => d.rows.length === 0 && d.ads.length === 0} emptyMessage={t.reportEmpty}>
         {(r) => (
           <>
             <section data-testid="sublabel-report-total" className="flex flex-wrap gap-6 text-sm">
@@ -257,6 +257,18 @@ export function ReportTab(props: { sublabelId: string }) {
                   <Money value={r.total[k]} />
                 </div>
               ))}
+              {r.ads.length > 0 ? (
+                <>
+                  <div data-col="adsTotal" data-value={r.adsTotal}>
+                    <div className="text-xs text-muted">{t.adsTotal}</div>
+                    <Money value={r.adsTotal} />
+                  </div>
+                  <div data-col="amountAfterAds" data-value={r.amountAfterAds}>
+                    <div className="text-xs text-muted">{t.amountAfterAds}</div>
+                    <Money value={r.amountAfterAds} />
+                  </div>
+                </>
+              ) : null}
               <div data-col="counts">
                 <div className="text-xs text-muted">{t.cols.tracks}</div>
                 {formatCount(r.tracks.length)} · {fmt(t.monthsCount, { n: r.months.length })}
@@ -274,6 +286,26 @@ export function ReportTab(props: { sublabelId: string }) {
               </ActionButton>
             </div>
             {view === 'months' ? <MonthsView r={r} /> : view === 'tracks' ? <TracksView r={r} /> : <ArtistsView r={r} />}
+            {r.ads.length > 0 ? (
+              <section className="flex flex-col gap-2" data-testid="sublabel-report-ads">
+                <h2 className="text-sm font-medium">{t.adsTitle}</h2>
+                <SimpleTable headers={[t.cols.month, t.cols.isrc, t.adsAmount, t.adsPercent, t.adsUnrecovered]}>
+                  {r.ads.map((a) => (
+                    <tr key={a.adId} data-testid={`report-ad-${a.adId}`}>
+                      <Td>
+                        <Link className="text-accent hover:underline" to={`/ads/${a.adId}`}>
+                          {a.month}
+                        </Link>
+                      </Td>
+                      <Td>{a.isrc ?? ''}</Td>
+                      <Td col="amount"><Money value={a.amount} /></Td>
+                      <Td>{a.recoveryPercent}%</Td>
+                      <Td col="unrecovered"><Money value={a.unrecovered} /></Td>
+                    </tr>
+                  ))}
+                </SimpleTable>
+              </section>
+            ) : null}
           </>
         )}
       </QueryView>

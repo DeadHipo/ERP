@@ -22,6 +22,7 @@ const D = (v: string) => new Decimal(v);
 
 const ad = (over: Partial<AdExpense> = {}): AdExpense => ({
   id: 'ad1',
+  bearerSublabelId: null,
   isrc: I1,
   month: '2026-07',
   amountCents: 10000,

@@ -27,4 +27,6 @@ export const expenses = s.table('expenses', {
   deactivatedReason: text('deactivated_reason'),
   /** The own label of a record without an ISRC (D-168); with an ISRC the line of the ISRC decides, this is the fallback. */
   labelId: text('label_id'),
+  /** Who bears the unrecovered part (D-231): a sublabel of the register; null = the payer label. */
+  bearerSublabelId: text('bearer_sublabel_id'),
 });

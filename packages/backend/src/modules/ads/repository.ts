@@ -65,7 +65,7 @@ export function createAdsRepository(db: Db, org: OrgScope) {
     all: () => orm().select(C).from(expenses).where(orgWhere(org, expenses)),
     update: async (
       id: string,
-      set: Partial<Pick<ExpenseRow, 'recoveryPercent' | 'scope' | 'deactivatedAt' | 'deactivatedReason' | 'labelId'>>,
+      set: Partial<Pick<ExpenseRow, 'recoveryPercent' | 'scope' | 'deactivatedAt' | 'deactivatedReason' | 'labelId' | 'bearerSublabelId'>>,
     ) => {
       await orm().update(expenses).set(set).where(orgWhere(org, expenses, eq(expenses.id, id)));
     },

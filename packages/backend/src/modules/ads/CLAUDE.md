@@ -7,5 +7,7 @@ change. No document is needed. It computes no money: who bears an expense and wh
 recalculated from scratch inside `calculate()`. DDL `migrations/postgres/0012_ads.sql`, Drizzle `schema.ts`.
 `labelId` is the payer (D-169, R9): the own label whose book the expense charges. Every new record needs it
 (`label_required`) except a migrated one with an ISRC (the stage 4 loader); `assignLabel` (only a NULL label) is for the
-script `assign-label-books --step ads`. `list({ labelId })` filters by the payer (`null` = without a label). The ISRC's
-label string decides only the sublabel rule (who bears the unrecovered part), in the facade.
+script `assign-label-books --step ads`. `list({ labelId })` filters by the payer (`null` = without a label). Since D-229 no
+sublabel rule exists; `bearerSublabelId` (D-231, migration 0035) names by hand the sublabel of the register that bears
+the unrecovered part (null = the payer label): the money does not read it (a sublabel has no recipient), the sublabel's
+report takes it off its part.

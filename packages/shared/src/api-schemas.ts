@@ -461,6 +461,7 @@ export const adExpenseInput = z.object({
   source: z.string().optional(),
   comment: z.string().optional(),
   labelId: z.string().nullish().describe('The payer, required (D-169): the own label whose book the expense charges; 400 label_required without it, 400 label_not_own for a sublabel'),
+  bearerSublabelId: z.string().nullish().describe('Who bears the unrecovered part (D-231): a sublabel of the register; none = the payer label'),
 });
 export const createAdsBody = z.object({ items: z.array(adExpenseInput).min(1).max(20000) });
 export const updateAdBody = z
@@ -468,8 +469,12 @@ export const updateAdBody = z
     recoveryPercent: recoveryPercent.optional(),
     scope: adScope.optional(),
     labelId: z.string().min(1).optional().describe('The payer (D-169): an own label'),
+    bearerSublabelId: z.string().min(1).nullable().optional().describe('Who bears the unrecovered part (D-231): a sublabel of the register; null = the payer label'),
   })
-  .refine((b) => b.recoveryPercent !== undefined || b.scope !== undefined || b.labelId !== undefined, 'recoveryPercent, scope or labelId');
+  .refine(
+    (b) => b.recoveryPercent !== undefined || b.scope !== undefined || b.labelId !== undefined || b.bearerSublabelId !== undefined,
+    'recoveryPercent, scope, labelId or bearerSublabelId',
+  );
 export const deactivateAdBody = z.object({ reason: z.string().min(1) });
 export const adsQuery = z.object({
   isrc: z.string().optional().describe('Only this ISRC'),

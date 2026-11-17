@@ -1996,6 +1996,7 @@ export const adExpenseSchema = z.object({
   active: z.boolean(),
   deactivatedReason: z.string().nullable(),
   labelId: z.string().nullable().describe('The payer (D-169): the own label whose book the expense charges; required, null only for a migrated record not yet labelled'),
+  bearerSublabelId: z.string().nullable().describe('Who bears the unrecovered part (D-231): a sublabel of the register; null = the payer label'),
 });
 export type AdExpense = z.infer<typeof adExpenseSchema>;
 
@@ -2634,6 +2635,20 @@ export const sublabelReportSchema = z.object({
     )
     .describe('The period per set of pseudonyms of a track: the groups add up to the total, nothing counted twice'),
   total: z.object(sublabelReportSumFields),
+  ads: z
+    .array(
+      z.object({
+        adId: z.string().describe('The advertising record'),
+        isrc: z.string().nullable().describe('The ISRC of the expense'),
+        month: month.describe('The month of the expense'),
+        amount: money.describe('The expense'),
+        recoveryPercent: z.string().describe('The share returned from the artists'),
+        unrecovered: money.describe('What the artists do not return: borne by this sublabel'),
+      }),
+    )
+    .describe('The advertising whose unrecovered part this sublabel bears, set on the record by hand (D-231)'),
+  adsTotal: money.describe('Σ unrecovered of the advertising the sublabel bears'),
+  amountAfterAds: money.describe('The part of the sublabel (total.amount) minus the advertising it bears'),
 });
 
 /** The hints of a month (D-219): per sublabel, the tracks under its label string without a term in force. */

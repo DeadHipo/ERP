@@ -42,13 +42,17 @@ interface Acc {
 }
 
 export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }) {
-  const { db, labels, owners, splits, modules, sources } = ctx;
+  const { db, labels, owners, splits, modules, sources, ads } = ctx;
   const { links } = m;
 
   async function report(sublabelId: string, period: { from?: string; to?: string } = {}) {
     const sublabel = await labels.getSublabel(sublabelId);
     const terms = await db.snapshot(() => links.sublabelTerms({ sublabelId }));
     const isrcs = [...new Set(terms.map((t) => t.isrc))].sort();
+    // the advertising whose unrecovered part this sublabel bears, set by hand on the record (D-231)
+    const inPeriod = (m: string) => (!period.from || m >= period.from) && (!period.to || m <= period.to);
+    const borne = (await ads.list({ active: true })).filter((a) => a.bearerSublabelId === sublabelId && inPeriod(a.month));
+    const calcIsrcs = [...new Set([...isrcs, ...borne.flatMap((a) => (a.isrc ? [a.isrc] : []))])].sort();
     const empty = {
       sublabel,
       period: { from: period.from ?? null, to: period.to ?? null },
@@ -57,9 +61,12 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       tracks: [] as ({ isrc: string; title: string | null; artists: ArtistRef[]; months: number } & Sums)[],
       artists: [] as ({ key: string; artists: ArtistRef[]; tracks: number; isrcs: string[] } & Sums)[],
       total: { labelShare: '0', amount: '0', confirmed: '0', waiting: '0', currentAmount: '0' },
+      ads: [] as { adId: string; isrc: string | null; month: string; amount: string; recoveryPercent: string; unrecovered: string }[],
+      adsTotal: '0',
+      amountAfterAds: '0',
     };
-    if (isrcs.length === 0) return empty;
-    const calc = await calculate(scoped(modules, { isrcs, from: period.from, to: period.to, publishingLines: false }));
+    if (calcIsrcs.length === 0 && borne.length === 0) return empty;
+    const calc = await calculate(scoped(modules, { isrcs: calcIsrcs, from: period.from, to: period.to, publishingLines: false }));
     const docs = [...new Set(terms.map((t) => t.documentId).filter((d): d is string => d !== null))];
     const info = docs.length > 0 ? await owners.documentInfo(docs) : new Map<string, { status: string; kind: string }>();
     // the titles and the pseudonyms of the registry on each ISRC (D-166): split rows, participations, registry links
@@ -165,7 +172,34 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     const artistList = [...groups.entries()]
       .map(([key, g]) => ({ key, artists: g.artists, tracks: g.isrcs.size, isrcs: [...g.isrcs].sort(), ...sum(g.list) }))
       .sort((x, y) => new Decimal(y.amount).cmp(new Decimal(x.amount)) || x.key.localeCompare(y.key));
-    return { ...empty, rows, months, tracks: trackList, artists: artistList, total: sum(sorted) };
+    // the unrecovered part of each borne record, as the calculation allocates it (the artists' recovered part is theirs)
+    const adResults = new Map(calc.ads.map((r) => [r.adId, r]));
+    const adRows = borne
+      .map((a) => {
+        const r = adResults.get(a.id);
+        return {
+          adId: a.id,
+          isrc: a.isrc,
+          month: a.month,
+          amount: money(r?.amount ?? ZERO),
+          recoveryPercent: a.recoveryPercent,
+          unrecovered: money(r?.unrecovered ?? ZERO),
+        };
+      })
+      .sort((x, y) => (x.month === y.month ? (x.adId < y.adId ? -1 : 1) : x.month < y.month ? -1 : 1));
+    const adsTotal = adRows.reduce((t, a) => t.add(new Decimal(a.unrecovered)), ZERO);
+    const total = sum(sorted);
+    return {
+      ...empty,
+      rows,
+      months,
+      tracks: trackList,
+      artists: artistList,
+      total,
+      ads: adRows,
+      adsTotal: money(adsTotal),
+      amountAfterAds: money(new Decimal(total.amount).sub(adsTotal)),
+    };
   }
 
   return {

@@ -19,6 +19,7 @@ import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { SimpleTable, Td } from '../owners/components/Fact';
 import { parseBatch } from './parse-batch';
+import { BearerField, useBearerName } from './BearerField';
 
 const t = ru.ads;
 export const AD_SCOPES = ['any', 'publishing', 'isrc'] as const;
@@ -52,6 +53,8 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
   const [confirm, setConfirm] = useState(false);
   // the payer (D-169): every record names the own label whose book it charges; the switch of the header is the default
   const { labelId, setLabelId, labelName } = useLabelChoice();
+  const [bearer, setBearer] = useState<string | null>(null);
+  const bearerName = useBearerName();
   const onArtist = target === 'artist';
   const typedIsrc = isrc.trim();
   const run = useAction(
@@ -67,6 +70,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
             scope,
             ...(comment.trim() ? { comment: comment.trim() } : {}),
             labelId,
+            ...(bearer ? { bearerSublabelId: bearer } : {}),
           },
         ],
       }),
@@ -137,6 +141,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
         />
         <span className="text-xs text-muted">{t.create.scopeHint}</span>
         <LabelField name="ad-label" label={t.create.label} value={labelId} onChange={setLabelId} isRequired />
+        <BearerField value={bearer} onChange={setBearer} />
         <span className="text-xs text-muted">{t.create.labelHint}</span>
         <TextField name="ad-comment" label={t.create.comment} value={comment} onChange={setComment} />
       </FormDialog>
@@ -152,6 +157,7 @@ export function CreateAdDialog(props: { onClose: () => void; isrc?: string; arti
           fmt(t.create.lines.percent, { percent: percent.trim() }),
           fmt(t.create.lines.scope, { scope: t.scopes[scope] }),
           fmt(t.create.lines.label, { label: labelName }),
+          fmt(t.bearer.line, { name: bearerName(bearer) }),
         ]}
         isPending={run.isPending}
         onConfirm={() => run.mutate(undefined, { onSuccess: props.onClose, onSettled: () => setConfirm(false) })}
@@ -267,9 +273,17 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
   const [labelId, setLabelId] = useState(ad.labelId ?? switchLabel);
   const [confirm, setConfirm] = useState(false);
   const labelChanged = labelId !== '' && labelId !== ad.labelId;
+  const [bearer, setBearer] = useState<string | null>(ad.bearerSublabelId);
+  const bearerChanged = bearer !== ad.bearerSublabelId;
+  const bearerName = useBearerName();
   const nameOf = (id: string | null) => (id ? (own.find((l) => l.id === id)?.name ?? id) : t.noPayer);
   const run = useAction(
-    () => api.ads.update(ad.id, { recoveryPercent: percent.trim(), scope, ...(labelChanged ? { labelId } : {}) }),
+    () => api.ads.update(ad.id, {
+        recoveryPercent: percent.trim(),
+        scope,
+        ...(labelChanged ? { labelId } : {}),
+        ...(bearerChanged ? { bearerSublabelId: bearer } : {}),
+      }),
     { invalidate: 'all', success: () => t.edit.toast },
   );
   const scopes = ad.isrc ? AD_SCOPES : AD_SCOPES.filter((s) => s !== 'isrc');
@@ -303,6 +317,7 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
         />
         <LabelField name="ad-edit-label" label={t.edit.label} value={labelId} onChange={setLabelId} isRequired />
         <span className="text-xs text-muted">{t.create.labelHint}</span>
+        <BearerField value={bearer} onChange={setBearer} />
       </FormDialog>
       <ConfirmDialog
         isOpen={confirm}
@@ -313,6 +328,7 @@ export function EditAdDialog(props: { ad: AdView; onClose: () => void }) {
           fmt(t.edit.lines.percent, { from: ad.recoveryPercent, to: percent.trim() }),
           fmt(t.edit.lines.scope, { from: t.scopes[ad.scope], to: t.scopes[scope] }),
           ...(labelChanged ? [fmt(t.edit.lines.label, { from: nameOf(ad.labelId), to: nameOf(labelId) })] : []),
+          ...(bearerChanged ? [fmt(t.bearer.change, { from: bearerName(ad.bearerSublabelId), to: bearerName(bearer) })] : []),
           t.edit.lines.recalc,
         ]}
         isPending={run.isPending}

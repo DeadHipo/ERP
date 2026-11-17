@@ -16,6 +16,7 @@ import { ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { Fact, Section, SimpleTable, Td } from '../owners/components/Fact';
 import { DeactivateAdDialog, EditAdDialog } from './AdDialogs';
+import { useBearerName } from './BearerField';
 
 const t = ru.ads;
 const d = t.detail;
@@ -48,6 +49,7 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
   const audit = useQuery(adQueries.audit(ad.id));
   const a = ad.allocation;
   const own = useOwnLabels();
+  const bearerName = useBearerName();
   // the payer (D-169) is the label of the record; the income book of the ISRC that month is shown when it differs
   const payer = ad.labelId ? (a?.ourLabelName ?? own.find((l) => l.id === ad.labelId)?.name ?? ad.labelId) : t.noPayer;
   const otherBook = a?.incomeBookLabelName && a.incomeBookLabelId !== ad.labelId ? a.incomeBookLabelName : null;
@@ -88,7 +90,9 @@ function AdCard({ ad, title }: { ad: AdView; title: string }) {
               <span title={d.incomeBookHint}>{otherBook}</span>
             </Text>
           ) : null}
-          {a?.sublabelName ? <Text testId="ad-sublabel" label={d.sublabel}>{a.sublabelName}</Text> : null}
+          <Text testId="ad-bearer" label={ru.ads.bearer.label}>
+            <span data-sublabel-id={ad.bearerSublabelId ?? ''}>{bearerName(ad.bearerSublabelId)}</span>
+          </Text>
           <Text testId="ad-source" label={d.source}>{ad.migration ? t.migration : ad.source}</Text>
           {ad.externalRef ? <Text testId="ad-ref" label={d.ref}><span className="break-all">{ad.externalRef}</span></Text> : null}
           {ad.comment ? <Text testId="ad-comment" label={d.comment}>{ad.comment}</Text> : null}
