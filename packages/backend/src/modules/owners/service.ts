@@ -55,7 +55,6 @@ export interface DocumentView {
   requiresApproval: boolean;
   status: DocumentStatus;
   approvedAt: string | null;
-  uploadDeadline: string | null;
   migration: boolean;
   createdAt: string;
   /** The own label of the document (D-169); null = any label. The module does not know labels. */
@@ -122,7 +121,6 @@ function toDocumentView(d: DocumentRow): DocumentView {
     requiresApproval: d.requiresApproval,
     status: documentStatus(d),
     approvedAt: d.approvedAt,
-    uploadDeadline: d.uploadDeadline,
     migration: d.migration,
     createdAt: d.createdAt,
     labelId: d.labelId,
@@ -670,7 +668,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
       fileRef?: string | null;
       ownerId?: string | null;
       requiresApproval: boolean;
-      uploadDeadline?: string | null;
       migration?: boolean;
       /** The own label (D-169); the facade checks it, the module stores it. */
       labelId?: string | null;
@@ -680,7 +677,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
       const id = newId();
       return repo.transaction(async () => {
         if (input.ownerId) await requireLiveOwner(input.ownerId);
-        if (input.uploadDeadline) assertDate(input.uploadDeadline);
         await repo.insertDocument({
           id,
           kind: input.kind,
@@ -690,7 +686,6 @@ export function createOwnersService(db: Db, org: OrgScope) {
           requiresApproval: input.requiresApproval,
           approvedAt: null,
           approvedBy: null,
-          uploadDeadline: input.uploadDeadline ?? null,
           migration: input.migration ?? false,
           createdAt: nowIso(),
           labelId: input.labelId ?? null,

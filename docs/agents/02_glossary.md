@@ -15,7 +15,7 @@ Use this table to grep both sides. "Doc" is the file where the term is defined.
 | договор, основа, приложение | contract, base, appendix | `modules/owners` documents/contracts | Appendix confirms a split |
 | документ, требует проверки менеджером | document, `requiresApproval` | `modules/owners` | Status `not_attached` / `not_approved` / `approved` (D-016) |
 | «незакрыто», «ждёт документов» | unconfirmed, waiting for documents | — | Marks only; payout gate is the owner's approved contract (D-017) |
-| срок на загрузку (`expiredTime`) | upload deadline (`upload_deadline`) | `modules/owners` | Displayed only, nothing happens on expiry (D-024); M11 open |
+| срок на загрузку (`expiredTime`) | upload deadline (`upload_deadline`) | — | Dropped by D-228 (never filled, nothing acted on it; D-024) |
 | пустышка | placeholder (artist/owner without documents) | — | Unknown B17 writers get an owner "waiting for documents"; a split artist without owner is C `artist_without_owner` (D-059) |
 | слияние (merge) | merge | `facade/owner-view.ts` `mergeOwners` | Unconfirmed merges into confirmed (D-020, D-046, D-095) |
 | реквизиты | payment details | — | Not built (98, M3) |

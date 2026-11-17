@@ -71,7 +71,6 @@ export const documents = s.table('documents', {
   requiresApproval: boolean('requires_approval').notNull(),
   approvedAt: isoTimestamp('approved_at'),
   approvedBy: text('approved_by'),
-  uploadDeadline: date('upload_deadline', { mode: 'string' }),
   migration: boolean('migration').notNull(),
   createdAt: isoTimestamp('created_at').notNull(),
   /** The own label of the document (D-169, 0015); null = any label. Read from stage 1 commit 4 on. */

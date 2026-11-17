@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(44); // D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(43); // D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 

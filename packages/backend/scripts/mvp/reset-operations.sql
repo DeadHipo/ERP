@@ -18,7 +18,6 @@ DELETE FROM owners.documents d
    AND NOT EXISTS (SELECT 1 FROM splits.splits s WHERE s.document_id = d.id)
    AND NOT EXISTS (SELECT 1 FROM splits.split_shares s WHERE s.document_id = d.id)
    AND NOT EXISTS (SELECT 1 FROM splits.participations p WHERE p.document_id = d.id)
-   AND NOT EXISTS (SELECT 1 FROM labels.label_rules r WHERE r.document_id = d.id)
-   AND NOT EXISTS (SELECT 1 FROM settlements.opening_balances b WHERE b.document_id = d.id);
+   AND NOT EXISTS (SELECT 1 FROM labels.label_rules r WHERE r.document_id = d.id);
 SELECT kind, count(*), sum(amount_cents) / 100 FROM settlements.operations GROUP BY 1 ORDER BY 1;
 COMMIT;

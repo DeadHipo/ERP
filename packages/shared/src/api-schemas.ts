@@ -81,7 +81,6 @@ export const createDocumentBody = z.object({
   fileRef: z.string().nullish(),
   ownerId: z.string().nullish(),
   requiresApproval: z.boolean(),
-  uploadDeadline: date.nullish(),
   labelId: z
     .string()
     .min(1)

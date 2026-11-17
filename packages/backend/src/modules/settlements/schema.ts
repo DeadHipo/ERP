@@ -47,8 +47,8 @@ export const operations = s.table('operations', {
   cutId: text('cut_id'),
 });
 
-// The opening balances of D-174 (`settlements.opening_balances`, migration 0020) stay in the database as the archive of
-// the cabinet's numbers of 15.10.2026; since D-205 no code reads or writes them (the start became the cut «Кабинет 15.10»).
+// The opening balances of D-174 (`settlements.opening_balances`) were dropped by migration 0034 (D-225): the start is
+// the cut «Кабинет 15.10» (D-203…D-205).
 
 /** The payee of an owner (D-176): the channel and the reference in the cash register; one active per owner. */
 export const payees = s.table('payees', {

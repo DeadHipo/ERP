@@ -278,7 +278,6 @@ export const documentSchema = z.object({
   requiresApproval: z.boolean().describe('A manager has to approve it'),
   status: z.enum(['not_attached', 'not_approved', 'approved']).describe('Only approved confirms money'),
   approvedAt: timestamp.nullable().describe(D.approvedAt),
-  uploadDeadline: date.nullable().describe('Shown only: nothing happens when it passes'),
   migration: z.boolean().describe('Carried over from the old system'),
   createdAt: timestamp,
   labelId: z
