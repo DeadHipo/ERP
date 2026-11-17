@@ -185,18 +185,26 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     },
 
     /**
-     * The hints (D-219, D-224): the tracks whose Believe label string is an alias of a sublabel of the register (the
-     * same id in `labels`) in report months that no live term covers, over every loaded month (or one month). Per
-     * track: the strings it came under with their first and last month, the first and last uncovered month, how many,
-     * and the net of those months. A track that came under two sublabels is a hint of each. A hint only: the money
-     * never reads it.
+     * The hints (D-219, D-224, D-229): the tracks that came under a Believe label string of a sublabel in report months
+     * that no live term covers, over every loaded month (or one month). The strings of a sublabel are learned from the
+     * reports of its own tracks with a term (an own label's name, `0to8`, is never one); a sublabel without terms has
+     * none. Per track: the strings with their months, the first and last uncovered month, how many, and the net of
+     * those months. A hint only: the money never reads it.
      */
     async sublabelSuggestions(monthRaw?: string) {
       const month = monthRaw ? monthOf(monthStart(monthRaw)) : null;
-      const [register, list] = await Promise.all([labels.listSublabels(), labels.listLabels()]);
+      const [register, list, allTerms] = await Promise.all([labels.listSublabels(), labels.listLabels(), links.sublabelTerms()]);
       const names = new Map(register.map((s) => [s.id, s.name]));
+      const ownNames = new Set(list.filter((l) => l.kind === 'own').map((l) => normalizeLabelString(l.name)));
+      const termedIsrcs = [...new Set(allTerms.map((t) => t.isrc))];
+      const sublabelOfIsrc = new Map(allTerms.map((t) => [t.isrc, t.sublabelId]));
       const sublabelOfAlias = new Map<string, string>();
-      for (const l of list) if (names.has(l.id)) for (const a of l.aliases) sublabelOfAlias.set(normalizeLabelString(a), l.id);
+      if (termedIsrcs.length > 0)
+        for (const u of await sources.units({ isrcs: termedIsrcs })) {
+          const sub = sublabelOfIsrc.get(u.isrc);
+          const key = normalizeLabelString(u.labelName);
+          if (sub && key !== '' && !ownNames.has(key) && !sublabelOfAlias.has(key)) sublabelOfAlias.set(key, sub);
+        }
       if (sublabelOfAlias.size === 0) return { month, groups: [] };
       const isrcs = await sources.isrcsOfLabelAliases([...sublabelOfAlias.keys()], normalizeLabelString);
       if (isrcs.length === 0) return { month, groups: [] };
