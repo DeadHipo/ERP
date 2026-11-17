@@ -6,6 +6,8 @@ import { calculate } from './calculation';
 import type { FacadeContext } from './context';
 import { pct } from './layers/exact';
 import { csvText } from './payroll';
+import { artistsByIsrc, readArtistLinks } from './track-artists';
+import type { ArtistRef } from '@erp/shared/api-responses';
 import { scoped } from './scope';
 
 // The report of a sublabel by its terms (D-219): its tracks by month, the label share after the artists and the
@@ -20,6 +22,14 @@ export type SublabelReportReason = 'no_document' | 'document_not_approved' | 'as
 const covers = (t: Pick<SublabelTermRow, 'validFrom' | 'validTo'>, day: string) =>
   t.validFrom <= day && (t.validTo === null || day < t.validTo);
 
+interface Sums {
+  labelShare: string;
+  amount: string;
+  confirmed: string;
+  waiting: string;
+  currentAmount: string;
+}
+
 interface Acc {
   isrc: string;
   month: string;
@@ -32,7 +42,7 @@ interface Acc {
 }
 
 export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }) {
-  const { db, labels, owners, modules, sources } = ctx;
+  const { db, labels, owners, splits, modules, sources } = ctx;
   const { links } = m;
 
   async function report(sublabelId: string, period: { from?: string; to?: string } = {}) {
@@ -43,15 +53,28 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       sublabel,
       period: { from: period.from ?? null, to: period.to ?? null },
       rows: [] as ReturnType<typeof rowOf>[],
-      months: [] as { month: string; labelShare: string; amount: string; confirmed: string; waiting: string; currentAmount: string }[],
+      months: [] as ({ month: string } & Sums)[],
+      tracks: [] as ({ isrc: string; title: string | null; artists: ArtistRef[]; months: number } & Sums)[],
+      artists: [] as ({ key: string; artists: ArtistRef[]; tracks: number; isrcs: string[] } & Sums)[],
       total: { labelShare: '0', amount: '0', confirmed: '0', waiting: '0', currentAmount: '0' },
     };
     if (isrcs.length === 0) return empty;
     const calc = await calculate(scoped(modules, { isrcs, from: period.from, to: period.to, publishingLines: false }));
     const docs = [...new Set(terms.map((t) => t.documentId).filter((d): d is string => d !== null))];
     const info = docs.length > 0 ? await owners.documentInfo(docs) : new Map<string, { status: string; kind: string }>();
+    // the titles and the pseudonyms of the registry on each ISRC (D-166): split rows, participations, registry links
+    const { tracks, artistsOf } = await db.snapshot(async () => {
+      const tracks = await owners.listTracks({ isrcs });
+      const [splitList, partList, { links, index }] = await Promise.all([
+        splits.listSplits({ isrcs }),
+        splits.listParticipations({ isrcs }),
+        readArtistLinks(owners, tracks),
+      ]);
+      return { tracks, artistsOf: artistsByIsrc({ tracks, links, splits: splitList, participations: partList, index }) };
+    });
     const titles = new Map<string, string>();
-    for (const t of await owners.listTracks({ isrcs })) if (t.isrc && !titles.has(t.isrc)) titles.set(t.isrc, t.title);
+    for (const t of tracks) if (t.isrc && !titles.has(t.isrc)) titles.set(t.isrc, t.title);
+    const artistsOfIsrc = (isrc: string): ArtistRef[] => artistsOf.get(isrc) ?? [];
     const byIsrc = new Map<string, SublabelTermRow[]>();
     for (const t of terms) byIsrc.set(t.isrc, [...(byIsrc.get(t.isrc) ?? []), t]);
 
@@ -97,6 +120,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       return {
         isrc: a.isrc,
         title: titles.get(a.isrc) ?? null,
+        artists: artistsOfIsrc(a.isrc),
         month: a.month,
         termId: a.term.id,
         percent: a.term.percent,
@@ -123,7 +147,25 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       };
     };
     const months = [...new Set(sorted.map((a) => a.month))].map((month) => ({ month, ...sum(sorted.filter((a) => a.month === month)) }));
-    return { ...empty, rows, months, total: sum(sorted) };
+    const byTrack = new Map<string, Acc[]>();
+    for (const a of sorted) byTrack.set(a.isrc, [...(byTrack.get(a.isrc) ?? []), a]);
+    const trackList = [...byTrack.entries()]
+      .map(([isrc, list]) => ({ isrc, title: titles.get(isrc) ?? null, artists: artistsOfIsrc(isrc), months: list.length, ...sum(list) }))
+      .sort((x, y) => new Decimal(y.amount).cmp(new Decimal(x.amount)) || (x.isrc < y.isrc ? -1 : 1));
+    // by artist: one group per set of pseudonyms of a track (a track of two artists is one group «A · B»), so the
+    // groups add up to the total and nothing is counted twice; '' = no pseudonym in the registry
+    const groups = new Map<string, { artists: ArtistRef[]; list: Acc[]; isrcs: Set<string> }>();
+    for (const a of sorted) {
+      const artists = artistsOfIsrc(a.isrc);
+      const key = artists.map((x) => x.id).join('|');
+      const g = groups.get(key) ?? groups.set(key, { artists, list: [], isrcs: new Set() }).get(key)!;
+      g.list.push(a);
+      g.isrcs.add(a.isrc);
+    }
+    const artistList = [...groups.entries()]
+      .map(([key, g]) => ({ key, artists: g.artists, tracks: g.isrcs.size, isrcs: [...g.isrcs].sort(), ...sum(g.list) }))
+      .sort((x, y) => new Decimal(y.amount).cmp(new Decimal(x.amount)) || x.key.localeCompare(y.key));
+    return { ...empty, rows, months, tracks: trackList, artists: artistList, total: sum(sorted) };
   }
 
   return {
@@ -133,10 +175,10 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     /** The same report as one csv sheet (UTF-8 with BOM, `;`, every field quoted). */
     async sublabelReportCsv(sublabelId: string, period: { from?: string; to?: string } = {}) {
       const r = await report(sublabelId, period);
-      const header = ['month', 'isrc', 'title', 'label_share', 'percent', 'amount', 'status', 'reason'];
+      const header = ['month', 'isrc', 'title', 'artists', 'label_share', 'percent', 'amount', 'status', 'reason'];
       const text = csvText(
         header,
-        r.rows.map((x) => [x.month, x.isrc, x.title, x.labelShare, x.percent, x.amount, x.status, x.reason]),
+        r.rows.map((x) => [x.month, x.isrc, x.title, x.artists.map((a) => a.pseudonym).join(', '), x.labelShare, x.percent, x.amount, x.status, x.reason]),
       );
       const span = `${period.from ?? 'start'}_${period.to ?? 'now'}`;
       return { fileName: `sublabel_${r.sublabel.name}_${span}.csv`, text };

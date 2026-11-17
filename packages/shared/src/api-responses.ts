@@ -2594,6 +2594,7 @@ export const sublabelReportSchema = z.object({
     z.object({
       isrc: z.string().describe('The ISRC of the recording'),
       title: z.string().nullable().describe('The title in the catalog'),
+      artists: z.array(artistRefSchema).describe('The pseudonyms of the registry on the ISRC (split rows, participations, registry links)'),
       month: month.describe('The report month'),
       termId: z.string().describe('The term in force that month'),
       percent: z.string().describe('Percent of the label share'),
@@ -2609,6 +2610,28 @@ export const sublabelReportSchema = z.object({
     }),
   ),
   months: z.array(z.object({ month, ...sublabelReportSumFields })),
+  tracks: z
+    .array(
+      z.object({
+        isrc: z.string().describe('The ISRC of the recording'),
+        title: z.string().nullable().describe('The title in the catalog'),
+        artists: z.array(artistRefSchema).describe('The pseudonyms of the registry on the ISRC'),
+        months: z.number().int().describe('Report months of the track in the period'),
+        ...sublabelReportSumFields,
+      }),
+    )
+    .describe('The period per track, the largest part first'),
+  artists: z
+    .array(
+      z.object({
+        key: z.string().describe('The ids of the pseudonyms of the group joined by |; empty = no pseudonym in the registry'),
+        artists: z.array(artistRefSchema).describe('The pseudonyms of the group: the tracks with exactly this set'),
+        tracks: z.number().int().describe('Tracks of the group'),
+        isrcs: z.array(z.string()).describe('The ISRCs of the group'),
+        ...sublabelReportSumFields,
+      }),
+    )
+    .describe('The period per set of pseudonyms of a track: the groups add up to the total, nothing counted twice'),
   total: z.object(sublabelReportSumFields),
 });
 

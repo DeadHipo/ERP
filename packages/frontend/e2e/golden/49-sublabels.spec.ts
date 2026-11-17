@@ -58,6 +58,7 @@ test('S58 a term: the preview, an error row, the save without a document', async
 test('S58 the report of P37 equals the API; the document confirms it; the csv', async ({ page }) => {
   const api = async () => (await (await page.request.get(`/api/v1/sublabels/${sublabelId}/report`)).json()) as {
     rows: { month: string; isrc: string; status: string; amount: string; labelShare: string }[];
+    artists: { key: string }[];
     total: Record<string, string>;
   };
   const before = await api();
@@ -69,7 +70,20 @@ test('S58 the report of P37 equals the API; the document confirms it; the csv', 
   const total = page.getByTestId('sublabel-report-total');
   for (const k of ['labelShare', 'amount', 'confirmed', 'waiting', 'currentAmount'])
     await expect(total.locator(`[data-col="${k}"]`)).toHaveAttribute('data-value', before.total[k] ?? '');
+  // by month (the default): one row per month, its tracks open below it
+  await expect(page.getByTestId('sublabel-report')).toHaveAttribute('data-view', 'months');
+  await expect(page.getByTestId(`report-row-2026-03-${I}`)).toHaveCount(0);
+  await page.getByTestId('report-month-2026-03').getByTestId('action-report-expand').click();
   await expect(page.getByTestId(`report-row-2026-03-${I}`)).toHaveAttribute('data-reason', 'no_document');
+  // by track and by artist: the API's groups, each opening its details
+  await page.getByTestId('action-report-view-tracks').click();
+  await expect(page.getByTestId(`report-track-${I}`).locator('[data-col="amount"] [data-testid="money"]')).toHaveAttribute('title', before.total.amount ?? '');
+  await page.getByTestId('action-report-view-artists').click();
+  await expect(page.getByTestId('sublabel-report')).toHaveAttribute('data-view', 'artists');
+  await expect(page.getByTestId('sublabel-report-artists').locator('tbody > tr[data-testid^="report-artist-"]')).toHaveCount(before.artists.length);
+  const group = before.artists[0];
+  await page.getByTestId(`report-artist-${group?.key || 'none'}`).getByTestId('action-report-expand').click();
+  await expect(page.getByTestId(`report-track-${I}`)).toBeVisible();
 
   const download = page.waitForEvent('download');
   await page.getByTestId('action-sublabel-report-csv').click();
@@ -92,8 +106,9 @@ test('S58 the report of P37 equals the API; the document confirms it; the csv', 
 
   const after = await api();
   expect(after.rows.map((r) => r.amount)).toEqual(before.rows.map((r) => r.amount));
-  await openAs(page, `/sublabels/${sublabelId}?tab=report`);
+  await openAs(page, `/sublabels/${sublabelId}?tab=report&view=tracks`);
   const row = after.rows[0];
+  await page.getByTestId(`report-track-${I}`).getByTestId('action-report-expand').click();
   await expect(page.getByTestId(`report-row-2026-03-${I}`)).toHaveAttribute('data-status', row?.status ?? '');
 });
 
