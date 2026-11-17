@@ -2,7 +2,8 @@
 import sys, os, datetime, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xl
-MAIN='/Users/nearlydeadhipo/Desktop/0to8/ERP/context_data/0to8 Main.xlsx'
+# MVP_MAIN_XLSX names a later copy of the workbook (D-226); the default is the workbook of stage 4
+MAIN=os.environ.get('MVP_MAIN_XLSX') or '/Users/nearlydeadhipo/Desktop/0to8/ERP/context_data/0to8 Main.xlsx'
 def d(v):
     if v in (None,''): return None
     if isinstance(v,float): return datetime.date(1899,12,30)+datetime.timedelta(days=int(v))
