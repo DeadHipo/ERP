@@ -18,12 +18,16 @@ import { LabelField, useLabelChoice } from '../../components/fields/LabelField';
 import { CutField } from './cuts/CutField';
 import { fmt, ru } from '../../i18n/ru';
 import { DocumentStep, type ReadyDocument } from '../work/actions/DocumentStep';
+import { IsrcListField } from './IsrcListField';
+import { parseIsrcList, scopeText } from './scope-text';
 import { centsToText } from '../owners/components/cents';
 
 const t = ru.money.actions;
 const k = ru.operations.kind;
 type ScopeKind = z.output<typeof scopeSchema>['kind'];
 const SCOPES: readonly ScopeKind[] = ['any', 'master', 'publishing', 'master_publishing', 'isrcs'];
+/** The kinds an exclusion means something for (D-227): it removes master income, so not `publishing`; `isrcs` names its own list. */
+const EXCLUDABLE: readonly (ScopeKind | 'none')[] = ['any', 'master', 'master_publishing'];
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
 /** The kinds the dialog records (D-173): a payout is the button, a return and a forgiveness are actions of a row. */
@@ -51,6 +55,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
   const [scope, setScope] = useState<ScopeKind | 'none'>('any');
   const [area, setArea] = useState<'master' | 'publishing'>('master');
   const [isrcs, setIsrcs] = useState('');
+  const [excluded, setExcluded] = useState('');
   const [doc, setDoc] = useState<ReadyDocument | null>(null);
   const [proof, setProof] = useState<{ id: string; label: string } | null>(null);
   const [comment, setComment] = useState('');
@@ -67,11 +72,15 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
   const typed = amount.trim();
   // the amount as the API takes it: the operator types it without a sign, the kind (or the adjustment's choice) gives it
   const signed = minus ? `-${typed}` : typed;
-  const isrcList = isrcs
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s !== '');
-  const scopeBody = !scoped || scope === 'none' ? null : scope === 'isrcs' ? { kind: scope, isrcs: isrcList } : { kind: scope };
+  const isrcList = parseIsrcList(isrcs);
+  const excludable = scoped && EXCLUDABLE.includes(scope);
+  const excludeList = excludable ? parseIsrcList(excluded) : [];
+  const scopeBody =
+    !scoped || scope === 'none'
+      ? null
+      : scope === 'isrcs'
+        ? { kind: scope, isrcs: isrcList }
+        : { kind: scope, ...(excludeList.length ? { excludeIsrcs: excludeList } : {}) };
   const run = useAction(
     () =>
       api.settlements.create({
@@ -95,7 +104,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
     },
   );
   const pseudonym = props.detail.artists.find((x) => x.id === artistId)?.pseudonym ?? '';
-  const scopeLabel = scope === 'isrcs' ? `${t.scopes.isrcs}: ${isrcList.join(', ')}` : t.scopes[scope];
+  const scopeLabel = scopeBody ? scopeText(scopeBody) : t.scopes[scope];
   const filled =
     AMOUNT.test(typed) &&
     (!ofArtist || artistId !== null) &&
@@ -216,7 +225,20 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
             options={scopes.map((s) => ({ id: s, label: t.scopes[s] }))}
           />
         ) : null}
-        {scoped && scope === 'isrcs' ? <TextField name="op-isrcs" label={t.isrcs} value={isrcs} onChange={setIsrcs} isRequired /> : null}
+        {scoped && scope === 'isrcs' ? (
+          <IsrcListField name="op-isrcs" label={t.isrcs} value={isrcs} onChange={setIsrcs} artistId={artistId} pseudonym={pseudonym} isRequired />
+        ) : null}
+        {excludable ? (
+          <IsrcListField
+            name="op-exclude-isrcs"
+            label={t.excludeIsrcs}
+            value={excluded}
+            onChange={setExcluded}
+            artistId={artistId}
+            pseudonym={pseudonym}
+            hint={t.excludeHint}
+          />
+        ) : null}
         <DocumentStep
           key={kind}
           kinds={KIND_DOCUMENT_KINDS[kind]}
@@ -247,6 +269,7 @@ export function CreateOperationDialog(props: { detail: OwnerDetail; existing: Op
           fmt(t.createLines.amount, { amount: AMOUNT.test(typed) ? formatMoney(signed) : signed }),
           ofArtist ? fmt(t.createLines.artist, { pseudonym }) : fmt(k.lines.owner, { owner: owner.name }),
           ...(scoped ? [fmt(t.createLines.scope, { scope: scopeLabel })] : []),
+          ...(excludeList.length ? [fmt(t.createLines.excluded, { isrcs: excludeList.join(', ') })] : []),
           fmt(k.lines.area, { area: k.areas[bookArea] }),
           fmt(t.createLines.document, { title: doc?.title ?? '' }),
           fmt(t.createLines.label, { label: labelName }),

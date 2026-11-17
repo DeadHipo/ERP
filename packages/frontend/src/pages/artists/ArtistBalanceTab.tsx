@@ -8,6 +8,7 @@ import { statusLabel } from '../../components/StatusChip';
 import { formatMoney } from '../../lib/money';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
+import { scopeText, scopeTitle } from '../operations/scope-text';
 import { Fact, Section, SimpleTable, Td } from '../owners/components/Fact';
 
 const t = ru.money.artist.money;
@@ -131,7 +132,9 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
                 <Td col="remaining">
                   <Money value={p.remaining} />
                 </Td>
-                <Td>{ru.money.actions.scopes[p.scope.kind as keyof typeof ru.money.actions.scopes] ?? p.scope.kind}</Td>
+                <Td col="scope">
+                  <span title={scopeTitle(p.scope)}>{scopeText(p.scope)}</span>
+                </Td>
               </tr>
             ))}
           </SimpleTable>

@@ -19,6 +19,7 @@ import { useWriteLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
 import { centsToText } from './components/cents';
 import { Fact, Section, SimpleTable, Td } from './components/Fact';
+import { scopeText, scopeTitle } from '../operations/scope-text';
 import { GateChip } from './OwnersPage';
 
 const t = ru.money.balance;
@@ -282,7 +283,9 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
                 <Td col="remaining">
                   <Money value={p.remaining} />
                 </Td>
-                <Td>{ru.money.actions.scopes[p.scope.kind as keyof typeof ru.money.actions.scopes] ?? p.scope.kind}</Td>
+                <Td col="scope">
+                  <span title={scopeTitle(p.scope)}>{scopeText(p.scope)}</span>
+                </Td>
               </tr>
             ))}
           </SimpleTable>

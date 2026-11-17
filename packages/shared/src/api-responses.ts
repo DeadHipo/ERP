@@ -1294,6 +1294,13 @@ export const admissionOfOwnerSchema = z.object({
 
 export const contractThresholdSchema = z.object({ id: z.string(), ownerId: z.string().describe(D.ownerId), payoutThresholdCents: z.number().int().nullable() });
 
+/** The recoup scope of an advance or a deduction (D-049, D-227): the kind, the ISRCs of kind `isrcs`, the excluded ISRCs. */
+export const recoupScopeSchema = z.object({
+  kind: z.string().describe(D.scopeKind),
+  isrcs: z.array(z.string()).optional().describe('kind isrcs: only these ISRCs'),
+  excludeIsrcs: z.array(z.string()).optional().describe('Income of these ISRCs does not recoup it'),
+});
+
 export const balanceSchema = z.object({
   owner: ownerSchema,
   confirmed: z.boolean().describe('The owner has an approved contract (or label decision)'),
@@ -1415,7 +1422,7 @@ export const balanceSchema = z.object({
         .optional()
         .describe('The counted forgivenesses as recorded (D-173): above `forgiven` when income before the date came later (signal forgivenessReduced)'),
       remaining: money.describe('What income still has to recoup'),
-      scope: z.object({ kind: z.string().describe(D.scopeKind) }).describe('Which income may recoup it'),
+      scope: recoupScopeSchema.describe('Which income may recoup it'),
       date,
       labelId: z.string().nullable().describe('The label of the operation (D-168); null = recouped from any income'),
     }),
@@ -1595,12 +1602,7 @@ export const operationSchema = z.object({
   artistId: z.string().nullable().describe(D.artistId),
   date,
   period: z.string().nullable().describe('The period the operation is for'),
-  scope: z
-    .object({
-      kind: z.string().describe(D.scopeKind),
-      isrcs: z.array(z.string()).optional().describe('kind isrcs: only these ISRCs'),
-      excludeIsrcs: z.array(z.string()).optional().describe('Income of these ISRCs does not recoup it'),
-    })
+  scope: recoupScopeSchema
     .nullable()
     .describe('Which income recoups an advance or a deduction; null on other kinds'),
   documentId: z.string().nullable().describe(D.documentId),

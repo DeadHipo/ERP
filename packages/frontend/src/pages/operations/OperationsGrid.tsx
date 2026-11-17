@@ -12,6 +12,7 @@ import { useLabel } from '../../lib/label';
 import { ru } from '../../i18n/ru';
 import { centsToText } from '../owners/components/cents';
 import { OperationActionHost, OperationButtons, type OperationAction } from './OperationActions';
+import { scopeText, scopeTitle } from './scope-text';
 import { OriginNote } from './OriginNote';
 
 const t = ru.money.operations;
@@ -26,12 +27,6 @@ const stateText = (op: Operation) =>
     `${t.cols.active}: ${op.active ? t.active.yes : t.active.no}`,
   ].join(' · ');
 
-const scopeText = (op: Operation) => {
-  if (!op.scope) return '—';
-  const kind = op.scope.kind as keyof typeof ru.money.actions.scopes;
-  const label = ru.money.actions.scopes[kind] ?? op.scope.kind;
-  return op.scope.isrcs?.length ? `${label}: ${op.scope.isrcs.join(', ')}` : label;
-};
 
 /**
  * The operations of P20 and of the owner's Операции tab: one grid, rows `operation-<id>`, the same row actions. Nothing is
@@ -106,7 +101,7 @@ function operationColumns(open: (a: OperationAction) => void, showOwner: boolean
       valueGetter: (p) => p.data?.amountCents,
       cellRenderer: (p: P) => (p.data ? <span data-col="amount"><Money value={centsToText(p.data.amountCents)} /></span> : null),
     },
-    { colId: 'scope', headerName: c.scope, minWidth: 100, valueGetter: (p) => (p.data ? scopeText(p.data) : '') },
+    { colId: 'scope', headerName: c.scope, minWidth: 100, valueGetter: (p) => (p.data ? scopeText(p.data.scope) : ''), tooltipValueGetter: (p) => (p.data ? scopeTitle(p.data.scope) : undefined) },
     {
       colId: 'label',
       headerName: c.label,

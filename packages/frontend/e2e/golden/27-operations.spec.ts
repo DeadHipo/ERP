@@ -137,6 +137,56 @@ test('S31/2 (ii) advance 40, scope isrcs [the track without income]: payable 80;
   await expect(position(page, adv, 'remaining')).toHaveAttribute('title', '40');
 });
 
+test('S31/2 (D-227) advance 20, scope master excluding the earning track ticked in the picker: after proof recouped 0, remaining 20', async ({ page }) => {
+  const k = sc(31, 2);
+  const earning = isrc(31, 2, 1);
+  await openOwner(page, k.owners.A ?? '', 'operations');
+  await page.getByTestId('action-create-operation').click();
+  const dialog = page.getByTestId('form-dialog');
+  await dialog.getByTestId('field-op-amount').fill('20');
+  await dialog.getByTestId('field-op-date').fill('2026-01-01');
+  await choose(page, 'op-scope', 'мастер');
+  // the exclusion field shows for «мастер», the magnifier lists the tracks of the pseudonym, a tick writes the ISRC
+  await dialog.getByTestId('action-op-exclude-isrcs-pick').click();
+  await expect(dialog.getByTestId('op-exclude-isrcs-picker')).toBeVisible();
+  await dialog.getByTestId(`op-exclude-isrcs-pick-${earning}`).check();
+  await expect(dialog.getByTestId('op-exclude-isrcs-picked')).toHaveAttribute('data-count', '1');
+  await expect(dialog.getByTestId('field-op-exclude-isrcs')).toHaveValue(earning);
+  await dialog.getByTestId('action-op-exclude-isrcs-pick-done').click();
+  await expect(dialog.getByTestId('op-exclude-isrcs-picker')).toHaveCount(0);
+  // «выбранные ISRC» has its own list: the exclusion field goes away
+  await choose(page, 'op-scope', 'выбранные ISRC');
+  await expect(dialog.getByTestId('field-op-exclude-isrcs')).toHaveCount(0);
+  await choose(page, 'op-scope', 'мастер');
+  await dialog.getByTestId('field-op-exclude-isrcs').fill(earning.toLowerCase());
+  await choose(page, 'op-label', '0to8');
+  await dialog.getByTestId('field-document-file').fill('dummy://e2e-advance-312-exclude.pdf');
+  await dialog.getByTestId('action-document-create').click();
+  await toastOk(page, 'Документ создан');
+  await dialog.getByTestId('action-document-approve').click();
+  await confirm(page);
+  await expect(dialog.getByTestId('document-ready')).toBeVisible();
+  await dialog.getByTestId('field-op-comment').fill('e2e');
+  await dialog.getByTestId('action-operation-submit').click();
+  const box = page.getByTestId('confirm-dialog');
+  await expect(box).toContainText('Область: мастер, кроме 1 ISRC');
+  await expect(box).toContainText(`Исключены ISRC: ${earning}`);
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/v1/settlements/operations') && r.request().method() === 'POST');
+  await confirm(page);
+  const res = await created;
+  expect(res.status()).toBe(201);
+  const body = (await res.json()) as { id: string; scope: { kind: string; excludeIsrcs?: string[] } };
+  expect(body.scope).toEqual({ kind: 'master', excludeIsrcs: [earning] });
+  await toastOk(page, 'Операция записана');
+  await expect(row(page, body.id).locator('[col-id="scope"]')).toContainText('мастер, кроме 1 ISRC');
+  await attachProof(page, body.id, 'dummy://e2e-proof-312-exclude.pdf');
+  await tab(page, 'balance');
+  // the earning track is excluded and the publishing is outside «мастер»: nothing recoups it, payable stays 80
+  await expectTotals(page, { recouped: '0', payable: '80' });
+  await expect(position(page, body.id, 'remaining')).toHaveAttribute('title', '20');
+  await expect(page.getByTestId(`position-${body.id}`).locator('[data-col="scope"]')).toContainText('мастер, кроме 1 ISRC');
+});
+
 test('S31/3 (iii) read-only: the migration payout 20 → paid 20, payable 60', async ({ page }) => {
   await openOwner(page, sc(31, 3).owners.A ?? '');
   await expectTotals(page, { earned: '80', paid: '20', payable: '60' });
