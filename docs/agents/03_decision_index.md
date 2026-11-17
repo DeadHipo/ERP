@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-229 by topic)
+# Decision index (D-001 … D-230 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -211,6 +211,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-227 The excluded ISRCs of a recoup scope in «Операция» (`field-op-exclude-isrcs` for any / master / master_publishing) and the picker of the pseudonym's tracks (`IsrcListField`, `GET /artists/:id`); the scope shown «мастер, кроме N ISRC» in P20 and the positions (`recoupScopeSchema` keeps the lists) · in force
 - D-228 `settlements.opening_balances` (the inactive archive of the start) and `owners.documents.upload_deadline` (never filled) dropped by migration 0034; `uploadDeadline` leaves the document API · in force
 - D-229 The sublabels counted only by their terms: the aliases of the sublabel labels move to their own label, the rules and the 15 sublabel labels deleted (data, `scripts/sublabels/switch-off-rules.sql`); no recipient: the part is the sublabel's report, the money stays ours (+57 474,51 by the shadow run); hints learn the strings from the sublabel's own tracks · in force, the live switch after the owner's look
+- D-230 The switch of D-229 applied to the live store (backup of `labels` in `data/backups/`); the live money equals the shadow «after» exactly · done; the dead code of the rules waits for removal
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
