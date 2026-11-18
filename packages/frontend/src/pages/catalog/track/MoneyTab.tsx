@@ -27,7 +27,9 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
   if (data.months.length === 0) return <PageState variant="empty" message={t.noMonths} />;
   const c = t.cols;
   return (
-    <SimpleTable
+    <div className="flex flex-col gap-4">
+      <ByArtist data={data} />
+      <SimpleTable
       testId="track-months"
       headers={[c.expand, c.account, c.upc, c.reportingMonth, c.salesMonth, c.book, c.labelName, m.net, m.labelShare, m.ours, c.status]}
     >
@@ -55,6 +57,85 @@ export function MoneyTab({ isrc, data }: { isrc: string; data: TrackMoney }) {
         );
       })}
     </SimpleTable>
+    </div>
+  );
+}
+
+/** D-237: what each pseudonym got per report month (the backend's sums), the waiting part beside it; ours and the net. */
+function ByArtist({ data }: { data: TrackMoney }) {
+  const b = data.byArtist;
+  const at = (list: readonly { month: string; amount: string; waiting?: string }[], month: string) => list.find((x) => x.month === month);
+  const waiting = (v: string | undefined) =>
+    v && v !== '0' ? (
+      <div className="text-xs text-muted">
+        {t.byArtistWaiting} <Money value={v} />
+      </div>
+    ) : null;
+  return (
+    <section className="flex flex-col gap-2" data-testid="track-by-artist">
+      <h2 className="text-sm font-medium">{t.byArtist}</h2>
+      <p className="text-xs text-muted">{t.byArtistHint}</p>
+      <SimpleTable headers={[t.byArtistWho, ...b.months, t.byArtistTotal]}>
+        {b.rows.map((r) => (
+          <tr key={r.artistId} data-testid={`by-artist-${r.artistId}`}>
+            <Td>
+              <EntityLink kind="artist" id={r.artistId} label={r.pseudonym} />
+            </Td>
+            {b.months.map((month) => {
+              const x = at(r.months, month);
+              return (
+                <Td key={month} col={month}>
+                  {x ? (
+                    <>
+                      <Money value={x.amount} />
+                      {waiting(x.waiting)}
+                    </>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </Td>
+              );
+            })}
+            <Td col="total">
+              <strong>
+                <Money value={r.amount} />
+              </strong>
+              {waiting(r.waiting)}
+            </Td>
+          </tr>
+        ))}
+        <tr data-testid="by-artist-ours" className="border-t border-border">
+          <Td>{t.byArtistOurs}</Td>
+          {b.months.map((month) => {
+            const x = at(b.ours.months, month);
+            return (
+              <Td key={month} col={month}>
+                {x ? <Money value={x.amount} /> : <span className="text-muted">—</span>}
+              </Td>
+            );
+          })}
+          <Td col="total">
+            <strong>
+              <Money value={b.ours.amount} />
+            </strong>
+          </Td>
+        </tr>
+        <tr data-testid="by-artist-net" className="text-muted">
+          <Td>{t.byArtistNet}</Td>
+          {b.months.map((month) => {
+            const x = at(b.net.months, month);
+            return (
+              <Td key={month} col={month}>
+                {x ? <Money value={x.amount} /> : '—'}
+              </Td>
+            );
+          })}
+          <Td col="total">
+            <Money value={b.net.amount} />
+          </Td>
+        </tr>
+      </SimpleTable>
+    </section>
   );
 }
 

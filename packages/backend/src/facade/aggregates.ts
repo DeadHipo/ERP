@@ -332,6 +332,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
         splits: splitList.items,
         participations: partList.items,
         totals: sumUnits(calc, units),
+        byArtist: byArtistOf(units, calc),
         months: units.map(({ layers, ...u }) => ({
           account: u.account,
           upc: u.upc,
@@ -536,4 +537,53 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
     },
   };
   return api;
+}
+
+/**
+ * D-237: what each pseudonym of a track got per report month, summed over the units of the month whatever the status
+ * (the waiting part beside it), with the label share that is ours and the net. Sums of the allocations as calculated:
+ * no new multiplication.
+ */
+function byArtistOf(units: readonly UnitResult[], calc: Calculation) {
+  const months = [...new Set(units.map((u) => u.reportingMonth))].sort();
+  type Acc = { artistId: string; ownerId: string | null; months: Map<string, { amount: Decimal; waiting: Decimal }> };
+  const rows = new Map<string, Acc>();
+  const ours = new Map<string, Decimal>();
+  const net = new Map<string, Decimal>();
+  const add = (m: Map<string, Decimal>, k: string, v: Decimal) => m.set(k, (m.get(k) ?? ZERO).add(v));
+  for (const u of units) {
+    add(ours, u.reportingMonth, u.ours);
+    add(net, u.reportingMonth, u.net);
+    for (const a of u.allocations) {
+      const r = rows.get(a.artistId) ?? rows.set(a.artistId, { artistId: a.artistId, ownerId: a.ownerId, months: new Map() }).get(a.artistId)!;
+      const cur = r.months.get(u.reportingMonth) ?? { amount: ZERO, waiting: ZERO };
+      r.months.set(u.reportingMonth, {
+        amount: cur.amount.add(a.amount),
+        waiting: a.category === 'C' ? cur.waiting.add(a.amount) : cur.waiting,
+      });
+    }
+  }
+  const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.add(x), ZERO);
+  const series = (m: Map<string, Decimal>) => ({
+    months: months.filter((k) => m.has(k)).map((k) => ({ month: k, amount: m.get(k) as Decimal })),
+    amount: sum([...m.values()]),
+  });
+  return {
+    months,
+    rows: [...rows.values()]
+      .map((r) => {
+        const list = months.filter((k) => r.months.has(k)).map((k) => ({ month: k, ...(r.months.get(k) as { amount: Decimal; waiting: Decimal }) }));
+        return {
+          artistId: r.artistId,
+          pseudonym: calc.artistIndex.get(r.artistId)?.pseudonym ?? '?',
+          ownerId: r.ownerId,
+          months: list,
+          amount: sum(list.map((x) => x.amount)),
+          waiting: sum(list.map((x) => x.waiting)),
+        };
+      })
+      .sort((a, b) => b.amount.cmp(a.amount) || a.pseudonym.localeCompare(b.pseudonym)),
+    ours: series(ours),
+    net: series(net),
+  };
 }

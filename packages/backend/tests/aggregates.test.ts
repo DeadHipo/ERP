@@ -291,6 +291,14 @@ describe('GET /tracks/:isrc/money (N6)', () => {
     expect(body.splits).toHaveLength(1);
     expect(body.participations).toHaveLength(1);
     expect(body.months).toHaveLength(2);
+    // D-237: the sums by pseudonym and report month are the allocations of the units; the net and ours the totals
+    const byArtist = body.byArtist;
+    expect(byArtist.net.amount).toBe(body.totals.net);
+    expect(byArtist.ours.amount).toBe(body.totals.ours);
+    for (const r of byArtist.rows) {
+      const all = body.months.flatMap((m: any) => m.allocations).filter((a: any) => a.artistId === r.artistId); // eslint-disable-line @typescript-eslint/no-explicit-any
+      expect(r.amount, r.pseudonym).toBe(all.reduce((s: any, a: any) => s.add(a.amount), ZERO).toFixed()); // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
     for (const m of body.months) {
       const sum = m.allocations.reduce((s: any, a: any) => s.add(a.amount), ZERO).add(m.labelShare); // eslint-disable-line @typescript-eslint/no-explicit-any
       expect(sum.toFixed(), m.reportingMonth).toBe(m.net);

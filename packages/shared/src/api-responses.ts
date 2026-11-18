@@ -1741,6 +1741,25 @@ export const trackMoneySchema = z.object({
   splits: z.array(splitListItemSchema),
   participations: participationListSchema.shape.items,
   totals: z.object(moneySums),
+  byArtist: z
+    .object({
+      months: z.array(month).describe('The report months of the track, ascending'),
+      rows: z.array(
+        z.object({
+          artistId: z.string().describe(D.artistId),
+          pseudonym: z.string().describe(D.pseudonym),
+          ownerId: z.string().nullable().describe(D.ownerId),
+          months: z
+            .array(z.object({ month, amount: money.describe('Every allocation of the pseudonym that month'), waiting: money.describe('Of it, what waits (C)') }))
+            .describe('Per report month, the months without an allocation omitted'),
+          amount: money.describe('Over every month'),
+          waiting: money.describe('Of it, what waits (C)'),
+        }),
+      ),
+      ours: z.object({ months: z.array(z.object({ month, amount: money })), amount: money }).describe('The label share that is ours, per month'),
+      net: z.object({ months: z.array(z.object({ month, amount: money })), amount: money }).describe('Received, per month'),
+    })
+    .describe('D-237: what each pseudonym got per report month, summed whatever the status (the waiting part beside it), with ours and the net'),
   months: z.array(trackMoneyMonthSchema),
 });
 export type TrackMoney = z.infer<typeof trackMoneySchema>;
