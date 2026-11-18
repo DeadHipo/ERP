@@ -14,7 +14,8 @@
     "./operation-kinds": "./src/operation-kinds.ts",
     "./operation-import": "./src/operation-import.ts",
     "./mcp-connection": "./src/mcp-connection.ts",
-    "./track-platforms": "./src/track-platforms.ts"
+    "./track-platforms": "./src/track-platforms.ts",
+    "./track-title": "./src/track-title.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"

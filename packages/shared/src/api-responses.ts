@@ -2199,6 +2199,69 @@ export const trackMetaViewSchema = z.object({
 });
 export type TrackLabel = z.infer<typeof trackLabelSchema>;
 
+// ---- the track directory (D-244): three maps for showing a track, no money ----
+
+/** The track meta of D-238 as the directory gives it (D-244): no `updatedAt` / `updatedBy`, plus `baseTitle` from the server. */
+export const trackViewMetaSchema = z.object({
+  title: z.string().nullable().describe('D-244: the title as on the platforms, with the version (D-238)'),
+  baseTitle: z.string().nullable().describe('D-244: the title without the « - <version>» tail, computed by the server (`baseTitleOf`); null = no title'),
+  version: z.string().nullable().describe('D-244: the version, like «Slowed» (D-238)'),
+  artists: z.string().nullable().describe('D-244: the artists as on the platforms, a text (D-238)'),
+  durationMs: z.number().int().nullable().describe('D-244: the duration, milliseconds'),
+  explicit: z.boolean().nullable().describe('D-244: marked explicit'),
+  releaseDate: date.nullable().describe('D-244: the release date on the platforms, YYYY-MM-DD'),
+  coverUrl: z.string().nullable().describe('D-244: the cover, a link'),
+  primaryPlatform: z.string().nullable().describe('D-244: the platform the shown values come from'),
+});
+export type TrackViewMeta = z.infer<typeof trackViewMetaSchema>;
+
+/** A track as it is shown (D-244): the titles as they are, the meta, the catalog label and the keys of its releases and pseudonyms. */
+export const trackViewSchema = z.object({
+  isrc: z.string().describe(`D-244: ${D.isrc}`),
+  catalogTitle: z.string().nullable().describe('D-244: our title of the track (the first non-empty one of our catalog); null = none'),
+  reportTitle: z.string().nullable().describe('D-244: the title in the Believe reports; null = none or not visible to this user'),
+  meta: trackViewMetaSchema.nullable().describe('D-244: the track meta (D-238); null = none yet'),
+  catalogLabel: z
+    .object({
+      id: z.string().describe(`D-244: ${D.labelId}`),
+      name: z.string().describe('D-244: the name of the own label'),
+    })
+    .nullable()
+    .describe('D-244: the catalog label of the ISRC now (the open interval of its label history, D-172); not the book of its money; null = none'),
+  upcs: z.array(z.string().describe(`D-244: ${D.upc}`)).nullable().describe('D-244: the UPCs of the releases of the track, keys of `releases`; null = not visible to this user'),
+  artists: z
+    .array(z.string().describe(`D-244: ${D.artistId}`))
+    .nullable()
+    .describe('D-244: the ids of the pseudonyms of its splits and participations, keys of `artists`; null = not visible to this user'),
+});
+export type TrackView = z.infer<typeof trackViewSchema>;
+
+/** A release as it is shown (D-244): the row of the registry of the label; without one, only the title of the reports. */
+export const releaseViewSchema = z.object({
+  upc: z.string().describe(`D-244: ${D.upc}`),
+  title: z.string().nullable().describe('D-244: the release title of the registry; without a registry row, the one of the reports; null = none'),
+  version: z.string().nullable().describe('D-244: the version of the release in the registry; null = none or no registry row'),
+  releaseDate: z.string().nullable().describe('D-244: released at, YYYY-MM-DDTHH:MM:SS, no zone (the registry); null = none or no registry row'),
+  labelName: z.string().nullable().describe('D-244: the name of the own label of the registry row; null = no registry row'),
+  trackCount: z.number().int().nullable().describe(`D-244: ${D.trackCount} (the registry); null = none or no registry row`),
+});
+export type ReleaseView = z.infer<typeof releaseViewSchema>;
+
+/** A pseudonym as it is shown (D-244). */
+export const artistViewSchema = z.object({
+  id: z.string().describe(`D-244: ${D.artistId}`),
+  pseudonym: z.string().describe('D-244: the pseudonym (the artist name)'),
+  ownerId: z.string().nullable().describe(`D-244: ${D.ownerId}; null = not shown to this user, as in GET /splits`),
+});
+export type ArtistView = z.infer<typeof artistViewSchema>;
+
+/** The track directory (D-244): each track, release and pseudonym once, by its key. */
+export const tracksQueryResponseSchema = z.object({
+  tracks: z.record(z.string(), trackViewSchema).describe('D-244: the tracks by ISRC'),
+  releases: z.record(z.string(), releaseViewSchema).describe('D-244: the visible releases of those tracks by UPC'),
+  artists: z.record(z.string(), artistViewSchema).describe('D-244: the visible pseudonyms of those tracks by id'),
+});
+
 // ---- the assumption (D-172) ----
 
 /** `POST /splits/assume`: the created `assumption` document, the splits it was set on and the splits left as they were. */
