@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { Facade } from '../facade';
 import { ValidationError } from '../shared/errors';
 import { sessionUserOf } from '../auth/middleware';
+import { operationOf } from './operations';
 
 // The operator's trace (D-140, R5): every write needs `X-Operator` (URI-encoded name), every successful write leaves one
 // row in the audit module before the response is sent, so a following GET /audit sees it.
@@ -367,9 +368,9 @@ function traceWrites(
   };
 }
 
-/** Mount before the routes of an organization: every write of the organization leaves a row in its audit. */
+/** Mount before the routes of an organization: every write of the organization leaves a row in its audit; a `readOnly` operation passes untouched (D-246). */
 export function operatorTrace(facade: Facade): RequestHandler {
-  return traceWrites(async (req, route, params, body, res) => {
+  const trace = traceWrites(async (req, route, params, body, res) => {
     const reqBody = asRecord(req.body);
     const fromResponse = RESPONSE_SUMMARY_ROUTES.get(`${req.method} ${route}`);
     if (fromResponse) {
@@ -388,6 +389,8 @@ export function operatorTrace(facade: Facade): RequestHandler {
       labelId: labelOfWrite(`${req.method} ${route}`, asRecord(req.query), reqBody, body),
     };
   });
+  // a read sent as a POST (D-246) is not a write: no operator, no row; the path is relative to the router, as in `authorize`
+  return (req, res, next) => (operationOf(req.method, req.path)?.readOnly ? next() : trace(req, res, next));
 }
 
 /**

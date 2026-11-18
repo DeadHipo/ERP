@@ -66,7 +66,7 @@ describe('monthRowId', () => {
 });
 
 describe('routeLabel (audit table)', () => {
-  const writes = API_OPERATIONS.filter((o) => o.method !== 'get');
+  const writes = API_OPERATIONS.filter((o) => o.method !== 'get' && !o.readOnly); // D-246: a read sent as a POST leaves no audit row
   it('has a Russian label for every write route template of the API', () => {
     expect(writes.length).toBeGreaterThan(20);
     const missing = writes

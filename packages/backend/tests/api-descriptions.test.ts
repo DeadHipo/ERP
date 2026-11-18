@@ -38,8 +38,37 @@ function silent(schema: z.ZodType, path: string, seen = new Set<z.ZodType>()): s
   });
 }
 
+/**
+ * The paths of the fields of a body without a meaning (D-246): the walk of `silent`, but no name is plain (a body
+ * field always says what it is) and an array or a record of scalars is a field too.
+ */
+function bodySilent(schema: z.ZodType, path: string): string[] {
+  const s = inner(schema);
+  if (s instanceof z.ZodArray) return bodySilent(s.element as z.ZodType, `${path}[]`);
+  if (s instanceof z.ZodRecord) return bodySilent(s.valueType as z.ZodType, `${path}{}`);
+  if (s instanceof z.ZodUnion) return (s.options as z.ZodType[]).flatMap((o) => bodySilent(o, path));
+  if (!(s instanceof z.ZodObject)) return [];
+  return Object.entries(s.shape as Record<string, z.ZodType>).flatMap(([name, field]) => {
+    const u = inner(field);
+    const nested = bodySilent(field, `${path}.${name}`);
+    const holdsObjects = u instanceof z.ZodObject || u instanceof z.ZodUnion || nested.length > 0 || hasObject(u);
+    const text = field.description ?? u.description;
+    // a container of objects is described by its fields; a scalar, or an array / record of scalars, by its own text
+    return holdsObjects ? nested : text && !GENERIC.has(text) ? [] : [`${path}.${name}`];
+  });
+}
+/** An array or a record whose elements are objects (at any depth). */
+function hasObject(s: z.ZodType): boolean {
+  const u = inner(s);
+  if (u instanceof z.ZodObject || u instanceof z.ZodUnion) return true;
+  if (u instanceof z.ZodArray) return hasObject(u.element as z.ZodType);
+  if (u instanceof z.ZodRecord) return hasObject(u.valueType as z.ZodType);
+  return false;
+}
+
+// D-246: a read sent as a POST (`readOnly`) is a read too; its body is described as a query is
 const reads = API_OPERATIONS.filter(
-  (o) => o.method === 'get' && (o.ability?.action === 'read' || o.ability?.action === 'read_money') && !['auth', 'orgs', 'users'].includes(o.tag),
+  (o) => (o.method === 'get' || o.readOnly) && (o.ability?.action === 'read' || o.ability?.action === 'read_money') && !['auth', 'orgs', 'users'].includes(o.tag),
 );
 
 describe('the meaning of the fields of the reads (D-178)', () => {
@@ -58,6 +87,26 @@ describe('the meaning of the fields of the reads (D-178)', () => {
         .map(([name]) => `${o.path}?${name}`),
     );
     expect(missing).toEqual([]);
+  });
+
+  it('every scalar of the body of a read sent as a POST says what it is, nested fields too (D-246)', () => {
+    const posted = reads.filter((o) => o.readOnly);
+    expect(posted.length).toBeGreaterThan(0);
+    for (const o of posted) expect(o.body, `${o.path} has a body`).toBeInstanceOf(z.ZodObject);
+    // the same walk as for the answers, without the names that speak for themselves in an answer: a body field always says what it is
+    expect(posted.flatMap((o) => bodySilent(o.body as z.ZodType, `${o.path} body`))).toEqual([]);
+  });
+
+  it('the walk of a body finds a silent field at any depth: in an object, an array, a record, a union', () => {
+    const body = z.object({
+      said: z.array(z.string()).describe('Said'),
+      silentList: z.array(z.string()),
+      scope: z.object({ kind: z.string(), upc: z.string().describe('Said'), deep: z.object({ from: z.string() }) }).describe('Said'),
+      rows: z.array(z.object({ name: z.string() })),
+      map: z.record(z.string(), z.object({ id: z.string() })),
+      either: z.union([z.object({ a: z.string() }), z.object({ b: z.string().describe('Said') })]),
+    });
+    expect(bodySilent(body, 'body')).toEqual(['body.silentList', 'body.scope.kind', 'body.scope.deep.from', 'body.rows[].name', 'body.map{}.id', 'body.either.a']);
   });
 
   it('the description keeps the summary and, on a money answer, the meaning of its fields', () => {

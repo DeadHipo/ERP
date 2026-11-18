@@ -423,6 +423,14 @@ export const trackSummaryQuery = z.object({
     .describe('Comma-separated ISRCs (at most 500): only these tracks, from a calculation of their units alone (D-162)'),
   ...labelQuery.shape,
 });
+/** `POST /tracks/query` (D-246): the ISRCs whose directory is asked; a read, sent as a POST for the length of the list. */
+export const tracksQueryBody = z.object({
+  isrcs: z
+    .array(z.string().max(32))
+    .min(1)
+    .max(1000)
+    .describe('The ISRCs to describe, 1 to 1000 (dashes, spaces and case are ignored; a repeated one counts once in the answer)'),
+});
 export const trackCatalogQuery = labelQuery.extend({
   ...pageQuery.shape,
   catalog: z

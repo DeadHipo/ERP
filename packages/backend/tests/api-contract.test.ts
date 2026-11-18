@@ -648,6 +648,14 @@ const OPERATOR = 'contract-test';
     expect((await call('patch', '/tracks/platforms/:id', { params: { id: platform.id }, body: { durationMs: 123000 } })).durationMs).toBe(123000);
     expect((await call('get', '/tracks/:isrc/meta', { params: { isrc: I3 } })).platforms).toHaveLength(1);
     await call('post', '/tracks/platforms/:id/remove', { params: { id: platform.id } });
+    // the track directory (D-245), a read sent as a POST (D-246): no X-Operator, no audit row; an unknown ISRC is absent
+    const auditBeforeQuery = ((await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as unknown[]).length;
+    const directory = await call('post', '/tracks/query', { body: { isrcs: [I3, I1, I3, 'QZTST2699999'] } });
+    expect(Object.keys(directory.tracks).sort()).toEqual([I1, I3].sort());
+    expect(directory.tracks[I3]).toMatchObject({ isrc: I3, catalogTitle: 'Track Three', meta: { title: 'Song - Slowed', baseTitle: 'Song', version: 'Slowed' }, catalogLabel: { id: zero.id }, upcs: [UPC] });
+    expect(directory.releases[UPC]).toMatchObject({ upc: UPC });
+    for (const id of directory.tracks[I1].artists as string[]) expect(directory.artists[id]).toMatchObject({ id });
+    expect(((await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as unknown[]).length, 'POST /tracks/query leaves no audit row').toBe(auditBeforeQuery);
     await call('get', '/releases', { query: { label: zero.id } });
     await call('get', '/releases/:upc', { params: { upc: UPC }, query: { label: zero.id } });
     // the release registry (D-172): the Believe release export of the label (synthetic), the registry read
@@ -905,9 +913,7 @@ const OPERATOR = 'contract-test';
       };
       const headers = (p.parameters ?? []).filter((x) => x.in === 'header');
       const key = operationKey(op);
-      expect(headers.some((h) => h.name === 'X-Operator' && h.required), `${key} X-Operator`).toBe(
-        op.method !== 'get' && op.access !== 'public',
-      );
+      expect(headers.some((h) => h.name === 'X-Operator' && h.required), `${key} X-Operator`).toBe(needsOperator(op)); // D-246: not on a read sent as a POST
       expect(headers.some((h) => h.name === 'X-Org' && !h.required), `${key} X-Org`).toBe(op.access === 'org');
       expect(p.security.flatMap((x) => Object.keys(x)).sort(), `${key} security`).toEqual(
         [

@@ -232,7 +232,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const sfx = randomUUID().slice(0, 8);
   const ISRC_B = 'QZTST2699901';
   const UPC_B = '2699900000001';
-  const B_NAMES = ['B Owner Secret', 'B Pseudo Secret', 'B Second Secret', 'B Label Secret', 'B Sub Secret', 'B Track Secret'];
+  const B_NAMES = ['B Owner Secret', 'B Pseudo Secret', 'B Second Secret', 'B Label Secret', 'B Sub Secret', 'B Track Secret', 'B Meta Secret', 'Secret Version', 'B Platform Secret'];
 
   type Ids = {
     owner: string; artist: string; artist2: string; track: string; document: string; split: string;
@@ -378,6 +378,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   /** Every operation of an organization: how to call it with the ids of `x` (B's or unknown ones). */
   const CASES: Record<string, (x: Ids) => Call> = {
     'GET /search': () => ({ query: { q: 'Secret' } }),
+    'POST /tracks/query': (x) => ({ body: { isrcs: [x.isrc] } }), // D-246: a read sent as a POST
     'GET /owners': (x) => ({ query: { label: x.label } }),
     'GET /users': () => ({}),
     'POST /users': (x) => ({ body: { login: `scope-new-${sfx}`, password: 'p', role: 'label_manager', labelIds: [x.label] } }),
@@ -573,7 +574,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
       // an unknown id must reach the lookup, not stop at validation (else the comparison proves nothing)
       if (!VALIDATION_ALLOWED.includes(key))
         expect(ru.body?.error?.code, `${key}: the unknown id stopped at validation: ${JSON.stringify(ru.body)}`).not.toBe('validation_error');
-      if (o.method !== 'get') expect(rb.status, `${key}: a write with B's ids succeeded`).toBeGreaterThanOrEqual(400);
+      // D-246: a read sent as a POST is checked as a read (the same answer as on an unknown id, nothing of B)
+      if (o.method !== 'get' && !o.readOnly) expect(rb.status, `${key}: a write with B's ids succeeded`).toBeGreaterThanOrEqual(400);
     }
     expect((await api('a', 'get', '/audit', { query: { limit: '500' } })).body.items.length).toBe(auditBefore);
     expect(await bView()).toBe(bBefore);

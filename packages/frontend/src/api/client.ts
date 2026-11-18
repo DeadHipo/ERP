@@ -60,15 +60,18 @@ function toLogin(): void {
 /**
  * Every call of the app goes through here: fetch (with the session cookie), the operator header on writes, `X-Org` of a
  * system administrator working in an organization (or `org` of the call), error mapping, schema parse. `anonymous` =
- * a public write (the login and the logout, D-170): no operator yet.
+ * a public write (the login and the logout, D-170): no operator yet. `readOnly` = a read sent as a POST (D-246, the
+ * operations marked `readOnly` in the backend's `operations.ts`): like a GET, no operator and no `X-Audit`; the
+ * function of the operation passes it.
  */
 export async function call<Schema extends z.ZodType>(
   method: 'GET' | 'POST' | 'PATCH',
   url: string,
-  options: { query?: QueryParams; body?: unknown; schema: Schema; anonymous?: boolean; org?: string },
+  options: { query?: QueryParams; body?: unknown; schema: Schema; anonymous?: boolean; org?: string; readOnly?: boolean },
 ): Promise<z.output<Schema>> {
   const headers: Record<string, string> = {};
-  if (method !== 'GET' && !options.anonymous) {
+  const write = method !== 'GET' && !options.readOnly;
+  if (write && !options.anonymous) {
     const operator = getOperator();
     if (!operator) throw new ApiError('Укажите оператора', 0, 'operator_required');
     headers['X-Operator'] = encodeURIComponent(operator);
@@ -90,7 +93,7 @@ export async function call<Schema extends z.ZodType>(
   }
   const json: unknown = await res.json().catch(() => undefined);
   // D-150: the write happened but its audit record failed; the operator must know the trace is missing.
-  if (res.ok && method !== 'GET' && res.headers.get('X-Audit') === 'failed') onAuditFailed?.();
+  if (res.ok && write && res.headers.get('X-Audit') === 'failed') onAuditFailed?.();
   if (!res.ok) {
     const parsed = R.errorBody.safeParse(json);
     if (parsed.success) {

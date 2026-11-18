@@ -51,7 +51,24 @@ interface OperationBase {
  * chain (who is authenticated, which router); `ability` decides the right.
  */
 export type ApiOperation = OperationBase &
-  ({ access: 'public'; ability?: undefined } | { access: 'user' | 'system' | 'org'; ability: Ability });
+  (
+    | { access: 'public'; ability?: undefined; readOnly?: undefined }
+    | { access: 'user' | 'system' | 'org'; ability: Ability; readOnly?: undefined }
+    | ReadOnlyPost
+  );
+
+/**
+ * A read sent as a POST (D-246), the one exception to «every POST is a write» (D-140): its input is too long for a
+ * query string. It needs no `X-Operator`, leaves no audit row and writes nothing (the service reads in a snapshot);
+ * the type allows it only on a `post` whose right is `read` / `read_money`. The list of such operations is frozen in
+ * `tests/read-only-operations.test.ts`.
+ */
+interface ReadOnlyPost {
+  readOnly: true;
+  method: 'post';
+  access: 'user' | 'system' | 'org';
+  ability: Ability & { action: 'read' | 'read_money' };
+}
 
 const list = <T extends z.ZodType>(item: T) => z.array(item);
 
@@ -598,6 +615,19 @@ const operations: ApiOperation[] = [
     summary: 'Every ISRC that earns or is registered, with UPCs, names, split and participation flags; no money, no calculation (D-162); under a label the ISRCs of its units (D-168)',
     query: S.trackCatalogQuery,
     response: R.trackCatalogSchema,
+  },
+  {
+    method: 'post',
+    path: '/tracks/query',
+    access: 'org',
+    ability: { action: 'read', subject: 'tracks', scope: 'record' },
+    readOnly: true,
+    tag: 'tracks',
+    summary:
+      'The track directory of some ISRCs (D-245, D-246): the tracks by ISRC with every title as it is stored, and the releases (by UPC) and pseudonyms (by id) those tracks name, each once. A read sent as a POST: no X-Operator, no audit row, nothing written. No money. An ISRC the organization does not know is absent from the answer. A manager of some labels gets the catalog side of any ISRC (catalogTitle, meta, catalogLabel) and the report side (reportTitle, upcs, artists) only of an ISRC of its labels: on another one they are null, and its releases and pseudonyms are not in the maps',
+    body: S.tracksQueryBody,
+    response: R.tracksQueryResponseSchema,
+    errors: ['400 validation_error: no ISRC, more than 1000 ISRCs, or a string that is not an ISRC'],
   },
   {
     method: 'get',
@@ -1867,8 +1897,9 @@ const operations: ApiOperation[] = [
   },
 ];
 
-/** A write needs `X-Operator` unless it is public (login, logout: D-170). */
-export const needsOperator = (o: Pick<ApiOperation, 'method' | 'access'>) => o.method !== 'get' && o.access !== 'public';
+/** A write needs `X-Operator` unless it is public (login, logout: D-170); a read sent as a POST is not a write (D-246). */
+export const needsOperator = (o: Pick<ApiOperation, 'method' | 'access' | 'readOnly'>) =>
+  o.method !== 'get' && o.access !== 'public' && !o.readOnly;
 
 /**
  * Every write (post, patch) that is not public declares the `X-Operator` header (D-140, D-170); every `org` operation

@@ -31,6 +31,7 @@ TanStack into one `vendor` chunk and nothing else).
   (D-170) it is the login of the session, set once when `GET /auth/me` answers (`api/queries/auth.ts`); with the login off the operator
   field sets it; `call()` refuses a write without it (`operator_required`), `ActionButton` and `ConfirmDialog` are disabled while it
   is empty. The server records the login of the session either way.
+  A `readOnly` operation (D-246, a POST that only reads, e.g. `POST /tracks/query`) is a read: its client function passes `readOnly: true` to `call()`, which sends no `X-Operator` and reads no `X-Audit`.
 - **The session** (D-170): `useMe()` (`api/queries/auth.ts`, `GET /auth/me` once per load, `staleTime: Infinity`) gates the shell:
   `AppShell` renders nothing (`session-loading`) until it answers. `call()` sends the cookie (`credentials: 'same-origin'`), and a 401
   `unauthenticated` sends the browser to `/login?next=<path>` (`lib/session.ts` `loginPath`, `safeNext` refuses `//host`); the login
