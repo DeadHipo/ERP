@@ -31,6 +31,8 @@ export interface BelieveRowSpec {
   quantity?: number;
   artistName?: string;
   trackTitle?: string;
+  /** `Release title` column; default 'Synthetic Release' */
+  releaseTitle?: string;
   currency?: string;
   subscription?: string;
   salesType?: string;
@@ -53,7 +55,7 @@ export function believeCsv(month: string, rows: BelieveRowSpec[]): string {
       'Country / Region': r.country ?? 'Brazil',
       'Label Name': r.labelName ?? 'Test Label',
       'Artist Name': r.artistName ?? 'Synthetic Artist',
-      'Release title': 'Synthetic Release',
+      'Release title': r.releaseTitle ?? 'Synthetic Release',
       'Track title': r.trackTitle ?? 'Synthetic Track',
       UPC: r.upc,
       ISRC: r.isrc,

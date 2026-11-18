@@ -155,6 +155,11 @@ describe.runIf(postgresUp && clickhouseUp)('sources service on PostgreSQL + Clic
     // the files of the answer stay all the files in force (D-161)
     expect((await s.snapshot({ labelIds: ['label-b'] })).files).toHaveLength(2);
     expect([...(await s.netByUpc({ labelIds: ['label-b'] })).keys()].sort()).toEqual(['3617380000001', '3617380000003']);
+    // D-245: the names of the pairs narrow the same way; without `labelIds` every loaded file counts, as before
+    expect([...(await s.pairAttributes({ labelIds: ['label-b'] })).keys()].sort()).toEqual([`${I1}|3617380000001`, `${I3}|3617380000003`]);
+    expect([...(await s.pairAttributes({ labelIds: ['label-b'], isrcs: [I3] })).keys()]).toEqual([`${I3}|3617380000003`]);
+    expect((await s.pairAttributes({ labelIds: [] })).size).toBe(0);
+    expect((await s.pairAttributes()).size).toBeGreaterThan(2);
     const files = await s.filesOfLabel('label-b');
     expect(files.map((f) => f.account)).toEqual([B]);
     expect(await s.isrcsOfFiles(files.map((f) => f.id))).toEqual([I1, I3].sort());

@@ -5,7 +5,7 @@ import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
 import { scoped, type UnitScope } from './scope';
-import { registryRowOf } from './release-registry';
+import { nameMaps as namesOfPairs, registryByUpc as registryRowsByUpc } from './tracks';
 import { ownersReach } from './owner-scope';
 import { artistsByIsrc, unionArtists, type ArtistIndex } from './track-artists';
 import { metaLookup } from './track-meta-lite';
@@ -80,27 +80,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
   const calcWithOps = async () => calculate(modules, await opDocIds());
   /** The same calculation narrowed to a unit scope (D-161). */
   const calcScoped = async (scope: UnitScope) => calculate(scoped(modules, scope), await opDocIds());
-  const nameMaps = async (filter: { isrcs?: string[]; upcs?: string[] } = {}) => {
-    const attrs = await sources.pairAttributes(filter);
-    const byIsrc = new Map<string, { artistName: string; trackTitle: string }>();
-    // deterministic: the first pair of an ISRC in key order
-    for (const k of [...attrs.keys()].sort()) {
-      const isrc = k.split('|')[0] as string;
-      if (!byIsrc.has(isrc)) byIsrc.set(isrc, attrs.get(k) as { artistName: string; trackTitle: string });
-    }
-    return { attrs, byIsrc };
-  };
-  /** The release registry rows by UPC (D-172, navigation): of one label or of every label, with the label name. */
-  const registryByUpc = async (labelId: string | undefined, upcs?: string[]) => {
-    const names = new Map((await ctx.labels.listLabels()).map((l) => [l.id, l.name]));
-    const rows = await owners.releases.list({ ...(labelId === undefined ? {} : { labelId }), ...(upcs ? { upcs } : {}) });
-    const out = new Map<string, ReturnType<typeof registryRowOf>[]>();
-    for (const r of rows) {
-      const list = out.get(r.upc) ?? out.set(r.upc, []).get(r.upc);
-      list?.push(registryRowOf(r, names.get(r.labelId) ?? '?'));
-    }
-    return out;
-  };
+  // the report names and the registry rows are the helpers of the track directory (D-245, `tracks.ts`)
+  const nameMaps = (filter: { isrcs?: string[]; upcs?: string[] } = {}) => namesOfPairs(ctx, filter);
+  const registryByUpc = (labelId: string | undefined, upcs?: string[]) => registryRowsByUpc(ctx, labelId, upcs);
   /** One row per UPC: the label's, or under «Все» the last updated one (then the smaller label id). */
   const registryRows = async (labelId: string | undefined) =>
     new Map(

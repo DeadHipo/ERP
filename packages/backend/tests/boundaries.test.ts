@@ -110,6 +110,12 @@ describe('module boundaries (README 4)', () => {
     expect(body).not.toMatch(/\bcalculate\(|sources\.(snapshot|units)\(|withScope|scoped\(/);
   });
 
+  it('the track directory never calculates (D-245): no import of the calculation or the money aggregates, no calculate()', () => {
+    const body = readFileSync(join(SRC, 'facade', 'tracks.ts'), 'utf8');
+    expect(body).not.toMatch(/from '\.\/(aggregates|calculation|scope|balance|reports)'/);
+    expect(body).not.toMatch(/\bcalculate\(|sources\.(snapshot|units)\(|withScope|scoped\(/);
+  });
+
   it('only the facade composes modules; the API never opens a module database', () => {
     for (const file of filesOf(join(SRC, 'api'))) {
       expect(readFileSync(file, 'utf8')).not.toMatch(/open\w+Module|better-sqlite3/);
