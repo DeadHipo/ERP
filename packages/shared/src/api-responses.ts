@@ -1832,7 +1832,24 @@ export const releaseSchema = z.object({
   title: z.string(),
   artistName: z.string().describe('The artist string of the first report pair of the UPC (text)'),
   artists: z.array(artistRefSchema).describe('The pseudonyms of the registry over the tracks of the release, by pseudonym'),
-  tracks: z.array(z.object({ isrc: z.string().describe(D.isrc), title: z.string(), artists: artistRefs, ...moneySums })),
+  tracks: z.array(
+    z.object({
+      isrc: z.string().describe(D.isrc),
+      title: z.string(),
+      artists: artistRefs,
+      meta: z
+        .object({
+          isrc: z.string().describe(D.isrc),
+          title: z.string().nullable().describe('The title as on the platforms, with the version'),
+          version: z.string().nullable().describe('The version, like «Slowed»; null = none'),
+          coverUrl: z.string().nullable().describe('The cover, a URL'),
+        })
+        .nullable()
+        .describe('D-240: the track meta of the ISRC (D-238); null = none yet'),
+      ...moneySums,
+    }),
+  ),
+  coverUrl: z.string().nullable().describe('D-240: the cover of the release, from the track meta; null = none'),
   months: z.array(z.object({ reportingMonth: month.describe(D.reportingMonth), ...moneySums })),
   registry: z
     .array(releaseRegistryRowSchema)

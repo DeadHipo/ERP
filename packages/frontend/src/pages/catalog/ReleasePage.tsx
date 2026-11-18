@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { releaseQueries } from '../../api/queries/releases';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { ArtistLinks } from '../../components/ArtistLinks';
-import { EntityLink } from '../../components/EntityLink';
 import { Money } from '../../components/Money';
+import { TrackName } from '../../components/TrackName';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
 import { formatLocalDateTime } from '../../lib/datetime';
@@ -27,7 +27,10 @@ export function ReleasePage() {
       <QueryView query={query} money>
         {(data) => (
           <div className="flex flex-col gap-4">
-            <PageHeader title={data.title || upc} subtitle={t.subtitle} />
+            <div className="flex items-center gap-4">
+              {data.coverUrl ? <img src={data.coverUrl} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" data-testid="release-cover" /> : null}
+              <PageHeader title={data.title || upc} subtitle={t.subtitle} />
+            </div>
             <div className="flex flex-wrap gap-4 text-sm" data-testid="release-header">
               <span>
                 UPC <b data-testid="release-upc">{data.upc}</b>
@@ -67,13 +70,12 @@ export function ReleasePage() {
               {data.tracks.length === 0 ? (
                 <p className="text-sm text-muted">{t.noTracks}</p>
               ) : (
-                <SimpleTable testId="release-tracks" headers={[t.cols.isrc, t.cols.title, t.cols.artists, m.net, m.B, m.C, m.ours]}>
+                <SimpleTable testId="release-tracks" headers={[t.cols.title, t.cols.artists, m.net, m.B, m.C, m.ours]}>
                   {data.tracks.map((r) => (
                     <tr key={r.isrc} data-testid={`release-track-${r.isrc}`} className="border-t border-border">
-                      <Td>
-                        <EntityLink kind="isrc" id={r.isrc} />
+                      <Td col="title">
+                        <TrackName isrc={r.isrc} meta={r.meta ?? undefined} fallbackTitle={r.title} />
                       </Td>
-                      <Td>{r.title}</Td>
                       <Td col="artists">
                         <ArtistLinks artists={r.artists} />
                       </Td>

@@ -453,9 +453,17 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const unitsOf = groupBy(units, (u) => u.isrc);
       const isrcs = [...new Set([...unitsOf.keys(), ...mine.map((t) => t.isrc).filter((x): x is string => !!x)])].sort();
       // the pseudonyms of the tracks of the release (D-166): the rows, participations and registry links of its ISRCs
-      const artistsOf = await db.snapshot(async () => {
-        const [splitList, partList] = await Promise.all([splits.listSplits({ isrcs }), splits.listParticipations({ isrcs })]);
-        return artistsByIsrc({ splits: splitList, participations: partList, index: calc.artistIndex });
+      const { artistsOf, metaOf } = await db.snapshot(async () => {
+        const [splitList, partList, metaList] = await Promise.all([
+          splits.listSplits({ isrcs }),
+          splits.listParticipations({ isrcs }),
+          isrcs.length > 0 ? owners.trackMeta.of(isrcs) : Promise.resolve([]),
+        ]);
+        return {
+          artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index: calc.artistIndex }),
+          // D-240: the title with its version and the cover of each track (the track meta, D-238)
+          metaOf: new Map(metaList.map((x) => [x.isrc, { isrc: x.isrc, title: x.title, version: x.version, coverUrl: x.coverUrl }])),
+        };
       });
       return {
         upc,
@@ -466,8 +474,11 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           isrc,
           title: titleOf.get(isrc) ?? attrs.get(`${isrc}|${upc}`)?.trackTitle ?? '',
           artists: artistsOf.get(isrc) ?? [],
+          meta: metaOf.get(isrc) ?? null,
           ...sumUnits(calc, unitsOf.get(isrc) ?? []),
         })),
+        // D-240: the cover of the release = the cover of the first track that has one (a platform's album art)
+        coverUrl: isrcs.map((i) => metaOf.get(i)?.coverUrl).find((c): c is string => !!c) ?? null,
         months: [...groupBy(units, (u) => u.reportingMonth).entries()]
           .sort(([a], [b]) => (a < b ? -1 : 1))
           .map(([reportingMonth, us]) => ({ reportingMonth, ...sumUnits(calc, us) })),
