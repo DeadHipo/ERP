@@ -377,9 +377,19 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 **Общее:**
 
 - `src/api/client.ts`: `tracks.query(isrcs)`.
-- `src/api/queries/tracks.ts`: `useTracks(isrcs)`.
-  - Ключ `['tracks', 'query', isrcs отсортированные]`, `staleTime` 60 с, в `MONEY_KEYS` его нет.
-  - Запрашиваются только ISRC, которые показаны (строки на экране, как D-162), пачками по 1 000.
+- `src/api/queries/tracks.ts`: `useTracks(isrcs)` — **кеш трека по ISRC** (Р5).
+  - Каждый трек лежит в кеше TanStack под своим ключом `['tracks', 'view', isrc]`; `staleTime` 10 мин; в
+    `MONEY_KEYS` его нет.
+  - Хук берёт из кеша то, что там есть, и запрашивает `POST /tracks/query` **только недостающие** ISRC, пачками по
+    1 000. Ответ раскладывается по ключам (`queryClient.setQueryData`).
+  - Соседние вызовы одного кадра (несколько таблиц на странице) склеиваются в один запрос: очередь и
+    `setTimeout(0)`, без библиотек.
+  - Запрашиваются только показанные ISRC (строки на экране, как D-162).
+  - Сброс: любая запись, которая может поменять трек (мета, площадки, каталог, сплиты, участия, реестр релизов),
+    инвалидирует `['tracks', 'view']`. Это идёт через `useAction` с `invalidate: 'reference'` или `'all'`; проверить,
+    что эти записи так и делают.
+  - Тест (vitest фронта, без DOM): второй вызов с теми же ISRC не делает запроса; вызов с одним новым ISRC
+    запрашивает только его.
 - `components/TrackName.tsx`: `TrackName({ isrc, track? })`. Название — `track?.meta?.baseTitle ?? track?.title ??
   isrc`, без локального отрезания. Пока `track` не пришёл, показывается ISRC.
 - **P5** (25 854 ISRC в каталоге) не вызывает `POST /tracks/query` на весь список.
@@ -397,9 +407,22 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 | T4.3 | P15 `pages/reference/splits/SplitsPage.tsx`, P16 `ParticipationsPage.tsx` |
 | T4.4 | P36/P37 `pages/reference/sublabels/ReportTab.tsx`, `SuggestionsTab.tsx`, `TermsTab.tsx`; удаление старых пропсов `meta` / `fallbackTitle` и типа `TrackMetaLite` во фронте |
 
-**Ответы API.** В T4.4 из ответов снимаются `trackMeta` и `meta` строк, которые фронт больше не читает (проверить
-поиском по `packages/frontend/src`). Ответ `GET /tracks/catalog` остаётся: из него P5 собирает `TrackView`. MCP —
-не причина оставлять поле: его инструменты строятся из OpenAPI и меняются вместе с ответом. Проверка в браузере на частном
+**Ответы API.** Мета трека приходит только из `POST /tracks/query` через кеш. Поэтому в T4.4 из денежных и
+справочных ответов снимаются `trackMeta` и `meta` строк, которые фронт больше не читает (проверить поиском по
+`packages/frontend/src`). Это:
+
+- `GET /releases/:upc`;
+- балансы владельца и артиста;
+- `/tracks/summary`;
+- условия, подсказки и отчёт саблейбла — снимается только поле `meta`, остальной ответ не трогается.
+
+Схемы ответов и тесты, которые проверяли эти поля, обновляются в том же коммите.
+
+Остаётся только `GET /tracks/catalog`: из него P5 ищет по названию и собирает `TrackView`.
+
+MCP — не причина оставлять поле: его инструменты строятся из OpenAPI и меняются вместе с ответом.
+
+Проверка в браузере на частном
 стенде: обложка, название, версия на каждой странице группы.
 
 ## 3. Линия «Деньги»
@@ -618,7 +641,7 @@ MCP — не причина держать старое: его инструме
   - срезы `owner` / `artist` / `track` / `book`;
   - `byArtist`;
   - P7 `net`;
-  - `/sublabels/:id/report`;
+  - `/sublabels/:id/report` (кроме снятия поля `meta` в T4.4);
   - код MCP (`api/mcp.ts`, `mcp-connection.ts`);
   - `decimal.js` во фронте.
 - Не держать старые поля ради MCP: он следует за OpenAPI.
