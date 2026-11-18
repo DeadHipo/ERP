@@ -20,10 +20,14 @@ export function TrackName(props: { isrc: string; meta?: TrackMetaLite; fallbackT
       {m?.coverUrl ? <img src={m.coverUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" loading="lazy" /> : null}
       <span className="flex flex-col leading-tight">
         <EntityLink kind="isrc" id={props.isrc} label={base ?? props.isrc} />
-        <span className="text-xs text-muted">
-          {m?.version ? <span data-testid={`track-version-${props.isrc}`}>{m.version} · </span> : null}
-          {props.isrc}
-        </span>
+        {/* without any title the link already reads the ISRC: it is not repeated under it */}
+        {base !== null || m?.version ? (
+          <span className="text-xs text-muted">
+            {m?.version ? <span data-testid={`track-version-${props.isrc}`}>{m.version}</span> : null}
+            {m?.version && base !== null ? ' · ' : null}
+            {base !== null ? props.isrc : null}
+          </span>
+        ) : null}
       </span>
     </span>
   );

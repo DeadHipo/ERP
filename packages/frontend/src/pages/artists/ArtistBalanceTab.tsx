@@ -21,9 +21,15 @@ const pendingWhy = (why: string) => (Object.hasOwn(b.pendingWhy, why) ? b.pendin
  * of record, per ISRC, the positions (advances) and the advertising charged to this pseudonym. Every number is the
  * backend's (R1); the payout and the payable are the owner's (the owner link in the header).
  */
-export function ArtistBalanceTab(props: { balance: ArtistBalance; trackMeta?: readonly TrackMetaLite[] }) {
+export function ArtistBalanceTab(props: {
+  balance: ArtistBalance;
+  trackMeta?: readonly TrackMetaLite[];
+  /** The tracks of the pseudonym's card: our title when an ISRC has no meta. */
+  tracks?: readonly { isrc: string | null; title: string }[];
+}) {
   const m = props.balance;
   const meta = metaByIsrc(props.trackMeta);
+  const titleOf = new Map((props.tracks ?? []).flatMap((t) => (t.isrc ? [[t.isrc, t.title] as const] : [])));
   const waiting = (Object.entries(m.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
   const ops = useQuery({ ...settlementQueries.operations({ artistId: m.artistId }), enabled: m.pendingOperations.length > 0 });
   const opText = (id: string) => {
@@ -98,7 +104,7 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance; trackMeta?: re
             {m.tracks.map((tr) => (
               <tr key={tr.isrc} data-testid={`balance-track-${tr.isrc}`}>
                 <Td>
-                  <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} />
+                  <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={titleOf.get(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />

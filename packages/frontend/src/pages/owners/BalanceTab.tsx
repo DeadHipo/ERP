@@ -117,8 +117,16 @@ function PeriodMonths(props: { period: Balance['period'] }) {
 }
 
 /** P10 Баланс: the formula as fields, the gate and the payout button, waiting by reason, by label, per pseudonym and ISRC, positions. */
-export function BalanceTab(props: { ownerId: string; balance: Balance; period: BalancePeriod; trackMeta?: readonly TrackMetaLite[] }) {
+export function BalanceTab(props: {
+  ownerId: string;
+  balance: Balance;
+  period: BalancePeriod;
+  trackMeta?: readonly TrackMetaLite[];
+  /** The tracks of the owner's pseudonyms: our title when an ISRC has no meta. */
+  tracks?: readonly { isrc: string | null; title: string }[];
+}) {
   const trackMetaOf = metaByIsrc(props.trackMeta);
+  const titleOf = new Map((props.tracks ?? []).flatMap((t) => (t.isrc ? [[t.isrc, t.title] as const] : [])));
   const b = props.balance;
   const [monthsOpen, setMonthsOpen] = useState(false);
   const waiting = (Object.entries(b.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
@@ -243,7 +251,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
               <tr key={`${a.artistId}-${tr.isrc}`} data-testid={`balance-track-${a.artistId}-${tr.isrc}`}>
                 <Td />
                 <Td>
-                  <TrackName isrc={tr.isrc} meta={trackMetaOf.get(tr.isrc)} />
+                  <TrackName isrc={tr.isrc} meta={trackMetaOf.get(tr.isrc)} fallbackTitle={titleOf.get(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />
