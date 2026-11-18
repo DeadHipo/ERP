@@ -250,21 +250,29 @@ REQUIRE_STACK=1 npx vitest run --no-file-parallelism --testTimeout=300000 --hook
 **Файлы:**
 
 - `packages/shared/src/track-title.ts` (новый): `baseTitleOf(title: string | null, version: string | null)`.
-  - `title = null` → `null`.
+  - `title = null` или `''` → `null`.
   - Суффикс ` - ${version}` отрезается, только если `version` непуст и `title` на него оканчивается.
   - Иначе — `title`.
 
   Это не `baseTitle` из `facade/pubv2-links.ts`: тот нормализует названия для сопоставления песен. Скажи это в
   D-записи.
 - `packages/shared/package.json`, `exports`: `"./track-title": "./src/track-title.ts"`.
-- `packages/shared/src/api-responses.ts`: `trackViewMetaSchema`, `trackViewReleaseSchema`, `trackViewSchema` (типы
-  `TrackViewMeta`, `TrackViewRelease`, `TrackView`). У каждого поля `.describe('D-NNN: …')`.
-  - `TrackViewMeta` — ровно поля плана §3.1: `title, baseTitle, version, artists, durationMs, explicit, releaseDate,
-    coverUrl, primaryPlatform`. Без `updatedAt` / `updatedBy`: логин оператора менеджеру не отдаём.
-  - `TrackViewRelease` = `{ trackId: string | null, upc, title, release }`, где `release` =
-    `{ title, version, releaseDate, labelName, trackCount } | null`. Поле `releaseTitle` реестра здесь называется
-    `title`.
-  - `TrackView.releases` и `TrackView.artists` допускают `null`: так помечено «не видно».
+- `packages/shared/src/api-responses.ts`: схемы `trackViewMetaSchema`, `trackViewSchema`, `releaseViewSchema`,
+  `artistViewSchema`, `tracksQueryResponseSchema`; типы `TrackViewMeta`, `TrackView`, `ReleaseView`, `ArtistView`.
+  У каждого поля `.describe('D-NNN: …')`. Существующие `trackSchema` / `Track`, `artistSchema` / `Artist`,
+  `ArtistRef`, `releaseSchema` не трогать. Одноимённые типы модуля owners (`modules/owners/service.ts:32,81,89`)
+  в `facade/tracks.ts` не импортировать (при нужде — под другим именем).
+  - `TrackView` = `{ isrc, catalogTitle, reportTitle, meta, catalogLabel, upcs, artists }` (план §3.1).
+    - Поля `title` / `titleSource` нет.
+    - `upcs: string[] | null`, `artists: string[] | null` (id ников): `null` значит «не видно». Отметки MC нет.
+    - `catalogLabel: { id, name } | null` (типа `LabelRef` в shared нет).
+  - `TrackViewMeta` — ровно `title, baseTitle, version, artists, durationMs, explicit, releaseDate, coverUrl,
+    primaryPlatform`. Без `updatedAt` / `updatedBy`: логин оператора менеджеру не отдаём.
+  - `ReleaseView` = `{ upc, title, version, releaseDate, labelName, trackCount }`.
+    - Это строка реестра; `releaseTitle` реестра здесь называется `title`.
+    - Строки реестра нет — `title` из отчёта (`releaseTitle` пары), остальные поля `null`.
+  - `ArtistView` = `{ id, pseudonym, ownerId }`.
+  - Ответ: `{ tracks: Record<isrc, TrackView>, releases: Record<upc, ReleaseView>, artists: Record<id, ArtistView> }`.
 
 **Тест** `packages/backend/tests/track-title.test.ts` (в shared нет vitest). Случаи:
 
@@ -286,7 +294,9 @@ REQUIRE_STACK=1 npx vitest run --no-file-parallelism --testTimeout=300000 --hook
 `tracks.ts` не импортирует `./aggregates`, `./calculation`, `./scope`, `./balance`, `./reports`. Это закрепляет новый
 случай в `boundaries.test.ts`.
 
-**Функция** `tracksOf(isrcs: string[], viewer: Viewer = ALL_VIEWER): Promise<Record<string, TrackView>>`.
+**Функция** `tracksOf(isrcs: string[], viewer: Viewer = ALL_VIEWER)` возвращает
+`Promise<{ tracks, releases, artists }>` — три мапы, как в ответе T3. В мапы `releases` и `artists` попадают только
+UPC и ники, на которые ссылается хотя бы один `TrackView` ответа.
 
 Источники:
 
@@ -305,13 +315,17 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 
 | Поле | Кто видит |
 |---|---|
-| `meta`, `catalogLabel`, `title` при `titleSource = 'catalog'` | любой ISRC организации |
-| `title` при `titleSource = 'report'` | только видимый ISRC; иначе `title = null`, `titleSource = null` |
-| `artists`, `releases` | только видимый ISRC; иначе `null` |
-| `releases[].release` | только строка реестра лейбла, который видит `viewer` (для `ALL_VIEWER` — последняя обновлённая, как `registryRows`); чужая → `null` |
+| `meta`, `catalogTitle`, `catalogLabel` | любой ISRC организации |
+| `reportTitle` | только видимый ISRC; иначе `null` |
+| `upcs`, `artists` | только видимый ISRC; иначе `null` |
+| `ReleaseView` в мапе | UPC из `upcs` видимого трека. Поля реестра — из строк лейблов, которые видит `viewer`; из нескольких — последняя обновлённая (как `registryRows`). Видимой строки нет → поля реестра `null`, `title` = `releaseTitle` пары отчёта |
+| `ArtistView` в мапе | ник из `artists` видимого трека; `ownerId` — как его отдают `GET /splits` / `GET /participations` этому `viewer` |
 
-- Пустая строка названия считается `null` (D-243).
-- Набор UPC в `releases`: пары файлов ∪ `owners.tracks`. `trackId = null`, если строки каталога нет.
+- `catalogTitle` — первая непустая `title` строк `owners.tracks` по ISRC в порядке `(upc, id)`; этот же помощник
+  берёт `trackCatalog`, чтобы название было одно. `reportTitle` — `trackTitle` пары из отчёта. Каждое поле
+  отдаётся как есть, выбор делает фронт. Пустая строка считается `null` (D-243).
+- Набор `upcs`: пары файлов ∪ `owners.tracks`, без пустых, отсортирован.
+- `artistsByIsrc` не расширять: ответ `GET /tracks/catalog` должен остаться байт в байт.
 - ISRC без строки `owners.tracks`, без пары в файлах, без меты и без открытого интервала в ответ не попадает.
 
 `trackCatalog` строит строки через помощники `tracks.ts`. `GET /tracks/catalog` остаётся байт в байт прежним.
@@ -320,6 +334,7 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 
 - `tests/tracks.test.ts` (новый):
   - каждое правило таблицы;
+  - релиз двух треков приходит в `releases` один раз, ник двух треков — в `artists` один раз;
   - менеджер лейбла A по ISRC файлов A не видит строку реестра лейбла B того же UPC;
   - неизвестный ISRC в ответ не попадает.
 - `catalog.test.ts` и `aggregates.test.ts` — без правок.
@@ -347,7 +362,7 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 **Маршрут `POST /tracks/query`:**
 
 - тело `{ isrcs: string[] }`: от 1 до 1 000, формат ISRC, повторы убираются;
-- ответ `{ tracks: Record<isrc, TrackView> }`;
+- ответ `{ tracks, releases, artists }` (T1);
 - `access: 'org'`, `ability: { action: 'read', subject: 'tracks', scope: 'record' }`, `readOnly: true`;
 - маршрут передаёт `viewerOf(res)`.
 
@@ -366,7 +381,8 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 - без `X-Operator` — 200;
 - менеджер своей книги — 200 (прогон менеджера на своём теле даст 400 `validation_error`, поэтому нужен отдельный
   тест);
-- менеджер по чужому ISRC: `releases = artists = null`, `meta` есть;
+- менеджер по чужому ISRC: `upcs = artists = reportTitle = null`, `meta` и `catalogTitle` есть, в мапах ничего от
+  этого ISRC;
 - 1 001 ISRC — 400.
 
 **D-запись:** POST-чтение как исключение из D-140; довод про CSRF (`originGuard` + JSON); список `readOnly`
@@ -377,26 +393,45 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 **Общее:**
 
 - `src/api/client.ts`: `tracks.query(isrcs)`.
-- `src/api/queries/tracks.ts`: `useTracks(isrcs)` — **кеш трека по ISRC** (Р5).
-  - Каждый трек лежит в кеше TanStack под своим ключом `['tracks', 'view', isrc]`; `staleTime` 10 мин; в
-    `MONEY_KEYS` его нет.
-  - Хук берёт из кеша то, что там есть, и запрашивает `POST /tracks/query` **только недостающие** ISRC, пачками по
-    1 000. Ответ раскладывается по ключам (`queryClient.setQueryData`).
+- `src/api/tracks-loader.ts` (новый, без React): **пакетный загрузчик**.
+  - `load(isrc)` кладёт ISRC в очередь кадра (`setTimeout(0)`).
+  - Одним `POST /tracks/query` (пачками по 1 000) он запрашивает собранные ISRC.
+  - На каждый ISRC возвращает `{ track, releases, artists }` — трек и нужные ему записи мап.
+  - Повторы в одном кадре склеиваются.
+- `src/api/queries/tracks.ts`: `useTracks(isrcs)` = `useQueries` по ключам `['tracks', 'view', isrc]`, `queryFn` =
+  `loader.load(isrc)`, `staleTime` 10 мин.
+  - Кеш по треку: TanStack сам не запрашивает то, что свежо в кеше. Значит, по сети идут только недостающие.
+  - Сброс ключа заново вызывает `queryFn`, ключи без подписчиков живут обычный `gcTime`.
+  - Хук отдаёт `{ track(isrc), release(upc), artist(id) }` из результатов запросов.
+  - В `MONEY_KEYS` этих ключей нет.
   - Соседние вызовы одного кадра (несколько таблиц на странице) склеиваются в один запрос: очередь и
     `setTimeout(0)`, без библиотек.
   - Запрашиваются только показанные ISRC (строки на экране, как D-162).
   - Сброс: любая запись, которая может поменять трек (мета, площадки, каталог, сплиты, участия, реестр релизов),
     инвалидирует `['tracks', 'view']`. Это идёт через `useAction` с `invalidate: 'reference'` или `'all'`; проверить,
     что эти записи так и делают.
-  - Тест (vitest фронта, без DOM): второй вызов с теми же ISRC не делает запроса; вызов с одним новым ISRC
-    запрашивает только его.
-- `components/TrackName.tsx`: `TrackName({ isrc, track? })`. Название — `track?.meta?.baseTitle ?? track?.title ??
-  isrc`, без локального отрезания. Пока `track` не пришёл, показывается ISRC.
-- **P5** (25 854 ISRC в каталоге) не вызывает `POST /tracks/query` на весь список.
-  - Поиск и фильтр по названию работают, как сейчас, по строкам `GET /tracks/catalog`.
-  - `TrackName` получает `TrackView`, собранный из строки каталога помощником T2. Ответ `/tracks/catalog` не
-    меняется.
-- Хуки `track-name-<isrc>` / `track-version-<isrc>` прежние. `valueGetter` гридов читают `TrackView`.
+  - Тест загрузчика (vitest фронта, в node, `fetch` подменён):
+    - три `load()` в одном кадре дают один запрос;
+    - 1 500 ISRC дают два запроса;
+    - каждый ISRC получает свой трек и свои записи мап.
+
+    То, что повтор с тем же ключом не идёт в сеть, — поведение TanStack, а не наш тест.
+- `lib/track-title.ts`: `displayTitle(track)` = `meta?.baseTitle ?? catalogTitle ?? reportTitle ?? null`.
+  Единственное место выбора названия.
+- `components/TrackName.tsx`: `TrackName({ isrc, track? })`. Название — `displayTitle(track)`, без него — ISRC (не
+  дважды, D-243). Без локального отрезания версии. Пока `track` не пришёл, показывается ISRC.
+- Списки артистов и релизов трека на экранах строятся по `track.artists` / `track.upcs` через `artist(id)` /
+  `release(upc)` хука.
+- **P5** (25 854 ISRC в каталоге) вызывает `useTracks` только для показанных строк, как деньги (D-162).
+  - Поиск и фильтр по названию работают, как сейчас: по `meta` / `title` строк `GET /tracks/catalog`, а в режиме
+    «account / month» — по строкам `/tracks/summary`.
+  - Эти два ответа не меняются.
+  - Пока `TrackView` строки не пришёл, `TrackName` показывает название строки каталога.
+- Хуки `track-name-<isrc>` / `track-version-<isrc>` прежние.
+- `valueGetter` гридов читают `TrackView`. Колонки, собранные в `useMemo`, зависят от данных кеша (иначе видят
+  пустой кеш).
+- e2e: в `golden/11-release` добавить проверку `track-name-<isrc>` (название и версия из синтетической меты); сейчас
+  её не проверяет ни одна спецификация.
 
 **Группы**, по коммиту на каждую:
 
@@ -411,14 +446,16 @@ PostgreSQL читается в одном `db.snapshot`, ClickHouse — как �
 справочных ответов снимаются `trackMeta` и `meta` строк, которые фронт больше не читает (проверить поиском по
 `packages/frontend/src`). Это:
 
-- `GET /releases/:upc`;
-- балансы владельца и артиста;
-- `/tracks/summary`;
-- условия, подсказки и отчёт саблейбла — снимается только поле `meta`, остальной ответ не трогается.
+- `GET /releases/:upc` (`tracks[].meta`, `trackMeta`);
+- `GET /owners/:id` и `GET /artists/:id` (`trackMeta`; в балансах меты нет);
+- `GET /splits`, `GET /participations` (`meta` строк);
+- условия, подсказки и отчёт саблейбла: снимаются **оба** поля `meta` отчёта и `meta` условий и подсказок;
+  остальной ответ не трогается.
 
-Схемы ответов и тесты, которые проверяли эти поля, обновляются в том же коммите.
+Схемы ответов и тесты, которые проверяли эти поля, обновляются в том же коммите. Среди них
+`tests/sublabel-report.test.ts:108`.
 
-Остаётся только `GET /tracks/catalog`: из него P5 ищет по названию и собирает `TrackView`.
+Остаются `GET /tracks/catalog` и `/tracks/summary`: по ним P5 ищет по названию.
 
 Проверка в браузере на частном
 стенде: обложка, название, версия на каждой странице группы.
