@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-248 by topic)
+# Decision index (D-001 … D-249 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -230,6 +230,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-246 A read sent as a POST: `readOnly: true` in `operations.ts` (only a `post` with `read` / `read_money`; no `X-Operator`, no audit row; the list frozen in `tests/read-only-operations.test.ts`; `originGuard` unchanged) and `POST /tracks/query` (≤ 1 000 ISRCs → `tracksOf`, manager `R`); the one exception to D-140 · in force
 - D-247 `facade.masterRows(q, label)` (`facade/money.ts`): the master money of a release or an ISRC list as rows by `isrc` / `month` / `isrc,month`, only `calcScoped` + `sumUnits` (byte for byte the old `release()` / `trackSummary()` sums); `calcScoped` moved to the facade context · in force
 - D-248 `POST /money/master/query?label=` → `masterRows` (a `readOnly` POST, `read_money` / label, manager `L` as the answers it replaces; a strict body: a label named in the body is 400) · in force
+- D-249 `scripts/check-master-rows.ts`: the read-only check of `masterRows` against `release()` / `trackSummary()` on the real data (refuses to start without `PGOPTIONS` read-only); the run of 2026-11-19: 354 comparisons, 0 differences, 6 timings within the threshold; «every ISRC of a book without a list» fails on both sides on a ClickHouse limit (open, the owner) · in force
 - D-237 An MC bears no advertising by the `isMc` mark of its split row (never by the name; `isMcPseudonym` removed); every MC row of every split version marked (`scripts/mc/mark-mc-rows.sql`, 1 111 rows): the carves of D-216 hold for the whole history (20 owners, MCs +9 979,88), the advertising unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
