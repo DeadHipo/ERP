@@ -630,6 +630,21 @@ const operations: ApiOperation[] = [
     errors: ['400 validation_error: no ISRC, more than 1000 ISRCs, or a string that is not an ISRC'],
   },
   {
+    method: 'post',
+    path: '/money/master/query',
+    explain: true,
+    access: 'org',
+    ability: { action: 'read_money', subject: 'tracks', scope: 'label' },
+    readOnly: true,
+    tag: 'tracks',
+    summary:
+      'The master money as rows (D-248): B, C (by reason), ours and net of one release (the lines of a UPC that carry an ISRC) or of a list of ISRCs, one row per ISRC, per report month or per both, with the sums of all of them, from one calculation of those units alone. A read sent as a POST (D-246): no X-Operator, no audit row, nothing written. Under a label (?label=) only the units of its files and, for a list, only the ISRCs of those files; a key without units has no row. The same money as GET /releases/:upc (tracks, months) and GET /tracks/summary?isrcs=, without names',
+    query: S.masterQueryQuery,
+    body: S.masterQueryBody,
+    response: R.masterRowsSchema,
+    errors: ['400 validation_error: more than 5000 ISRCs, a string that is not an ISRC, a month that is not YYYY-MM, an unknown grain or scope, a key the body does not have (the label is named in the query only)', '404 not_found: the label is unknown'],
+  },
+  {
     method: 'get',
     path: '/tracks/:isrc/money',
     explain: true,

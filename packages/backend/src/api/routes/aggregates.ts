@@ -39,6 +39,11 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   });
   // the track directory (D-245): a read sent as a POST (D-246), no operator and no audit row
   r.post('/tracks/query', async (req, res) => res.json(await facade.tracksOf(parse(S.tracksQueryBody, req.body).isrcs, viewerOf(res))));
+  // the master money as rows (D-248): a read sent as a POST (D-246); the right is `can()` by `?label=`, no viewer
+  r.post('/money/master/query', async (req, res) => {
+    const { label } = parse(S.masterQueryQuery, req.query);
+    res.json(await facade.masterRows(parse(S.masterQueryBody, req.body), label));
+  });
   // the label history of an ISRC (D-172): navigation, not money
   r.get('/tracks/:isrc/labels', async (req, res) => res.json(await facade.trackLabels(param(req, 'isrc'))));
   r.post('/tracks/:isrc/label', async (req, res) =>

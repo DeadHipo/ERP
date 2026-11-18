@@ -431,6 +431,41 @@ export const tracksQueryBody = z.object({
     .max(1000)
     .describe('The ISRCs to describe, 1 to 1000 (dashes, spaces and case are ignored; a repeated one counts once in the answer)'),
 });
+/**
+ * `POST /money/master/query?label=` (D-248): which master money is asked (a release or a list of ISRCs), how the rows
+ * are grouped and the report months; a read, sent as a POST for the length of the list. The label is in the query
+ * ONLY: every object is strict, so a key the route does not read (a `labelId`, an `items[]`, which the label check of
+ * the chain would count as the label of the request) is `400 validation_error`, never ignored.
+ */
+export const masterQueryBody = z.strictObject({
+  scope: z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('release').describe('release: the money of the lines of one UPC that carry an ISRC'),
+      upc: z.string().min(1).max(32).describe('The UPC of the release'),
+    }),
+    z.strictObject({
+      kind: z.literal('isrcs').describe('isrcs: the money of a list of ISRCs, or of every ISRC when the list is not given'),
+      isrcs: z
+        .array(z.string().max(32))
+        .max(5000)
+        .optional()
+        .describe(
+          'The ISRCs, at most 5000 (dashes, spaces and case are ignored; a repeated one counts once); not given = every ISRC, under a label every ISRC of its files; [] = no rows, no calculation',
+        ),
+    }),
+  ]),
+  grain: z
+    .enum(['isrc', 'month', 'isrc,month'])
+    .describe('What a row is: isrc = one per ISRC, month = one per report month, isrc,month = one per ISRC and report month'),
+  period: z
+    .strictObject({
+      from: month.optional().describe('First report month, YYYY-MM, inclusive; none = no lower bound'),
+      to: month.optional().describe('Last report month, YYYY-MM, inclusive; none = no upper bound; before `from` = no rows'),
+    })
+    .optional(),
+});
+export type MasterQueryBody = z.infer<typeof masterQueryBody>;
+export const masterQueryQuery = labelQuery;
 export const trackCatalogQuery = labelQuery.extend({
   ...pageQuery.shape,
   catalog: z

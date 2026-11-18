@@ -690,6 +690,28 @@ const OPERATOR = 'contract-test';
     await call('get', '/tracks/:isrc/breakdown/:month', { params: { isrc: I1, month: '2026-07' } });
     await call('get', '/releases', { query: { q: UPC } });
     await call('get', '/releases/:upc', { params: { upc: UPC } });
+    const releaseAnswer = await call('get', '/releases/:upc', { params: { upc: UPC } });
+    // the master money as rows (D-248), a read sent as a POST (D-246): the money of the release and of a list, no audit row
+    const auditBeforeMoney = ((await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as unknown[]).length;
+    type MoneyRow = { isrc?: string; month?: string; sums: Record<string, unknown>; months?: unknown };
+    const sumsOf = (x: Record<string, unknown>) => ({ net: x.net, B: x.B, C: x.C, ours: x.ours, cByReason: x.cByReason });
+    const byIsrc = await call('post', '/money/master/query', { body: { scope: { kind: 'release', upc: UPC }, grain: 'isrc' } });
+    expect((byIsrc.rows as MoneyRow[]).length).toBeGreaterThan(0);
+    // a track without units has no row; the rows are the money of the tracks of the release, character for character
+    const rowIsrcs = new Set((byIsrc.rows as MoneyRow[]).map((r) => r.isrc));
+    expect((byIsrc.rows as MoneyRow[]).map((r) => ({ isrc: r.isrc, ...r.sums }))).toEqual(
+      (releaseAnswer.tracks as Record<string, unknown>[]).filter((t) => rowIsrcs.has(t.isrc as string)).map((t) => ({ isrc: t.isrc, ...sumsOf(t) })),
+    );
+    const byMonth = await call('post', '/money/master/query', { query: { label: zero.id }, body: { scope: { kind: 'release', upc: UPC }, grain: 'month', period: { from: '2026-01' } } });
+    for (const r of byMonth.rows as MoneyRow[]) expect([typeof r.month, r.isrc, r.months]).toEqual(['string', undefined, undefined]);
+    const byBoth = await call('post', '/money/master/query', { body: { scope: { kind: 'isrcs', isrcs: [I2, I1, I1] }, grain: 'isrc,month', period: { from: '2026-07', to: '2026-07' } } });
+    expect([...new Set((byBoth.rows as MoneyRow[]).map((r) => r.month))]).toEqual(['2026-07']);
+    expect(await call('post', '/money/master/query', { body: { scope: { kind: 'isrcs', isrcs: [] }, grain: 'isrc' } })).toMatchObject({
+      rows: [],
+      totals: { net: '0', B: '0', C: '0', ours: '0', cByReason: {} },
+    });
+    await call('post', '/money/master/query', { body: { scope: { kind: 'isrcs' }, grain: 'month' } });
+    expect(((await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as unknown[]).length, 'POST /money/master/query leaves no audit row').toBe(auditBeforeMoney);
     await call('get', '/documents/:id/uses', { params: { id: contractDoc.id } });
 
     // settlements: the first payout of the owner needs an answer «pay» for its amount (D-176)

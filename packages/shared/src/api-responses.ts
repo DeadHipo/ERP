@@ -1704,6 +1704,34 @@ export const trackSummarySchema = z.object({
   ...pageFields,
 });
 
+/** B, C (by reason), ours and net of a set of units (D-248): the sums of a row of the master money, and of the whole answer. */
+export const moneySumsSchema = z.object(moneySums);
+export type MoneySums = z.infer<typeof moneySumsSchema>;
+
+/** A row of the master money (D-248): the sums of the units of one key of the grain. */
+export const masterRowSchema = z.object({
+  isrc: z.string().optional().describe(`${D.isrc}; absent at the grain month`),
+  month: month.optional().describe('The report month of the row, YYYY-MM; absent at the grain isrc'),
+  sums: moneySumsSchema.describe('The money of the units of the row: net = B + C + ours'),
+  months: z
+    .object({
+      from: month.describe('The first report month of the row, YYYY-MM'),
+      to: month.describe('The last report month of the row, YYYY-MM'),
+      count: z.number().int().describe('How many report months the row has'),
+    })
+    .optional()
+    .describe('The report months of the units of the row (not money); only at the grain isrc'),
+});
+export type MasterRow = z.infer<typeof masterRowSchema>;
+
+/** `POST /money/master/query` (D-248): the rows by their keys, ascending, and the sums of every unit asked. */
+export const masterRowsSchema = z.object({
+  rows: z.array(masterRowSchema).describe('One row per key of the grain that has units, sorted by ISRC, then by month'),
+  totals: moneySumsSchema.describe('The money of every unit of the answer: the sum of the rows'),
+  calculatedAt: timestamp,
+});
+export type MasterRows = z.infer<typeof masterRowsSchema>;
+
 /** The tracks without money (D-162): the ISRC set of `trackSummary()`, no calculation. */
 export const trackCatalogItemSchema = z.object({
   isrc: z.string().describe(D.isrc),

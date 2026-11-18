@@ -379,6 +379,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
   const CASES: Record<string, (x: Ids) => Call> = {
     'GET /search': () => ({ query: { q: 'Secret' } }),
     'POST /tracks/query': (x) => ({ body: { isrcs: [x.isrc] } }), // D-246: a read sent as a POST
+    'POST /money/master/query': (x) => ({ body: { scope: { kind: 'release', upc: x.upc }, grain: 'isrc' } }), // D-248: a read sent as a POST
     'GET /owners': (x) => ({ query: { label: x.label } }),
     'GET /users': () => ({}),
     'POST /users': (x) => ({ body: { login: `scope-new-${sfx}`, password: 'p', role: 'label_manager', labelIds: [x.label] } }),

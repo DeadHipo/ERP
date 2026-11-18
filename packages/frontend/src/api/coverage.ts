@@ -80,6 +80,7 @@ export const OPERATION_COVERAGE = {
   'PATCH /tracks/platforms/:id': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-platform-<id> → action-platform-submit' },
   'POST /tracks/platforms/:id/remove': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-remove-platform-<id> → ConfirmDialog' },
   'POST /tracks/query': { refusal: 'not on a screen yet: TrackName moves to it in T4' },
+  'POST /money/master/query': { refusal: 'not on a screen yet: P8 and P5 move to it in M5 / M6' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
   'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },

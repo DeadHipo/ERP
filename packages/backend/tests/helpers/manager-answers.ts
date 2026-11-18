@@ -103,6 +103,7 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   'PATCH /tracks/platforms/:id': 'R',
   'POST /tracks/platforms/:id/remove': 'R',
   'POST /tracks/query': 'R', // D-246: the track directory, a read sent as a POST; the facade decides per field
+  'POST /money/master/query': 'L', // D-248: the master money as rows, a read sent as a POST; under its own label, as GET /releases/:upc and GET /tracks/summary
   // the assumption (D-172 stage 4 commit 3): approve, the org_admin's only
   'POST /splits/assume': 'x',
   // the release registry (D-172 stage 4 commit 5): under its own label

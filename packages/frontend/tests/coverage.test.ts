@@ -33,7 +33,7 @@ describe('operation coverage', () => {
 
   it('gives every refusal a reason', () => {
     const refusals = entries.flatMap(([key, e]) => ('refusal' in e ? [{ key, reason: e.refusal }] : []));
-    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain', 'POST /tracks/query'].sort()); // D-246: POST /tracks/query until T4.1 puts it on a screen
+    expect(refusals.map((r) => r.key).sort()).toEqual(['GET /health', 'GET /reconciliation', 'GET /tracks/:isrc/explain', 'POST /tracks/query', 'POST /money/master/query'].sort()); // D-246: POST /tracks/query until T4.1 puts it on a screen; D-248: POST /money/master/query until M5
     for (const r of refusals) expect(r.reason.length).toBeGreaterThan(15);
   });
 });

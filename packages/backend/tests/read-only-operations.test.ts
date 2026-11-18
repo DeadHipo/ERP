@@ -7,7 +7,7 @@ import { API_OPERATIONS, needsOperator, operationKey, type ApiOperation } from '
 // operation joins it only with the plan (`docs/идеи/выдача_денег_и_треков/план.md` §4.3), never to spare a write its
 // operator or its audit row.
 
-const READ_ONLY = ['POST /tracks/query'];
+const READ_ONLY = ['POST /tracks/query', 'POST /money/master/query']; // D-248: + the master money as rows
 
 describe('the reads sent as a POST (D-246)', () => {
   const readOnly = API_OPERATIONS.filter((o) => o.readOnly);
