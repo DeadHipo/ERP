@@ -33,7 +33,7 @@ export function postgresMigrations() {
  * Schemas whose tables `resetModules()` empties (every PostgreSQL module). Not `orgs` and `auth` (D-170): the test
  * organization and its users outlive a reset.
  */
-const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'publishing', 'pubv2', 'links', 'audit', 'ads'];
+const MODULE_SCHEMAS = ['owners', 'splits', 'labels', 'settlements', 'pubv2', 'links', 'audit', 'ads'];
 
 /**
  * A private PostgreSQL database `erp_<name>` and private ClickHouse databases `believe_<name>` and `believe_<name>_stage`
@@ -118,8 +118,6 @@ export async function createPrivateStores(name: string, opts: { dropFirst?: bool
     /** Empties every table of the PostgreSQL modules. */
     async resetModules() {
       if (moduleTables.length > 0) await pg.pool.query(`TRUNCATE ${moduleTables.join(', ')}`);
-      // the grouped B17 lines (D-164) are derived from the emptied tables: rebuild them, or a later facade sees them
-      await pg.pool.query('REFRESH MATERIALIZED VIEW publishing.pub_lines_by_key');
     },
     /** Drops the databases and closes the connections. */
     async drop() {

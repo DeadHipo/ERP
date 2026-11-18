@@ -73,7 +73,7 @@ describe.runIf(postgresUp)('migration 0019_operation_kinds', () => {
       ).rows;
       expect(columns).toEqual([{ is_nullable: 'NO' }]);
       expect((await q("SELECT to_regclass('settlements.operations_external_ref') IS NOT NULL AS ok")).rows[0].ok).toBe(true);
-      expect((await q("SELECT 1 FROM information_schema.columns WHERE table_schema = 'publishing' AND table_name = 'pub_statements' AND column_name = 'replaced_by'")).rows).toHaveLength(1);
+      // D-235: `publishing.pub_statements.replaced_by` left with the schema of publishing v1 (migration 0038)
 
       // the rules per kind refuse a raw INSERT of every forbidden combination
       const raw = (id: string, kind: string, f: Record<string, unknown>) =>

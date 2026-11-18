@@ -56,21 +56,11 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(36); // D-234: − the five tables of `publishing` from the walked schemas (they stay in the database until stage 2); D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(36); // D-235: the schema `publishing` dropped (0038); D-234: − the five tables of `publishing` from the walked schemas; D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
-    const def = (
-      await pg.pool.query<{ d: string }>(`SELECT pg_get_viewdef('publishing.pub_lines_by_key'::regclass) AS d`)
-    ).rows[0]?.d as string;
-    expect(def).toMatch(/SELECT\s+s\.org_id,/);
-    expect(def).toMatch(/GROUP BY\s+s\.org_id,/);
-    const index = (
-      await pg.pool.query<{ d: string }>(
-        `SELECT indexdef AS d FROM pg_indexes WHERE schemaname = 'publishing' AND indexname = 'pub_lines_by_key_order'`,
-      )
-    ).rows[0]?.d as string;
-    expect(index).toMatch(/\(org_id, period COLLATE "C"/);
+    // D-235: the view `publishing.pub_lines_by_key` left with the schema of publishing v1 (migration 0038)
   });
 
   it('every s.table of the module schemas declares orgId notNull()', () => {

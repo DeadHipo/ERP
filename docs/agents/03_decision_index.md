@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-234 by topic)
+# Decision index (D-001 … D-235 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -216,6 +216,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-232 The old sublabel model removed from the code: `label_rules`, `labels.kind`, `own_label_id` dropped (migration 0036), no sublabel carve, Q11/R1, rule routes, the two rule signals or the rule screens; every label is own; 13 golden cases and 10 e2e seed scenarios of the rule deleted · in force
 - D-233 `owners.artist_tracks` dropped (migration 0037): the pseudonyms of a track are those of its split rows and participations; `POST /tracks` without `artistIds` · in force
 - D-234 Publishing v1 removed from the code (stage 1): `facade/publishing-source.ts` (v2 + links) is the only publishing; the old module, its six routes, P18, the B17 upload/replace on P19, the equal parts of D-087, the typed terms, `PUBLISHING_SOURCE` and the signal `ambiguousWriters` gone; G26a–c, G26e deleted, G26f new; the schema `publishing` stays until stage 2 · in force
+- D-235 The schema `publishing` (v1) dropped by migration 0038 (a dump outside the repo); the live money unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force
 - D-173 Publishing: `replaceStatement` through the same `load()` in one module transaction (`replace_not_loaded`, `replace_label_differs`, `periods_differ`; `pub_statements.replaced_by`, status `superseded`, its lines / file / sha kept, the periods moved, the view refreshed); `GET /sources/files` + `replacedBy`; approve publishing label · in force
