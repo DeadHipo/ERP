@@ -10,7 +10,7 @@ import type { PublishingSource } from './publishing-source';
 import { type AuditService } from '../modules/audit';
 import { type AdsService } from '../modules/ads';
 import { artistReach, ownerReach } from './owner-scope';
-import { scoped } from './scope';
+import { scoped, type UnitScope } from './scope';
 import { calculate, type PeriodFilter } from './calculation';
 import { artistBalance, ownerBalance, type BalanceView } from './balance';
 import { labelBook, labelVisibility, type LabelBook } from './label-scope';
@@ -139,6 +139,11 @@ export function createFacadeContext(
     return (await settlements.allOperations()).flatMap((o) =>
       [o.documentId, o.paymentProofId].filter((x): x is string => !!x),
     );
+  }
+
+  /** The calculation narrowed to a unit scope (D-161); shared by the money aggregates and `masterRows` (D-247). */
+  async function calcScoped(scope: UnitScope) {
+    return calculate(scoped(modules, scope), await opDocIds());
   }
 
   async function checkSplitDocument(documentId: string | null | undefined) {
@@ -352,6 +357,7 @@ export function createFacadeContext(
     modules,
     blockingPayoutsOf,
     opDocIds,
+    calcScoped,
     checkSplitDocument,
     resolveShares,
     balanceWithFiles,

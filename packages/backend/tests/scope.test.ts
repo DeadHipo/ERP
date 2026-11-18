@@ -123,6 +123,29 @@ describe('unit scope of the facade (D-161)', () => {
         (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(1), I(3)], 4]),
       ],
       ['trackSummary isrcs+month', () => f.trackSummary({ isrcs: I(1), month: '2026-04' }), (r) => expect(r.units).toBe(1)],
+      // D-247: `masterRows` reads the units of `release()` / `trackSummary({ isrcs })` and answers as the full calculation
+      [
+        'masterRows release',
+        () => f.masterRows({ scope: { kind: 'release', upc: UPC2 }, grain: 'isrc' }),
+        (r) => expect([r.filter.upcs, r.units]).toEqual([[UPC2], 2]),
+      ],
+      ['masterRows release months', () => f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'month' }), (r) => expect(r.units).toBe(3)],
+      [
+        'masterRows release period',
+        () => f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc,month', period: { to: '2026-03' } }),
+        (r) => expect([r.filter.upcs, r.filter.to, r.filter.basis, r.units]).toEqual([[UPC], '2026-03', 'report', 2]),
+      ],
+      [
+        'masterRows isrcs',
+        () => f.masterRows({ scope: { kind: 'isrcs', isrcs: [I(3), I(1), I(3)] }, grain: 'isrc' }),
+        (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(1), I(3)], 4]),
+      ],
+      [
+        'masterRows isrcs+period',
+        () => f.masterRows({ scope: { kind: 'isrcs', isrcs: [I(1)] }, grain: 'isrc,month', period: { from: '2026-04', to: '2026-04' } }),
+        (r) => expect([r.filter.from, r.filter.to, r.filter.basis, r.units]).toEqual(['2026-04', '2026-04', 'report', 1]),
+      ],
+      ['masterRows all', () => f.masterRows({ scope: { kind: 'isrcs' }, grain: 'month' }), (r) => expect(r.units).toBe(5)],
     ];
     const reads = await spy();
     for (const [name, run, check] of calls) {
@@ -179,6 +202,13 @@ describe('unit scope of the facade (D-161)', () => {
     await f.release(UPC);
     expect(pub).toEqual([{ lines: false }, { lines: false }, { lines: false }, { lines: false }]);
     expect(idx).toEqual([{ isrcs: [I(1)] }, { isrcs: [I(1), I(2)] }, { isrcs: [I(1)] }, {}]);
+    // D-247: `masterRows` is master only, as the answers it replaces
+    pub.length = 0;
+    idx.length = 0;
+    await f.masterRows({ scope: { kind: 'isrcs', isrcs: [I(2), I(1)] }, grain: 'isrc' });
+    await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' });
+    expect(pub).toEqual([{ lines: false }, { lines: false }]);
+    expect(idx).toEqual([{ isrcs: [I(1), I(2)] }, {}]);
     pub.length = 0;
     idx.length = 0;
     await f.queue('split_unconfirmed', { from: '2026-03' });

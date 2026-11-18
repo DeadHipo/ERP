@@ -4,7 +4,7 @@ import { assertIsrc } from '../shared/identifiers';
 import { assertMonth } from '../shared/dates';
 import type { CReason } from '@erp/shared/api-responses';
 import { calculate, type Calculation, type UnitResult } from './calculation';
-import { scoped, type UnitScope } from './scope';
+import { scoped } from './scope';
 import { nameMaps as namesOfPairs, registryByUpc as registryRowsByUpc } from './tracks';
 import { ownersReach } from './owner-scope';
 import { artistsByIsrc, unionArtists, type ArtistIndex } from './track-artists';
@@ -62,7 +62,7 @@ export function sumUnits(calc: Calculation, units: UnitResult[]): Sums {
   return s;
 }
 
-function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
+export function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>();
   for (const x of xs) {
     const k = key(x);
@@ -73,13 +73,11 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
   return m;
 }
 
-const sortedMonths = (units: UnitResult[]) => [...new Set(units.map((u) => u.reportingMonth))].sort();
+export const sortedMonths = (units: UnitResult[]) => [...new Set(units.map((u) => u.reportingMonth))].sort();
 
 export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof splitsApi>) {
-  const { owners, splits, sources, settlements, modules, db, opDocIds, gateOf, labelContext } = ctx;
+  const { owners, splits, sources, settlements, modules, db, opDocIds, gateOf, labelContext, calcScoped } = ctx;
   const calcWithOps = async () => calculate(modules, await opDocIds());
-  /** The same calculation narrowed to a unit scope (D-161). */
-  const calcScoped = async (scope: UnitScope) => calculate(scoped(modules, scope), await opDocIds());
   // the report names and the registry rows are the helpers of the track directory (D-245, `tracks.ts`)
   const nameMaps = (filter: { isrcs?: string[]; upcs?: string[] } = {}) => namesOfPairs(ctx, filter);
   const registryByUpc = (labelId: string | undefined, upcs?: string[]) => registryRowsByUpc(ctx, labelId, upcs);
