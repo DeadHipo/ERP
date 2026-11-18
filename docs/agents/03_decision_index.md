@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-238 by topic)
+# Decision index (D-001 … D-239 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -220,6 +220,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-236 P33 lists the linked ISRCs of each song (`songs[].isrcs` of `GET /publishing-v2/songwriters/:id`, an expandable list, links to the tracks) · in force
 - D-237 P6 «По артистам»: `byArtist` of the track money (per pseudonym and report month, whatever the status, with its waiting part; ours and the net) · in force
 - D-238 The metadata of a recording: `owners.track_meta` (one row per ISRC, no history) and `owners.track_platforms` (1 : N), migration 0039; `GET|PATCH /tracks/:isrc/meta`, platform entries; P6 tab «Мета»; the money never reads it · in force
+- D-239 P12 shows the tracks with the cover, title and version of the track meta (`trackMeta` of `GET /artists/:id`, `components/TrackName.tsx`) · in force
 - D-237 An MC bears no advertising by the `isMc` mark of its split row (never by the name; `isMcPseudonym` removed); every MC row of every split version marked (`scripts/mc/mark-mc-rows.sql`, 1 111 rows): the carves of D-216 hold for the whole history (20 owners, MCs +9 979,88), the advertising unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force

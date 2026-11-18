@@ -466,6 +466,16 @@ export const artistDetailSchema = z.object({
   splits: z.array(splitListItemSchema).describe('Every split with a row of the pseudonym (any period, every id)'),
   participations: z.array(participationListSchema.shape.items.element),
   documents: z.array(documentSchema).describe('The documents the splits, rows, participations and contracts above cite'),
+  trackMeta: z
+    .array(
+      z.object({
+        isrc: z.string().describe(D.isrc),
+        title: z.string().nullable().describe('The title as on the platforms, with the version'),
+        version: z.string().nullable().describe('The version, like «Slowed»; null = none'),
+        coverUrl: z.string().nullable().describe('The cover, a URL'),
+      }),
+    )
+    .describe('D-239: the metadata of the ISRCs of the tracks above that have one (D-238)'),
 });
 export type ArtistDetail = z.infer<typeof artistDetailSchema>;
 

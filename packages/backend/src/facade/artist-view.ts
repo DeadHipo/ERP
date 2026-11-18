@@ -207,6 +207,13 @@ export function artistViewApi(ctx: FacadeContext, splitsPart: ReturnType<typeof 
           splits: [...splits.values()].sort(byIsrcAndDate),
           participations: [...participations.values()].sort(byIsrcAndDate),
           documents,
+          // D-239: the title with its version and the cover of each ISRC of the pseudonym (the track meta, D-238)
+          trackMeta: (await owners.trackMeta.of([...new Set(tracks.flatMap((t) => (t.isrc ? [t.isrc] : [])))])).map((m) => ({
+            isrc: m.isrc,
+            title: m.title,
+            version: m.version,
+            coverUrl: m.coverUrl,
+          })),
         };
       });
       if (viewer.kind === 'all') return card;

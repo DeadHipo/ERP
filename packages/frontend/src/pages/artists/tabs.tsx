@@ -3,6 +3,7 @@ import type { ArtistDetail } from '@erp/shared/api-responses';
 import { ownerQueries } from '../../api/queries/owners';
 import { settlementQueries } from '../../api/queries/settlements';
 import { AuditTable } from '../../components/AuditTable';
+import { TrackName, metaByIsrc } from '../../components/TrackName';
 import { EntityLink } from '../../components/EntityLink';
 import { QueryView } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
@@ -19,16 +20,17 @@ const r = ru.catalog.rules;
 export function ArtistRulesTab(props: { detail: ArtistDetail }) {
   const d = props.detail;
   const mine = new Set([d.artist.id, ...d.previousIds]);
+  const meta = metaByIsrc(d.trackMeta);
   return (
     <div className="flex flex-col gap-4" data-testid="rules-tab">
       <Section title={t.rules.tracks} testId="artist-tracks">
         {d.tracks.length === 0 ? (
           <span className="text-sm text-muted">{t.rules.noTracks}</span>
         ) : (
-          <ul className="flex flex-wrap gap-3 text-sm">
+          <ul className="flex flex-wrap gap-4 text-sm">
             {d.tracks.map((tr) => (
               <li key={tr.id} data-testid={`artist-track-${tr.isrc ?? tr.id}`}>
-                {tr.isrc ? <EntityLink kind="isrc" id={tr.isrc} label={`${tr.isrc} · ${tr.title}`} /> : tr.title}
+                {tr.isrc ? <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={tr.title} /> : tr.title}
               </li>
             ))}
           </ul>

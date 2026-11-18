@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ArtistBalance, CReason } from '@erp/shared/api-responses';
 import { settlementQueries } from '../../api/queries/settlements';
 import { EntityLink } from '../../components/EntityLink';
+import { TrackName, metaByIsrc, type TrackMetaLite } from '../../components/TrackName';
 import { Money } from '../../components/Money';
 import { statusLabel } from '../../components/StatusChip';
 import { formatMoney } from '../../lib/money';
@@ -20,8 +21,9 @@ const pendingWhy = (why: string) => (Object.hasOwn(b.pendingWhy, why) ? b.pendin
  * of record, per ISRC, the positions (advances) and the advertising charged to this pseudonym. Every number is the
  * backend's (R1); the payout and the payable are the owner's (the owner link in the header).
  */
-export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
+export function ArtistBalanceTab(props: { balance: ArtistBalance; trackMeta?: readonly TrackMetaLite[] }) {
   const m = props.balance;
+  const meta = metaByIsrc(props.trackMeta);
   const waiting = (Object.entries(m.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
   const ops = useQuery({ ...settlementQueries.operations({ artistId: m.artistId }), enabled: m.pendingOperations.length > 0 });
   const opText = (id: string) => {
@@ -96,7 +98,7 @@ export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
             {m.tracks.map((tr) => (
               <tr key={tr.isrc} data-testid={`balance-track-${tr.isrc}`}>
                 <Td>
-                  <EntityLink kind="isrc" id={tr.isrc} />
+                  <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />
