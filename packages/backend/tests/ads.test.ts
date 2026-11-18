@@ -3,7 +3,7 @@ import { Decimal } from '../src/shared/money';
 import type { AdExpense } from '../src/modules/ads';
 import type { SplitAtDate } from '../src/modules/splits';
 import type { LabelOfRecord } from '../src/modules/labels';
-import { adPositionsByOwner, adsOutsideBook, adSummary, allocateAd, isMcPseudonym, type AdContext } from '../src/facade/ads';
+import { adPositionsByOwner, adsOutsideBook, adSummary, allocateAd, type AdContext } from '../src/facade/ads';
 import {
   approvedAppendix,
   confirmedOwner,
@@ -40,7 +40,7 @@ const ad = (over: Partial<AdExpense> = {}): AdExpense => ({
 });
 
 /** A hand-built context: artists a, b (persons), mc (MC pseudonym), brand (a label owner), sub (a label owner's pseudonym). */
-function world(opts: { split?: [string, string][] | null } = {}) {
+function world(opts: { split?: [string, string][] | null; mc?: string[] } = {}) {
   const artists = new Map(
     [
       ['a', 'Artist A', 'oa'],
@@ -61,6 +61,8 @@ function world(opts: { split?: [string, string][] | null } = {}) {
             artistId,
             percent: D(p),
             documentId: null,
+            // the MC mark of the row (D-233): the row `mc` by default, or the rows named in `opts.mc`
+            isMc: (opts.mc ?? ['mc']).includes(artistId),
           })),
         };
   // D-232: the sublabel rule model removed (a sublabel label of record with a rule)
@@ -92,9 +94,15 @@ describe('ads: allocation of one expense (pure)', () => {
   it('MC and label rows bear nothing: their share goes to the artists', () => {
     const r = allocateAd(ad(), world({ split: [['a', '30'], ['mc', '20'], ['brand', '50']] }));
     expect(r.parts.map((p) => [p.artistId, p.amount.toFixed()])).toEqual([['a', '100']]);
-    expect(isMcPseudonym('MC Test')).toBe(true);
-    expect(isMcPseudonym('mc_x')).toBe(true);
-    expect(isMcPseudonym('MCQUEEN')).toBe(false);
+  });
+
+  it('D-233: the mark of the row decides, never the name: an MC-named row without the mark bears, a marked row does not', () => {
+    // «MC Test» without the mark bears its share; «Artist B» marked MC on this split bears nothing
+    const r = allocateAd(ad(), world({ split: [['a', '30'], ['b', '20'], ['mc', '50']], mc: ['b'] }));
+    expect(r.parts.map((p) => [p.artistId, p.amount.toFixed()])).toEqual([
+      ['a', '37.5'],
+      ['mc', '62.5'],
+    ]);
   });
 
   it('recovery 50 %: artists owe half; on our own label the rest is ours', () => {

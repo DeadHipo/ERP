@@ -8,12 +8,6 @@ import type { LayerContext } from './layers';
 // Advertising expenses (D-155, D-156) as a pure function over one snapshot: who bears an expense and which debt
 // positions it creates. Nothing is stored; calculate() runs it for every active expense.
 
-/**
- * MC pseudonyms never bear advertising (D-155): the same rule as the ads pipeline of report-processor, by the
- * pseudonym ("MC …", "MC_…", "MC-…"). A flag on the pseudonym card is out of this version (docs/реклама_тз.md §7).
- */
-export const isMcPseudonym = (pseudonym: string): boolean => /^mc[\s_-]/i.test(pseudonym.trim());
-
 export type AdStatus = 'allocated' | 'pre_allocated' | 'no_split' | 'no_artist';
 
 export interface AdPart {
@@ -89,8 +83,10 @@ export function allocateAd(ad: AdExpense, ctx: AdContext): AdResult {
     else {
       weights = sp.shares
         .filter((sh) => !sh.percent.isZero())
+        // an MC row of the split in force never bears advertising (D-155 by the mark of the row, D-233; never by the name)
+        .filter((sh) => sh.isMc !== true)
         .map((sh) => ({ a: canon(sh.artistId), id: sh.artistId, weight: sh.percent }))
-        .filter((x) => !(x.a && (isMcPseudonym(x.a.pseudonym) || (x.a.ownerId && ctx.labelOwners.has(x.a.ownerId)))))
+        .filter((x) => !(x.a && x.a.ownerId && ctx.labelOwners.has(x.a.ownerId)))
         .map((x) => ({ artistId: x.a?.id ?? x.id, weight: x.weight }));
       status = weights.length > 0 ? 'allocated' : 'no_artist';
     }
