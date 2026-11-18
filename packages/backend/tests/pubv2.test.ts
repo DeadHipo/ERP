@@ -221,6 +221,10 @@ describe('the links of songs to ISRCs (D-184)', () => {
     expect((await f.pubV2SongCandidates(id)).isrcs.map((x) => [x.isrc, x.source])).toEqual([[isrcs[0], 'recommended'], [isrcs[2], 'manual']]);
     await f.setPubV2SongIsrcs(id, [isrcs[1] as string], 'tester');
     expect((await f.pubV2Songs())[0]?.isrcs).toEqual([isrcs[1]]);
+    // P33 (D-236): the songwriter page lists the linked ISRCs of each song
+    const sw = (await f.pubV2Songs())[0]?.songwriterId as string;
+    const page = await f.pubV2Songwriter(sw);
+    expect(page.songs.find((x) => x.id === id)?.isrcs).toEqual([isrcs[1]]);
     await expect(f.setPubV2SongIsrcs(id, ['QZTST2699999'], 'tester')).rejects.toMatchObject({ code: 'not_found' });
     await expect(f.setPubV2SongIsrcs(id, ['nonsense'], 'tester')).rejects.toMatchObject({ code: 'validation_error' });
     await expect(f.setPubV2SongIsrcs('missing', [], 'tester')).rejects.toMatchObject({ code: 'not_found' });

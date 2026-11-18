@@ -633,6 +633,7 @@ export const pubV2SongwriterDetailSchema = z.object({
         periods: z
           .array(z.object({ period: z.string().describe('The quarter, like 2026-Q2'), payable: money.describe('Payable by the report, USD') }))
           .describe('The song per quarter'),
+        isrcs: z.array(z.string()).describe('The ISRCs the song is linked to (D-184, D-236), sorted; empty = none yet'),
       }),
     )
     .describe('The songs of the songwriter, largest first'),

@@ -130,6 +130,14 @@ export function pubV2LinksApi(ctx: FacadeContext, m: { pubv2: PubV2Service; link
 
   return {
     /** The songs for the tab «Треки» (D-184): the ones without an ISRC first, largest first. */
+    /** P33 (D-236): the songwriter with the ISRCs each of its songs is linked to (`links.song_isrc`, D-184), by ISRC. */
+    async pubV2Songwriter(id: string, labelId?: string) {
+      const [w, linked] = await Promise.all([pubv2.songwriter(id, labelId), links.songIsrcs()]);
+      const isrcsOf = new Map<string, Set<string>>();
+      for (const l of linked) (isrcsOf.get(l.songId) ?? isrcsOf.set(l.songId, new Set()).get(l.songId)!).add(l.isrc);
+      return { ...w, songs: w.songs.map((s) => ({ ...s, isrcs: [...(isrcsOf.get(s.id) ?? [])].sort() })) };
+    },
+
     async pubV2Songs(labelId?: string) {
       const [{ candidates }, ownerOf, songs, decided, all, states] = await Promise.all([
         catalog(),

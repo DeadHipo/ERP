@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { publishingV2Queries } from '../../../api/queries/publishing';
 import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
@@ -43,10 +43,28 @@ export function SongwriterV2Page() {
               </section>
               <section>
                 <h2 className="mb-2 text-sm font-medium">{t.songs}</h2>
-                <SimpleTable testId="songwriter-songs" headers={[t.cols.title, t.cols.periods, t.cols.payable]}>
+                <SimpleTable testId="songwriter-songs" headers={[t.cols.title, t.songIsrcs, t.cols.periods, t.cols.payable]}>
                   {w.songs.map((s) => (
-                    <tr key={s.id}>
+                    <tr key={s.id} data-testid={`song-${s.id}`}>
                       <Td>{s.title}</Td>
+                      <Td col="isrcs">
+                        {s.isrcs.length === 0 ? (
+                          <span className="text-muted">{t.noSongIsrcs}</span>
+                        ) : (
+                          <details data-testid={`song-isrcs-${s.id}`}>
+                            <summary className="cursor-pointer text-accent">{t.songIsrcsShow}</summary>
+                            <ul className="mt-1 flex flex-col gap-0.5">
+                              {s.isrcs.map((isrc) => (
+                                <li key={isrc}>
+                                  <Link className="text-accent hover:underline" to={`/tracks/${isrc}`} data-testid={`song-isrc-${isrc}`}>
+                                    {isrc}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </Td>
                       <Td>{s.periods.map((p) => p.period).join(', ')}</Td>
                       <Td><Money value={s.payable} /></Td>
                     </tr>
