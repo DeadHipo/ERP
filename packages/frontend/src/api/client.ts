@@ -246,6 +246,15 @@ export const tracks = {
   /** An operator interval of the label history; the same `from` as an operator interval replaces it. Answers the history. */
   setLabel: (isrc: string, body: z.input<typeof S.setTrackLabelBody>) =>
     call('POST', `/tracks/${id(isrc)}/label`, { body, schema: R.trackLabelsSchema }),
+  /** The metadata of a recording (D-238): the shown values and the platform entries. Navigation, not money. */
+  meta: (isrc: string) => call('GET', `/tracks/${id(isrc)}/meta`, { schema: R.trackMetaViewSchema }),
+  setMeta: (isrc: string, body: z.input<typeof S.trackMetaBody>) =>
+    call('PATCH', `/tracks/${id(isrc)}/meta`, { body, schema: R.trackMetaSchema }),
+  addPlatform: (isrc: string, body: z.input<typeof S.trackPlatformBody>) =>
+    call('POST', `/tracks/${id(isrc)}/platforms`, { body, schema: R.trackPlatformSchema }),
+  updatePlatform: (platformId: string, body: z.input<typeof S.trackPlatformPatchBody>) =>
+    call('PATCH', `/tracks/platforms/${id(platformId)}`, { body, schema: R.trackPlatformSchema }),
+  removePlatform: (platformId: string) => call('POST', `/tracks/platforms/${id(platformId)}/remove`, { schema: R.trackPlatformSchema }),
 };
 
 /** The release registry of a label (D-172, D-195): an export previewed against the registry, then the accepted changes applied. */

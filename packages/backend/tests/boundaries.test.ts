@@ -86,6 +86,15 @@ describe('module boundaries (README 4)', () => {
       expect(readFileSync(file, 'utf8'), file).not.toMatch(/trackLabels|track_labels|releaseRegistry|release-registry|isrcsOfUpcs|owners\.releases|\breleases\./);
   });
 
+  it('the calculation never reads the metadata of a recording (D-238: navigation, not money)', () => {
+    const calc = [
+      ...filesOf(join(SRC, 'facade', 'layers')),
+      ...['calculation.ts', 'balance.ts', 'scope.ts', 'owner-scope.ts', 'label-scope.ts', 'ads.ts'].map((f) => join(SRC, 'facade', f)),
+    ];
+    for (const file of calc)
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/trackMeta|track_meta|trackPlatforms|track_platforms|track-meta/);
+  });
+
   it('the calculation does not read the sublabels or their terms yet (D-217, D-219: the report reads the calculation, never the other way)', () => {
     const calc = [
       ...filesOf(join(SRC, 'facade', 'layers')),

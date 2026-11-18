@@ -74,6 +74,11 @@ export const OPERATION_COVERAGE = {
   'GET /tracks/:isrc/breakdown/:month': { page: 'P6', route: '/tracks/:isrc', note: 'action-breakdown of a month row' },
   'GET /tracks/:isrc/labels': { page: 'P6', route: '/tracks/:isrc', note: 'D-172: track-catalog-label in the header and TrackLabelsDialog (action-track-labels, rows track-label-<validFrom>); also P21 tracksWithoutLabel' },
   'POST /tracks/:isrc/label': { page: 'P6', route: '/tracks/:isrc', note: 'D-172: action-set-track-label (field-track-label, field-track-label-from, field-track-label-to, action-set-track-label-submit) and action-replace-track-label-<validFrom> of an operator row' },
+  'GET /tracks/:isrc/meta': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: the tab «Мета» (track-meta, meta-<field>, track-platforms) and the cover / version in the header' },
+  'PATCH /tracks/:isrc/meta': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-meta → field-meta-*, action-meta-submit' },
+  'POST /tracks/:isrc/platforms': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-add-platform → field-platform-*, action-platform-submit' },
+  'PATCH /tracks/platforms/:id': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-platform-<id> → action-platform-submit' },
+  'POST /tracks/platforms/:id/remove': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-remove-platform-<id> → ConfirmDialog' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
   'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },

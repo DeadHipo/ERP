@@ -56,7 +56,7 @@ describe('organization scope: static checks (D-170)', () => {
         [MODULES],
       )
     ).rows;
-    expect(tables.length).toBe(36); // D-235: the schema `publishing` dropped (0038); D-234: − the five tables of `publishing` from the walked schemas; D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
+    expect(tables.length).toBe(38); // D-238: + owners.track_meta, owners.track_platforms (0039); D-235: the schema `publishing` dropped (0038); D-234: − the five tables of `publishing` from the walked schemas; D-233: − owners.artist_tracks (0037); D-232: − labels.label_rules (0036); D-225: − settlements.opening_balances (0034); D-198: + settlements.cuts (0031); D-217: + labels.sublabels, links.sublabel_terms (0033)
     // + owners.track_labels, owners.releases (0018, D-172), settlements.opening_balances (0020, D-174), settlements.payees / holds / payout_answers (0021, D-176)
     for (const r of tables) expect(r.nullable, `${r.t}.org_id`).toBe('NO');
 
@@ -248,6 +248,8 @@ describe('two organizations behind the login: the API (D-170)', () => {
     answer: string;
     /** D-198: a cut of B's book */
     cut: string;
+    /** D-238: a platform entry of B's recording */
+    platform: string;
     /** D-217: a sublabel of the register and a term of it */
     subl: string;
     sublTerm: string;
@@ -343,6 +345,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     const opb = await ok('b', 'post', '/settlements/operations', { direction: 'in', amount: '1.00', artistId: ab.id, date: '2026-08-01', comment: 'B', labelId: lb.id });
     const adb = await ok('b', 'post', '/ads', { items: [{ isrc: ISRC_B, month: '2026-07', amount: '5', labelId: lb.id }] });
     const sublB = await ok('b', 'post', '/sublabels', { name: 'B Sublabel Secret' });
+    // D-238: the metadata of B's recording and a platform entry
+    await ok('b', 'patch', `/tracks/${ISRC_B}/meta`, { title: 'B Meta Secret', version: 'Secret Version' });
+    const platformB = await ok('b', 'post', `/tracks/${ISRC_B}/platforms`, { platform: 'spotify', platformId: 'secret-id', title: 'B Platform Secret' });
     const sublTermsB = await as('b', request(app).post(`/api/v1/sublabels/${sublB.id as string}/terms`))
       .query({ dryRun: '0' })
       .send({ percent: '50', validFrom: '2026-01', documentId: db_.id, items: [{ isrc: ISRC_B }] });
@@ -352,7 +357,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
       label: lb.id, sublabel: sb.id, file: fb.body.id, operation: opb.id,
       ad: adb.created[0].id, isrc: ISRC_B, upc: UPC_B, account: '2799555', pubFile: pubFile.body.id, songwriter: pubWriters[0]?.id as string, song: pubSongs[0]?.songId as string,
       contract: cb.id, payee: payeeB.id, hold: holdB.id, answer: answerB.id,
-      subl: sublB.id, sublTerm: sublTermsB.body.termIds[0],
+      subl: sublB.id, sublTerm: sublTermsB.body.termIds[0], platform: platformB.id,
       cut: (await ok('b', 'post', '/settlements/cuts', { labelId: lb.id, name: 'B cut Secret', cutDate: '2026-08-15' })).id,
       // D-171: a member of B and a (revoked) support grant of B
       member: (await ok('b', 'post', '/users', { login: `scope-bm-${sfx}`, password: PASSWORD, role: 'label_manager', labelIds: [lb.id] })).id,
@@ -366,7 +371,7 @@ describe('two organizations behind the login: the API (D-170)', () => {
     return {
       owner: u(), artist: u(), artist2: u(), track: u(), document: u(), split: u(), participation: u(), label: u(),
       sublabel: u(), file: u(), operation: u(), ad: u(), isrc: 'QZTST2698888',
-      upc: '2698800000001', account: '2799666', member: u(), grant: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(),
+      upc: '2698800000001', account: '2799666', member: u(), grant: u(), pubFile: u(), songwriter: u(), song: u(), contract: u(), payee: u(), hold: u(), answer: u(), cut: u(), subl: u(), sublTerm: u(), platform: u(),
     };
   };
 
@@ -399,6 +404,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'GET /tracks/summary': (x) => ({ query: { isrcs: x.isrc } }),
     'GET /tracks/catalog': (x) => ({ query: { label: x.label } }),
     'GET /tracks/:isrc/money': (x) => ({ params: { isrc: x.isrc } }),
+    'GET /tracks/:isrc/meta': (x) => ({ params: { isrc: x.isrc } }),
+    'PATCH /tracks/platforms/:id': (x) => ({ params: { id: x.platform }, body: { title: 'Into A' } }),
+    'POST /tracks/platforms/:id/remove': (x) => ({ params: { id: x.platform } }),
     'GET /tracks/:isrc/breakdown/:month': (x) => ({ params: { isrc: x.isrc, month: '2026-07' } }),
     'GET /releases': (x) => ({ query: { q: x.upc } }),
     'GET /releases/:upc': (x) => ({ params: { upc: x.upc } }),
@@ -518,6 +526,9 @@ describe('two organizations behind the login: the API (D-170)', () => {
     'POST /sublabels',
     // D-232: a new label is a name in A (before: a sublabel named its own label)
     'POST /labels',
+    // D-238: an ISRC is a public code, not a record of B: A writes its own metadata of it
+    'PATCH /tracks/:isrc/meta',
+    'POST /tracks/:isrc/platforms',
     'POST /tracks', // D-233: a track names no pseudonym any more
   ];
 

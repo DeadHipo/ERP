@@ -13,6 +13,7 @@ export const trackKeys = {
   summaryOf: (isrcs: readonly string[], labelId = '') => ['tracks', 'summary', 'isrcs', isrcs.join(','), labelId || null] as const,
   catalog: (labelId = '', current = false) => ['tracks', 'catalog', labelId || null, current ? 'current' : 'all'] as const,
   labels: (isrc: string) => ['tracks', 'labels', isrc] as const,
+  meta: (isrc: string) => ['tracks', 'meta', isrc] as const,
   money: (isrc: string) => ['tracks', 'money', isrc] as const,
   breakdown: (isrc: string, month: string) => ['tracks', 'breakdown', isrc, month] as const,
   audit: (entityId: string) => ['audit', 'list', entityId] as const,
@@ -45,6 +46,8 @@ export const trackQueries = {
     }),
   /** The label history of the ISRC (D-172, P6): navigation, no money. */
   labels: (isrc: string) => queryOptions({ queryKey: trackKeys.labels(isrc), queryFn: () => api.tracks.labels(isrc), staleTime: 0 }),
+  /** D-238: the metadata of a recording (a reference read, not money). */
+  meta: (isrc: string) => queryOptions({ queryKey: trackKeys.meta(isrc), queryFn: () => api.tracks.meta(isrc), staleTime: 0 }),
   /** P6: the one money call of the track card (N6). */
   money: (isrc: string) =>
     queryOptions({ queryKey: trackKeys.money(isrc), queryFn: () => catalog.trackMoney(isrc), ...MONEY_QUERY }),

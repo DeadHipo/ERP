@@ -35,3 +35,5 @@ whole) or `operator` (a correction; never touched by the derivation; `import` is
 `replaceOfIsrc`) knows no rule: the derivation, the operator replacement by the same `from` and the codes
 `catalog_overlap` / `catalog_same_label` are the facade's. No `created_by` (the author is the audit). Navigation only, like
 the release registry: the calculation never reads it.
+
+The metadata of a recording (D-238, migration `0039_track_meta.sql`): `track_meta` (one row per ISRC: the title with its version, artists, duration, explicit, date, cover link, primary platform; no history) and `track_platforms` (what each platform holds, 1 : N, unique by ISRC + platform + platform id; `raw` keeps a lookup's answer). The service group `trackMeta` (`get`, `set`: null clears a field, a field left out keeps it; `addPlatform` 409 `platform_taken`, `updatePlatform`, `removePlatform`). The platforms are `@erp/shared/track-platforms`. Navigation only: the calculation never reads it.

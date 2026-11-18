@@ -11,6 +11,8 @@ import {
   owners,
   releases,
   trackLabels,
+  trackMeta,
+  trackPlatforms,
   tracks,
 } from './schema';
 
@@ -24,6 +26,8 @@ export type ContractArtistRow = OrgFree<typeof contractArtists.$inferSelect>;
 export type MergeRow = OrgFree<typeof merges.$inferSelect>;
 export type TrackLabelRow = OrgFree<typeof trackLabels.$inferSelect>;
 export type ReleaseRow = OrgFree<typeof releases.$inferSelect>;
+export type TrackMetaRow = OrgFree<typeof trackMeta.$inferSelect>;
+export type TrackPlatformRow = OrgFree<typeof trackPlatforms.$inferSelect>;
 
 /** `col = ANY($1)` with the whole list as one array parameter (no parameter-count limit for long lists). */
 const anyOf = (col: AnyColumn, ids: string[]): SQL => sql`${col} = any(${sql.param(ids)}::text[])`;
@@ -53,6 +57,8 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
     merges: orgFree(merges),
     trackLabels: orgFree(trackLabels),
     releases: orgFree(releases),
+    trackMeta: orgFree(trackMeta),
+    trackPlatforms: orgFree(trackPlatforms),
   };
   return {
     transaction: <T>(fn: () => Promise<T>): Promise<T> => db.transaction(fn),
@@ -351,6 +357,41 @@ export function createOwnersRepository(db: Db, org: OrgScope) {
           .delete(trackLabels)
           .where(orgWhere(org, trackLabels, and(eq(trackLabels.isrc, isrc), eq(trackLabels.source, source))));
         if (rows.length > 0) await orm().insert(trackLabels).values(orgRows(org, rows));
+      },
+    },
+    /** The metadata of recordings (D-238): one row per ISRC and the platform entries. */
+    trackMeta: {
+      of: (isrcs: string[]): Promise<TrackMetaRow[]> =>
+        isrcs.length === 0 ? Promise.resolve([]) : orm().select(C.trackMeta).from(trackMeta).where(orgWhere(org, trackMeta, anyOf(trackMeta.isrc, isrcs))),
+      /** Inserts the row of the ISRC or replaces it whole (no history). */
+      put: async (row: OrgFree<typeof trackMeta.$inferInsert>) => {
+        const patch = { ...row } as Partial<typeof row>;
+        delete patch.isrc;
+        const updated = await orm()
+          .update(trackMeta)
+          .set(patch)
+          .where(orgWhere(org, trackMeta, eq(trackMeta.isrc, row.isrc)))
+          .returning({ isrc: trackMeta.isrc });
+        if (updated.length === 0) await orm().insert(trackMeta).values(orgRow(org, row));
+      },
+      platforms: (isrcs: string[]): Promise<TrackPlatformRow[]> =>
+        isrcs.length === 0
+          ? Promise.resolve([])
+          : orm()
+              .select(C.trackPlatforms)
+              .from(trackPlatforms)
+              .where(orgWhere(org, trackPlatforms, anyOf(trackPlatforms.isrc, isrcs)))
+              .orderBy(asc(trackPlatforms.platform), asc(trackPlatforms.updatedAt)),
+      platform: async (id: string): Promise<TrackPlatformRow | undefined> =>
+        (await orm().select(C.trackPlatforms).from(trackPlatforms).where(orgWhere(org, trackPlatforms, eq(trackPlatforms.id, id))))[0],
+      insertPlatform: async (row: OrgFree<typeof trackPlatforms.$inferInsert>) => {
+        await orm().insert(trackPlatforms).values(orgRow(org, row));
+      },
+      updatePlatform: async (id: string, patch: Partial<OrgFree<typeof trackPlatforms.$inferInsert>>) => {
+        await orm().update(trackPlatforms).set(patch).where(orgWhere(org, trackPlatforms, eq(trackPlatforms.id, id)));
+      },
+      removePlatform: async (id: string) => {
+        await orm().delete(trackPlatforms).where(orgWhere(org, trackPlatforms, eq(trackPlatforms.id, id)));
       },
     },
     releases: {

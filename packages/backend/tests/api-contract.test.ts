@@ -640,6 +640,14 @@ const OPERATOR = 'contract-test';
     expect(history).toEqual([expect.objectContaining({ labelId: zero.id, validFrom: '2026-07-01', validTo: null, source: 'operator' })]);
     expect(await call('get', '/tracks/:isrc/labels', { params: { isrc: I3 } })).toEqual(history);
     await call('get', '/tracks/catalog', { query: { label: zero.id, catalog: 'current' } });
+    // the metadata of a recording (D-238): set, a platform entry added, changed and removed
+    expect(await call('get', '/tracks/:isrc/meta', { params: { isrc: I3 } })).toEqual({ isrc: I3, meta: null, platforms: [] });
+    const meta = await call('patch', '/tracks/:isrc/meta', { params: { isrc: I3 }, body: { title: 'Song - Slowed', version: 'Slowed', durationMs: 123000, coverUrl: 'https://example.com/c.jpg' } });
+    expect([meta.title, meta.version, meta.durationMs]).toEqual(['Song - Slowed', 'Slowed', 123000]);
+    const platform = await call('post', '/tracks/:isrc/platforms', { params: { isrc: I3 }, body: { platform: 'spotify', platformId: 'sp1', url: 'https://open.spotify.com/track/sp1' } });
+    expect((await call('patch', '/tracks/platforms/:id', { params: { id: platform.id }, body: { durationMs: 123000 } })).durationMs).toBe(123000);
+    expect((await call('get', '/tracks/:isrc/meta', { params: { isrc: I3 } })).platforms).toHaveLength(1);
+    await call('post', '/tracks/platforms/:id/remove', { params: { id: platform.id } });
     await call('get', '/releases', { query: { label: zero.id } });
     await call('get', '/releases/:upc', { params: { upc: UPC }, query: { label: zero.id } });
     // the release registry (D-172): the Believe release export of the label (synthetic), the registry read

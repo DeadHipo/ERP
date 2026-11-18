@@ -42,6 +42,20 @@ export function aggregatesRouter(facade: Facade, opts: { tmpDir: string }) {
   r.post('/tracks/:isrc/label', async (req, res) =>
     res.status(201).json(await facade.setTrackLabel(param(req, 'isrc'), parse(S.setTrackLabelBody, req.body), viewerOf(res))),
   );
+  // the metadata of a recording (D-238): navigation, not money
+  r.get('/tracks/:isrc/meta', async (req, res) => res.json(await facade.trackMeta(param(req, 'isrc'))));
+  r.patch('/tracks/:isrc/meta', async (req, res) =>
+    res.json(await facade.setTrackMeta(param(req, 'isrc'), parse(S.trackMetaBody, req.body), res.locals.operator as string, viewerOf(res))),
+  );
+  r.post('/tracks/:isrc/platforms', async (req, res) =>
+    res
+      .status(201)
+      .json(await facade.addTrackPlatform(param(req, 'isrc'), parse(S.trackPlatformBody, req.body), res.locals.operator as string, viewerOf(res))),
+  );
+  r.patch('/tracks/platforms/:id', async (req, res) =>
+    res.json(await facade.updateTrackPlatform(param(req, 'id'), parse(S.trackPlatformPatchBody, req.body), res.locals.operator as string, viewerOf(res))),
+  );
+  r.post('/tracks/platforms/:id/remove', async (req, res) => res.json(await facade.removeTrackPlatform(param(req, 'id'), viewerOf(res))));
   r.get('/tracks/:isrc/money', async (req, res) => res.json(await facade.trackMoney(param(req, 'isrc'))));
   r.get('/tracks/:isrc/breakdown/:month', async (req, res) =>
     res.json(await facade.trackBreakdown(param(req, 'isrc'), param(req, 'month'))),

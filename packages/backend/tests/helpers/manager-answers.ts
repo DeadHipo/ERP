@@ -96,6 +96,12 @@ export const MANAGER_ANSWER: Readonly<Record<string, 'L' | 'R' | 'O' | 'x'>> = {
   // the label history of an ISRC (D-172 stage 4 commit 4)
   'GET /tracks/:isrc/labels': 'O',
   'POST /tracks/:isrc/label': 'L',
+  // D-238: the metadata of a recording
+  'GET /tracks/:isrc/meta': 'O',
+  'PATCH /tracks/:isrc/meta': 'R',
+  'POST /tracks/:isrc/platforms': 'R',
+  'PATCH /tracks/platforms/:id': 'R',
+  'POST /tracks/platforms/:id/remove': 'R',
   // the assumption (D-172 stage 4 commit 3): approve, the org_admin's only
   'POST /splits/assume': 'x',
   // the release registry (D-172 stage 4 commit 5): under its own label

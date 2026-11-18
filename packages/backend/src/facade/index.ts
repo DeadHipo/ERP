@@ -33,6 +33,7 @@ import { admissionApi } from './admission';
 import { cutsApi } from './cuts';
 import { sublabelsApi } from './sublabels';
 import { sublabelReportApi } from './sublabel-report';
+import { trackMetaApi } from './track-meta';
 
 export type { FacadeConfig, ShareSpec } from './context';
 
@@ -94,6 +95,7 @@ export function openFacade(config: FacadeConfig) {
     ...searchApi(ctx),
     ...adsApi(ctx),
     ...catalogApi(ctx),
+    ...trackMetaApi(ctx),
     ...splitImportApi(ctx, splitsPart),
     ...releaseRegistryApi(ctx),
     ...onboardingApi(ctx),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRACK_PLATFORMS, TRACK_PLATFORM_STATUSES } from './track-platforms';
 import { DOCUMENT_KINDS } from './document-kinds';
 import { LABEL_SOURCES, OPERATION_KINDS } from './operation-kinds';
 
@@ -556,6 +557,46 @@ export const grantSupportBody = z.object({
 // ---- the label history of an ISRC (D-172) ----
 
 /** `POST /tracks/:isrc/label` (D-172): an operator interval `[from, to)` floored to the month start (M52); the same `from` as an operator interval replaces it. */
+// ---- the metadata of a recording (D-238): navigation, not money ----
+
+const trackPlatformEnum = z.enum(TRACK_PLATFORMS);
+const httpUrlField = z.string().max(2000).regex(/^https?:\/\/\S+$/i, 'expected an http(s) link');
+const durationMs = z.number().int().positive().max(24 * 3600 * 1000);
+
+/** `PATCH /tracks/:isrc/meta`: the fields sent are set (null clears one), the fields left out keep their value. */
+export const trackMetaBody = z.object({
+  title: z.string().max(500).nullable().optional().describe('The title as on the platforms, with the version'),
+  version: z.string().max(200).nullable().optional().describe('The version, like «Slowed»'),
+  artists: z.string().max(1000).nullable().optional(),
+  durationMs: durationMs.nullable().optional().describe('Milliseconds'),
+  explicit: z.boolean().nullable().optional(),
+  releaseDate: date.nullable().optional(),
+  coverUrl: httpUrlField.nullable().optional(),
+  primaryPlatform: trackPlatformEnum.nullable().optional().describe('The platform the shown values come from'),
+});
+
+const trackPlatformFields = {
+  platformId: z.string().max(200).nullable().optional().describe('The id of the track on the platform'),
+  url: httpUrlField.nullable().optional(),
+  albumId: z.string().max(200).nullable().optional(),
+  albumUrl: httpUrlField.nullable().optional(),
+  upc: z.string().max(20).nullable().optional(),
+  title: z.string().max(500).nullable().optional(),
+  artists: z.string().max(1000).nullable().optional(),
+  durationMs: durationMs.nullable().optional(),
+  explicit: z.boolean().nullable().optional(),
+  releaseDate: date.nullable().optional(),
+  coverUrl: httpUrlField.nullable().optional(),
+  status: z.enum(TRACK_PLATFORM_STATUSES).optional().describe('found (default), not_found, error'),
+  source: z.string().max(100).optional().describe('Who brought it: manual (default), isrc-lookup, …'),
+  raw: z.unknown().optional().describe('The original answer of the lookup, kept as it is'),
+  fetchedAt: z.string().max(40).nullable().optional().describe('When it was looked up (ISO 8601)'),
+};
+/** `POST /tracks/:isrc/platforms`: a platform entry. */
+export const trackPlatformBody = z.object({ platform: trackPlatformEnum, ...trackPlatformFields });
+/** `PATCH /tracks/platforms/:id`: the fields sent change (null clears one). */
+export const trackPlatformPatchBody = z.object({ platform: trackPlatformEnum.optional(), ...trackPlatformFields });
+
 export const setTrackLabelBody = z.object({
   labelId: z.string().min(1),
   from: date,

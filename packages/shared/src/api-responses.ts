@@ -2125,6 +2125,52 @@ export const trackLabelSchema = z.object({
   createdAt: timestamp,
 });
 export const trackLabelsSchema = z.array(trackLabelSchema);
+
+// ---- the metadata of a recording (D-238): navigation, not money ----
+
+export const trackMetaSchema = z.object({
+  isrc: z.string().describe(D.isrc),
+  title: z.string().nullable().describe('The title as on the platforms, with the version'),
+  version: z.string().nullable().describe('The version, like «Slowed»'),
+  artists: z.string().nullable().describe('The artists as on the platforms'),
+  durationMs: z.number().int().nullable().describe('The duration, milliseconds'),
+  explicit: z.boolean().nullable().describe('Marked explicit'),
+  releaseDate: date.nullable().describe('The release date on the platforms'),
+  coverUrl: z.string().nullable().describe('The cover, a link'),
+  primaryPlatform: z.string().nullable().describe('The platform the shown values come from'),
+  updatedAt: timestamp,
+  updatedBy: z.string().describe('Who set it last'),
+});
+
+export const trackPlatformSchema = z.object({
+  id: z.string(),
+  isrc: z.string().describe(D.isrc),
+  platform: z.string().describe('spotify, apple_music, youtube, …'),
+  platformId: z.string().nullable().describe('The id of the track on the platform'),
+  url: z.string().nullable().describe('The link to the track'),
+  albumId: z.string().nullable().describe('The id of the release on the platform'),
+  albumUrl: z.string().nullable().describe('The link to the release'),
+  upc: z.string().nullable().describe(D.upc),
+  title: z.string().nullable().describe('The title on the platform'),
+  artists: z.string().nullable().describe('The artists on the platform'),
+  durationMs: z.number().int().nullable().describe('The duration, milliseconds'),
+  explicit: z.boolean().nullable().describe('Marked explicit'),
+  releaseDate: date.nullable().describe('The release date on the platform'),
+  coverUrl: z.string().nullable().describe('The cover of the release, a link'),
+  status: z.enum(['found', 'not_found', 'error']).describe('found, not_found (looked for), error (the lookup failed)'),
+  source: z.string().describe('Who brought it: manual, isrc-lookup, …'),
+  raw: z.unknown().nullable().describe('The original answer of the lookup'),
+  fetchedAt: timestamp.nullable().describe('When it was looked up'),
+  updatedAt: timestamp,
+  updatedBy: z.string().describe('Who set it last'),
+});
+
+/** `GET /tracks/:isrc/meta` (D-238). */
+export const trackMetaViewSchema = z.object({
+  isrc: z.string().describe(D.isrc),
+  meta: trackMetaSchema.nullable().describe('null before the first edit'),
+  platforms: z.array(trackPlatformSchema),
+});
 export type TrackLabel = z.infer<typeof trackLabelSchema>;
 
 // ---- the assumption (D-172) ----

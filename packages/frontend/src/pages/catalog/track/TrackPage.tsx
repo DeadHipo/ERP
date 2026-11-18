@@ -15,6 +15,7 @@ import { QueryView } from '../../../components/PageState';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { CReasonList } from '../components/CReasonList';
+import { MetaTab } from './MetaTab';
 import { MoneyTab } from './MoneyTab';
 import { RulesTab } from './RulesTab';
 import { DocumentsTab } from './DocumentsTab';
@@ -47,7 +48,13 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
   const upcs = [...new Set([...data.tracks.flatMap((x) => (x.upc ? [x.upc] : [])), ...data.months.map((x) => x.upc)])];
   return (
     <EntityCard
-      title={<span data-testid="track-title">{data.title || isrc}</span>}
+      title={
+        <span className="flex items-center gap-3">
+          <TrackCover isrc={isrc} />
+          <span data-testid="track-title">{data.title || isrc}</span>
+          <TrackVersion isrc={isrc} />
+        </span>
+      }
       subtitle={
         <div className="flex flex-col gap-1">
           <span>
@@ -80,6 +87,7 @@ function TrackCard({ isrc, data }: { isrc: string; data: TrackMoney }) {
       tabs={[
         { id: 'money', label: t.tabs.money, content: <MoneyTab isrc={isrc} data={data} /> },
         { id: 'rules', label: t.tabs.rules, content: <RulesTab isrc={isrc} data={data} /> },
+        { id: 'meta', label: t.tabs.meta, content: <MetaTab isrc={isrc} /> },
         { id: 'ads', label: t.tabs.ads, content: <AdsOfEntity isrc={isrc} /> },
         { id: 'documents', label: t.tabs.documents, content: <DocumentsTab data={data} /> },
         { id: 'history', label: t.tabs.history, content: <HistoryTab isrc={isrc} /> },
@@ -186,4 +194,20 @@ function NoteEditor({ data }: { data: TrackMoney }) {
       </ActionButton>
     </span>
   );
+}
+
+/** D-238: the cover of the recording beside the title, when its metadata names one (a reference read, not money). */
+function TrackCover({ isrc }: { isrc: string }) {
+  const meta = useQuery(trackQueries.meta(isrc)).data?.meta;
+  return meta?.coverUrl ? <img data-testid="track-cover" src={meta.coverUrl} alt="" className="h-12 w-12 rounded-md object-cover" /> : null;
+}
+
+/** D-238: «· version» after the title, from the metadata of the recording. */
+function TrackVersion({ isrc }: { isrc: string }) {
+  const meta = useQuery(trackQueries.meta(isrc)).data?.meta;
+  return meta?.version ? (
+    <span data-testid="track-version" className="text-base font-normal text-muted">
+      · {meta.version}
+    </span>
+  ) : null;
 }

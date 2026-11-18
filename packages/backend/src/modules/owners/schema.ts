@@ -1,9 +1,9 @@
-import { bigint, boolean, date, integer, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
+import { bigint, boolean, date, integer, jsonb, pgSchema, primaryKey, text } from 'drizzle-orm/pg-core';
 import { isoTimestamp, localTimestamp } from '../../shared/pg-db';
 
 // Module 1: owners, artists (pseudonyms), tracks, documents and contracts.
 // The document registry lives here and is referenced by id from every other module.
-// The DDL is migrations/postgres/0003_owners.sql, 0007, 0015 and 0018 (schema `owners`); change both.
+// The DDL is migrations/postgres/0003_owners.sql, 0007, 0015, 0018 and 0039 (schema `owners`); change both.
 
 const s = pgSchema('owners');
 
@@ -136,3 +136,51 @@ export const releases = s.table(
   },
   (t) => [primaryKey({ columns: [t.orgId, t.labelId, t.upc] })],
 );
+
+/**
+ * The metadata of a recording (D-238, 0039): one row per ISRC, what the screens show; no history. Navigation only: the
+ * calculation never reads it.
+ */
+export const trackMeta = s.table(
+  'track_meta',
+  {
+    orgId: text('org_id').notNull(),
+    isrc: text('isrc').notNull(),
+    title: text('title'),
+    version: text('version'),
+    artists: text('artists'),
+    durationMs: integer('duration_ms'),
+    explicit: boolean('explicit'),
+    releaseDate: date('release_date', { mode: 'string' }),
+    coverUrl: text('cover_url'),
+    primaryPlatform: text('primary_platform'),
+    updatedAt: isoTimestamp('updated_at').notNull(),
+    updatedBy: text('updated_by').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.isrc] })],
+);
+
+/** What was found on each platform for an ISRC (D-238, 0039): 1 : N, unique by (isrc, platform, platform id). */
+export const trackPlatforms = s.table('track_platforms', {
+  orgId: text('org_id').notNull(),
+  id: text('id').primaryKey(),
+  isrc: text('isrc').notNull(),
+  platform: text('platform').notNull(),
+  platformId: text('platform_id'),
+  url: text('url'),
+  albumId: text('album_id'),
+  albumUrl: text('album_url'),
+  upc: text('upc'),
+  title: text('title'),
+  artists: text('artists'),
+  durationMs: integer('duration_ms'),
+  explicit: boolean('explicit'),
+  releaseDate: date('release_date', { mode: 'string' }),
+  coverUrl: text('cover_url'),
+  status: text('status', { enum: ['found', 'not_found', 'error'] }).notNull(),
+  source: text('source').notNull(),
+  raw: jsonb('raw').$type<unknown>(),
+  fetchedAt: isoTimestamp('fetched_at'),
+  updatedAt: isoTimestamp('updated_at').notNull(),
+  updatedBy: text('updated_by').notNull(),
+});

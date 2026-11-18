@@ -1,4 +1,5 @@
 import { CONTRACT_DOCUMENT_KINDS, DOCUMENT_KINDS, type DocumentKind } from '@erp/shared/document-kinds';
+import { TRACK_PLATFORMS, TRACK_PLATFORM_STATUSES, type TrackPlatformStatus } from '@erp/shared/track-platforms';
 import { ConflictError, NotFoundError, RuleViolationError, ValidationError } from '../../shared/errors';
 import { assertIsrc, newId, normalizeIsrc, normalizeName, normalizeUpc } from '../../shared/identifiers';
 import { assertDate, nowIso } from '../../shared/dates';
@@ -13,6 +14,8 @@ import type {
   OwnerRow,
   ReleaseRow,
   TrackLabelRow,
+  TrackMetaRow,
+  TrackPlatformRow,
   TrackRow,
 } from './repository';
 import { createOwnersRepository } from './repository';
@@ -246,6 +249,76 @@ function artistStatus(ownerId: string | null, id: string, confirmed: Set<string>
  * Module 1 on PostgreSQL (schema `owners`). Every method that reads the database is async; reads of several tables
  * run in one snapshot, and check-then-write methods run in one write transaction (they join an outer one).
  */
+
+// ---- the metadata of a recording (D-238): shapes only; who may write is the facade's ----
+
+/** The editable fields of the metadata of an ISRC; a field sent as null clears it, a field left out keeps its value. */
+export interface TrackMetaInput {
+  title?: string | null;
+  version?: string | null;
+  artists?: string | null;
+  durationMs?: number | null;
+  explicit?: boolean | null;
+  releaseDate?: string | null;
+  coverUrl?: string | null;
+  primaryPlatform?: string | null;
+}
+
+/** A platform entry: what was found on one platform for an ISRC. */
+export interface TrackPlatformInput {
+  platform: string;
+  platformId?: string | null;
+  url?: string | null;
+  albumId?: string | null;
+  albumUrl?: string | null;
+  upc?: string | null;
+  title?: string | null;
+  artists?: string | null;
+  durationMs?: number | null;
+  explicit?: boolean | null;
+  releaseDate?: string | null;
+  coverUrl?: string | null;
+  status?: string;
+  source?: string;
+  raw?: unknown;
+  fetchedAt?: string | null;
+}
+
+export type TrackMetaView = Omit<TrackMetaRow, never>;
+export type TrackPlatformView = Omit<TrackPlatformRow, never>;
+
+const text = (v: string | null | undefined): string | null => {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return t === '' ? null : t;
+};
+function httpUrl(v: string | null | undefined, field: string): string | null {
+  const t = text(v);
+  if (t === null) return null;
+  if (!/^https?:\/\/\S+$/i.test(t)) throw new ValidationError(`${field} must be an http(s) link`, { field }, 'validation_error');
+  return t;
+}
+function durationOf(v: number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  if (!Number.isInteger(v) || v <= 0) throw new ValidationError('The duration is a whole number of milliseconds above 0', { field: 'durationMs' });
+  return v;
+}
+function platformOf(v: string | null | undefined, field = 'platform'): string | null {
+  const t = text(v);
+  if (t === null) return null;
+  if (!(TRACK_PLATFORMS as readonly string[]).includes(t))
+    throw new ValidationError(`Unknown platform "${t}"`, { field, platforms: TRACK_PLATFORMS }, 'unknown_platform');
+  return t;
+}
+function statusOf(v: string | undefined): TrackPlatformStatus {
+  const t = v ?? 'found';
+  if (!(TRACK_PLATFORM_STATUSES as readonly string[]).includes(t)) throw new ValidationError(`Unknown status "${t}"`, { field: 'status' });
+  return t as TrackPlatformStatus;
+}
+const isUnique = (e: unknown) => {
+  const x = e as { code?: string; cause?: { code?: string } };
+  return x.code === '23505' || x.cause?.code === '23505';
+};
+
 export function createOwnersService(db: Db, org: OrgScope) {
   const repo = createOwnersRepository(db, org);
 
@@ -1045,6 +1118,117 @@ export function createOwnersService(db: Db, org: OrgScope) {
         }));
         await repo.transaction(() => repo.trackLabels.replaceOfIsrc(isrc, source, values)).catch(catalogRefusal);
         return repo.trackLabels.list({ isrcs: [isrc] });
+      },
+    },
+    /** The metadata of recordings (D-238): one row per ISRC (no history) and the platform entries (1 : N). */
+    trackMeta: {
+      async of(isrcs: string[]): Promise<TrackMetaView[]> {
+        return repo.trackMeta.of(isrcs.map(assertIsrc));
+      },
+      async get(isrcRaw: string): Promise<{ meta: TrackMetaView | null; platforms: TrackPlatformView[] }> {
+        const isrc = assertIsrc(isrcRaw);
+        const [rows, platforms] = await Promise.all([repo.trackMeta.of([isrc]), repo.trackMeta.platforms([isrc])]);
+        return { meta: rows[0] ?? null, platforms };
+      },
+      /** Sets the fields sent (null clears one, a field left out keeps its value); the row is created when missing. */
+      async set(isrcRaw: string, input: TrackMetaInput, by: string): Promise<TrackMetaView> {
+        const isrc = assertIsrc(isrcRaw);
+        const has = (k: keyof TrackMetaInput) => Object.prototype.hasOwnProperty.call(input, k) && input[k] !== undefined;
+        return repo.transaction(async () => {
+          const cur = (await repo.trackMeta.of([isrc]))[0];
+          const row = {
+            isrc,
+            title: has('title') ? text(input.title) : (cur?.title ?? null),
+            version: has('version') ? text(input.version) : (cur?.version ?? null),
+            artists: has('artists') ? text(input.artists) : (cur?.artists ?? null),
+            durationMs: has('durationMs') ? durationOf(input.durationMs) : (cur?.durationMs ?? null),
+            explicit: has('explicit') ? (input.explicit ?? null) : (cur?.explicit ?? null),
+            releaseDate: has('releaseDate') ? (input.releaseDate ? assertDate(input.releaseDate) : null) : (cur?.releaseDate ?? null),
+            coverUrl: has('coverUrl') ? httpUrl(input.coverUrl, 'coverUrl') : (cur?.coverUrl ?? null),
+            primaryPlatform: has('primaryPlatform') ? platformOf(input.primaryPlatform, 'primaryPlatform') : (cur?.primaryPlatform ?? null),
+            updatedAt: nowIso(),
+            updatedBy: by,
+          };
+          await repo.trackMeta.put(row);
+          return (await repo.trackMeta.of([isrc]))[0] as TrackMetaView;
+        });
+      },
+      async platform(id: string): Promise<TrackPlatformView> {
+        const row = await repo.trackMeta.platform(id);
+        if (!row) throw new NotFoundError('Platform entry', id);
+        return row;
+      },
+      /** A new platform entry; the same platform and platform id twice on one ISRC is `409 platform_taken`. */
+      async addPlatform(isrcRaw: string, input: TrackPlatformInput, by: string): Promise<TrackPlatformView> {
+        const isrc = assertIsrc(isrcRaw);
+        const id = newId();
+        const now = nowIso();
+        await repo
+          .transaction(() =>
+            repo.trackMeta.insertPlatform({
+              id,
+              isrc,
+              platform: platformOf(input.platform) as string,
+              platformId: text(input.platformId),
+              url: httpUrl(input.url, 'url'),
+              albumId: text(input.albumId),
+              albumUrl: httpUrl(input.albumUrl, 'albumUrl'),
+              upc: input.upc ? normalizeUpc(input.upc) || null : null,
+              title: text(input.title),
+              artists: text(input.artists),
+              durationMs: durationOf(input.durationMs),
+              explicit: input.explicit ?? null,
+              releaseDate: input.releaseDate ? assertDate(input.releaseDate) : null,
+              coverUrl: httpUrl(input.coverUrl, 'coverUrl'),
+              status: statusOf(input.status),
+              source: text(input.source) ?? 'manual',
+              raw: input.raw ?? null,
+              fetchedAt: input.fetchedAt ?? null,
+              updatedAt: now,
+              updatedBy: by,
+            }),
+          )
+          .catch((e: unknown) => {
+            if (isUnique(e)) throw new ConflictError('This platform entry of the ISRC exists already', 'platform_taken', { isrc, platform: input.platform, platformId: input.platformId ?? null });
+            throw e;
+          });
+        return this.platform(id);
+      },
+      /** Changes the fields sent of a platform entry (null clears one); the ISRC never changes. */
+      async updatePlatform(id: string, input: Partial<TrackPlatformInput>, by: string): Promise<TrackPlatformView> {
+        const cur = await this.platform(id);
+        const has = (k: keyof TrackPlatformInput) => Object.prototype.hasOwnProperty.call(input, k) && input[k] !== undefined;
+        const patch = {
+          ...(has('platform') ? { platform: platformOf(input.platform) as string } : {}),
+          ...(has('platformId') ? { platformId: text(input.platformId) } : {}),
+          ...(has('url') ? { url: httpUrl(input.url, 'url') } : {}),
+          ...(has('albumId') ? { albumId: text(input.albumId) } : {}),
+          ...(has('albumUrl') ? { albumUrl: httpUrl(input.albumUrl, 'albumUrl') } : {}),
+          ...(has('upc') ? { upc: input.upc ? normalizeUpc(input.upc) || null : null } : {}),
+          ...(has('title') ? { title: text(input.title) } : {}),
+          ...(has('artists') ? { artists: text(input.artists) } : {}),
+          ...(has('durationMs') ? { durationMs: durationOf(input.durationMs) } : {}),
+          ...(has('explicit') ? { explicit: input.explicit ?? null } : {}),
+          ...(has('releaseDate') ? { releaseDate: input.releaseDate ? assertDate(input.releaseDate) : null } : {}),
+          ...(has('coverUrl') ? { coverUrl: httpUrl(input.coverUrl, 'coverUrl') } : {}),
+          ...(has('status') ? { status: statusOf(input.status) } : {}),
+          ...(has('source') ? { source: text(input.source) ?? 'manual' } : {}),
+          ...(has('raw') ? { raw: input.raw ?? null } : {}),
+          ...(has('fetchedAt') ? { fetchedAt: input.fetchedAt ?? null } : {}),
+          updatedAt: nowIso(),
+          updatedBy: by,
+        };
+        await repo.transaction(() => repo.trackMeta.updatePlatform(cur.id, patch)).catch((e: unknown) => {
+          if (isUnique(e)) throw new ConflictError('This platform entry of the ISRC exists already', 'platform_taken', { isrc: cur.isrc });
+          throw e;
+        });
+        return this.platform(id);
+      },
+      /** Removes a platform entry (no history was asked, D-238). */
+      async removePlatform(id: string): Promise<TrackPlatformView> {
+        const cur = await this.platform(id);
+        await repo.transaction(() => repo.trackMeta.removePlatform(id));
+        return cur;
       },
     },
     releases: {

@@ -100,6 +100,11 @@ export default tseslint.config(
     rules: { 'no-restricted-syntax': ['error', ...r1Rules(['parseInt'])] },
   },
   {
+    // The duration of a recording (D-238) in «m:ss»: time, never money; it may use parseInt.
+    files: ['packages/frontend/src/lib/duration.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...r1Rules(['parseInt'])] },
+  },
+  {
     // A line count of a file (`total.keys`) compared as BigInt: a count, never money.
     files: ['packages/frontend/src/pages/reference/sources/SourceLinesPage.tsx'],
     rules: { 'no-restricted-syntax': ['error', ...r1Rules(['bigint'])] },
