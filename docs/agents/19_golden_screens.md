@@ -137,7 +137,7 @@ The C `7` cell opens `/queue/unknown_pair?month=2026-03` with the group `QZTST27
 **S11 Release by UPC (G24)**, P8. Seed: `QZTST2711101` under UPC1 `2711100000001` and UPC2 `2711100000002`; row A
 50; P 10 (bucket, label_share); units UPC1 100, UPC2 50. P8 UPC1: net 100, B `55`, ours `45`; UPC2: net 50, B `27.5`,
 ours `22.5`. P6: UPC1 A 50, P 5, ours 45; UPC2 A 25, P 2.5, ours 22.5. P1 2711100: 150 / 82.5 / 0 / 67.5. P10 A
-earned `75`, P `7.5`.
+earned `75`, P `7.5`. D-250: the spec sets the meta of its track itself (`PATCH /tracks/QZTST2711101/meta { title: 'S11 Song - Slowed', version: 'Slowed' }`, idempotent; the seed writes no meta): on P8 of UPC1 and UPC2 and on P5 `/tracks?q=<isrc>` `track-name-<isrc>` is the link «S11 Song» to `/tracks/<isrc>` and `track-version-<isrc>` reads «Slowed» (the track directory, `POST /tracks/query`: one request of the one shown ISRC on P5, not a money request); with the directory answering 500 P8 shows the ISRC as the link, «—» for the pseudonyms and the same money.
 
 ### Action scenarios: the waiting queue
 
@@ -608,7 +608,7 @@ branches). Within a file the tests run in order (`serial` where they share state
 | Order | File | Scenarios | Role |
 |---|---|---|---|
 | 10 | `10-overview.spec.ts` | S01–S11 on P1 (with the book of every row, D-169); SS1–SS3 on the real P1 | reads |
-| 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166) | reads |
+| 11 | `11-release.spec.ts` | S11 (P7, P8; the pseudonym links to P12, D-166; the track name from the directory on P8 and P5, D-250) | reads, plus the meta of its own track (D-250) |
 | 12 | `12-track.spec.ts` | S01–S11 on P6 (the book of S06/2 and S10/2, D-169), G36, S13 month 05, S16 **before**, P5 (the pseudonym links to P12, D-166) | reads |
 | 13 | `13-splits.spec.ts` | P15 / P16, S12 split **before** (unconfirmed), S32 | reads |
 | 14 | `14-documents.spec.ts` | P13 / P14, S13 Q1, S32 document **before**; the label of a document (S43 documents part, D-169); `action-create-document` closed under «Все» («выберите лейбл»), `Ref spec doc` created under 0to8 as «любой лейбл» | reads (creates `Ref spec doc`, `Label spec doc A/B/C`) |

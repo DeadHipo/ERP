@@ -79,7 +79,7 @@ export const OPERATION_COVERAGE = {
   'POST /tracks/:isrc/platforms': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-add-platform → field-platform-*, action-platform-submit' },
   'PATCH /tracks/platforms/:id': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-platform-<id> → action-platform-submit' },
   'POST /tracks/platforms/:id/remove': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-remove-platform-<id> → ConfirmDialog' },
-  'POST /tracks/query': { refusal: 'not on a screen yet: TrackName moves to it in T4' },
+  'POST /tracks/query': { page: 'P8', route: '/releases/:upc', note: 'D-250: useTracks (api/queries/tracks.ts) through the batch loader api/tracks-loader.ts: the title, version, cover (track-name-<isrc>, track-version-<isrc>) and the pseudonyms of the track rows; also the shown rows of P5' },
   'POST /money/master/query': { refusal: 'not on a screen yet: P8 and P5 move to it in M5 / M6' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 

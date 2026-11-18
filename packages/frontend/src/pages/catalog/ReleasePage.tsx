@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { releaseQueries } from '../../api/queries/releases';
+import { useTracks } from '../../api/queries/tracks';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { ArtistLinks } from '../../components/ArtistLinks';
 import { Money } from '../../components/Money';
@@ -16,12 +18,18 @@ import { CReasonList } from './components/CReasonList';
 const t = ru.catalog.release;
 const m = ru.catalog.money;
 
-/** P8 «Релиз»: `GET /releases/:upc` (one calculation filtered by UPC): tracks and report months with B, C, ours. */
+/**
+ * P8 «Релиз»: `GET /releases/:upc` (one calculation filtered by UPC): tracks and report months with B, C, ours. The
+ * name of a track row (title, version, cover) and its pseudonyms come from the track directory (`useTracks`,
+ * D-250), not from the money answer.
+ */
 export function ReleasePage() {
   const upc = useParams().upc ?? '';
   const { labelId } = useLabel(); // the label view (D-168)
   const query = useQuery(releaseQueries.detail(upc, labelId));
   useBreadcrumbLabel(query.data ? `${query.data.title} (${upc})` : upc);
+  const isrcs = useMemo(() => (query.data?.tracks ?? []).map((r) => r.isrc), [query.data]);
+  const { track, artist } = useTracks(isrcs);
   return (
     <div data-testid="release-page">
       <QueryView query={query} money>
@@ -74,10 +82,11 @@ export function ReleasePage() {
                   {data.tracks.map((r) => (
                     <tr key={r.isrc} data-testid={`release-track-${r.isrc}`} className="border-t border-border">
                       <Td col="title">
-                        <TrackName isrc={r.isrc} meta={r.meta ?? undefined} fallbackTitle={r.title} />
+                        <TrackName isrc={r.isrc} track={track(r.isrc)} />
                       </Td>
                       <Td col="artists">
-                        <ArtistLinks artists={r.artists} />
+                        {/* the pseudonyms of the track in the directory's order; nothing until its track arrives */}
+                        {track(r.isrc) === undefined ? null : <ArtistLinks artists={(track(r.isrc)?.artists ?? []).flatMap((id) => artist(id) ?? [])} />}
                       </Td>
                       <Td col="net">
                         <Money value={r.net} />

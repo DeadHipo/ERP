@@ -258,6 +258,9 @@ export const tracks = {
   updatePlatform: (platformId: string, body: z.input<typeof S.trackPlatformPatchBody>) =>
     call('PATCH', `/tracks/platforms/${id(platformId)}`, { body, schema: R.trackPlatformSchema }),
   removePlatform: (platformId: string) => call('POST', `/tracks/platforms/${id(platformId)}/remove`, { schema: R.trackPlatformSchema }),
+  /** The track directory of a list of ISRCs (D-246, 1 to 1000): a read sent as a POST; asked only through `tracks-loader.ts` (D-250). */
+  query: (isrcs: readonly string[]) =>
+    call('POST', '/tracks/query', { body: { isrcs: [...isrcs] } satisfies z.input<typeof S.tracksQueryBody>, schema: R.tracksQueryResponseSchema, readOnly: true }),
 };
 
 /** The release registry of a label (D-172, D-195): an export previewed against the registry, then the accepted changes applied. */

@@ -5,7 +5,7 @@ import type { ColDef } from 'ag-grid-community';
 import type { TrackCatalogItem, TrackSummaryItem } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
-import { trackQueries } from '../../api/queries/tracks';
+import { trackQueries, useCachedTrack, useTracks } from '../../api/queries/tracks';
 import { ActionButton } from '../../components/ActionButton';
 import { ArtistLinks, artistsText } from '../../components/ArtistLinks';
 import { TrackName } from '../../components/TrackName';
@@ -80,6 +80,9 @@ export function TracksPage() {
     return () => clearTimeout(timer);
   }, [visible]);
   const pageMoney = useQuery({ ...trackQueries.summaryOf(asked, labelId), enabled: !full && asked.length > 0 });
+  // The tracks of the rows on the screen (D-250), in both modes: asked here, like the money, and read from the
+  // cache by the title cell of each row (`TitleCell`); the rows and their texts stay those of the catalog.
+  useTracks(asked);
   // The money seen so far, by ISRC: a row keeps its numbers while the next page is asked.
   const moneyRef = useRef(new Map<string, TrackSummaryItem>());
   const [moneyVersion, setMoneyVersion] = useState(0);
@@ -166,7 +169,7 @@ export function TracksPage() {
         rowTestId={(r) => `track-${r.isrc}`}
         defaultSort={defaultSort}
         gridStateKey="grid"
-        onVisibleRowsChanged={full ? undefined : onVisibleRowsChanged}
+        onVisibleRowsChanged={onVisibleRowsChanged}
       />
     </div>
   );
@@ -258,6 +261,15 @@ const money = (col: 'net' | 'B' | 'C' | 'ours') => (p: P) =>
     )
   ) : null;
 
+/**
+ * The name of a row (D-250): the track of the directory once the page's `useTracks` brought it, the catalog title
+ * until then. The cell reads the cache itself: the grid redraws a cell only when its value changes, and the value of
+ * this column stays the catalog text.
+ */
+function TitleCell({ isrc, title }: { isrc: string; title: string }) {
+  return <TrackName isrc={isrc} track={useCachedTrack(isrc)} fallbackTitle={title} />;
+}
+
 /** The money columns sort only when every row has its money (`full`); by pages they are not sortable. */
 function trackColumns(full: boolean): ColDef<TrackRow>[] {
   const c = t.cols;
@@ -270,14 +282,15 @@ function trackColumns(full: boolean): ColDef<TrackRow>[] {
       valueGetter: (p) => p.data?.isrc,
       cellRenderer: (p: P) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null),
     },
-    // D-242: the cover, the title and «version · ISRC» of the track meta; the filter text holds all three
+    // D-242: the cover, the title and «version · ISRC» of the track; the cell shows the track of the directory once it
+    // arrived (D-250) and the catalog title until then; the filter, sort and export text stays the catalog row's
     {
       colId: 'title',
       headerName: c.title,
       minWidth: 220,
       autoHeight: true,
       valueGetter: (p) => (p.data ? [p.data.meta?.title ?? p.data.title, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
-      cellRenderer: (p: P) => (p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} fallbackTitle={p.data.title} /> : null),
+      cellRenderer: (p: P) => (p.data ? <TitleCell isrc={p.data.isrc} title={p.data.title} /> : null),
     },
     // The pseudonyms of the registry as links to P12 (D-166); the report string, muted, when the registry names none.
     {

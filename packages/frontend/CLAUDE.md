@@ -129,6 +129,14 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 - **P31 Подключить Claude** `/claude` (`pages/claude/ClaudePage.tsx`, no API call, D-179; `nav-claude` under «Организация», `op: GET /users`): how do I connect Claude to this ERP? `claude-page`, `claude-url`, `claude-code-command`, `claude-code-check`, `claude-header` with `<id>-copy`, `claude-insecure` without https; built by `@erp/shared/mcp-connection` from `VITE_PUBLIC_ORIGIN` (D-180), else the address of the page; the token is the placeholder `ТОКЕН`.
 - **P27 Пользователи (система)** `/system/users` (`pages/system/UsersPage.tsx`, `GET /system/users`, the system administrator only, D-171): who can sign in, where and with which role? `system-users-page`, `system-users-grid`, rows `system-user-<login>` (memberships as «организация: роль (приостановлен)»), `action-disable-user` / `action-enable-user` (`PATCH /system/users/:id`, the sessions end), `action-reset-password` (`POST /system/users/:id/password`). No create: users are created inside an organization (P25).
 
+## The track directory on the screens (D-250)
+
+- A track, its releases and pseudonyms come from `POST /tracks/query` (a `readOnly` POST, D-246), never from a money answer: `useTracks(isrcs)` (`api/queries/tracks.ts`) gives `{ track(isrc), release(upc), artist(id) }` from one cache entry per ISRC (`['tracks', 'view', isrc]`, `staleTime` 10 min, not in `MONEY_KEYS`, made stale by every `useAction` with `reference` / `all`). Pass only the ISRCs shown.
+- `api/tracks-loader.ts` batches the asks of one frame into one request (chunks of 1 000); a string that is not an ISRC (`lib/isrc.ts` `isrcKey`) never travels and gets the null entry; a failed ask reads as `null` in `useTracks` (the fallback look: the ISRC, «—»), `undefined` only while loading.
+- The title is chosen only by `lib/track-title.ts` `displayTitle`; no page cuts the version.
+- A grid cell whose `valueGetter` does not change with the track (P5: the text stays the catalog row's) reads the cache with `useCachedTrack(isrc)`; elsewhere `valueGetter` reads the `TrackView`, and columns built in a `useMemo` depend on the hook's result.
+- `POST /tracks/query` is not a money request: `expectMoneyCalls` does not count it.
+
 ## Components (`src/components/`) and their test hooks
 | Component | Hooks |
 |---|---|
@@ -138,7 +146,7 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 | `KpiCard` (D-160: tinted icon, label with a HeroUI tooltip, a large `Money` with «USD», a check or hint line, a chevron that expands; the value is an API string, `null` shows «—») | `<testId>` with `data-active`, `<testId>-toggle`, `<testId>-check` (`data-ok`), `<testId>-hint`, `<testId>-none`, `<testId>-skeleton` |
 | `StatusChip` (kinds: documentStatus, documentKind, ownerStatus, artistStatus, category, cReason, operationMeaning, fileStatus, signal) | `chip-<value>` |
 | `EntityLink`, `entityPath` | |
-| `TrackName` (D-239, D-242: an ISRC as cover, title and «version · ISRC» from the track meta, a link to P6; `metaByIsrc` for a list) | `track-name-<isrc>`, `track-version-<isrc>` |
+| `TrackName({ isrc, track?, fallbackTitle? })` (D-250: an ISRC as cover, title and «version · ISRC», a link to P6; the title is `lib/track-title.ts` `displayTitle(track)` of the `TrackView` from `useTracks`; `fallbackTitle` only on P5; the old props `meta` / `metaByIsrc` of D-239, D-242 serve the pages not moved yet) | `track-name-<isrc>`, `track-version-<isrc>` |
 | `ArtistLinks` (D-166: the registry pseudonyms of a catalog row as links to P12, comma-separated; the report artist string as muted text with the hint «Нет в реестре» when the registry names none; `artistsText` is the column text for the grid filter and the quick search) | `artist-links` (`data-empty` when nothing), `artist-link-<id>`, `artist-unregistered` (`title` = the hint) |
 | `EntityCard` + `CardTabs` (tabs in `?tab=`) | `entity-card`, `tab-<id>` |
 | `fields/UploadForm` (D-172: the one file form, P19 / P28 / P7: a hidden native input behind the Russian label, the chosen name, the button; `onSubmit(file, reset)` hands the file to the page) | `<testId>`, `<testId>-chosen`, `field-<field>`, `action-<action>` |
