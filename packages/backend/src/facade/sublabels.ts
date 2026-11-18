@@ -1,3 +1,4 @@
+import { metaLookup } from './track-meta-lite';
 import { SPLIT_DOCUMENT_KINDS } from '@erp/shared/document-kinds';
 import { assertDate, monthOf, monthStart, todayIso } from '../shared/dates';
 import { RuleViolationError, ValidationError } from '../shared/errors';
@@ -222,9 +223,11 @@ export function sublabelsApi(ctx: FacadeContext, m: { links: LinksService }) {
         const titles = await titlesOf([...new Set(terms.map((t) => t.isrc))]);
         const docs = [...new Set(terms.map((t) => t.documentId).filter((d): d is string => d !== null))];
         const statuses = docs.length > 0 ? await owners.documentStatuses(docs) : new Map<string, string>();
+        const metaOf = await metaLookup(owners, terms.map((t) => t.isrc)); // D-242
         const today = todayIso();
         return terms.map((t) => ({
           ...t,
+          meta: metaOf(t.isrc),
           sublabelName: names.get(t.sublabelId) ?? t.sublabelId,
           title: titles.get(t.isrc) ?? null,
           documentStatus: t.documentId ? (statuses.get(t.documentId) ?? 'missing') : null,

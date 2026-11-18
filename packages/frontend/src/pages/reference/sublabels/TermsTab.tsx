@@ -1,3 +1,4 @@
+import { TrackName } from '../../../components/TrackName';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -24,11 +25,13 @@ export function TermsTab(props: { sublabelId?: string }) {
     () => [
       {
         colId: 'isrc',
-        headerName: t.cols.isrc,
-        valueGetter: (p) => p.data?.isrc,
-        cellRenderer: (p: { data?: Term }) => (p.data ? <Link className="text-accent hover:underline" to={`/tracks/${p.data.isrc}`}>{p.data.isrc}</Link> : null),
+        headerName: t.cols.title,
+        minWidth: 240,
+        autoHeight: true,
+        valueGetter: (p) => (p.data ? [p.data.meta?.title ?? p.data.title ?? t.notInCatalog, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
+        cellRenderer: (p: { data?: Term }) =>
+          p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} fallbackTitle={p.data.title ?? t.notInCatalog} /> : null,
       },
-      { colId: 'title', headerName: t.cols.title, minWidth: 220, valueGetter: (p) => p.data?.title ?? t.notInCatalog },
       ...(props.sublabelId
         ? []
         : [

@@ -1,3 +1,4 @@
+import { TrackName } from '../../../components/TrackName';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -74,7 +75,15 @@ export function SplitsPage() {
   );
   const columns = useMemo<ColDef<SplitListItem>[]>(
     () => [
-      { colId: 'isrc', headerName: t.cols.isrc, minWidth: 150, valueGetter: (p) => p.data?.isrc, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null) },
+      {
+        colId: 'isrc',
+        headerName: t.cols.isrc,
+        minWidth: 220,
+        autoHeight: true,
+        // D-242: the cover, the title and «version · ISRC» of the track meta; the filter text holds all three
+        valueGetter: (p) => (p.data ? [p.data.meta?.title, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
+        cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} /> : null),
+      },
       { colId: 'period', headerName: t.cols.period, minWidth: 200, valueGetter: (p) => (p.data ? period(p.data.validFrom, p.data.validTo) : '') },
       { colId: 'document', headerName: t.cols.document, valueGetter: (p) => p.data?.documentStatus, cellRenderer: (p: { data?: SplitListItem }) => (p.data ? <DocumentCell id={p.data.documentId} status={p.data.documentStatus} /> : null) },
       {

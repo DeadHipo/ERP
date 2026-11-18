@@ -118,6 +118,10 @@ export function ownerViewApi(ctx: FacadeContext) {
           documents: await owners.listDocuments(owner.id),
           contracts: await owners.contractsOfOwner(owner.id),
           publishingTerms: await publishing.termsOf([owner.id]),
+          // D-242: the title with its version and the cover of the ISRCs of its pseudonyms (the track meta, D-238)
+          trackMeta: await owners.trackMeta.of(all).then((list) =>
+            list.map((m) => ({ isrc: m.isrc, title: m.title, version: m.version, coverUrl: m.coverUrl })),
+          ),
         };
       });
       if (viewer.kind === 'all') return card;

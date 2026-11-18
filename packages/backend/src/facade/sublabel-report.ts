@@ -1,3 +1,4 @@
+import { metaLookup } from './track-meta-lite';
 import { monthOf, monthStart } from '../shared/dates';
 import { Decimal, money, picoToDecimal, ZERO } from '../shared/money';
 import type { LinksService, SublabelTermRow } from '../modules/links';
@@ -79,6 +80,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     const titles = new Map<string, string>();
     for (const t of tracks) if (t.isrc && !titles.has(t.isrc)) titles.set(t.isrc, t.title);
     const artistsOfIsrc = (isrc: string): ArtistRef[] => artistsOf.get(isrc) ?? [];
+    const metaOf = await metaLookup(owners, calcIsrcs); // D-242: the track meta of each ISRC, no money
     const byIsrc = new Map<string, SublabelTermRow[]>();
     for (const t of terms) byIsrc.set(t.isrc, [...(byIsrc.get(t.isrc) ?? []), t]);
 
@@ -121,6 +123,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
         isrc: a.isrc,
         title: titles.get(a.isrc) ?? null,
         artists: artistsOfIsrc(a.isrc),
+        meta: metaOf(a.isrc),
         month: a.month,
         termId: a.term.id,
         percent: a.term.percent,
@@ -148,7 +151,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
     const byTrack = new Map<string, Acc[]>();
     for (const a of sorted) byTrack.set(a.isrc, [...(byTrack.get(a.isrc) ?? []), a]);
     const trackList = [...byTrack.entries()]
-      .map(([isrc, list]) => ({ isrc, title: titles.get(isrc) ?? null, artists: artistsOfIsrc(isrc), months: list.length, ...sum(list) }))
+      .map(([isrc, list]) => ({ isrc, title: titles.get(isrc) ?? null, artists: artistsOfIsrc(isrc), meta: metaOf(isrc), months: list.length, ...sum(list) }))
       .sort((x, y) => new Decimal(y.amount).cmp(new Decimal(x.amount)) || (x.isrc < y.isrc ? -1 : 1));
     // by artist: one group per set of pseudonyms of a track (a track of two artists is one group «A · B»), so the
     // groups add up to the total and nothing is counted twice; '' = no pseudonym in the registry
@@ -261,6 +264,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
       const allIsrcs = [...new Set([...found.values()].flatMap((m) => [...m.keys()]))];
       const titles = new Map<string, string>();
       if (allIsrcs.length > 0) for (const t of await owners.listTracks({ isrcs: allIsrcs })) if (t.isrc && !titles.has(t.isrc)) titles.set(t.isrc, t.title);
+      const metaOf = await metaLookup(owners, allIsrcs); // D-242
       const groups = [...found.entries()]
         .map(([sublabelId, items]) => {
           const list = [...items.entries()]
@@ -283,7 +287,7 @@ export function sublabelReportApi(ctx: FacadeContext, m: { links: LinksService }
             sublabelId,
             sublabelName: names.get(sublabelId) ?? sublabelId,
             net: money(list.reduce((s, x) => s.add(x.net), ZERO)),
-            items: list.map((x) => ({ ...x, net: money(x.net) })),
+            items: list.map((x) => ({ ...x, net: money(x.net), meta: metaOf(x.isrc) })),
           };
         })
         .sort((a, b) => a.sublabelName.localeCompare(b.sublabelName));

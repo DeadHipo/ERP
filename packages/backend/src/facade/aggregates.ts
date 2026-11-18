@@ -8,6 +8,7 @@ import { scoped, type UnitScope } from './scope';
 import { registryRowOf } from './release-registry';
 import { ownersReach } from './owner-scope';
 import { artistsByIsrc, unionArtists, type ArtistIndex } from './track-artists';
+import { metaLookup } from './track-meta-lite';
 
 /**
  * The owner id list of `GET /owners/payables?ids=` (comma-separated). At most 200: UUIDs are long and the request line
@@ -217,6 +218,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       const withParts = new Set(partList.map((p) => p.isrc));
       // `only` is also a filter of the answer (not just of the read): the same rows with the scope switched off
       const isrcs = new Set([...unitsOf.keys(), ...tracksOf.keys()].filter((i) => onlySet === undefined || onlySet.has(i)));
+      const metaOf = await metaLookup(owners, isrcs); // D-242: the track meta of each row, no money
       const items = [...isrcs].sort().map((isrc) => {
         const us = unitsOf.get(isrc) ?? [];
         const ts = tracksOf.get(isrc) ?? [];
@@ -233,6 +235,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           months: { from: ms[0] ?? null, to: ms.at(-1) ?? null, count: ms.length },
           hasSplit: withSplit.has(isrc),
           hasParticipations: withParts.has(isrc),
+          meta: metaOf(isrc),
         };
       });
       return { calculatedAt: new Date().toISOString(), items };
@@ -283,6 +286,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           f.catalog === 'current' ? current(i) : !lc || lc.visible.isrcs.has(i) || current(i),
         ),
       );
+      const metaOf = await metaLookup(owners, isrcs); // D-242: the track meta of each row, no money
       const items = [...isrcs].sort().map((isrc) => {
         const ts = tracksOf.get(isrc) ?? [];
         const upcs = [...new Set([...(upcsOf.get(isrc) ?? []), ...ts.map((t) => t.upc).filter((x): x is string => !!x)])].sort();
@@ -299,6 +303,7 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           catalogLabelId: open.get(isrc)?.labelId ?? null,
           catalogLabelName: open.has(isrc) ? (labelNames.get(open.get(isrc)?.labelId ?? '') ?? '?') : null,
           catalogFrom: open.get(isrc)?.validFrom ?? null,
+          meta: metaOf(isrc),
         };
       });
       return { items };

@@ -8,6 +8,7 @@ import { useAction } from '../../api/queries/core';
 import { trackQueries } from '../../api/queries/tracks';
 import { ActionButton } from '../../components/ActionButton';
 import { ArtistLinks, artistsText } from '../../components/ArtistLinks';
+import { TrackName } from '../../components/TrackName';
 import { EntityLink } from '../../components/EntityLink';
 import { FormDialog } from '../../components/FormDialog';
 import { Money } from '../../components/Money';
@@ -40,6 +41,7 @@ const rowOfSummary = (i: TrackSummaryItem, catalogOf: Map<string, CatalogFields>
   artists: i.artists,
   hasSplit: i.hasSplit,
   hasParticipations: i.hasParticipations,
+  meta: i.meta,
   ...(catalogOf.get(i.isrc) ?? NO_CATALOG),
   money: i,
 });
@@ -109,7 +111,9 @@ export function TracksPage() {
       (!scoped || (i.money?.months.count ?? 0) > 0) &&
       (hasSplit === '' || (hasSplit === 'yes') === i.hasSplit) &&
       (needle === '' ||
-        [i.isrc, i.title, i.artistName, ...i.artists.map((a) => a.pseudonym), ...i.upcs].some((s) => s.toLocaleLowerCase('ru').includes(needle))),
+        [i.isrc, i.title, i.meta?.title ?? '', i.meta?.version ?? '', i.artistName, ...i.artists.map((a) => a.pseudonym), ...i.upcs].some((s) =>
+          s.toLocaleLowerCase('ru').includes(needle),
+        )),
     [scoped, hasSplit, needle],
   );
   const fullRows = useMemo(
@@ -266,7 +270,15 @@ function trackColumns(full: boolean): ColDef<TrackRow>[] {
       valueGetter: (p) => p.data?.isrc,
       cellRenderer: (p: P) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null),
     },
-    { colId: 'title', headerName: c.title, minWidth: 160, valueGetter: (p) => p.data?.title },
+    // D-242: the cover, the title and «version · ISRC» of the track meta; the filter text holds all three
+    {
+      colId: 'title',
+      headerName: c.title,
+      minWidth: 220,
+      autoHeight: true,
+      valueGetter: (p) => (p.data ? [p.data.meta?.title ?? p.data.title, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
+      cellRenderer: (p: P) => (p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} fallbackTitle={p.data.title} /> : null),
+    },
     // The pseudonyms of the registry as links to P12 (D-166); the report string, muted, when the registry names none.
     {
       colId: 'artist',

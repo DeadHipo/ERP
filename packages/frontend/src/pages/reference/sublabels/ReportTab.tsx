@@ -1,3 +1,4 @@
+import { TrackName } from '../../../components/TrackName';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -77,7 +78,7 @@ function Expandable(props: { testId: string; cells: ReactNode; colSpan: number; 
 function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) {
   const head = [
     ...(props.without === 'month' ? [] : [t.cols.month]),
-    ...(props.without === 'track' ? [] : [t.cols.isrc, t.cols.title, t.cols.artists]),
+    ...(props.without === 'track' ? [] : [t.cols.title, t.cols.artists]),
     t.cols.labelShare,
     t.cols.percent,
     t.cols.amount,
@@ -90,8 +91,9 @@ function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) 
           {props.without === 'month' ? null : <Td>{x.month}</Td>}
           {props.without === 'track' ? null : (
             <>
-              <Td>{x.isrc}</Td>
-              <Td>{x.title ?? ''}</Td>
+              <Td col="title">
+                <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
+              </Td>
               <Td>{artistNames(x.artists)}</Td>
             </>
           )}
@@ -152,22 +154,19 @@ function TracksView(props: { r: Report; isrcs?: readonly string[]; testId?: stri
   const open = useOpen();
   const list = props.isrcs ? props.r.tracks.filter((x) => props.isrcs?.includes(x.isrc)) : props.r.tracks;
   return (
-    <SimpleTable testId={props.testId ?? 'sublabel-report-tracks'} headers={['', t.cols.isrc, t.cols.title, t.cols.artists, t.cols.months, ...SUM_HEADERS]}>
+    <SimpleTable testId={props.testId ?? 'sublabel-report-tracks'} headers={['', t.cols.title, t.cols.artists, t.cols.months, ...SUM_HEADERS]}>
       {list.map((x) => (
         <Expandable
           key={x.isrc}
           testId={`report-track-${x.isrc}`}
-          colSpan={9}
+          colSpan={8}
           open={open.has(x.isrc)}
           onToggle={() => open.toggle(x.isrc)}
           cells={
             <>
-              <Td>
-                <Link className="text-accent hover:underline" to={`/tracks/${x.isrc}`}>
-                  {x.isrc}
-                </Link>
+              <Td col="title">
+                <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
               </Td>
-              <Td>{x.title ?? ''}</Td>
               <Td>{artistNames(x.artists)}</Td>
               <Td col="months">{formatCount(x.months)}</Td>
               <SumCells sums={x} />

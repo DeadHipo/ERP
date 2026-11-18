@@ -249,7 +249,7 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '0'); // D-175: no split → C
   await page.getByTestId('action-visible-only').click();
   await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
-  await page.getByTestId(`track-${isrc(8, 4, 1)}`).getByRole('link', { name: isrc(8, 4, 1) }).click();
+  await page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[col-id="isrc"]').getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`/tracks/${isrc(8, 4, 1)}$`));
   // the B cell of an overview row opens the summary of its account and month
   await openAs(page, `/tracks?account=${account(10, 1, 1)}&month=${M}`);

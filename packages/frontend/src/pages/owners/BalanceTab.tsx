@@ -1,3 +1,4 @@
+import { TrackName, metaByIsrc, type TrackMetaLite } from '../../components/TrackName';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -116,7 +117,8 @@ function PeriodMonths(props: { period: Balance['period'] }) {
 }
 
 /** P10 Баланс: the formula as fields, the gate and the payout button, waiting by reason, by label, per pseudonym and ISRC, positions. */
-export function BalanceTab(props: { ownerId: string; balance: Balance; period: BalancePeriod }) {
+export function BalanceTab(props: { ownerId: string; balance: Balance; period: BalancePeriod; trackMeta?: readonly TrackMetaLite[] }) {
+  const trackMetaOf = metaByIsrc(props.trackMeta);
   const b = props.balance;
   const [monthsOpen, setMonthsOpen] = useState(false);
   const waiting = (Object.entries(b.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
@@ -241,7 +243,7 @@ export function BalanceTab(props: { ownerId: string; balance: Balance; period: B
               <tr key={`${a.artistId}-${tr.isrc}`} data-testid={`balance-track-${a.artistId}-${tr.isrc}`}>
                 <Td />
                 <Td>
-                  <EntityLink kind="isrc" id={tr.isrc} />
+                  <TrackName isrc={tr.isrc} meta={trackMetaOf.get(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />

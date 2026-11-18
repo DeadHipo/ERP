@@ -1,3 +1,4 @@
+import { TrackName } from '../../../components/TrackName';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
@@ -36,7 +37,15 @@ export function ParticipationsPage() {
   );
   const columns = useMemo<ColDef<ParticipationListItem>[]>(
     () => [
-      { colId: 'isrc', headerName: t.cols.isrc, minWidth: 150, valueGetter: (p) => p.data?.isrc, cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <EntityLink kind="isrc" id={p.data.isrc} /> : null) },
+      {
+        colId: 'isrc',
+        headerName: t.cols.isrc,
+        minWidth: 220,
+        autoHeight: true,
+        // D-242: the cover, the title and «version · ISRC» of the track meta; the filter text holds all three
+        valueGetter: (p) => (p.data ? [p.data.meta?.title, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
+        cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} /> : null),
+      },
       { colId: 'pseudonym', headerName: t.cols.pseudonym, valueGetter: (p) => p.data?.pseudonym, cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null) },
       { colId: 'percent', headerName: t.cols.percent, maxWidth: 110, valueGetter: (p) => p.data?.percent },
       { colId: 'base', headerName: t.cols.base, valueGetter: (p) => (p.data ? r.bases[p.data.base] : '') },

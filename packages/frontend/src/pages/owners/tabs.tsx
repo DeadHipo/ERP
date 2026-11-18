@@ -1,3 +1,4 @@
+import { TrackName, metaByIsrc } from '../../components/TrackName';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Balance, OwnerDetail } from '@erp/shared/api-responses';
@@ -21,6 +22,7 @@ const m = ru.money;
 /** P10 Псевдонимы и треки: the owner's pseudonyms with their tracks, each a link. */
 export function ArtistsTab(props: { detail: OwnerDetail }) {
   const artists = props.detail.artists;
+  const meta = metaByIsrc(props.detail.trackMeta);
   if (artists.length === 0) return <span className="text-sm text-muted">{m.artists.empty}</span>;
   return (
     <div className="flex flex-col gap-3" data-testid="artists-tab">
@@ -32,10 +34,10 @@ export function ArtistsTab(props: { detail: OwnerDetail }) {
           {a.tracks.length === 0 ? (
             <span className="text-sm text-muted">{m.artists.noTracks}</span>
           ) : (
-            <ul className="flex flex-wrap gap-3 text-sm">
+            <ul className="flex flex-wrap gap-4 text-sm">
               {a.tracks.map((tr) => (
                 <li key={tr.id} data-testid={`artist-track-${tr.isrc ?? tr.id}`}>
-                  {tr.isrc ? <EntityLink kind="isrc" id={tr.isrc} label={`${tr.isrc} · ${tr.title}`} /> : tr.title}
+                  {tr.isrc ? <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={tr.title} /> : tr.title}
                 </li>
               ))}
             </ul>

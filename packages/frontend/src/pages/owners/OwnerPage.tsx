@@ -150,7 +150,7 @@ export function OwnerPage() {
                     label: t.tabs.balance,
                     content: (
                       <QueryView query={balance} money>
-                        {(b) => <BalanceTab ownerId={d.owner.id} balance={b} period={moneyPeriod} />}
+                        {(b) => <BalanceTab ownerId={d.owner.id} balance={b} period={moneyPeriod} trackMeta={d.trackMeta} />}
                       </QueryView>
                     ),
                   },

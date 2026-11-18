@@ -1,3 +1,4 @@
+import { TrackName } from '../../../components/TrackName';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -63,7 +64,7 @@ export function SuggestionsTab() {
                       {t.addSelected}
                     </ActionButton>
                   </div>
-                  <SimpleTable headers={['', t.cols.isrc, t.cols.title, t.cols.labelString, t.cols.uncovered, t.cols.monthsCount, t.cols.net]}>
+                  <SimpleTable headers={['', t.cols.title, t.cols.labelString, t.cols.uncovered, t.cols.monthsCount, t.cols.net]}>
                     <tr>
                       <Td>
                         <input
@@ -74,7 +75,7 @@ export function SuggestionsTab() {
                           onChange={() => setChosen((c) => ({ ...c, [g.sublabelId]: all ? new Set() : new Set(g.items.map((x) => x.isrc)) }))}
                         />
                       </Td>
-                      <Td colSpan={6} className="text-xs text-muted">
+                      <Td colSpan={5} className="text-xs text-muted">
                         {t.pickAll}
                       </Td>
                     </tr>
@@ -83,12 +84,9 @@ export function SuggestionsTab() {
                         <Td>
                           <input type="checkbox" data-testid={`suggestion-pick-${x.isrc}`} checked={picked.has(x.isrc)} onChange={() => toggle(g.sublabelId, x.isrc)} />
                         </Td>
-                        <Td>
-                          <Link className="text-accent hover:underline" to={`/tracks/${x.isrc}`}>
-                            {x.isrc}
-                          </Link>
+                        <Td col="title">
+                          <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
                         </Td>
-                        <Td>{x.title ?? ''}</Td>
                         <Td col="labelStrings">
                           {x.labelStrings.map((l) => (
                             <div key={l.labelString}>

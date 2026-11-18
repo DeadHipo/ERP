@@ -137,6 +137,7 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 | `KpiCard` (D-160: tinted icon, label with a HeroUI tooltip, a large `Money` with «USD», a check or hint line, a chevron that expands; the value is an API string, `null` shows «—») | `<testId>` with `data-active`, `<testId>-toggle`, `<testId>-check` (`data-ok`), `<testId>-hint`, `<testId>-none`, `<testId>-skeleton` |
 | `StatusChip` (kinds: documentStatus, documentKind, ownerStatus, artistStatus, category, cReason, operationMeaning, fileStatus, signal) | `chip-<value>` |
 | `EntityLink`, `entityPath` | |
+| `TrackName` (D-239, D-242: an ISRC as cover, title and «version · ISRC» from the track meta, a link to P6; `metaByIsrc` for a list) | `track-name-<isrc>`, `track-version-<isrc>` |
 | `ArtistLinks` (D-166: the registry pseudonyms of a catalog row as links to P12, comma-separated; the report artist string as muted text with the hint «Нет в реестре» when the registry names none; `artistsText` is the column text for the grid filter and the quick search) | `artist-links` (`data-empty` when nothing), `artist-link-<id>`, `artist-unregistered` (`title` = the hint) |
 | `EntityCard` + `CardTabs` (tabs in `?tab=`) | `entity-card`, `tab-<id>` |
 | `fields/UploadForm` (D-172: the one file form, P19 / P28 / P7: a hidden native input behind the Russian label, the chosen name, the button; `onSubmit(file, reset)` hands the file to the page) | `<testId>`, `<testId>-chosen`, `field-<field>`, `action-<action>` |
