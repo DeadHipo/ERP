@@ -4,11 +4,13 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import { sublabelQueries } from '../../../api/queries/sublabels';
+import { useTracks } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
 import { QueryView } from '../../../components/PageState';
 import { DataGrid } from '../../../components/grid/DataGrid';
 import { TextField } from '../../../components/fields/TextField';
 import { ru } from '../../../i18n/ru';
+import { trackText } from '../../../lib/track-title';
 import { AddTermsDialog, AttachDialog, TrackTermsDialog, type Term } from './dialogs';
 
 const t = ru.sublabels;
@@ -21,6 +23,11 @@ export function TermsTab(props: { sublabelId?: string }) {
   const [history, setHistory] = useState<string | null>(null);
   const [attaching, setAttaching] = useState<Term[] | null>(null);
   const terms = useQuery(sublabelQueries.terms({ sublabel: props.sublabelId, month, noDocument }));
+  // The names of the rows (title, version, cover) come from the track directory, not from the list (D-256). The
+  // grid pages the answer on the client and sorts and filters the column by the name, so the tracks of the whole
+  // answer are asked (one `POST /tracks/query` per 1 000 ISRCs, each ISRC once).
+  const isrcs = useMemo(() => (terms.data ?? []).map((x) => x.isrc), [terms.data]);
+  const tracks = useTracks(isrcs);
   const columns = useMemo<ColDef<Term>[]>(
     () => [
       {
@@ -28,9 +35,9 @@ export function TermsTab(props: { sublabelId?: string }) {
         headerName: t.cols.title,
         minWidth: 240,
         autoHeight: true,
-        valueGetter: (p) => (p.data ? [p.data.meta?.title ?? p.data.title ?? t.notInCatalog, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
-        cellRenderer: (p: { data?: Term }) =>
-          p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} fallbackTitle={p.data.title ?? t.notInCatalog} /> : null,
+        // «title · version · ISRC» of the track of the directory; a track it does not know reads its ISRC (D-256)
+        valueGetter: (p) => (p.data ? trackText(p.data.isrc, tracks.track(p.data.isrc)) : ''),
+        cellRenderer: (p: { data?: Term }) => (p.data ? <TrackName isrc={p.data.isrc} track={tracks.track(p.data.isrc)} /> : null),
       },
       ...(props.sublabelId
         ? []
@@ -73,7 +80,8 @@ export function TermsTab(props: { sublabelId?: string }) {
           ) : null,
       },
     ],
-    [props.sublabelId],
+    // the columns read the tracks of the cache: built again when a track arrives or changes
+    [props.sublabelId, tracks],
   );
   return (
     <div className="flex flex-col gap-3">

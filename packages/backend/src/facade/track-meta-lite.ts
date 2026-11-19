@@ -1,6 +1,10 @@
 import type { OwnersService } from '../modules/owners';
 
-/** The metadata of a recording beside an ISRC (D-238, D-242): the shape every list carries. */
+/**
+ * The metadata of a recording beside an ISRC (D-238, D-242). Since D-256 only the track lists of P5 carry it
+ * (`GET /tracks/catalog`, `GET /tracks/summary`: P5 searches by the title); every other answer names the ISRC and
+ * the screen reads the track of `POST /tracks/query`.
+ */
 export interface TrackMetaLite {
   isrc: string;
   title: string | null;

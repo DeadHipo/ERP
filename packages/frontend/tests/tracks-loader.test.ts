@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrackView } from '@erp/shared/api-responses';
-import { displayTitle, trackText } from '../src/lib/track-title';
+import { displayTitle, fallbackTitleOf, isOwnIsrc, trackText } from '../src/lib/track-title';
 import { isMoneyKey } from '../src/api/queries/core';
 import { trackKeys } from '../src/api/queries/tracks';
 
@@ -200,5 +200,22 @@ describe('a title equal to the ISRC is no title (D-254)', () => {
   it('trackText does not repeat the ISRC', () => {
     expect(trackText(I, viewOf(I, { meta: null, catalogTitle: I, reportTitle: null }))).toBe(I);
     expect(trackText(I, viewOf(I, { meta: null, catalogTitle: I, reportTitle: 'Report' }))).toBe(`Report · ${I}`);
+  });
+});
+
+describe('the fallback title of a row (D-256)', () => {
+  const I = 'QZTST2600001';
+  it('is shown as it is', () => {
+    expect(fallbackTitleOf(I, 'Catalog title')).toBe('Catalog title');
+    expect(fallbackTitleOf(I, 'QZTST2600002')).toBe('QZTST2600002');
+  });
+  it('is no title when it is empty or the ISRC of the row itself (trimmed, dashes, any case)', () => {
+    expect(fallbackTitleOf(I, null)).toBeNull();
+    expect(fallbackTitleOf(I, undefined)).toBeNull();
+    expect(fallbackTitleOf(I, '')).toBeNull();
+    expect(fallbackTitleOf(I, I)).toBeNull();
+    expect(fallbackTitleOf(I, ' qz-tst-26-00001 ')).toBeNull();
+    expect(isOwnIsrc(I, I.toLowerCase())).toBe(true);
+    expect(isOwnIsrc(I, 'Song')).toBe(false);
   });
 });

@@ -1,8 +1,9 @@
 import { TrackName } from '../../../components/TrackName';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { sublabelQueries } from '../../../api/queries/sublabels';
+import { useTracks } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
@@ -18,12 +19,15 @@ const span = (from: string, to: string) => (from === to ? from : `${from} — ${
 /**
  * «Подсказки» (D-219, D-224): over every loaded month, the tracks under a sublabel's Believe string in months no term
  * covers, with the strings and their months. «Добавить отмеченные» starts each track from its first such month. A
- * hint, never money.
+ * hint, never money. The name of a track (title, version, cover) comes from the track directory (`useTracks`,
+ * D-256), asked for the tracks of the shown groups.
  */
 export function SuggestionsTab() {
   const [chosen, setChosen] = useState<Record<string, Set<string>>>({});
   const [adding, setAdding] = useState<{ sublabelId: string; items: string[] } | null>(null);
   const query = useQuery(sublabelQueries.suggestions(''));
+  const isrcs = useMemo(() => (query.data?.groups ?? []).flatMap((g) => g.items.map((x) => x.isrc)), [query.data]);
+  const { track } = useTracks(isrcs);
   const toggle = (group: string, isrc: string) =>
     setChosen((c) => {
       const next = new Set(c[group] ?? []);
@@ -85,7 +89,7 @@ export function SuggestionsTab() {
                           <input type="checkbox" data-testid={`suggestion-pick-${x.isrc}`} checked={picked.has(x.isrc)} onChange={() => toggle(g.sublabelId, x.isrc)} />
                         </Td>
                         <Td col="title">
-                          <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
+                          <TrackName isrc={x.isrc} track={track(x.isrc)} />
                         </Td>
                         <Td col="labelStrings">
                           {x.labelStrings.map((l) => (

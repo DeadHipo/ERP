@@ -1,5 +1,5 @@
 import { TrackName } from '../../../components/TrackName';
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -7,6 +7,7 @@ import type { ArtistRef, sublabelReportSchema } from '@erp/shared/api-responses'
 import * as api from '../../../api/client';
 import type { ApiError } from '../../../api/client';
 import { sublabelQueries } from '../../../api/queries/sublabels';
+import { useTracks } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
 import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
@@ -74,8 +75,15 @@ function Expandable(props: { testId: string; cells: ReactNode; colSpan: number; 
   );
 }
 
-/** The track × month rows of one month or one track: the detail level. */
+/**
+ * The track × month rows of one month or one track: the detail level. The name of a row (title, version, cover) comes
+ * from the track directory (`useTracks`, D-256), asked for the rows this table shows; under a track the rows name
+ * no track, so nothing is asked.
+ */
 function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) {
+  const named = props.without !== 'track';
+  const isrcs = useMemo(() => (named ? props.rows.map((x) => x.isrc) : []), [named, props.rows]);
+  const { track } = useTracks(isrcs);
   const head = [
     ...(props.without === 'month' ? [] : [t.cols.month]),
     ...(props.without === 'track' ? [] : [t.cols.title, t.cols.artists]),
@@ -92,7 +100,7 @@ function RowsTable(props: { rows: Report['rows']; without: 'month' | 'track' }) 
           {props.without === 'track' ? null : (
             <>
               <Td col="title">
-                <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
+                <TrackName isrc={x.isrc} track={track(x.isrc)} />
               </Td>
               <Td>{artistNames(x.artists)}</Td>
             </>
@@ -152,7 +160,10 @@ function MonthsView(props: { r: Report }) {
 
 function TracksView(props: { r: Report; isrcs?: readonly string[]; testId?: string }) {
   const open = useOpen();
-  const list = props.isrcs ? props.r.tracks.filter((x) => props.isrcs?.includes(x.isrc)) : props.r.tracks;
+  const list = useMemo(() => (props.isrcs ? props.r.tracks.filter((x) => props.isrcs?.includes(x.isrc)) : props.r.tracks), [props.r.tracks, props.isrcs]);
+  // the names of the shown tracks come from the track directory (D-256)
+  const isrcs = useMemo(() => list.map((x) => x.isrc), [list]);
+  const { track } = useTracks(isrcs);
   return (
     <SimpleTable testId={props.testId ?? 'sublabel-report-tracks'} headers={['', t.cols.title, t.cols.artists, t.cols.months, ...SUM_HEADERS]}>
       {list.map((x) => (
@@ -165,7 +176,7 @@ function TracksView(props: { r: Report; isrcs?: readonly string[]; testId?: stri
           cells={
             <>
               <Td col="title">
-                <TrackName isrc={x.isrc} meta={x.meta ?? undefined} fallbackTitle={x.title} />
+                <TrackName isrc={x.isrc} track={track(x.isrc)} />
               </Td>
               <Td>{artistNames(x.artists)}</Td>
               <Td col="months">{formatCount(x.months)}</Td>

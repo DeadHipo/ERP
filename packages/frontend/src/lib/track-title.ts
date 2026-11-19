@@ -10,9 +10,21 @@ import { isrcKey } from './isrc';
  */
 export function displayTitle(track: TrackView | null | undefined): string | null {
   if (!track) return null;
-  const own = isrcKey(track.isrc) ?? track.isrc.trim().toUpperCase();
-  const isOwnIsrc = (title: string) => (isrcKey(title.trim()) ?? title.trim().toUpperCase()) === own;
-  return [track.meta?.baseTitle, track.catalogTitle, track.reportTitle].find((title) => title != null && !isOwnIsrc(title)) ?? null;
+  return [track.meta?.baseTitle, track.catalogTitle, track.reportTitle].find((title) => title != null && !isOwnIsrc(track.isrc, title)) ?? null;
+}
+
+/** Whether a title is the ISRC of the track itself (D-254): compared as ISRC keys (trimmed, no dashes, any case). */
+export function isOwnIsrc(isrc: string, title: string): boolean {
+  const key = (text: string) => isrcKey(text.trim()) ?? text.trim().toUpperCase();
+  return key(title) === key(isrc);
+}
+
+/**
+ * The title `TrackName` shows while it has no track (D-256): the `fallbackTitle` of the row (only P5 passes one)
+ * as it is; an empty one and one that is the ISRC of the row itself are no title (`null`: the ISRC is shown once).
+ */
+export function fallbackTitleOf(isrc: string, fallbackTitle: string | null | undefined): string | null {
+  return fallbackTitle && !isOwnIsrc(isrc, fallbackTitle) ? fallbackTitle : null;
 }
 
 /**

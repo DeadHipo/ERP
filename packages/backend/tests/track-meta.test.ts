@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACC2, Case, I } from './helpers/golden-case';
+import { ACC2, Case, I, UPC } from './helpers/golden-case';
 import { labelsViewer } from '../src/facade/viewer';
 
 // The metadata of a recording (D-238): one row per ISRC (no history) and the platform entries (1 : N). Navigation, not
@@ -70,5 +70,55 @@ describe('the metadata of a recording (D-238)', () => {
     await expect(f.removeTrackPlatform(other.id, vA)).rejects.toMatchObject(forbidden);
     // an ISRC in no loaded file is a new track: allowed
     expect((await f.setTrackMeta(I(9), { title: 'new' }, 'm', vA)).title).toBe('new');
+  });
+});
+
+describe('the track meta comes only from the track directory (D-256)', () => {
+  it('the cards and the lists name the ISRC and carry no meta; the cover of the release and the lists of P5 stay', async () => {
+    const { c, f } = await world();
+    await c.part(I(1), 'PB', '10', 'net', 'top');
+    const cover = 'https://example.com/a.jpg';
+    await f.setTrackMeta(I(1), { title: 'Song - Slowed', version: 'Slowed', coverUrl: cover }, 'op');
+    const artistId = c.id('PA');
+    const artist = await f.artistDetail(artistId);
+    const release = await f.release(UPC);
+    // a sublabel with a term on I(1): the term teaches the string, so I(3) of April (the same string, no term) is a hint
+    const sub = await f.createSublabel('Sub T44');
+    await c.load('2026-04', [{ isrc: I(3), net: '10' }]);
+    await f.addSublabelTerms(sub.id, { percent: '50', validFrom: '2026-03', items: [{ isrc: I(1) }] }, { dryRun: false }, 'op');
+    await f.setTrackMeta(I(3), { title: 'Hint - Live', version: 'Live', coverUrl: cover }, 'op');
+    const splitList = await f.listSplits({ isrc: I(1) });
+    const partList = await f.listParticipations({ isrc: I(1) });
+    const terms = await f.listSublabelTerms({ sublabel: sub.id });
+    const report = await f.sublabelReport(sub.id);
+    const suggestions = await f.sublabelSuggestions();
+    const money = await f.trackMoney(I(1));
+    const uses = await f.documentUses(c.appendix);
+    // every answer has a row of a track with a meta: the check below is not an empty one
+    expect(splitList.items.map((x) => x.isrc)).toEqual([I(1)]);
+    expect(partList.items.map((x) => x.isrc)).toEqual([I(1)]);
+    expect(terms.map((x) => x.isrc)).toEqual([I(1)]);
+    expect(report.rows.map((x) => x.isrc)).toEqual([I(1)]);
+    expect(report.tracks.map((x) => x.isrc)).toEqual([I(1)]);
+    expect(suggestions.groups.flatMap((g) => g.items.map((x) => x.isrc))).toEqual([I(3)]);
+    expect([money.splits.length, money.participations.length]).toEqual([1, 1]);
+    expect(uses.splits.map((x) => x.isrc)).toContain(I(1));
+    expect(uses.participations.map((x) => x.isrc)).toContain(I(1));
+    expect(artist.splits.map((x) => x.isrc)).toEqual([I(1)]);
+    const answers: unknown[] = [release, artist, await f.ownerDetail(artist.owner?.id ?? ''), splitList, partList, terms, report, suggestions, money, uses];
+    // no key `meta` or `trackMeta` anywhere in these answers
+    const keys = (x: unknown): string[] =>
+      Array.isArray(x) ? x.flatMap(keys) : x !== null && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => [k, ...keys(v)]) : [];
+    for (const a of answers) expect(keys(a).filter((k) => k === 'meta' || k === 'trackMeta')).toEqual([]);
+    expect(JSON.stringify(answers)).not.toContain('Song - Slowed');
+    // the cover of the release is still the cover of its first track that has one (D-240)
+    expect(release.coverUrl).toBe(cover);
+    expect(release.tracks.map((t) => t.isrc)).toContain(I(1));
+    // P5 searches by the title of the meta: its two lists keep it (D-242)
+    const lite = { isrc: I(1), title: 'Song - Slowed', version: 'Slowed', coverUrl: cover };
+    expect((await f.trackCatalog()).items.find((x) => x.isrc === I(1))?.meta).toEqual(lite);
+    expect((await f.trackSummary()).items.find((x) => x.isrc === I(1))?.meta).toEqual(lite);
+    // and the directory gives the whole meta
+    expect((await f.tracksOf([I(1)])).tracks[I(1)]?.meta).toMatchObject({ title: 'Song - Slowed', baseTitle: 'Song', version: 'Slowed', coverUrl: cover });
   });
 });

@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-255 by topic)
+# Decision index (D-001 … D-256 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -220,10 +220,10 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-236 P33 lists the linked ISRCs of each song (`songs[].isrcs` of `GET /publishing-v2/songwriters/:id`, an expandable list, links to the tracks) · in force
 - D-237 P6 «По артистам»: `byArtist` of the track money (per pseudonym and report month, whatever the status, with its waiting part; ours and the net) · in force
 - D-238 The metadata of a recording: `owners.track_meta` (one row per ISRC, no history) and `owners.track_platforms` (1 : N), migration 0039; `GET|PATCH /tracks/:isrc/meta`, platform entries; P6 tab «Мета»; the money never reads it · in force
-- D-239 P12 shows the tracks with the cover, title and version of the track meta (`trackMeta` of `GET /artists/:id`, `components/TrackName.tsx`) · in force
+- D-239 P12 shows the tracks with the cover, title and version of the track meta (`trackMeta` of `GET /artists/:id`, `components/TrackName.tsx`) · in force, *superseded on the screens and in the answers by* D-250, D-252, D-254, D-256 (the track directory; `meta` stays only on `/tracks/catalog` and `/tracks/summary`)
 - D-240 P8 shows the release cover and its tracks with versions (`tracks[].meta`, `coverUrl` of `GET /releases/:upc`) · in force
 - D-241 The track meta from the isrc-lookup collector, incremental by `fetched_at` (`scripts/catalog/load-isrc-lookup.ts`, state file), run hourly by a launchd agent outside the repo · in force
-- D-242 The track meta (cover, title, version) on P5, P36 / P37, P10 and P15 / P16 through one `trackMetaLiteSchema` and `TrackName` · in force
+- D-242 The track meta (cover, title, version) on P5, P36 / P37, P10 and P15 / P16 through one `trackMetaLiteSchema` and `TrackName` · in force, *superseded on the screens and in the answers by* D-250, D-252, D-254, D-256 (the track directory; `meta` stays only on `/tracks/catalog` and `/tracks/summary`)
 - D-243 `TrackName` never repeats the ISRC when it has no title; P10 / P12 balance tables name the track by our title when it has no meta · in force
 - D-244 `baseTitleOf` in `@erp/shared/track-title` (the title without the version tail, computed by the server) and the schemas of the track directory `TrackView` / `ReleaseView` / `ArtistView` (three maps, no money); not connected to an operation yet · in force
 - D-245 `facade.tracksOf(isrcs, viewer)` (`facade/tracks.ts`): the track directory as three maps, never calculates; field visibility by the ISRC rule (meta / our title / catalog label open, report title / UPCs / pseudonyms only for a visible ISRC; registry row and fallback release title only of the viewer's labels); `sources.pairAttributes({ labelIds })` · in force
@@ -237,6 +237,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-253 P8 on the money blocks: `GET /releases/:upc` (header, track list) + two `POST /money/master/query` (grain `isrc`, `month`), `components/money-blocks/*`, a footer «Итого» = `totals` per block; numbers character for character the old ones; `expectMoneyCalls(page, 3)` · in force
 - D-254 P15 / P16 on the track directory (`useTracks` over the server page, `trackText` as the sort / filter text; row `meta` no longer read); `displayTitle` skips a title equal to the track's own ISRC (never the ISRC twice, D-243) · in force
 - D-255 P5, the second phase on `POST /money/master/query` (the visible ISRCs as one stable list; «Посчитать все» = no list, rows from the catalog); a row without units reads «—» (was `0`), a row with a malformed ISRC «?» by pages; the account / month mode stays on `GET /tracks/summary` · in force
+- D-256 P36 / P37 on the track directory; the lite track meta removed from the release, owner, artist, splits, participations, track-money, document-uses and sublabel answers (kept on `/tracks/catalog`, `/tracks/summary`, `coverUrl` of the release); the old `TrackName` props gone; a fallback title equal to the ISRC is no title · in force
 - D-237 An MC bears no advertising by the `isMc` mark of its split row (never by the name; `isMcPseudonym` removed); every MC row of every split version marked (`scripts/mc/mark-mc-rows.sql`, 1 111 rows): the carves of D-216 hold for the whole history (20 owners, MCs +9 979,88), the advertising unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force

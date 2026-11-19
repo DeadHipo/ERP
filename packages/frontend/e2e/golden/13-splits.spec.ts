@@ -66,4 +66,9 @@ test('P16 the participations list: base, funding, period, document status', asyn
   await expect(row).toContainText('10');
   await expect(page.getByTestId('participations-total')).toContainText('Всего участий: 1');
   await expect(row.getByTestId('action-close-participation')).toBeVisible();
+  // D-254: the row is named by the track directory, as on P15: the report title as the link, the ISRC once.
+  const name = row.getByTestId(`track-name-${isrc(32, 1, 1)}`);
+  await expect(name.getByRole('link')).toHaveText('Synthetic Track');
+  await expect(name.getByRole('link')).toHaveAttribute('href', `/tracks/${isrc(32, 1, 1)}`);
+  await expect(name).toHaveText(`Synthetic Track${isrc(32, 1, 1)}`);
 });

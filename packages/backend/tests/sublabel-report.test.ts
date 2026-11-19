@@ -105,7 +105,6 @@ describe('the report of a sublabel by its terms (D-219)', () => {
       to,
       months,
       net,
-      meta: null, // D-242: no track meta in this world
     });
     // no term yet: the sublabel knows no string, so no hint (we never match a sublabel by its name)
     expect(await f.sublabelSuggestions()).toEqual({ month: null, groups: [] });

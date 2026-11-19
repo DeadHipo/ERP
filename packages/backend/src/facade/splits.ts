@@ -1,4 +1,3 @@
-import { metaLookup } from './track-meta-lite';
 import { RuleViolationError, ValidationError } from '../shared/errors';
 import { assertDate, monthOf, monthStart } from '../shared/dates';
 import { assertIsrc } from '../shared/identifiers';
@@ -206,12 +205,10 @@ export function splitsApi(ctx: FacadeContext) {
         const statuses = await owners.documentStatuses(
           page.map((p) => p.documentId).filter((d): d is string => !!d),
         );
-        const metaOf = await metaLookup(owners, page.map((p) => p.isrc)); // D-242
         return {
           total: list.length,
           items: page.map((p) => ({
             ...p,
-            meta: metaOf(p.isrc),
             documentStatus: p.documentId ? (statuses.get(p.documentId) ?? 'missing') : 'missing',
             pseudonym: idx.get(p.artistId)?.pseudonym ?? '?',
             ownerId: idx.get(p.artistId)?.ownerId ?? null,
@@ -254,12 +251,10 @@ export function splitsApi(ctx: FacadeContext) {
             : withStatus;
         const from = filter.offset ?? 0;
         const pageRows = kept.slice(from, from + (filter.limit ?? 200));
-        const metaOf = await metaLookup(owners, pageRows.map(({ s }) => s.isrc)); // D-242
         return {
           total: kept.length,
           items: pageRows.map(({ s, documentStatus }) => ({
             ...s,
-            meta: metaOf(s.isrc),
             documentStatus,
             shares: s.shares.map((x) => ({
               ...x,

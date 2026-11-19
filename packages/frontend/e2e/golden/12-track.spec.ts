@@ -265,6 +265,7 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   expect(summaries).toEqual([]);
   await page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[col-id="isrc"]').getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`/tracks/${isrc(8, 4, 1)}$`));
+  await settled(page); // the money request of P6 ends before the counter of the next `openAs` starts
   // the B cell of an overview row opens the summary of its account and month
   // (D-255: this mode stays on `GET /tracks/summary`, one money request, and asks no master rows)
   const master: string[] = [];

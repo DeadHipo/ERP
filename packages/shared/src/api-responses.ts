@@ -267,7 +267,10 @@ export type ArtistListItem = z.infer<typeof artistListItemSchema>;
  */
 export const artistRefSchema = z.object({ id: z.string(), pseudonym: z.string().describe(D.pseudonym) });
 export type ArtistRef = z.infer<typeof artistRefSchema>;
-/** The metadata of a recording beside an ISRC (D-238, D-242): one shape for every list. */
+/**
+ * The metadata of a recording beside an ISRC (D-238, D-242). Since D-256 only the two lists P5 searches by title
+ * carry it (`GET /tracks/catalog`, `GET /tracks/summary`); every other screen reads the track of `POST /tracks/query`.
+ */
 export const trackMetaLiteSchema = z.object({
   isrc: z.string().describe(D.isrc),
   title: z.string().nullable().describe('The title as on the platforms, with the version'),
@@ -330,7 +333,6 @@ export const ownerDetailSchema = z.object({
   documents: z.array(documentSchema),
   contracts: z.array(contractSchema),
   publishingTerms: z.array(publishingTermsSchema),
-  trackMeta: z.array(trackMetaLiteSchema).describe('D-242: the metadata of the ISRCs of the tracks above that have one (D-238)'),
 });
 export type OwnerDetail = z.infer<typeof ownerDetailSchema>;
 
@@ -366,7 +368,6 @@ export const participationListSchema = z.object({
   total: z.number().int(),
   items: z.array(
     participationSchema.extend({
-      meta: trackMetaRef,
       documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
       pseudonym: z.string().describe(D.pseudonym),
       ownerId: z.string().nullable().describe(D.ownerId),
@@ -389,7 +390,6 @@ export const labelListItemSchema = labelSchema;
 export type LabelListItem = z.infer<typeof labelListItemSchema>;
 
 export const splitListItemSchema = splitSchema.extend({
-  meta: trackMetaRef,
   documentStatus: z.string().describe('not_attached | not_approved | approved | missing'),
   shares: z.array(
     z.object({
@@ -480,7 +480,6 @@ export const artistDetailSchema = z.object({
   splits: z.array(splitListItemSchema).describe('Every split with a row of the pseudonym (any period, every id)'),
   participations: z.array(participationListSchema.shape.items.element),
   documents: z.array(documentSchema).describe('The documents the splits, rows, participations and contracts above cite'),
-  trackMeta: z.array(trackMetaLiteSchema).describe('D-239: the metadata of the ISRCs of the tracks above that have one (D-238)'),
 });
 export type ArtistDetail = z.infer<typeof artistDetailSchema>;
 
@@ -1872,7 +1871,6 @@ export const releaseSchema = z.object({
       isrc: z.string().describe(D.isrc),
       title: z.string(),
       artists: artistRefs,
-      meta: trackMetaRef,
       ...moneySums,
     }),
   ),
@@ -2680,7 +2678,6 @@ export const sublabelTermListItemSchema = sublabelTermSchema.extend({
   title: z.string().nullable().describe('The title of the track in the catalog; null = not in the catalog'),
   documentStatus: z.enum(['approved', 'not_approved', 'not_attached', 'missing']).nullable().describe('null = no document'),
   state: z.enum(['open', 'future', 'closed', 'cancelled']).describe('Today: in force, starting later, ended, cancelled'),
-  meta: trackMetaRef,
 });
 
 export const sublabelTermCancelSchema = z.object({ id: z.string(), reopened: z.string().nullable().describe('The term open again') });
@@ -2733,7 +2730,6 @@ export const sublabelReportSchema = z.object({
       isrc: z.string().describe('The ISRC of the recording'),
       title: z.string().nullable().describe('The title in the catalog'),
       artists: z.array(artistRefSchema).describe('The pseudonyms of the registry on the ISRC (split rows, participations, registry links)'),
-      meta: trackMetaRef,
       month: month.describe('The report month'),
       termId: z.string().describe('The term in force that month'),
       percent: z.string().describe('Percent of the label share'),
@@ -2754,7 +2750,6 @@ export const sublabelReportSchema = z.object({
         isrc: z.string().describe('The ISRC of the recording'),
         title: z.string().nullable().describe('The title in the catalog'),
         artists: z.array(artistRefSchema).describe('The pseudonyms of the registry on the ISRC'),
-        meta: trackMetaRef,
         months: z.number().int().describe('Report months of the track in the period'),
         ...sublabelReportSumFields,
       }),
@@ -2807,7 +2802,6 @@ export const sublabelSuggestionsSchema = z.object({
           to: month.describe('The last such month'),
           months: z.number().int().describe('How many such months'),
           net: money.describe('Net of the track in those months'),
-          meta: trackMetaRef,
         }),
       ),
     }),
