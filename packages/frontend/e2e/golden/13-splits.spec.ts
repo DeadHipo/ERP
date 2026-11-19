@@ -16,7 +16,12 @@ test('P15 the S01 split row: period, shares, document status, our share', async 
   await expect(row.getByTestId('chip-approved')).toBeVisible();
   await expect(row.locator('[data-col="ourShare"]').getByTestId('money')).toHaveAttribute('title', '50');
   await expect(page.getByTestId('splits-total')).toContainText('Всего сплитов: 1');
-  await expect(row.getByRole('link', { name: isrc(1, 1, 1) })).toBeVisible();
+  // D-254: the row is named by the track directory. The seed's catalog title is the ISRC itself, which is no
+  // title, so the link reads the report title and the ISRC is written once, under it.
+  const name = row.getByTestId(`track-name-${isrc(1, 1, 1)}`);
+  await expect(name.getByRole('link')).toHaveText('Synthetic Track');
+  await expect(name.getByRole('link')).toHaveAttribute('href', `/tracks/${isrc(1, 1, 1)}`);
+  await expect(name).toHaveText(`Synthetic Track${isrc(1, 1, 1)}`);
 });
 
 test('P15 the artist filter keeps only the rows of that pseudonym', async ({ page }) => {

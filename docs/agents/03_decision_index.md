@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-253 by topic)
+# Decision index (D-001 … D-254 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -235,6 +235,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-251 R2′ (replaces R2 of D-139): one money request per block, the balance a separate answer of its page; `['money','master']` in `MONEY_KEYS`, `catalog.masterRows` / `useMasterRows`, the e2e counter counts a POST under `/api/v1/money/` · in force
 - D-252 P10 and P12 name a track from the track directory (`useTracks`, D-250): no `trackMeta` of the card, no page fallback title; the title is `displayTitle` (meta, else catalog, else report) · in force
 - D-253 P8 on the money blocks: `GET /releases/:upc` (header, track list) + two `POST /money/master/query` (grain `isrc`, `month`), `components/money-blocks/*`, a footer «Итого» = `totals` per block; numbers character for character the old ones; `expectMoneyCalls(page, 3)` · in force
+- D-254 P15 / P16 on the track directory (`useTracks` over the server page, `trackText` as the sort / filter text; row `meta` no longer read); `displayTitle` skips a title equal to the track's own ISRC (never the ISRC twice, D-243) · in force
 - D-237 An MC bears no advertising by the `isMc` mark of its split row (never by the name; `isMcPseudonym` removed); every MC row of every split version marked (`scripts/mc/mark-mc-rows.sql`, 1 111 rows): the carves of D-216 hold for the whole history (20 owners, MCs +9 979,88), the advertising unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force

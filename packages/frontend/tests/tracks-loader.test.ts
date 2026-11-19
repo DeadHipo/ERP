@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrackView } from '@erp/shared/api-responses';
-import { displayTitle } from '../src/lib/track-title';
+import { displayTitle, trackText } from '../src/lib/track-title';
 import { isMoneyKey } from '../src/api/queries/core';
 import { trackKeys } from '../src/api/queries/tracks';
 
@@ -169,5 +169,36 @@ describe('displayTitle (D-250)', () => {
     expect(displayTitle(viewOf('A', { meta: null, catalogTitle: null, reportTitle: null }))).toBeNull();
     expect(displayTitle(null)).toBeNull();
     expect(displayTitle(undefined)).toBeNull();
+  });
+});
+
+describe('trackText (D-254)', () => {
+  const meta = { title: 'Song - Slowed', baseTitle: 'Song', version: 'Slowed', artists: null, durationMs: null, explicit: null, releaseDate: null, coverUrl: null, primaryPlatform: null };
+  it('is «title · version · ISRC» of the track, the parts a grid sorts and filters by', () => {
+    expect(trackText('A', viewOf('A', { meta }))).toBe('Song · Slowed · A');
+    expect(trackText('A', viewOf('A', { meta: null, catalogTitle: null, reportTitle: 'Report' }))).toBe('Report · A');
+  });
+  it('is the ISRC alone until the track arrives, for an unknown track and for a track without a title', () => {
+    expect(trackText('A', undefined)).toBe('A');
+    expect(trackText('A', null)).toBe('A');
+    expect(trackText('A', viewOf('A', { meta: null, catalogTitle: null, reportTitle: null }))).toBe('A');
+  });
+});
+
+describe('a title equal to the ISRC is no title (D-254)', () => {
+  const I = 'QZTST2600001';
+  it('the catalog title is the ISRC and nothing else: null', () => {
+    expect(displayTitle(viewOf(I, { meta: null, catalogTitle: I, reportTitle: null }))).toBeNull();
+    expect(displayTitle(viewOf(I, { meta: null, catalogTitle: ' qz-tst-26-00001 ', reportTitle: I.toLowerCase() }))).toBeNull();
+  });
+  it('the catalog title is the ISRC, the report title is real: the report title', () => {
+    expect(displayTitle(viewOf(I, { meta: null, catalogTitle: I, reportTitle: 'Report' }))).toBe('Report');
+  });
+  it('another ISRC as a title is a title', () => {
+    expect(displayTitle(viewOf(I, { meta: null, catalogTitle: 'QZTST2600002', reportTitle: null }))).toBe('QZTST2600002');
+  });
+  it('trackText does not repeat the ISRC', () => {
+    expect(trackText(I, viewOf(I, { meta: null, catalogTitle: I, reportTitle: null }))).toBe(I);
+    expect(trackText(I, viewOf(I, { meta: null, catalogTitle: I, reportTitle: 'Report' }))).toBe(`Report · ${I}`);
   });
 });

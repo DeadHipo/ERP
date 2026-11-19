@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
 import type { ParticipationListItem } from '@erp/shared/api-responses';
 import { splitQueries } from '../../../api/queries/splits';
+import { useTracks } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
 import { EntityLink } from '../../../components/EntityLink';
 import { PageHeader } from '../../../components/PageHeader';
@@ -11,6 +12,7 @@ import { QueryView } from '../../../components/PageState';
 import { DataGrid } from '../../../components/grid/DataGrid';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { TextField } from '../../../components/fields/TextField';
+import { trackText } from '../../../lib/track-title';
 import { fmt, ru } from '../../../i18n/ru';
 import { useUrlParam } from '../../catalog/components/url';
 import { CloseParticipationDialog } from '../../catalog/track/ParticipationDialogs';
@@ -35,6 +37,11 @@ export function ParticipationsPage() {
       offset: toInt(paging.offset),
     }),
   );
+  // The names of the rows (title, version, cover) come from the track directory, not from the list (D-254). The
+  // list is paged by the server (at most 500 rows) and the grid shows the whole answer on one page, so the ISRCs of
+  // the answer are the rows on the screen: one `POST /tracks/query`, and the sort and filter by title see every row.
+  const isrcs = useMemo(() => (query.data?.items ?? []).map((row) => row.isrc), [query.data]);
+  const tracks = useTracks(isrcs);
   const columns = useMemo<ColDef<ParticipationListItem>[]>(
     () => [
       {
@@ -42,9 +49,10 @@ export function ParticipationsPage() {
         headerName: t.cols.isrc,
         minWidth: 220,
         autoHeight: true,
-        // D-242: the cover, the title and «version · ISRC» of the track meta; the filter text holds all three
-        valueGetter: (p) => (p.data ? [p.data.meta?.title, p.data.meta?.version, p.data.isrc].filter(Boolean).join(' · ') : ''),
-        cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <TrackName isrc={p.data.isrc} meta={p.data.meta ?? undefined} /> : null),
+        // D-242: the cover, the title and «version · ISRC» of the track; the sort and filter text holds all three.
+        // The track is the directory's (D-254), so the text is «title · version · ISRC» once it arrived.
+        valueGetter: (p) => (p.data ? trackText(p.data.isrc, tracks.track(p.data.isrc)) : ''),
+        cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <TrackName isrc={p.data.isrc} track={tracks.track(p.data.isrc)} /> : null),
       },
       { colId: 'pseudonym', headerName: t.cols.pseudonym, valueGetter: (p) => p.data?.pseudonym, cellRenderer: (p: { data?: ParticipationListItem }) => (p.data ? <EntityLink kind="artist" id={p.data.artistId} label={p.data.pseudonym} /> : null) },
       { colId: 'percent', headerName: t.cols.percent, maxWidth: 110, valueGetter: (p) => p.data?.percent },
@@ -66,7 +74,8 @@ export function ParticipationsPage() {
           ) : null,
       },
     ],
-    [],
+    // the columns read the tracks of the cache: built again when a track arrives or changes
+    [tracks],
   );
   return (
     <div data-testid="participations-page">
