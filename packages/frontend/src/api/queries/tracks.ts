@@ -12,8 +12,6 @@ export const trackKeys = {
   list: () => ['tracks', 'list'] as const,
   explain: (isrc: string) => ['tracks', 'explain', isrc] as const,
   summary: (account?: string, month?: string, labelId = '') => ['tracks', 'summary', account ?? null, month ?? null, labelId || null] as const,
-  /** The money of a list of ISRCs (the visible rows of P5, D-162); the key is the sorted list, so a page seen before is cached. */
-  summaryOf: (isrcs: readonly string[], labelId = '') => ['tracks', 'summary', 'isrcs', isrcs.join(','), labelId || null] as const,
   catalog: (labelId = '', current = false) => ['tracks', 'catalog', labelId || null, current ? 'current' : 'all'] as const,
   labels: (isrc: string) => ['tracks', 'labels', isrc] as const,
   meta: (isrc: string) => ['tracks', 'meta', isrc] as const,
@@ -31,19 +29,11 @@ export const trackQueries = {
   list: () => queryOptions({ queryKey: trackKeys.list(), queryFn: () => api.tracks.list() }),
   explain: (isrc: string) =>
     queryOptions({ queryKey: trackKeys.explain(isrc), queryFn: () => api.tracks.explain(isrc), ...MONEY_QUERY }),
-  /** P5: one calculation, all rows; the grid filters client-side (N5). */
+  /** P5 with an account or month (the P1 drill-down): one calculation, all rows; the grid filters client-side (N5). */
   summary: (account?: string, month?: string, labelId = '') =>
     queryOptions({
       queryKey: trackKeys.summary(account, month, labelId),
       queryFn: () => catalog.trackSummary({ account, month, ...labelQuery(labelId) }),
-      ...MONEY_QUERY,
-    }),
-  /** P5 (D-162): the money of the visible rows only; one calculation of their units. */
-  summaryOf: (isrcs: readonly string[], labelId = '') =>
-    queryOptions({
-      queryKey: trackKeys.summaryOf(isrcs, labelId),
-      queryFn: () => catalog.trackSummary({ isrcs: isrcs.join(','), ...labelQuery(labelId) }),
-      enabled: isrcs.length > 0,
       ...MONEY_QUERY,
     }),
   /** P5 (D-162): the rows without money (a reference list, no calculation); under a label the ISRCs of its units. */

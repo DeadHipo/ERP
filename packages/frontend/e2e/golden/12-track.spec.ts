@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { account, expectMoneyCalls, isrc, norm, openAs, sc, settled, upc } from '../helpers';
+import { account, expectMoneyCalls, expectTracksMoneyIsApi, isrc, norm, openAs, sc, settled, upc } from '../helpers';
 
 // P6 «Трек» (19 §4, read-only S01–S11 and the stable parts of S13 / S16): every month row of an ISRC, its allocations
 // with the exact API strings in `title`, the label of record, the layer-by-layer table and the breakdown of a month.
@@ -208,16 +208,23 @@ test('the card: header, tabs in the URL, documents, the lines link; the breadcru
 
 test('P5 «Треки»: the summary row of an ISRC, the quick filters in the URL, the account and month scope', async ({ page }) => {
   const i = isrc(11, 1, 1);
-  // D-162: the rows come without money (the catalog), the money of the visible rows is one summary call of their ISRCs
-  const asked = page.waitForRequest((r) => r.url().includes('/api/v1/tracks/summary?'));
+  // D-162, D-255: the rows come without money (the catalog, not a money request), the money of the visible rows is
+  // one request of the master rows with their ISRCs
+  const asked = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/api/v1/money/master/query'));
+  const summaries: string[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).pathname === '/api/v1/tracks/summary') summaries.push(r.url());
+  });
   await openAs(page, `/tracks?q=${i}`);
   // the rows (the catalog) come first, the money of the visible row a moment later: wait for that call, then settle
-  expect(new URL((await asked).url()).searchParams.get('isrcs')).toBe(i);
+  expect((await asked).postDataJSON()).toEqual({ scope: { kind: 'isrcs', isrcs: [i] }, grain: 'isrc' });
   await settled(page);
   expectMoneyCalls(page, 1);
   await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
   const row = page.getByTestId(`track-${i}`);
   await expect(row).toBeVisible();
+  // «screen = API»: the cells are the fields of the answer
+  expect(await expectTracksMoneyIsApi(page, [i])).toEqual([i]);
   await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');
   await expect(row.locator('[data-col="B"] [data-testid="money"]')).toHaveAttribute('title', '82.5');
   await expect(row.locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '67.5');
@@ -243,17 +250,32 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await expect(bare.getByRole('link')).toHaveCount(0);
   // the new visible row gets its money by a second call of its own ISRC; the full calculation is one click away
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '0'); // D-175: no split → C
+  expect(await expectTracksMoneyIsApi(page, [isrc(8, 4, 1)])).toEqual([isrc(8, 4, 1)]);
+  // «Посчитать все»: the same rows of the catalog, the money of every ISRC by one request without a list
+  const everything = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/api/v1/money/master/query') && (r.postDataJSON() as { scope: { isrcs?: string[] } }).scope.isrcs === undefined);
   await page.getByTestId('action-compute-all').click();
+  expect((await everything).postDataJSON()).toEqual({ scope: { kind: 'isrcs' }, grain: 'isrc' });
   await settled(page);
   await expect(page.getByTestId('tracks-all-money')).toBeVisible();
   await expect(page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[data-col="ours"] [data-testid="money"]')).toHaveAttribute('title', '0'); // D-175: no split → C
+  expect(await expectTracksMoneyIsApi(page, [isrc(8, 4, 1)], { all: true })).toEqual([isrc(8, 4, 1)]);
   await page.getByTestId('action-visible-only').click();
   await expect(page.getByTestId('tracks-visible-money')).toBeVisible();
+  // without an account or month the page never asks the summary
+  expect(summaries).toEqual([]);
   await page.getByTestId(`track-${isrc(8, 4, 1)}`).locator('[col-id="isrc"]').getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`/tracks/${isrc(8, 4, 1)}$`));
   // the B cell of an overview row opens the summary of its account and month
+  // (D-255: this mode stays on `GET /tracks/summary`, one money request, and asks no master rows)
+  const master: string[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).pathname === '/api/v1/money/master/query') master.push(r.url());
+  });
   await openAs(page, `/tracks?account=${account(10, 1, 1)}&month=${M}`);
   await settled(page);
+  expectMoneyCalls(page, 1);
+  expect(summaries).toHaveLength(1);
+  expect(master).toEqual([]);
   await expect(page.getByTestId('tracks-scope')).toBeVisible();
   await expect(page.getByTestId('tracks-count')).toHaveText('Строк: 1');
   await expect(page.getByTestId(`track-${isrc(10, 1, 2)}`).locator('[data-col="B"] [data-testid="money"]')).toHaveAttribute('title', '25');
@@ -261,6 +283,58 @@ test('P5 «Треки»: the summary row of an ISRC, the quick filters in the UR
   await openAs(page, '/tracks?q=P-111');
   await expect(page.getByTestId(`track-${i}`)).toBeVisible();
   await expect(page.getByTestId('tracks-count')).toHaveText('Строк: 1');
+});
+
+test('P5 «Посчитать все»: a failed money request shows the error of the money block, the rows of the catalog stay', async ({ page }) => {
+  const i = isrc(11, 1, 1);
+  let fail = true;
+  await page.route('**/api/v1/money/master/query*', (route) =>
+    fail ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'internal', message: 'mocked', statusCode: 500 } }) }) : route.continue(),
+  );
+  await openAs(page, `/tracks?q=${i}&all=1`);
+  const row = page.getByTestId(`track-${i}`);
+  await expect(row).toBeVisible();
+  await expect(page.getByTestId('tracks-money-error').getByTestId('error-code')).toHaveText('internal');
+  await expect(row.locator('[data-col="net"]')).toHaveAttribute('data-testid', 'money-pending');
+  fail = false;
+  await page.getByTestId('tracks-money-error').getByTestId('action-retry').click();
+  await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');
+  await expect(page.getByTestId('tracks-money-error')).toHaveCount(0);
+  // the money columns sort under «Посчитать все»: the sort travels in the URL
+  await page.locator('.ag-header-cell[col-id="net"]').click();
+  await expect(page).toHaveURL(/grid=/);
+  await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');
+});
+
+test('P5 by pages: a row whose ISRC is not in the ISRC format is not asked and says so («?»), the other rows get their money', async ({ page }) => {
+  const i = isrc(11, 1, 1);
+  const odd = `${i}X`; // synthetic: one character too long for an ISRC
+  await page.route('**/api/v1/tracks/catalog*', async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as { items: { isrc: string }[] };
+    const like = body.items.find((x) => x.isrc === i);
+    if (like) body.items.push({ ...like, isrc: odd });
+    await route.fulfill({ response: res, json: body });
+  });
+  const asked = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/api/v1/money/master/query'));
+  await openAs(page, `/tracks?q=${i}`);
+  // only the ISRC travels: the list with the odd string would be refused as a whole
+  expect((await asked).postDataJSON()).toEqual({ scope: { kind: 'isrcs', isrcs: [i] }, grain: 'isrc' });
+  await settled(page);
+  expectMoneyCalls(page, 1);
+  await expect(page.getByTestId('tracks-count')).toHaveText('Строк: 2');
+  expect(await expectTracksMoneyIsApi(page, [i])).toEqual([i]);
+  const row = page.getByTestId(`track-${odd}`);
+  for (const col of ['net', 'B', 'C', 'ours']) {
+    const cell = row.locator(`[data-col="${col}"]`);
+    await expect(cell).toHaveAttribute('data-money-not-asked', 'true');
+    await expect(cell).not.toHaveAttribute('data-no-units', 'true');
+    await expect(cell).toHaveText('?');
+    await expect(cell).toHaveAttribute('title', /ISRC не по формату/);
+  }
+  await expect(row.getByTestId('money-pending')).toHaveCount(0);
+  await expect(row.getByTestId('money')).toHaveCount(0);
+  await expect(page.getByTestId('tracks-money-error')).toHaveCount(0);
 });
 
 test('P7 and P8 are reachable from the card: the UPC link opens the release', async ({ page }) => {

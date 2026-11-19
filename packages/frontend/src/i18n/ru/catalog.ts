@@ -22,6 +22,9 @@ export const catalog = {
     visibleOnly: 'Только видимые строки',
     allMoney: 'Один расчёт по всем трекам',
     moneyPending: '…',
+    /** D-255: a row whose ISRC is not in the ISRC format is not asked by pages (the server refuses such a list): «?» = unknown, not «—» (no units). */
+    moneyNotAskedMark: '?',
+    moneyNotAsked: 'ISRC не по формату: деньги этой строки считаются только в режиме «Посчитать все»',
     create: 'Создать трек',
     createSubtitle: 'Трек регистрируется по ISRC и UPC; без регистрации деньги пары ждут в C (неизвестная пара).',
     created: 'Трек создан: {isrc}',

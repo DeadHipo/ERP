@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { account, apiPost, choose, isrc, labelOf, openAs, toastOk, upc } from '../helpers';
+import { account, apiPost, choose, expectMoneyCalls, expectTracksMoneyIsApi, isrc, labelOf, openAs, settled, toastOk, upc } from '../helpers';
 
 // The label history of an ISRC and the release registry (D-172, S47–S48 of 19). S47: an ISRC of its own (QZTST2747101,
 // no report lines): no history; the operator sets 0to8 from 2026-01-15 (floored to 2026-01-01), then replaces it with
@@ -50,6 +50,19 @@ test('S47 the label history: set, replace, same label refused; P6 and P5 show th
   await page.getByTestId('field-tracks-q').fill(I);
   await expect(track.locator('[data-col="catalogLabel"]')).toHaveText('Echo8');
   await expect(track.locator('[data-col="catalogLabel"]')).toHaveAttribute('data-label-id', labelOf('Echo8'));
+  // D-255: a track of the catalog without report lines has no row in the money answer: «—» in every money cell
+  // (it read 0 before), by pages and under «Посчитать все»; no cell is left waiting
+  await settled(page);
+  expect(await expectTracksMoneyIsApi(page, [I])).toEqual([]);
+  await expect(track.getByTestId('money-pending')).toHaveCount(0);
+  await expect(track.getByTestId('money')).toHaveCount(0);
+  await expect(track.locator('[col-id="months"]')).toHaveText('');
+  await openAs(page, `/tracks?catalog=current&all=1&q=${I}`);
+  await settled(page);
+  expectMoneyCalls(page, 1);
+  await expect(page.getByTestId('tracks-all-money')).toBeVisible();
+  expect(await expectTracksMoneyIsApi(page, [I], { all: true })).toEqual([]);
+  await expect(track.getByTestId('money-pending')).toHaveCount(0);
 });
 
 const HEADER = '"Release Title";Version;Artist;Label;"Release date / Hour / Time zone";"# of track";UPC;"Cat. #";"# of territories";"# of stores"';

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectMoneyCalls, isrc, labelOf, openAs, sc, settled, upc } from '../helpers';
+import { expectMoneyCalls, expectTracksMoneyIsApi, isrc, labelOf, openAs, sc, settled, upc } from '../helpers';
 
 // P7 «Релизы» and P8 «Релиз» (19 §4 S11, G24): one ISRC under two UPCs; each release shows its own share of the
 // unit (UPC1 net 100, UPC2 net 50), track by track and month by month, exact strings in `title`. The name of the track
@@ -182,7 +182,11 @@ test('S11 on P5: the shown row is named by the directory, one query for the rows
   await expect(row.getByTestId(`track-version-${i}`)).toHaveText('Slowed');
   // only the shown row is asked (as its money, D-162), and the directory is not a money request (R2)
   expect(queries).toEqual([[i]]);
+  // D-255: the money of the shown row is one request of the master rows (the catalog rows are not money), and the
+  // cells are its fields: the ISRC of two UPCs has both releases in its row (100 + 50)
   expectMoneyCalls(page, 1);
+  expect(await expectTracksMoneyIsApi(page, [i])).toEqual([i]);
+  await expect(row.locator('[data-col="net"] [data-testid="money"]')).toHaveAttribute('title', '150');
 });
 
 test('P8: a failed track directory shows the fallback look (the ISRC, «—»), the money stays', async ({ page }) => {

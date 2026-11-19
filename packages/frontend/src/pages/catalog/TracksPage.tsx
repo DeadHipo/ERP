@@ -2,21 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColDef } from 'ag-grid-community';
-import type { TrackCatalogItem, TrackSummaryItem } from '@erp/shared/api-responses';
+import type { MasterRow, TrackCatalogItem, TrackSummaryItem } from '@erp/shared/api-responses';
 import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
+import { useMasterRows } from '../../api/queries/money';
 import { trackQueries, useCachedTrack, useTracks } from '../../api/queries/tracks';
 import { ActionButton } from '../../components/ActionButton';
 import { ArtistLinks, artistsText } from '../../components/ArtistLinks';
 import { TrackName } from '../../components/TrackName';
 import { EntityLink } from '../../components/EntityLink';
 import { FormDialog } from '../../components/FormDialog';
-import { Money } from '../../components/Money';
 import { PageHeader } from '../../components/PageHeader';
-import { QueryView, StaleBadge } from '../../components/PageState';
+import { PageState, QueryView, StaleBadge } from '../../components/PageState';
 import { DataGrid } from '../../components/grid/DataGrid';
+import { MoneyValue } from '../../components/money-blocks/MoneyCells';
+import { rowsByIsrc } from '../../components/money-blocks/rows';
 import { SelectField } from '../../components/fields/SelectField';
 import { TextField } from '../../components/fields/TextField';
+import { isrcKey } from '../../lib/isrc';
 import { compareDecimal } from '../../lib/money';
 import { useLabel } from '../../lib/label';
 import { fmt, ru } from '../../i18n/ru';
@@ -26,13 +29,28 @@ import { FlagChip } from './components/FlagChip';
 const t = ru.catalog.tracks;
 const m = ru.catalog.money;
 
-/** A row of P5: the track without money (the catalog) and, once asked, its money (a summary item). */
-type TrackRow = Omit<TrackCatalogItem, 'registered'> & { money?: TrackSummaryItem };
+/** The money of a row: the sums and the report months of a row of the master money (`MasterRow`). */
+type RowMoney = Pick<MasterRow, 'sums' | 'months'>;
+
+/**
+ * A row of P5: the track without money (the catalog) and its money. `money` is `undefined` until the answer that
+ * covers the row arrives and `null` when that answer has no row for it (no units: the cells read «—», D-255).
+ * `moneyNotAsked` marks a row the paged request cannot name (its ISRC is not in the ISRC format): its money is not
+ * known by pages (it may well have units), so its cells read «?» with a hint, never «—» and never «…». The old paged
+ * read could not name it either: `GET /tracks/summary?isrcs=` refused the whole list with 400 and the page stayed on «…».
+ */
+type TrackRow = Omit<TrackCatalogItem, 'registered'> & { money?: RowMoney | null; moneyNotAsked?: true };
+
+/** The most ISRCs one `POST /money/master/query` takes (`masterQueryBody`); a grid page is far smaller. */
+const MAX_ASKED = 5000;
 
 type CatalogFields = Pick<TrackCatalogItem, 'catalogLabelId' | 'catalogLabelName' | 'catalogFrom'>;
 const NO_CATALOG: CatalogFields = { catalogLabelId: null, catalogLabelName: null, catalogFrom: null };
 
-/** A summary item as a row; its catalog label (D-172) comes from the catalog read of the same label view. */
+/**
+ * A summary item as a row (the account / month mode); its catalog label (D-172) comes from the catalog read of the
+ * same label view. Its money is the item's own sums and months, in the shape of a master row.
+ */
 const rowOfSummary = (i: TrackSummaryItem, catalogOf: Map<string, CatalogFields>): TrackRow => ({
   isrc: i.isrc,
   upcs: i.upcs,
@@ -43,14 +61,20 @@ const rowOfSummary = (i: TrackSummaryItem, catalogOf: Map<string, CatalogFields>
   hasParticipations: i.hasParticipations,
   meta: i.meta,
   ...(catalogOf.get(i.isrc) ?? NO_CATALOG),
-  money: i,
+  money: { sums: i, ...(i.months.from !== null && i.months.to !== null ? { months: { from: i.months.from, to: i.months.to, count: i.months.count } } : {}) },
 });
 
 /**
- * P5 «Треки» (D-162). Without an account or month: the rows come from `GET /tracks/catalog` (no money) and the money
- * of the rows on the screen from `GET /tracks/summary?isrcs=` (one calculation of their units); a page seen before
- * is cached. With an account or month (the P1 drill-down) or «Посчитать все»: one `GET /tracks/summary` of every row,
- * as before, so the money columns sort. Every row is filtered on the client.
+ * P5 «Треки» (D-162, D-255). The rows come from `GET /tracks/catalog` (no money). Their money is one block of the
+ * master money (`useMasterRows`, grain `isrc`, one request):
+ *
+ * - by pages (the default): the ISRCs of the rows on the screen (`{ kind: 'isrcs', isrcs }`); a page seen before keeps
+ *   its numbers; the money columns do not sort;
+ * - «Посчитать все» (`all=1`): every ISRC (`{ kind: 'isrcs' }` without a list); the money columns sort.
+ *
+ * A row the answer does not name has no units and reads «—». With an account or month (the P1 drill-down) the page is
+ * one `GET /tracks/summary` of every row, as before: the master rows have no such filters. Every row is filtered on
+ * the client.
  */
 export function TracksPage() {
   const [account, setAccount] = useUrlParam('account');
@@ -62,10 +86,13 @@ export function TracksPage() {
   const [catalogParam, setCatalogParam] = useUrlParam('catalog');
   const current = catalogParam === 'current';
   const [creating, setCreating] = useState(false);
-  const full = account !== '' || month !== '' || all === '1';
+  const scoped = account !== '' || month !== '';
+  const allMode = !scoped && all === '1';
+  // every row has its money (or will, by one answer): the money columns sort
+  const full = scoped || allMode;
   // the label view (D-168): the ISRCs of the label's units and their money alone
   const { labelId } = useLabel();
-  const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined, labelId), enabled: full });
+  const summary = useQuery({ ...trackQueries.summary(account || undefined, month || undefined, labelId), enabled: scoped });
   // the catalog read (no money) also gives the catalog label of the rows of a full summary
   const catalog = useQuery(trackQueries.catalog(labelId, current));
   const catalogOf = useMemo(
@@ -79,18 +106,26 @@ export function TracksPage() {
     const timer = setTimeout(() => setAsked(visible), 150);
     return () => clearTimeout(timer);
   }, [visible]);
-  const pageMoney = useQuery({ ...trackQueries.summaryOf(asked, labelId), enabled: !full && asked.length > 0 });
+  // The list of the money request: only strings in the ISRC format (the server refuses the whole list otherwise),
+  // each once, sorted, so the same rows are the same cache entry. The cut at `MAX_ASKED` is never reached: the list is
+  // the rows of one grid page (50, 100 or 500, `DataGrid`); it only keeps the request inside the limit of the schema.
+  const askedIsrcs = useMemo(() => [...new Set(asked.flatMap((i) => isrcKey(i) ?? []))].sort().slice(0, MAX_ASKED), [asked]);
+  const pageMoney = useMasterRows({ kind: 'isrcs', isrcs: askedIsrcs }, 'isrc', { enabled: !full && askedIsrcs.length > 0 });
+  const allMoney = useMasterRows({ kind: 'isrcs' }, 'isrc', { enabled: allMode });
+  const money = allMode ? allMoney : pageMoney;
   // The tracks of the rows on the screen (D-250), in both modes: asked here, like the money, and read from the
   // cache by the title cell of each row (`TitleCell`); the rows and their texts stay those of the catalog.
   useTracks(asked);
-  // The money seen so far, by ISRC: a row keeps its numbers while the next page is asked.
-  const moneyRef = useRef(new Map<string, TrackSummaryItem>());
+  // The money seen so far, by ISRC: a row keeps its numbers while the next page is asked. `null` = asked, no units.
+  const moneyRef = useRef(new Map<string, RowMoney | null>());
   const [moneyVersion, setMoneyVersion] = useState(0);
   useEffect(() => {
     if (!pageMoney.data) return;
-    for (const i of pageMoney.data.items) moneyRef.current.set(i.isrc, i);
+    // the answer is the one of `askedIsrcs` (the key of the query): an ISRC asked and not answered has no units
+    const rowOf = rowsByIsrc(pageMoney.data.rows);
+    for (const i of askedIsrcs) moneyRef.current.set(i, rowOf.get(i) ?? null);
     setMoneyVersion((v) => v + 1);
-  }, [pageMoney.data]);
+  }, [pageMoney.data, askedIsrcs]);
   // a new label changes every row's money: forget what was seen under the old one
   useEffect(() => {
     moneyRef.current.clear();
@@ -107,11 +142,10 @@ export function TracksPage() {
   const sortBy = (location.state as { sortBy?: unknown } | null)?.sortBy;
   const defaultSort = full && (sortBy === 'B' || sortBy === 'ours') ? ([sortBy, 'desc'] as const) : undefined;
   const needle = q.trim().toLocaleLowerCase('ru');
-  const scoped = account !== '' || month !== '';
   const keep = useCallback(
     (i: TrackRow) =>
       // With an account or month scope the API still lists every track (zeros outside the scope): show those with units in it.
-      (!scoped || (i.money?.months.count ?? 0) > 0) &&
+      (!scoped || (i.money?.months?.count ?? 0) > 0) &&
       (hasSplit === '' || (hasSplit === 'yes') === i.hasSplit) &&
       (needle === '' ||
         [i.isrc, i.title, i.meta?.title ?? '', i.meta?.version ?? '', i.artistName, ...i.artists.map((a) => a.pseudonym), ...i.upcs].some((s) =>
@@ -133,11 +167,25 @@ export function TracksPage() {
     () =>
       catalog.data
         ? catalog.data.items
-            .map(({ registered: _registered, ...i }): TrackRow => ({ ...i, money: moneyRef.current.get(i.isrc) }))
+            .map(({ registered: _registered, ...i }): TrackRow => {
+              const key = isrcKey(i.isrc);
+              return key === null ? { ...i, moneyNotAsked: true } : { ...i, money: moneyRef.current.get(key) };
+            })
             .filter(keep)
         : [],
     // moneyVersion: the money of a page arrived (the map is a ref)
     [catalog.data, keep, moneyVersion],
+  );
+  // «Посчитать все»: the same rows of the catalog; the money of each is its row of the one answer over every ISRC
+  const allRowOf = useMemo(() => (allMoney.data ? rowsByIsrc(allMoney.data.rows) : undefined), [allMoney.data]);
+  const allRows = useMemo(
+    () =>
+      catalog.data
+        ? catalog.data.items
+            .map(({ registered: _registered, ...i }): TrackRow => ({ ...i, money: allRowOf ? (allRowOf.get(isrcKey(i.isrc) ?? i.isrc) ?? null) : undefined }))
+            .filter(keep)
+        : [],
+    [catalog.data, keep, allRowOf],
   );
   const grid = (rows: TrackRow[]) => (
     <div className="flex flex-col gap-2">
@@ -157,11 +205,20 @@ export function TracksPage() {
               <button type="button" className="text-accent hover:underline" data-testid="action-compute-all" onClick={() => setAll('1')}>
                 {t.computeAll}
               </button>
-              <StaleBadge show={pageMoney.isFetching} />
             </>
           )
         ) : null}
+        {/* by pages every request is shown as a refresh (D-162); «Посчитать все» has the long panel until its answer */}
+        {!scoped ? <StaleBadge show={money.isFetching && (!allMode || money.data !== undefined)} /> : null}
       </div>
+      {/* the states of the money block: the rows of the catalog stay under them */}
+      {!scoped && money.isError && money.data === undefined ? (
+        <div data-testid="tracks-money-error">
+          <PageState variant="error" error={money.error} onRetry={() => void money.refetch()} />
+        </div>
+      ) : allMode && money.data === undefined ? (
+        <PageState variant="long" />
+      ) : null}
       <DataGrid
         rowData={rows}
         columnDefs={columns}
@@ -233,13 +290,13 @@ export function TracksPage() {
           />
         </div>
       </div>
-      {full ? (
+      {scoped ? (
         <QueryView query={summary} money isEmpty={(d) => d.items.length === 0} emptyMessage={t.empty} emptyAction={emptyAction}>
           {() => grid(fullRows)}
         </QueryView>
       ) : (
         <QueryView query={catalog} isEmpty={(d) => d.items.length === 0} emptyMessage={t.empty} emptyAction={emptyAction}>
-          {() => grid(pagedRows)}
+          {() => grid(allMode ? allRows : pagedRows)}
         </QueryView>
       )}
       {creating ? <CreateTrackDialog onClose={() => setCreating(false)} /> : null}
@@ -248,11 +305,22 @@ export function TracksPage() {
 }
 
 type P = { data?: TrackRow };
-const money = (col: 'net' | 'B' | 'C' | 'ours') => (p: P) =>
+type MoneyCol = 'net' | 'B' | 'C' | 'ours';
+/** The value of a money column: the server's string; `null` = no units («—»), `undefined` = not answered yet. */
+const moneyValue = (col: MoneyCol) => (p: P) => (p.data?.money === null ? null : p.data?.money?.sums[col]);
+/**
+ * A money cell: «?» for a row that is not asked by pages (its money is unknown, not absent), «…» until the answer,
+ * then the rule of the money blocks (`MoneyValue`: the string, «—» without sums = no units).
+ */
+const money = (col: MoneyCol) => (p: P) =>
   p.data ? (
-    p.data.money ? (
-      <span data-col={col}>
-        <Money value={p.data.money[col]} />
+    p.data.moneyNotAsked ? (
+      <span data-col={col} data-money-not-asked="true" data-testid="money-not-asked" className="text-muted" title={t.moneyNotAsked}>
+        {t.moneyNotAskedMark}
+      </span>
+    ) : p.data.money !== undefined ? (
+      <span data-col={col} data-no-units={p.data.money === null ? 'true' : undefined}>
+        <MoneyValue sums={p.data.money?.sums} col={col} />
       </span>
     ) : (
       <span data-col={col} data-testid="money-pending" className="text-muted">
@@ -270,7 +338,7 @@ function TitleCell({ isrc, title }: { isrc: string; title: string }) {
   return <TrackName isrc={isrc} track={useCachedTrack(isrc)} fallbackTitle={title} />;
 }
 
-/** The money columns sort only when every row has its money (`full`); by pages they are not sortable. */
+/** The money columns sort only when every row has its money (`full`); by pages they are not sortable. A row without units («—») sorts before every amount. */
 function trackColumns(full: boolean): ColDef<TrackRow>[] {
   const c = t.cols;
   const sums = { comparator: compareDecimal, filter: false, sortable: full, minWidth: 130 };
@@ -331,17 +399,17 @@ function trackColumns(full: boolean): ColDef<TrackRow>[] {
         ) : null,
     },
     // Money columns sort by `compareDecimal` (sign, integer length, digits; no number is made); the API order (by ISRC) is the default.
-    { colId: 'net', headerName: m.net, valueGetter: (p) => p.data?.money?.net, cellRenderer: money('net'), ...sums },
-    { colId: 'B', headerName: m.B, valueGetter: (p) => p.data?.money?.B, cellRenderer: money('B'), ...sums },
-    { colId: 'C', headerName: m.C, valueGetter: (p) => p.data?.money?.C, cellRenderer: money('C'), ...sums },
-    { colId: 'ours', headerName: m.ours, valueGetter: (p) => p.data?.money?.ours, cellRenderer: money('ours'), ...sums },
+    { colId: 'net', headerName: m.net, valueGetter: moneyValue('net'), cellRenderer: money('net'), ...sums },
+    { colId: 'B', headerName: m.B, valueGetter: moneyValue('B'), cellRenderer: money('B'), ...sums },
+    { colId: 'C', headerName: m.C, valueGetter: moneyValue('C'), cellRenderer: money('C'), ...sums },
+    { colId: 'ours', headerName: m.ours, valueGetter: moneyValue('ours'), cellRenderer: money('ours'), ...sums },
     {
       colId: 'months',
       headerName: c.months,
       minWidth: 150,
       sortable: full,
-      valueGetter: (p) =>
-        p.data?.money ? `${p.data.money.months.count}: ${p.data.money.months.from ?? '—'} – ${p.data.money.months.to ?? '—'}` : '',
+      // the report months of the row's units (`MasterRow.months`); nothing for a row without units
+      valueGetter: (p) => (p.data?.money?.months ? `${p.data.money.months.count}: ${p.data.money.months.from} – ${p.data.money.months.to}` : ''),
     },
     {
       colId: 'hasSplit',

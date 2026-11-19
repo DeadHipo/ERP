@@ -7,6 +7,7 @@ import { TrackName } from '../TrackName';
 import { ru } from '../../i18n/ru';
 import { SimpleTable, Td } from '../MoneyTable';
 import { MoneyCells, NO_UNITS } from './MoneyCells';
+import { rowsByIsrc } from './rows';
 
 const t = ru.catalog.release;
 const m = ru.catalog.money;
@@ -34,8 +35,8 @@ export function TracksMoneyBlock(props: {
 }) {
   const { prefix, tracks } = props;
   const rows = props.query.data?.rows;
-  const sumsOf = useMemo(() => new Map((rows ?? []).flatMap((r) => (r.isrc === undefined ? [] : [[r.isrc, r.sums] as const]))), [rows]);
-  const isrcs = useMemo(() => [...new Set([...props.isrcs, ...sumsOf.keys()])].sort(), [props.isrcs, sumsOf]);
+  const rowOf = useMemo(() => rowsByIsrc(rows), [rows]);
+  const isrcs = useMemo(() => [...new Set([...props.isrcs, ...rowOf.keys()])].sort(), [props.isrcs, rowOf]);
   return (
     <QueryView query={props.query} money>
       {(data) => (
@@ -60,7 +61,7 @@ export function TracksMoneyBlock(props: {
                   {/* the pseudonyms of the track in the directory's order; nothing until its track arrives */}
                   {track === undefined ? null : <ArtistLinks artists={(track?.artists ?? []).flatMap((id) => tracks.artist(id) ?? [])} />}
                 </Td>
-                <MoneyCells sums={sumsOf.get(isrc) ?? (props.noUnits === 'zero' ? NO_UNITS : undefined)} />
+                <MoneyCells sums={rowOf.get(isrc)?.sums ?? (props.noUnits === 'zero' ? NO_UNITS : undefined)} />
               </tr>
             );
           })}

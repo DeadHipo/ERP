@@ -10,6 +10,14 @@ import { Td } from '../MoneyTable';
 export const NO_UNITS: MoneySums = { net: '0', B: '0', C: '0', ours: '0', cByReason: {} };
 
 /**
+ * One money value of a row (D-255): the server's string of `col`, «—» without sums. The one rule of every block
+ * and of the P5 grid, whose cells are not table cells.
+ */
+export function MoneyValue({ sums, col }: { sums: Pick<MoneySums, 'net' | 'B' | 'C' | 'ours'> | null | undefined; col: 'net' | 'B' | 'C' | 'ours' }) {
+  return <Money value={sums?.[col]} />;
+}
+
+/**
  * The four money cells of a block row (D-253): `[data-col="net" | "B" | "C" | "ours"]`, C with its reasons. The
  * strings are the server's (`MoneySums` of `POST /money/master/query`); without sums every cell reads «—».
  */
@@ -17,17 +25,17 @@ export function MoneyCells({ sums }: { sums: MoneySums | undefined }) {
   return (
     <>
       <Td col="net">
-        <Money value={sums?.net} />
+        <MoneyValue sums={sums} col="net" />
       </Td>
       <Td col="B">
-        <Money value={sums?.B} />
+        <MoneyValue sums={sums} col="B" />
       </Td>
       <Td col="C">
-        <Money value={sums?.C} />
+        <MoneyValue sums={sums} col="C" />
         {sums ? <CReasonList byReason={sums.cByReason} /> : null}
       </Td>
       <Td col="ours">
-        <Money value={sums?.ours} />
+        <MoneyValue sums={sums} col="ours" />
       </Td>
     </>
   );

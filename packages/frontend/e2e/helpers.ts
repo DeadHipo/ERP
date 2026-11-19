@@ -149,6 +149,35 @@ export async function settled(page: Page): Promise<void> {
   await expect(page.getByTestId('stale-badge')).toHaveCount(0, { timeout: 20_000 });
 }
 
+/**
+ * D-255 «screen = API» on P5: the money cells of the rows `track-<isrc>` are the fields of the answer of
+ * `POST /money/master/query` asked as the page asks it (the ISRCs of the rows, or no list under «Посчитать все»; the
+ * label in the query only); a row the answer does not name has no units and reads «—». Returns the ISRCs with a row.
+ */
+export async function expectTracksMoneyIsApi(page: Page, isrcs: string[], opts: { all?: boolean; label?: string } = {}): Promise<string[]> {
+  type Sums = Record<'net' | 'B' | 'C' | 'ours', string>;
+  const res = await page.request.post(`/api/v1/money/master/query${opts.label ? `?label=${opts.label}` : ''}`, {
+    data: { scope: opts.all ? { kind: 'isrcs' } : { kind: 'isrcs', isrcs: [...isrcs].sort() }, grain: 'isrc' },
+  });
+  expect(res.status()).toBe(200);
+  const rows = ((await res.json()) as { rows: { isrc?: string; sums: Sums }[] }).rows;
+  for (const i of isrcs) {
+    const row = page.getByTestId(`track-${i}`);
+    const sums = rows.find((r) => r.isrc === i)?.sums;
+    for (const col of ['net', 'B', 'C', 'ours'] as const) {
+      const cell = row.locator(`[data-col="${col}"]`);
+      if (sums) await expect(cell.getByTestId('money')).toHaveAttribute('title', sums[col]);
+      else {
+        // no units is a statement of the answer; a row that was not asked (`data-money-not-asked`) is not such a row
+        await expect(cell).not.toHaveAttribute('data-money-not-asked', 'true');
+        await expect(cell).toHaveAttribute('data-no-units', 'true');
+        await expect(cell).toHaveText('—');
+      }
+    }
+  }
+  return rows.flatMap((r) => (r.isrc !== undefined && isrcs.includes(r.isrc) ? [r.isrc] : []));
+}
+
 /** The exact decimal string of the first `money` inside a locator. */
 export async function moneyOf(cell: Locator): Promise<string | null> {
   return cell.getByTestId('money').first().getAttribute('title');

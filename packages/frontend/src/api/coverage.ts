@@ -64,8 +64,8 @@ export const OPERATION_COVERAGE = {
     route: '/tracks/:isrc',
     note: 'only the note is editable (action-edit-note); identifiers (ISRC, UPC, title) are not editable on any screen',
   },
-  'GET /tracks/summary': { page: 'P5', route: '/tracks' },
-  'GET /tracks/catalog': { page: 'P5', route: '/tracks', note: 'the first phase of P5 (D-162): the rows without money; the visible rows then ask /tracks/summary?isrcs=' },
+  'GET /tracks/summary': { page: 'P5', route: '/tracks', note: 'D-255: only the account / month mode of P5 (the P1 drill-down, tracks-scope): one call of every row, as before; without an account or month the money of P5 is POST /money/master/query' },
+  'GET /tracks/catalog': { page: 'P5', route: '/tracks', note: 'the first phase of P5 (D-162): the rows without money, by pages and under «Посчитать все» (D-255); their money is POST /money/master/query' },
   'GET /tracks/:isrc/money': {
     page: 'P6',
     route: '/tracks/:isrc',
@@ -80,7 +80,7 @@ export const OPERATION_COVERAGE = {
   'PATCH /tracks/platforms/:id': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-platform-<id> → action-platform-submit' },
   'POST /tracks/platforms/:id/remove': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-remove-platform-<id> → ConfirmDialog' },
   'POST /tracks/query': { page: 'P8', route: '/releases/:upc', note: 'D-250: useTracks (api/queries/tracks.ts) through the batch loader api/tracks-loader.ts: the title, version, cover (track-name-<isrc>, track-version-<isrc>) and the pseudonyms of the track rows; also the shown rows of P5' },
-  'POST /money/master/query': { page: 'P8', route: '/releases/:upc', note: 'D-253: useMasterRows (api/queries/money.ts), one request per block: components/money-blocks/TracksMoneyBlock (grain isrc: release-track-<isrc>, release-tracks-total) and MonthsMoneyBlock (grain month: release-month-<month>, release-months-total)' },
+  'POST /money/master/query': { page: 'P8', route: '/releases/:upc', note: 'D-253: useMasterRows (api/queries/money.ts), one request per block: components/money-blocks/TracksMoneyBlock (grain isrc: release-track-<isrc>, release-tracks-total) and MonthsMoneyBlock (grain month: release-month-<month>, release-months-total); D-255: also the second phase of P5 /tracks (pages/catalog/TracksPage.tsx, grain isrc, one request: the ISRCs of the rows on the screen, or no list under «Посчитать все» all=1; the cells follow MoneyValue of money-blocks, a row without units reads «—»)' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
   'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },
