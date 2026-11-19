@@ -367,6 +367,8 @@ describe('releases (N8, N9)', () => {
     expect(res.body.tracks.map((t: { isrc: string }) => t.isrc)).toEqual([I(1), I(2), I(3), I(4), I(7)]);
     expect(res.body.tracks.map((t: object) => Object.keys(t))).toEqual(res.body.tracks.map(() => ['isrc', 'title', 'artists']));
     expect(res.body).not.toHaveProperty('months');
+    // D-260: the whole answer, key by key: a money field added to the card fails here
+    expect(Object.keys(res.body)).toEqual(['upc', 'title', 'artistName', 'artists', 'tracks', 'coverUrl', 'registry']);
     // D-166: the pseudonyms of every track and their union in the header
     expect(res.body.tracks.map((t: { artists: { pseudonym: string }[] }) => t.artists.map((a) => a.pseudonym))).toEqual([['A', 'P'], ['M'], [], ['U'], []]);
     expect(res.body.artists.map((a: { pseudonym: string }) => a.pseudonym)).toEqual(['A', 'M', 'P', 'U']);
