@@ -1,8 +1,9 @@
-import { TrackName, metaByIsrc } from '../../components/TrackName';
-import { useState } from 'react';
+import { TrackName } from '../../components/TrackName';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Balance, OwnerDetail } from '@erp/shared/api-responses';
 import { ownerQueries } from '../../api/queries/owners';
+import { useTracks } from '../../api/queries/tracks';
 import { settlementQueries } from '../../api/queries/settlements';
 import { ActionButton } from '../../components/ActionButton';
 import { AuditTable } from '../../components/AuditTable';
@@ -19,10 +20,14 @@ import { Section, SimpleTable, Td } from './components/Fact';
 
 const m = ru.money;
 
-/** P10 Псевдонимы и треки: the owner's pseudonyms with their tracks, each a link. */
+/**
+ * P10 Псевдонимы и треки: the owner's pseudonyms with their tracks, each a link. The name of a track (title, version,
+ * cover) comes from the track directory (`useTracks`, D-252), asked for the ISRCs of this list.
+ */
 export function ArtistsTab(props: { detail: OwnerDetail }) {
   const artists = props.detail.artists;
-  const meta = metaByIsrc(props.detail.trackMeta);
+  const isrcs = useMemo(() => artists.flatMap((a) => a.tracks.flatMap((tr) => (tr.isrc ? [tr.isrc] : []))), [artists]);
+  const { track } = useTracks(isrcs);
   if (artists.length === 0) return <span className="text-sm text-muted">{m.artists.empty}</span>;
   return (
     <div className="flex flex-col gap-3" data-testid="artists-tab">
@@ -37,7 +42,7 @@ export function ArtistsTab(props: { detail: OwnerDetail }) {
             <ul className="flex flex-wrap gap-4 text-sm">
               {a.tracks.map((tr) => (
                 <li key={tr.id} data-testid={`artist-track-${tr.isrc ?? tr.id}`}>
-                  {tr.isrc ? <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={tr.title} /> : tr.title}
+                  {tr.isrc ? <TrackName isrc={tr.isrc} track={track(tr.isrc)} /> : tr.title}
                 </li>
               ))}
             </ul>

@@ -1,5 +1,5 @@
-import { TrackName, metaByIsrc, type TrackMetaLite } from '../../components/TrackName';
-import { useState } from 'react';
+import { TrackName } from '../../components/TrackName';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -9,6 +9,7 @@ import * as api from '../../api/client';
 import { useAction } from '../../api/queries/core';
 import { ownerQueries } from '../../api/queries/owners';
 import { settlementQueries } from '../../api/queries/settlements';
+import { useTracks } from '../../api/queries/tracks';
 import { statusLabel } from '../../components/StatusChip';
 import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -121,13 +122,11 @@ export function BalanceTab(props: {
   ownerId: string;
   balance: Balance;
   period: BalancePeriod;
-  trackMeta?: readonly TrackMetaLite[];
-  /** The tracks of the owner's pseudonyms: our title when an ISRC has no meta. */
-  tracks?: readonly { isrc: string | null; title: string }[];
 }) {
-  const trackMetaOf = metaByIsrc(props.trackMeta);
-  const titleOf = new Map((props.tracks ?? []).flatMap((t) => (t.isrc ? [[t.isrc, t.title] as const] : [])));
   const b = props.balance;
+  // the names of the ISRC rows (title, version, cover) come from the track directory, not from the balance (D-252)
+  const isrcs = useMemo(() => b.artists.flatMap((a) => a.tracks.map((tr) => tr.isrc)), [b.artists]);
+  const { track } = useTracks(isrcs);
   const [monthsOpen, setMonthsOpen] = useState(false);
   const waiting = (Object.entries(b.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
   // The blocking and pending operations are named by their date, meaning, amount and pseudonym (the owner's operations
@@ -251,7 +250,7 @@ export function BalanceTab(props: {
               <tr key={`${a.artistId}-${tr.isrc}`} data-testid={`balance-track-${a.artistId}-${tr.isrc}`}>
                 <Td />
                 <Td>
-                  <TrackName isrc={tr.isrc} meta={trackMetaOf.get(tr.isrc)} fallbackTitle={titleOf.get(tr.isrc)} />
+                  <TrackName isrc={tr.isrc} track={track(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />

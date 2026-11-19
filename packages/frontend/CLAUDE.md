@@ -134,6 +134,7 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 - A track, its releases and pseudonyms come from `POST /tracks/query` (a `readOnly` POST, D-246), never from a money answer: `useTracks(isrcs)` (`api/queries/tracks.ts`) gives `{ track(isrc), release(upc), artist(id) }` from one cache entry per ISRC (`['tracks', 'view', isrc]`, `staleTime` 10 min, not in `MONEY_KEYS`, made stale by every `useAction` with `reference` / `all`). Pass only the ISRCs shown.
 - `api/tracks-loader.ts` batches the asks of one frame into one request (chunks of 1 000); a string that is not an ISRC (`lib/isrc.ts` `isrcKey`) never travels and gets the null entry; a failed ask reads as `null` in `useTracks` (the fallback look: the ISRC, «—»), `undefined` only while loading.
 - The title is chosen only by `lib/track-title.ts` `displayTitle`; no page cuts the version.
+- P10 (balance «по псевдонимам и ISRC», «Псевдонимы и треки») and P12 (the tracks of the balance and of «Сплиты и участия») name a track this way (D-252): each tab asks the ISRCs of its own table; the cards' `trackMeta` is not read.
 - A grid cell whose `valueGetter` does not change with the track (P5: the text stays the catalog row's) reads the cache with `useCachedTrack(isrc)`; elsewhere `valueGetter` reads the `TrackView`, and columns built in a `useMemo` depend on the hook's result.
 - `POST /tracks/query` is not a money request: `expectMoneyCalls` does not count it.
 

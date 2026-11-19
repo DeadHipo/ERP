@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ArtistDetail } from '@erp/shared/api-responses';
 import { ownerQueries } from '../../api/queries/owners';
+import { useTracks } from '../../api/queries/tracks';
 import { settlementQueries } from '../../api/queries/settlements';
 import { AuditTable } from '../../components/AuditTable';
-import { TrackName, metaByIsrc } from '../../components/TrackName';
+import { TrackName } from '../../components/TrackName';
 import { EntityLink } from '../../components/EntityLink';
 import { QueryView } from '../../components/PageState';
 import { StatusChip } from '../../components/StatusChip';
@@ -16,11 +18,15 @@ import { DocumentCell, period } from '../reference/shared';
 const t = ru.money.artist;
 const r = ru.catalog.rules;
 
-/** P12 Сплиты и участия: the tracks, every split with a row of the pseudonym, its participations, the sublabel rules naming it. */
+/**
+ * P12 Сплиты и участия: the tracks, every split with a row of the pseudonym, its participations, the sublabel rules naming
+ * it. The name of a track (title, version, cover) comes from the track directory (`useTracks`, D-252).
+ */
 export function ArtistRulesTab(props: { detail: ArtistDetail }) {
   const d = props.detail;
   const mine = new Set([d.artist.id, ...d.previousIds]);
-  const meta = metaByIsrc(d.trackMeta);
+  const isrcs = useMemo(() => d.tracks.flatMap((tr) => (tr.isrc ? [tr.isrc] : [])), [d.tracks]);
+  const { track } = useTracks(isrcs);
   return (
     <div className="flex flex-col gap-4" data-testid="rules-tab">
       <Section title={t.rules.tracks} testId="artist-tracks">
@@ -30,7 +36,7 @@ export function ArtistRulesTab(props: { detail: ArtistDetail }) {
           <ul className="flex flex-wrap gap-4 text-sm">
             {d.tracks.map((tr) => (
               <li key={tr.id} data-testid={`artist-track-${tr.isrc ?? tr.id}`}>
-                {tr.isrc ? <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={tr.title} /> : tr.title}
+                {tr.isrc ? <TrackName isrc={tr.isrc} track={track(tr.isrc)} /> : tr.title}
               </li>
             ))}
           </ul>

@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ArtistBalance, CReason } from '@erp/shared/api-responses';
 import { settlementQueries } from '../../api/queries/settlements';
+import { useTracks } from '../../api/queries/tracks';
 import { EntityLink } from '../../components/EntityLink';
-import { TrackName, metaByIsrc, type TrackMetaLite } from '../../components/TrackName';
+import { TrackName } from '../../components/TrackName';
 import { Money } from '../../components/Money';
 import { statusLabel } from '../../components/StatusChip';
 import { formatMoney } from '../../lib/money';
@@ -21,15 +23,11 @@ const pendingWhy = (why: string) => (Object.hasOwn(b.pendingWhy, why) ? b.pendin
  * of record, per ISRC, the positions (advances) and the advertising charged to this pseudonym. Every number is the
  * backend's (R1); the payout and the payable are the owner's (the owner link in the header).
  */
-export function ArtistBalanceTab(props: {
-  balance: ArtistBalance;
-  trackMeta?: readonly TrackMetaLite[];
-  /** The tracks of the pseudonym's card: our title when an ISRC has no meta. */
-  tracks?: readonly { isrc: string | null; title: string }[];
-}) {
+export function ArtistBalanceTab(props: { balance: ArtistBalance }) {
   const m = props.balance;
-  const meta = metaByIsrc(props.trackMeta);
-  const titleOf = new Map((props.tracks ?? []).flatMap((t) => (t.isrc ? [[t.isrc, t.title] as const] : [])));
+  // the names of the ISRC rows (title, version, cover) come from the track directory, not from the balance (D-252)
+  const isrcs = useMemo(() => m.tracks.map((tr) => tr.isrc), [m.tracks]);
+  const { track } = useTracks(isrcs);
   const waiting = (Object.entries(m.period.waitingBreakdown) as [CReason, string][]).filter(([, v]) => v !== undefined);
   const ops = useQuery({ ...settlementQueries.operations({ artistId: m.artistId }), enabled: m.pendingOperations.length > 0 });
   const opText = (id: string) => {
@@ -104,7 +102,7 @@ export function ArtistBalanceTab(props: {
             {m.tracks.map((tr) => (
               <tr key={tr.isrc} data-testid={`balance-track-${tr.isrc}`}>
                 <Td>
-                  <TrackName isrc={tr.isrc} meta={meta.get(tr.isrc)} fallbackTitle={titleOf.get(tr.isrc)} />
+                  <TrackName isrc={tr.isrc} track={track(tr.isrc)} />
                 </Td>
                 <Td col="net">
                   <Money value={tr.net} />

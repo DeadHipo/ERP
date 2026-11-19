@@ -83,7 +83,7 @@ export function ArtistPage() {
                   label: t.tabs.balance,
                   content: (
                     <QueryView query={balance} money>
-                      {(b) => <ArtistBalanceTab balance={b} trackMeta={d.trackMeta} tracks={d.tracks} />}
+                      {(b) => <ArtistBalanceTab balance={b} />}
                     </QueryView>
                   ),
                 },
