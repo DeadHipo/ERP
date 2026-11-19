@@ -6,7 +6,7 @@ import type { FacadeContext } from './context';
 import { groupBy, sortedMonths, sumUnits, type Sums } from './aggregates';
 
 // The master money as rows (D-247): one answer for the screens that used to read the money of a release
-// (`release().tracks` / `.months`) and of a list of ISRCs (`trackSummary().items`). Nothing is decided here: the units
+// (`release().tracks` / `.months`, which left that answer with D-257) and of a list of ISRCs (`trackSummary().items`). Nothing is decided here: the units
 // are those of the same scoped calculation the old answers ran, a row is `sumUnits` of the units of its key (so the
 // C side is the same `cItems`), and no amount is multiplied or rounded. The rights are `can()` by `?label=` (no viewer).
 
@@ -66,7 +66,7 @@ export function moneyApi(ctx: FacadeContext) {
       let units: UnitResult[];
       let calc: Awaited<ReturnType<typeof calcScoped>>;
       if (q.scope.kind === 'release') {
-        // the units of `release()`: the lines of the UPC with an ISRC
+        // the units of a release: the lines of the UPC with an ISRC (the card `release()` lists the same ISRCs, D-257)
         const upc = q.scope.upc;
         calc = await calcScoped({ upcs: [upc], ...book, ...period, publishingLines: false });
         units = calc.units.filter((u) => u.upc === upc && picked(u));

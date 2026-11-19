@@ -423,29 +423,39 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
       return { items };
     },
 
-    /** One release (N9): its tracks and report months with B, C and ours, from one calculation. */
+    /**
+     * One release (N9): its header, tracks and registry rows. No money and no calculation (D-257): the money of
+     * the tracks and of the report months is `masterRows` (scope `release`).
+     */
     async release(upc: string, label?: string) {
       const lc = await labelContext(label);
-      const calc = await calcScoped({ upcs: [upc], ...(lc ? { labelIds: [lc.book.id] } : {}), publishingLines: false });
-      const [tracks, { attrs }] = await Promise.all([owners.listTracks(), nameMaps({ upcs: [upc] })]);
+      // the ISRCs of the release: the pairs (ISRC, UPC) of the files of the book (under a label only its files, so a
+      // manager sees what the units of the book gave before) and the visible tracks of the UPC; the header reads the
+      // pairs of every file, as before
+      const [tracks, { attrs }, bookPairs] = await Promise.all([
+        owners.listTracks(),
+        nameMaps({ upcs: [upc] }),
+        lc ? sources.pairAttributes({ upcs: [upc], labelIds: [lc.book.id] }) : Promise.resolve(undefined),
+      ]);
       const mine = tracks.filter((t) => t.upc === upc && (!lc || (t.isrc !== null && lc.visible.isrcs.has(t.isrc))));
-      const units = calc.units.filter((u) => u.upc === upc && u.isrc !== '');
+      // a line without an ISRC is no track (the units of the old answer skipped it too)
+      const paired = [...(bookPairs ?? attrs).keys()].map((k) => k.slice(0, k.indexOf('|'))).filter((isrc) => isrc !== '');
       // the release registry rows of the UPC (D-172, no money): under a label its row only
       const registry = (await registryByUpc(lc?.book.id, [upc])).get(upc) ?? [];
-      if (mine.length === 0 && units.length === 0 && registry.length === 0) throw new NotFoundError('Release', upc);
+      if (mine.length === 0 && paired.length === 0 && registry.length === 0) throw new NotFoundError('Release', upc);
       const pair = [...attrs.entries()].filter(([k]) => k.endsWith(`|${upc}`)).sort(([a], [b]) => (a < b ? -1 : 1))[0]?.[1];
       const titleOf = new Map(mine.map((t) => [t.isrc, t.title]));
-      const unitsOf = groupBy(units, (u) => u.isrc);
-      const isrcs = [...new Set([...unitsOf.keys(), ...mine.map((t) => t.isrc).filter((x): x is string => !!x)])].sort();
+      const isrcs = [...new Set([...paired, ...mine.map((t) => t.isrc).filter((x): x is string => !!x)])].sort();
       // the pseudonyms of the tracks of the release (D-166): the rows, participations and registry links of its ISRCs
       const { artistsOf, coverOf } = await db.snapshot(async () => {
-        const [splitList, partList, metaList] = await Promise.all([
+        const [splitList, partList, index, metaList] = await Promise.all([
           splits.listSplits({ isrcs }),
           splits.listParticipations({ isrcs }),
+          owners.artistIndex() as Promise<ArtistIndex>,
           isrcs.length > 0 ? owners.trackMeta.of(isrcs) : Promise.resolve([]),
         ]);
         return {
-          artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index: calc.artistIndex }),
+          artistsOf: artistsByIsrc({ splits: splitList, participations: partList, index }),
           // D-240: the cover of each track (the track meta, D-238); the meta itself is the track directory's (D-256)
           coverOf: new Map(metaList.map((x) => [x.isrc, x.coverUrl])),
         };
@@ -459,13 +469,9 @@ export function aggregatesApi(ctx: FacadeContext, lists: ReturnType<typeof split
           isrc,
           title: titleOf.get(isrc) ?? attrs.get(`${isrc}|${upc}`)?.trackTitle ?? '',
           artists: artistsOf.get(isrc) ?? [],
-          ...sumUnits(calc, unitsOf.get(isrc) ?? []),
         })),
         // D-240: the cover of the release = the cover of the first track that has one (a platform's album art)
         coverUrl: isrcs.map((i) => coverOf.get(i)).find((c): c is string => !!c) ?? null,
-        months: [...groupBy(units, (u) => u.reportingMonth).entries()]
-          .sort(([a], [b]) => (a < b ? -1 : 1))
-          .map(([reportingMonth, us]) => ({ reportingMonth, ...sumUnits(calc, us) })),
         registry,
       };
     },

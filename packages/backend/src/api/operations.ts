@@ -638,7 +638,7 @@ const operations: ApiOperation[] = [
     readOnly: true,
     tag: 'tracks',
     summary:
-      'The master money as rows (D-248): B, C (by reason), ours and net of one release (the lines of a UPC that carry an ISRC) or of a list of ISRCs, one row per ISRC, per report month or per both, with the sums of all of them, from one calculation of those units alone. A read sent as a POST (D-246): no X-Operator, no audit row, nothing written. Under a label (?label=) only the units of its files and, for a list, only the ISRCs of those files; a key without units has no row. The same money as GET /releases/:upc (tracks, months) and GET /tracks/summary?isrcs=, without names',
+      'The master money as rows (D-248): B, C (by reason), ours and net of one release (the lines of a UPC that carry an ISRC) or of a list of ISRCs, one row per ISRC, per report month or per both, with the sums of all of them, from one calculation of those units alone. A read sent as a POST (D-246): no X-Operator, no audit row, nothing written. Under a label (?label=) only the units of its files and, for a list, only the ISRCs of those files; a key without units has no row. The same money as GET /tracks/summary?isrcs=, without names; the money of a release is read only here since D-257 (GET /releases/:upc gives the tracks without money)',
     query: S.masterQueryQuery,
     body: S.masterQueryBody,
     response: R.masterRowsSchema,
@@ -680,7 +680,8 @@ const operations: ApiOperation[] = [
     access: 'org',
     ability: { action: 'read_money', subject: 'releases', scope: 'label' },
     tag: 'releases',
-    summary: 'One release: tracks and report months with B, C and ours (17 N9); under a label its units and tracks (D-168)',
+    summary:
+      'One release: its header, tracks (ISRC, title, pseudonyms), cover and registry rows (17 N9); no money and no calculation since D-257: the money of the tracks and of the report months is POST /money/master/query (scope release). Under a label the tracks of the pairs (ISRC, UPC) of its files and its visible tracks (D-168); 404 when the UPC has none of them and no registry row',
     query: S.releaseQuery,
     response: R.releaseSchema,
   },

@@ -1,16 +1,15 @@
 /**
- * D-249 check on real data: `masterRows` gives, character for character, the money of the answers it replaces
- * (`release(upc, label).tracks` / `.months` and `trackSummary({ label }).items`), and is not slower than they are.
+ * D-249 check on real data: `masterRows` gives, character for character, the money of the answer it replaces
+ * (`trackSummary({ label }).items`), and is not slower than it is. The comparison of a release with the old
+ * `release()` left with D-257: that answer has no money any more (the release rows are pinned by the fixed numbers of
+ * `tests/money-rows.test.ts`).
  *
  * For every own label (a book) and for «all»:
- *  - the 20 releases with the largest net of the files: the rows by ISRC against the tracks of the old answer, the
- *    rows by month against its months, the totals against the old rows added up;
  *  - every ISRC (no list): the rows by ISRC against the items of the old summary, with their months;
  *  - for a book only: the ISRCs of «all» in chunks of 500 (the most the old summary takes, and the way the track page
  *    asks), each chunk under the label against `trackSummary({ isrcs, label }).items`, the totals against them added up;
- *  - the times of the old and of the new answer for «every ISRC», for the largest release and for one chunk of a
- *    book: one warm-up, then five rounds old / new in turn, the median of each; the threshold is `new ≤ 1.2 × old` or
- *    `new − old ≤ 0.3 s`.
+ *  - the times of the old and of the new answer for «every ISRC» and for one chunk of a book: one warm-up, then five
+ *    rounds old / new in turn, the median of each; the threshold is `new ≤ 1.2 × old` or `new − old ≤ 0.3 s`.
  * The comparison rules are those of `tests/money-rows.test.ts` (`scripts/lib/master-rows-compare.ts`).
  *
  *   PGOPTIONS='-c default_transaction_read_only=on' npx tsx packages/backend/scripts/check-master-rows.ts [dataDir]
@@ -18,18 +17,17 @@
  * Read-only, and it refuses to start unless the PostgreSQL session is read-only (`PGOPTIONS` reaches node-postgres as
  * the `options` of the startup packet, so every connection of the pool is). The organization is `ERP_DEFAULT_ORG`
  * (no `--org`). The console gets counters, times, sizes and the verdict only: the books are numbered, nothing is
- * named. The keys of the differences (ISRC, UPC, month) and their money go to
+ * named. The keys of the differences (ISRC) and their money go to
  * `<repo>/data/mvp-load/verify/master-rows-<date>.json` and `.md` (git-ignored), without titles and pseudonyms.
  *
- * Every call is a step (`book N | release old`, `all | isrcs new`, `book N | timing isrcs old`, …). A comparison whose
+ * Every call is a step (`book N | isrc list old`, `all | isrcs new`, `book N | timing isrcs old`, …). A comparison whose
  * call fails is recorded as failed, with the side, and the run goes on: only the class of the error (for ClickHouse its
  * code and exception type) and the step are written, never the message. The log lines of the ClickHouse client are
  * dropped (they may quote a query).
  *
  * Exit code: 0 = no difference and every timing within the threshold; 2 = differences, or a comparison where only the
  * new answer failed; 3 = no difference, a timing outside the threshold; 1 = not proven: it did not run, a slice failed
- * on both sides (or on the old one), a call failed, or there was nothing to compare (no own label, no row under «all»,
- * no release compared).
+ * on both sides (or on the old one), a call failed, or there was nothing to compare (no own label, no row under «all»).
  */
 import { loadavg } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -46,20 +44,15 @@ import {
   exitCodeOf,
   failedOf,
   median,
-  moneyText,
   newPairs,
   oldPairs,
   THRESHOLD_MS,
   THRESHOLD_RATIO,
-  topByNet,
   withinThreshold,
   type Difference,
   type Failed,
 } from './lib/master-rows-compare';
 
-/** M7 removes the comparison (and the timing) of a release against the old `release()`: switch it off here. */
-const COMPARE_RELEASE_WITH_OLD = true;
-const TOP_RELEASES = 20;
 const ROUNDS = 5;
 /** The most ISRCs the old summary takes in one request (`parseIsrcList`, `aggregates.ts`). */
 const LIST_CHUNK = 500;
@@ -78,12 +71,11 @@ interface Book {
 interface Check {
   book: string;
   labelId: string | null;
-  scope: 'release' | 'isrcs' | 'isrc-list';
-  upc?: string;
+  scope: 'isrcs' | 'isrc-list';
   /** A list of ISRCs: the number of the chunk (from 1) and how many ISRCs it asks. */
   chunk?: number;
   asked?: number;
-  part: 'isrc' | 'month' | 'totals';
+  part: 'isrc' | 'totals';
   oldRows: number;
   newRows: number;
   differences: Difference[];
@@ -93,8 +85,7 @@ interface Check {
 interface Timing {
   book: string;
   labelId: string | null;
-  what: 'isrcs' | 'release' | 'isrc-list';
-  upc?: string;
+  what: 'isrcs' | 'isrc-list';
   chunk?: number;
   asked?: number;
   oldMs: number[];
@@ -104,19 +95,15 @@ interface Timing {
   oldBytes: number;
   newBytes: number;
   within: boolean;
-  /** A release only, no verdict: the rows by ISRC and by month asked one after the other (the old answer has both). */
-  newBothMedianMs?: number;
-  newBothBytes?: number;
 }
 
-/** A call of the run that failed outside a comparison (the release list of a book, a timing). */
+/** A call of the run that failed outside a comparison (a timing, the lists of ISRCs). */
 interface CallFailure {
   step: string;
   error: string;
 }
 
 const isrcOf = (r: MasterRow) => r.isrc as string;
-const monthOf = (r: MasterRow) => r.month as string;
 const bytes = (x: unknown) => Buffer.byteLength(JSON.stringify(x));
 const seconds = (ms: number) => (ms / 1000).toFixed(2);
 const load = () => loadavg().map((x) => x.toFixed(2)).join(' ');
@@ -159,38 +146,6 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ ms: number; answer: T }
   const t = performance.now();
   const answer = await fn();
   return { ms: performance.now() - t, answer };
-}
-
-/** The 20 largest releases of a book against the old `release()` (removed in M7 with the flag above). */
-async function compareReleasesWithOld(f: Facade, book: Book, upcs: string[]): Promise<Check[]> {
-  const out: Check[] = [];
-  const base = { book: book.name, labelId: book.labelId ?? null, scope: 'release' as const };
-  for (const upc of upcs) {
-    const scope = { kind: 'release' as const, upc };
-    const old = await attempt('release old', () => f.release(upc, book.labelId));
-    const byIsrc = await attempt('release new isrc', () => f.masterRows({ scope, grain: 'isrc' }, book.labelId));
-    const byMonth = await attempt('release new month', () => f.masterRows({ scope, grain: 'month' }, book.labelId));
-    if (!old.ok || !byIsrc.ok || !byMonth.ok) {
-      const failed = failedOf(old.ok ? undefined : old.error, !byIsrc.ok ? byIsrc.error : !byMonth.ok ? byMonth.error : undefined);
-      out.push({ ...base, upc, part: 'isrc', oldRows: 0, newRows: 0, differences: [], ...(failed ? { failed } : {}) });
-      continue;
-    }
-    // a track of the old release answer has no months: the money alone
-    const tracksOld = oldPairs(old.value.tracks, (t) => t.isrc);
-    const tracksNew = newPairs(byIsrc.value.rows, isrcOf, { months: false });
-    out.push({ ...base, upc, part: 'isrc', oldRows: tracksOld.length, newRows: tracksNew.length, differences: diffPairs(tracksOld, tracksNew) });
-    const monthsOld = oldPairs(old.value.months, (m) => m.reportingMonth);
-    // as the test of M1: a row by month carries no `months`, so one that does differs from the old month
-    const monthsNew = newPairs(byMonth.value.rows, monthOf, { months: true });
-    out.push({ ...base, upc, part: 'month', oldRows: monthsOld.length, newRows: monthsNew.length, differences: diffPairs(monthsOld, monthsNew) });
-    // the totals: the old tracks added up, and the same totals at both grains
-    const totals = diffTotals(old.value.tracks, byIsrc.value.totals);
-    const a = moneyText(byIsrc.value.totals);
-    const b = moneyText(byMonth.value.totals);
-    if (a !== b) totals.push({ key: 'totals (by ISRC against by month)', old: a, new: b });
-    out.push({ ...base, upc, part: 'totals', oldRows: 1, newRows: 1, differences: totals });
-  }
-  return out;
 }
 
 /** Every ISRC of a book (no list) against the old `trackSummary({ label })`. */
@@ -238,20 +193,15 @@ async function compareIsrcListsWithOld(f: Facade, book: Book & { labelId: string
 
 /** One warm-up of each, then `ROUNDS` rounds old / new in turn; the medians, the sizes of the answers, the verdict. */
 async function measure(
-  head: Pick<Timing, 'book' | 'labelId' | 'what' | 'upc' | 'chunk' | 'asked'>,
+  head: Pick<Timing, 'book' | 'labelId' | 'what' | 'chunk' | 'asked'>,
   oldFn: () => Promise<unknown>,
   newFn: () => Promise<unknown>,
-  bothFn?: () => Promise<unknown>,
 ): Promise<Timing> {
   const of = (side: string) => `timing ${head.what} ${side}`;
   enter(of('old (warm-up)'));
   await oldFn();
   enter(of('new (warm-up)'));
   await newFn();
-  if (bothFn) {
-    enter(of('new both grains (warm-up)'));
-    await bothFn();
-  }
   const oldMs: number[] = [];
   const newMs: number[] = [];
   let oldAnswer: unknown;
@@ -267,17 +217,6 @@ async function measure(
     oldAnswer = o.answer;
     newAnswer = n.answer;
   }
-  // the pair of grains: its own loop after the rounds, no verdict
-  const bothMs: number[] = [];
-  let bothAnswer: unknown;
-  if (bothFn) {
-    enter(of('new both grains'));
-    for (let i = 0; i < ROUNDS; i++) {
-      const both = await timed(bothFn);
-      bothMs.push(both.ms);
-      bothAnswer = both.answer;
-    }
-  }
   const oldMedianMs = median(oldMs);
   const newMedianMs = median(newMs);
   // the sizes: serialised once, outside the rounds
@@ -290,7 +229,6 @@ async function measure(
     oldBytes: bytes(oldAnswer),
     newBytes: bytes(newAnswer),
     within: withinThreshold(oldMedianMs, newMedianMs),
-    ...(bothFn ? { newBothMedianMs: median(bothMs), newBothBytes: bytes(bothAnswer) } : {}),
   };
 }
 
@@ -315,7 +253,6 @@ function markdown(report: {
   notCompared: number;
   timingsOutside: number;
   exitCode: number;
-  noReleases: string[];
   empty: string[];
   callFailures: CallFailure[];
 }): string {
@@ -324,7 +261,6 @@ function markdown(report: {
     '',
     `Books: ${report.books} and «all». Comparisons: ${report.checks.length}, differences: ${report.differences}, only the new answer failed: ${report.newOnlyFailures}, not compared: ${report.notCompared}. Timings: ${report.timings.length}, outside the threshold: ${report.timingsOutside}. Exit code ${report.exitCode}.`,
     `Load average before: ${report.loadBefore}; after: ${report.loadAfter}.`,
-    ...report.noReleases.map((b) => `${b}: no releases.`),
     ...(report.empty.length > 0 ? [`**The run proves nothing: ${report.empty.join('; ')}.**`] : []),
     '',
     '## Comparisons',
@@ -339,21 +275,21 @@ function markdown(report: {
     const total = (pick: (c: Check) => number) => cs.reduce((n, c) => n + pick(c), 0);
     lines.push(`| ${book} | ${scope} | ${cs.length} | ${total((c) => c.oldRows)} | ${total((c) => c.newRows)} | ${total((c) => c.differences.length)} | ${cs.filter((c) => c.failed).length} |`);
   }
-  lines.push('', '## Timings (median of 5, seconds; size of the JSON answer, bytes)', '', '| book | what | old | new | old bytes | new bytes | verdict | new, both grains | bytes |', '|---|---|---|---|---|---|---|---|---|');
+  lines.push('', '## Timings (median of 5, seconds; size of the JSON answer, bytes)', '', '| book | what | old | new | old bytes | new bytes | verdict |', '|---|---|---|---|---|---|---|');
   for (const t of report.timings)
     lines.push(
-      `| ${t.book} | ${t.what}${t.upc ? ` ${t.upc}` : ''}${t.chunk ? ` chunk ${t.chunk} (${t.asked} ISRCs)` : ''} | ${seconds(t.oldMedianMs)} | ${seconds(t.newMedianMs)} | ${t.oldBytes} | ${t.newBytes} | ${t.within ? 'within' : 'OUTSIDE'} | ${t.newBothMedianMs === undefined ? '' : seconds(t.newBothMedianMs)} | ${t.newBothBytes ?? ''} |`,
+      `| ${t.book} | ${t.what}${t.chunk ? ` chunk ${t.chunk} (${t.asked} ISRCs)` : ''} | ${seconds(t.oldMedianMs)} | ${seconds(t.newMedianMs)} | ${t.oldBytes} | ${t.newBytes} | ${t.within ? 'within' : 'OUTSIDE'} |`,
     );
   lines.push('', '## Failed', '');
   const failed = report.checks.filter((c) => c.failed);
   if (failed.length === 0 && report.callFailures.length === 0) lines.push('None.');
-  for (const c of failed) lines.push(`- ${c.book}, ${c.scope}${c.upc ? ` ${c.upc}` : ''}${c.chunk ? ` chunk ${c.chunk}` : ''}: ${failedLine(c.failed as Failed)}`);
+  for (const c of failed) lines.push(`- ${c.book}, ${c.scope}${c.chunk ? ` chunk ${c.chunk}` : ''}: ${failedLine(c.failed as Failed)}`);
   for (const x of report.callFailures) lines.push(`- ${x.step}: ${x.error}`);
   lines.push('', '## Differences', '');
   const differing = report.checks.filter((c) => c.differences.length > 0);
   if (differing.length === 0) lines.push('None.');
   for (const c of differing) {
-    lines.push(`### ${c.book}, ${c.scope}${c.upc ? ` ${c.upc}` : ''}${c.chunk ? ` chunk ${c.chunk}` : ''}, ${c.part}`, '');
+    lines.push(`### ${c.book}, ${c.scope}${c.chunk ? ` chunk ${c.chunk}` : ''}, ${c.part}`, '');
     for (const d of c.differences) lines.push(`- \`${d.key}\``, `  - old: \`${d.old ?? '(no row)'}\``, `  - new: \`${d.new ?? '(no row)'}\``);
     lines.push('');
   }
@@ -397,48 +333,33 @@ async function main(): Promise<number> {
     console.log(`load average before: ${loadBefore}`);
     const checks: Check[] = [];
     const timings: Timing[] = [];
-    const noReleases: string[] = [];
     const callFailures: CallFailure[] = [];
-    let releasesCompared = 0;
     /** The ISRCs of the new answer under «all» (every ISRC): the lists the books are asked by. */
     let allIsrcList: string[] | undefined;
     for (const book of books) {
       bookOfStep = book.name;
-      // the UPCs with the net of the files (no calculation), the largest first
-      const list = await attempt('releases', () => f.releases(undefined, book.labelId));
-      if (!list.ok) {
-        callFailures.push({ step, error: list.error });
-        console.log(`${book.name}: FAILED at «${step}»: ${list.error}`);
-      }
-      const top = list.ok ? topByNet(list.value.items, TOP_RELEASES).map((r) => r.upc) : [];
-      if (list.ok && top.length === 0) {
-        noReleases.push(book.name);
-        console.log(`${book.name}: no releases`);
-      }
       const mine: Check[] = [];
-      if (COMPARE_RELEASE_WITH_OLD) mine.push(...(await compareReleasesWithOld(f, book, top)));
       const whole = await compareIsrcsWithOld(f, book);
       mine.push(...whole.checks);
       if (book.labelId === undefined) allIsrcList = whole.isrcs;
       checks.push(...mine);
-      releasesCompared += mine.filter((c) => c.scope === 'release' && c.part === 'isrc' && !c.failed).length;
       const count = (scope: Check['scope']) => {
         const cs = mine.filter((c) => c.scope === scope);
         return `${cs.filter((c) => !c.failed).length} comparisons, ${cs.reduce((n, c) => n + c.newRows, 0)} rows, ${cs.reduce((n, c) => n + c.differences.length, 0)} differences, ${cs.filter((c) => c.failed).length} failed`;
       };
-      console.log(`${book.name}: releases ${COMPARE_RELEASE_WITH_OLD ? top.length : 0}: ${count('release')}; every ISRC: ${count('isrcs')}`);
-      // a failed comparison: the scope and the side, with the class of the error (a release by its place in the list)
+      console.log(`${book.name}: every ISRC: ${count('isrcs')}`);
+      // a failed comparison: the side, with the class of the error
       for (const c of mine)
         if (c.failed)
-          console.log(`${book.name}: FAILED ${c.scope === 'isrcs' ? 'every ISRC' : `release ${top.indexOf(c.upc as string) + 1} of ${top.length}`}: ${failedLine(c.failed)}`);
+          console.log(`${book.name}: FAILED every ISRC: ${failedLine(c.failed)}`);
 
       // the timings: only of the slices that were compared
       const head = { book: book.name, labelId: book.labelId ?? null };
-      const failedScope = (scope: Check['scope'], upc?: string) => mine.some((c) => c.scope === scope && c.upc === upc && c.failed);
+      const failedScope = (scope: Check['scope']) => mine.some((c) => c.scope === scope && c.failed);
       const measured: Timing[] = [];
-      const run = async (what: Timing['what'], skip: boolean, fn: () => Promise<Timing>) => {
+      const run = async (skip: boolean, fn: () => Promise<Timing>) => {
         if (skip) {
-          console.log(`${book.name} timing ${what === 'isrcs' ? 'every ISRC' : 'largest release'}: skipped, its comparison failed`);
+          console.log(`${book.name} timing every ISRC: skipped, its comparison failed`);
           return;
         }
         try {
@@ -448,30 +369,17 @@ async function main(): Promise<number> {
           console.log(`${book.name}: FAILED at «${step}»: ${errorText(e)}`);
         }
       };
-      await run('isrcs', failedScope('isrcs'), () =>
+      await run(failedScope('isrcs'), () =>
         measure(
           { ...head, what: 'isrcs' },
           () => f.trackSummary(book.labelId ? { label: book.labelId } : {}),
           () => f.masterRows({ scope: { kind: 'isrcs' }, grain: 'isrc' }, book.labelId),
         ),
       );
-      const upc = top[0];
-      if (COMPARE_RELEASE_WITH_OLD && upc !== undefined) {
-        const scope = { kind: 'release' as const, upc };
-        await run('release', failedScope('release', upc), () =>
-          measure(
-            { ...head, what: 'release', upc },
-            () => f.release(upc, book.labelId),
-            () => f.masterRows({ scope, grain: 'isrc' }, book.labelId),
-            async () => [await f.masterRows({ scope, grain: 'isrc' }, book.labelId), await f.masterRows({ scope, grain: 'month' }, book.labelId)],
-          ),
-        );
-      }
       timings.push(...measured);
       for (const t of measured)
         console.log(
-          `${book.name} timing ${t.what === 'isrcs' ? 'every ISRC' : 'largest release'}: old ${seconds(t.oldMedianMs)} s, new ${seconds(t.newMedianMs)} s (median of ${ROUNDS}); old ${t.oldBytes} B, new ${t.newBytes} B: ${t.within ? 'within the threshold' : 'OUTSIDE the threshold'}` +
-            (t.newBothMedianMs === undefined ? '' : `; both grains ${seconds(t.newBothMedianMs)} s, ${t.newBothBytes} B (no verdict)`),
+          `${book.name} timing every ISRC: old ${seconds(t.oldMedianMs)} s, new ${seconds(t.newMedianMs)} s (median of ${ROUNDS}); old ${t.oldBytes} B, new ${t.newBytes} B: ${t.within ? 'within the threshold' : 'OUTSIDE the threshold'}`,
         );
     }
     // the books by lists of ISRCs (the way the track page asks): the ISRCs of «all» in chunks of 500
@@ -533,8 +441,6 @@ async function main(): Promise<number> {
     const empty = emptyRunReasons({
       labels: labels.length,
       allIsrcRows: !allIsrcs || allIsrcs.failed ? null : allIsrcs.newRows,
-      releasesCompared,
-      compareReleases: COMPARE_RELEASE_WITH_OLD,
     });
     const notCompared = bothFailed + oldOnlyFailures + callFailures.length + empty.length;
     const exitCode = exitCodeOf({ differences, newOnlyFailures, notCompared, timingsOutside });
@@ -544,8 +450,7 @@ async function main(): Promise<number> {
       date,
       startedAt: now.toISOString(),
       books: labels.length,
-      releaseComparedWithOld: COMPARE_RELEASE_WITH_OLD,
-      thresholds: { ratio: THRESHOLD_RATIO, ms: THRESHOLD_MS, rounds: ROUNDS, topReleases: TOP_RELEASES, listChunk: LIST_CHUNK },
+      thresholds: { ratio: THRESHOLD_RATIO, ms: THRESHOLD_MS, rounds: ROUNDS, listChunk: LIST_CHUNK },
       loadBefore,
       loadAfter,
       differences,
@@ -556,7 +461,6 @@ async function main(): Promise<number> {
       notCompared,
       timingsOutside,
       exitCode,
-      noReleases,
       empty,
       callFailures,
       clientLogLinesDropped: clientLogLines,
@@ -576,7 +480,7 @@ async function main(): Promise<number> {
     if (sameWay.length > 0) {
       const slices = new Map<string, number>();
       for (const c of sameWay) {
-        const k = `${c.book} ${c.scope === 'isrcs' ? 'every ISRC' : c.scope === 'release' ? 'release' : 'ISRC list'}`;
+        const k = `${c.book} ${c.scope === 'isrcs' ? 'every ISRC' : 'ISRC list'}`;
         slices.set(k, (slices.get(k) ?? 0) + 1);
       }
       const text = [...slices.entries()].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ');

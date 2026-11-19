@@ -17,7 +17,6 @@ import {
   moneyText,
   newPairs,
   oldPairs,
-  topByNet,
   withinThreshold,
 } from '../scripts/lib/master-rows-compare';
 
@@ -55,7 +54,7 @@ describe('check-master-rows: the comparison rules (D-249)', () => {
       { isrc: I3, title: 'z', ...sums('0', '0', '0', '0'), months: { from: null, to: null, count: 0 } },
     ];
     expect(diffPairs(oldPairs(old, (x) => x.isrc, (x) => x.months), newPairs(rows, (r) => r.isrc as string, { months: true }))).toEqual([]);
-    // a track of a release has no months in the old answer
+    // without the months on both sides: the money alone
     expect(diffPairs(oldPairs(old, (x) => x.isrc), newPairs(rows, (r) => r.isrc as string, { months: false }))).toEqual([]);
     expect(diffPairs(oldPairs(old, (x) => x.isrc), newPairs(rows, (r) => r.isrc as string, { months: true }))).toHaveLength(2);
     expect(diffTotals(old, sums('120', '50', '20', '50', { no_split: '20' }))).toEqual([]);
@@ -86,18 +85,6 @@ describe('check-master-rows: the comparison rules (D-249)', () => {
     expect(diffTotals([], sums('0', '0', '0', '0'))).toEqual([]);
   });
 
-  it('the largest releases: by net as a decimal, ties by UPC', () => {
-    const items = [
-      { upc: '3', net: '9.5' },
-      { upc: '1', net: '100' },
-      { upc: '4', net: '-2' },
-      { upc: '2', net: '100.000000000001' },
-      { upc: '0', net: '9.5' },
-    ];
-    expect(topByNet(items, 3).map((x) => x.upc)).toEqual(['2', '1', '0']);
-    expect(topByNet(items, 20).map((x) => x.upc)).toEqual(['2', '1', '0', '3', '4']);
-  });
-
   it('the median, the threshold and the exit code', () => {
     expect(median([5, 1, 4, 2, 3])).toBe(3);
     expect(median([4, 1, 3, 2])).toBe(2.5);
@@ -120,14 +107,12 @@ describe('check-master-rows: the comparison rules (D-249)', () => {
   });
 
   it('an empty selection is not a green run', () => {
-    const full = { labels: 2, allIsrcRows: 10, releasesCompared: 40, compareReleases: true };
+    const full = { labels: 2, allIsrcRows: 10 };
     expect(emptyRunReasons(full)).toEqual([]);
     expect(emptyRunReasons({ ...full, labels: 0 })).toEqual(['no own label']);
     expect(emptyRunReasons({ ...full, allIsrcRows: 0 })).toEqual(['no row for every ISRC under «all»']);
-    expect(emptyRunReasons({ ...full, releasesCompared: 0 })).toEqual(['no release compared']);
-    // after M7 releases are not compared with the old answer: none compared is not empty
-    expect(emptyRunReasons({ ...full, releasesCompared: 0, compareReleases: false })).toEqual([]);
-    expect(emptyRunReasons({ labels: 0, allIsrcRows: 0, releasesCompared: 0, compareReleases: true })).toHaveLength(3);
+    // D-257: the releases are not compared with the old answer any more, so none compared is no reason
+    expect(emptyRunReasons({ labels: 0, allIsrcRows: 0 })).toHaveLength(2);
     // the comparison under «all» failed: counted as a failure, not as an empty selection
     expect(emptyRunReasons({ ...full, allIsrcRows: null })).toEqual([]);
   });

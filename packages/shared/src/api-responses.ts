@@ -1871,11 +1871,9 @@ export const releaseSchema = z.object({
       isrc: z.string().describe(D.isrc),
       title: z.string(),
       artists: artistRefs,
-      ...moneySums,
     }),
-  ),
+  ).describe('The tracks of the release by ISRC: the pairs (ISRC, UPC) of the loaded files (under a label of its files) and the visible tracks of the UPC. No money (D-257): it is POST /money/master/query, scope release'),
   coverUrl: z.string().nullable().describe('D-240: the cover of the release, from the track meta; null = none'),
-  months: z.array(z.object({ reportingMonth: month.describe(D.reportingMonth), ...moneySums })),
   registry: z
     .array(releaseRegistryRowSchema)
     .describe('The release registry rows of the UPC (D-172): under a label its row only, under «Все» the row of every label; [] = not registered'),

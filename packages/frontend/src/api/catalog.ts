@@ -22,7 +22,7 @@ export const catalog = {
   /** Releases (UPC) with track count and net of the loaded files (N8, no calculation). */
   releases: (query: z.input<typeof S.releasesQuery> = {}) =>
     call('GET', '/releases', { query, schema: R.releasesSchema }),
-  /** One release: tracks and report months with B, C and ours (N9). */
+  /** One release: its header, tracks and registry rows (N9); no money since D-257 (the money is `masterRows`). */
   release: (upc: string, query: z.input<typeof S.releaseQuery> = {}) => call('GET', `/releases/${id(upc)}`, { query, schema: R.releaseSchema }),
   /**
    * The master money of a release or of a list of ISRCs as rows of a grain (D-251, `POST /money/master/query`): a

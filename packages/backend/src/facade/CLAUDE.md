@@ -33,7 +33,7 @@
   that `sources.snapshot()` reads only that subset; with `isrcs` the split index and the known pairs are read for those
   ISRCs only, and `publishingLines: false` skips the B17 lines for the master-only answers (the allocation of a unit
   depends on the unit and the reference data of its ISRC alone, so the answer is byte for byte the full one). Used by
-  track money / explain (one ISRC), release (one UPC), every read under a label (`labelIds`: the loaded files of
+  track money / explain (one ISRC), the master rows of a release or an ISRC list (`masterRows`, D-247; the release card `release()` itself runs no calculation since D-257: it reads `sources.pairAttributes({ upcs, labelIds })`), every read under a label (`labelIds`: the loaded files of
   the label, D-169; the test's `withFullReads` ignores it), track summary (account, month, or the ISRC list of the visible
   rows of P5), the C queue (period), the ads list / card / summary (the ISRCs of the records). The list reads beside
   the calculation take the same filters (`owners.listTracks({ isrcs })`, `splits.listSplits({ isrcs })`,

@@ -8,8 +8,8 @@ import { ACC2, Case, I, UPC, UPC_NO_TRACKS } from './helpers/golden-case';
 import { testStack } from './helpers/test-sources';
 
 // `masterRows` (D-247): the master money of a release or of a list of ISRCs as rows. The money must be, character for
-// character, the money of the answers it replaces: `release(upc, label).tracks` / `.months` and
-// `trackSummary({ isrcs, label }).items`. Compared as JSON strings of the money fields; a row whose sums are all zero
+// character, the money of the answers it replaces: `release(upc, label).tracks` / `.months` (gone with D-257: the
+// fixed numbers `EXPECTED_RELEASE`, checked against them while they existed) and `trackSummary({ isrcs, label }).items`. Compared as JSON strings of the money fields; a row whose sums are all zero
 // with no C reason is dropped on both sides (the old answers list tracks without units, the new one has no such row).
 // Synthetic data only.
 
@@ -134,21 +134,37 @@ describe('masterRows: the master money as rows (D-247)', () => {
     labels = [['all', undefined], ['0to8', w.zero], ['Echo8', w.echo]];
   });
 
-  it('a release by ISRC is `release().tracks`, by month `release().months`, from the same read', async () => {
+  // D-257: `release()` gives no money any more, so the equality with it became the fixed numbers below (`EXPECTED_RELEASE`,
+  // unchanged since D-247). What is left to compare with the card: the tracks it names and the units it does not read.
+  it('the card of a release reads no units and names the tracks the units of the book gave (D-257)', async () => {
     const { f } = w;
+    // what `release(UPC, label).tracks` listed before D-257: the ISRCs of the units of the book and the visible tracks
+    const TRACKS: Record<string, string[]> = { all: [I(1), I(2), I(3), I(4)], '0to8': [I(1), I(2), I(3)], Echo8: [I(1), I(2), I(3)] };
     for (const [name, label] of labels) {
-      const old = await readsOf(() => f.release(UPC, label));
+      const card = await readsOf(() => f.release(UPC, label));
+      expect(card.filters, name).toEqual([]);
+      expect(card.answer.tracks.map((t) => t.isrc), name).toEqual(TRACKS[name]);
+      expect(card.answer.tracks.map((t) => Object.keys(t)), name).toEqual(card.answer.tracks.map(() => ['isrc', 'title', 'artists']));
+      expect(Object.keys(card.answer), name).toEqual(['upc', 'title', 'artistName', 'artists', 'tracks', 'coverUrl', 'registry']);
       const byIsrc = await readsOf(() => f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' }, label));
       const byMonth = await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'month' }, label);
-      expect(byIsrc.filters, name).toEqual(old.filters);
-      // a track of the old release answer has no months: the money alone
-      expect(rowsText(byIsrc.answer.rows.map(({ months: _months, ...r }) => r), isrcOf), name).toEqual(oldText(old.answer.tracks, (t) => t.isrc));
-      expect(rowsText(byMonth.rows, monthOf), name).toEqual(oldText(old.answer.months, (m) => m.reportingMonth));
-      // I(4) never earned: the old answer under «all» lists it with zeros, the new one has no row
-      if (label === undefined) expect(old.answer.tracks.map((t) => t.isrc), name).toContain(I(4));
+      // the read the old card made: the lines of the UPC, under a label of its files
+      expect(byIsrc.filters, name).toEqual([{ upcs: [UPC], ...(label ? { labelIds: [label] } : {}) }]);
+      // every row of money is a track of the card; I(4) never earned: on the card under «all», without a row
+      for (const isrc of byIsrc.answer.rows.map(isrcOf)) expect(card.answer.tracks.map((t) => t.isrc), name).toContain(isrc);
       expect(byIsrc.answer.rows.map(isrcOf), name).not.toContain(I(4));
       expect(moneyText(byMonth.totals), name).toBe(moneyText(byIsrc.answer.totals));
     }
+  });
+
+  it('a release only in the files of another label is unknown under a label, as before (D-257)', async () => {
+    const { f } = w;
+    // `UPC2` (I(5)) is in a file of 0to8 only: a manager of Echo8 gets 404, 0to8 and «all» get the card
+    await expect(f.release(UPC2, w.echo)).rejects.toThrow(/not found/i);
+    expect((await f.release(UPC2, w.zero)).tracks.map((t) => t.isrc)).toEqual([I(5)]);
+    expect((await f.release(UPC2)).tracks.map((t) => t.isrc)).toEqual([I(5)]);
+    // a release of nobody
+    await expect(f.release('0000000000000')).rejects.toThrow(/not found/i);
   });
 
   it('a release: the fixed numbers of this world', async () => {
@@ -284,11 +300,11 @@ describe('masterRows: the master money as rows (D-247)', () => {
         expect(moneyText(all.totals), at).toBe(moneyText(sumUnits(calc, withIsrc)));
         expect(JSON.stringify(all.totals.cByReason), at).not.toContain('no_isrc');
         expect(JSON.stringify(all.rows), at).not.toContain('no_isrc');
-        // its release: the old answer does not exist (404), the new one has no rows and zero totals
+        // its release: the card does not exist (404), the money has no rows and zero totals
         const rel = await f.masterRows({ scope: { kind: 'release', upc: UPC_NO_TRACKS }, grain }, label);
         expect([rel.rows, moneyText(rel.totals)], at).toEqual([[], ZEROS]);
       }
-      await expect(f.release(UPC_NO_TRACKS, label), name).rejects.toThrow();
+      await expect(f.release(UPC_NO_TRACKS, label), name).rejects.toMatchObject({ statusCode: 404 });
       // the old summary has no such row either, and the rows are still its rows
       const old = await f.trackSummary(label ? { label } : {});
       expect(old.items.map((i) => i.isrc), name).not.toContain('');

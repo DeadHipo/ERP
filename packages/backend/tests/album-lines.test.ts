@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spreadAlbumLines, type SourceUnit } from '../src/modules/sources';
-import { Case, I, UPC } from './helpers/golden-case';
+import { Case, I, UPC, UPC_NO_TRACKS } from './helpers/golden-case';
 
 // D-209 (the owner's decision on D-035): a line of a release without an ISRC (an album download) is spread over the
 // tracks of its release, in proportion to what each earned up to and including the line's month; then by the splits.
@@ -63,5 +63,35 @@ describe('the album lines (D-209): end to end', () => {
     expect(await c.row('2026-03')).toMatchObject({ A: '48', B: '24', C: '0', ours: '24' });
     expect(await c.row('2026-04')).toMatchObject({ A: '53', B: '26.5', C: '0', ours: '26.5' });
     await c.verify();
+  });
+  // D-257: the card of a release runs no calculation; its tracks come from the pairs (ISRC, UPC) of the files, where
+  // an album line is a pair without an ISRC. The card must name the ISRCs the units gave (the album line spread over
+  // the tracks), and a release that has only such a line stays unknown.
+  it('the card of a release with an album line names its tracks only; a release of an album line alone is 404', async () => {
+    const c = await Case.start();
+    const f = c.f;
+    const zero = f.testLabels['0to8'];
+    await c.person('A');
+    await c.track(I(1));
+    await c.track(I(3)); // registered, never earned: on the card under «all», no units
+    await c.split(I(1), [['A', '50']]);
+    await c.load('2026-03', [
+      { isrc: I(1), net: '30' },
+      { isrc: I(2), net: '10' }, // not registered: known from the report only
+      { isrc: '', upc: UPC, net: '8' },
+      { isrc: '', net: '5' }, // an album line of a release without a track (`UPC_NO_TRACKS`)
+    ]);
+    for (const [name, label, idle] of [['all', undefined, [I(3)]], ['0to8', zero, []]] as const) {
+      const rows = await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' }, label);
+      // the units: the album 8 spread 30 : 10 → I(1) 36, I(2) 12; no row without an ISRC
+      expect(rows.rows.map((r) => [r.isrc, r.sums.net.toFixed()]), name).toEqual([[I(1), '36'], [I(2), '12']]);
+      const card = await f.release(UPC, label);
+      // the ISRCs of the units and the visible tracks without units (under a label a track in no file of it is not visible)
+      expect(card.tracks.map((t) => t.isrc), name).toEqual([...rows.rows.map((r) => r.isrc as string), ...idle].sort());
+      expect(card.tracks.map((t) => t.isrc), name).not.toContain('');
+      // the release of the album line alone: money waits as `no_isrc`, no card (no track, no pair with an ISRC, no registry row)
+      await expect(f.release(UPC_NO_TRACKS, label), name).rejects.toThrow(/not found/i);
+      await expect(f.release(UPC_NO_TRACKS, label), name).rejects.toMatchObject({ statusCode: 404 });
+    }
   });
 });

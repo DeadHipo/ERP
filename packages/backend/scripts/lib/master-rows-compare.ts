@@ -92,15 +92,6 @@ export function diffTotals(oldRows: Sums[], totals: Sums): Difference[] {
   return a === b ? [] : [{ key: 'totals', old: a, new: b }];
 }
 
-/** The `n` rows with the largest `net` (a decimal string), ties by UPC. */
-export function topByNet<T extends { upc: string; net: string }>(items: T[], n: number): T[] {
-  return items
-    .map((item) => ({ item, net: new Decimal(item.net) }))
-    .sort((a, b) => b.net.comparedTo(a.net) || (a.item.upc < b.item.upc ? -1 : a.item.upc > b.item.upc ? 1 : 0))
-    .slice(0, n)
-    .map((x) => x.item);
-}
-
 /** The list cut into chunks of at most `size`, in order (the old summary takes at most 500 ISRCs a request). */
 export function chunksOf<T>(list: T[], size: number): T[][] {
   if (!Number.isInteger(size) || size < 1) throw new Error('The chunk size must be a positive integer');
@@ -169,14 +160,13 @@ export function failedOf(oldError: string | undefined, newError: string | undefi
 
 /**
  * Why a run proves nothing (an empty selection must not read as «equal»): no own label, no row of the new answer for
- * every ISRC under «all» (`null` = that comparison failed, which is counted elsewhere), or, while releases are compared
- * with the old answer, not one release compared. Empty = the run counts; otherwise the run ends with code 1.
+ * every ISRC under «all» (`null` = that comparison failed, which is counted elsewhere). Empty = the run counts; otherwise
+ * the run ends with code 1. (The releases are no longer compared with the old answer, D-257.)
  */
-export function emptyRunReasons(r: { labels: number; allIsrcRows: number | null; releasesCompared: number; compareReleases: boolean }): string[] {
+export function emptyRunReasons(r: { labels: number; allIsrcRows: number | null }): string[] {
   const out: string[] = [];
   if (r.labels === 0) out.push('no own label');
   if (r.allIsrcRows === 0) out.push('no row for every ISRC under «all»');
-  if (r.compareReleases && r.releasesCompared === 0) out.push('no release compared');
   return out;
 }
 

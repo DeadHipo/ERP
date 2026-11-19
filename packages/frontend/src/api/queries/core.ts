@@ -33,7 +33,7 @@ export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   // D-251: the master money as rows (`POST /money/master/query`), one request per block (R2′)
   ['money', 'master'],
   ['releases', 'list'],
-  ['releases', 'detail'],
+  // D-257: no ['releases', 'detail']: the card of a release has no money, its blocks read ['money', 'master']
   ['documents', 'uses'],
   ['ads', 'list'],
   ['ads', 'summary'],

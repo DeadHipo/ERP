@@ -262,4 +262,21 @@ describe('POST /money/master/query: the master money as rows, a read sent as a P
     expect(await auditRows()).toBe(rows);
     expect(answer(await request(on).post('/api/v1/tracks').set('Authorization', `Bearer ${TOKEN}`).set('X-Operator', 'tests').send({ title: 'x' }))).toBe('403 forbidden');
   });
+  // D-257: the card of a release has no money, and a manager still sees nothing of another label's release. Last in the
+  // file: it loads one more file of B.
+  it('GET /releases/:upc: no money on the card; a release only in the files of B is 404 for the manager of A, as before', async () => {
+    const U2 = '1000000000002';
+    await f.ingestBelieve(writeBelieve('2026-05', [{ isrc: I(4), upc: U2, net: '10', labelName: 'Echo8' }], { account: ACC2 }), B);
+    const card = (upc: string, label?: string) => request(on).get(`/api/v1/releases/${upc}`).query(label ? { label } : {});
+    expect(answer(await card(U2, A).set('Cookie', manager))).toBe('404 not_found');
+    expect(answer(await card(U2).set('Cookie', manager))).toBe('400 label_required');
+    expect(answer(await card(U2, B).set('Cookie', manager))).toBe('403 label_forbidden');
+    expect(((await card(U2, B).set('Cookie', admin).expect(200)).body as { tracks: { isrc: string }[] }).tracks.map((t) => t.isrc)).toEqual([I(4)]);
+    expect(((await card(U2).set('Cookie', admin).expect(200)).body as { tracks: { isrc: string }[] }).tracks.map((t) => t.isrc)).toEqual([I(4)]);
+    // the release of both labels under A: the tracks of the files of A only (I(3) is in a file of B), without money
+    const own = (await card(U1, A).set('Cookie', manager).expect(200)).body as { tracks: Record<string, unknown>[] } & Record<string, unknown>;
+    expect(own.tracks.map((t) => t.isrc)).toEqual([I(1), I(2)]);
+    expect(own.tracks.map((t) => Object.keys(t))).toEqual(own.tracks.map(() => ['isrc', 'title', 'artists']));
+    expect(Object.keys(own)).toEqual(['upc', 'title', 'artistName', 'artists', 'tracks', 'coverUrl', 'registry']);
+  });
 });

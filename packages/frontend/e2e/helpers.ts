@@ -110,10 +110,11 @@ export function sc(nn: number, k = 1): CaseKeys {
 
 /**
  * The money endpoints of 17 §7 (every one runs a recalculation): each request is counted, and a spec states how many
- * its page makes (R2: one per load; R2′, D-251: one per block, e.g. `POST /money/master/query`).
+ * its page makes (R2: one per load; R2′, D-251: one per block, e.g. `POST /money/master/query`). `GET /releases/:upc`
+ * is not one of them since D-257 (no money, no calculation).
  */
 const MONEY_PATH =
-  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|artists\/balances|artists\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|money\/master\/query|documents\/[^/]+\/uses)$/;
+  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|artists\/balances|artists\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|money\/master\/query|documents\/[^/]+\/uses)$/;
 const moneyCalls = new WeakMap<Page, string[]>();
 
 /** Opens a page with the operator set (19 §1: `e2e-operator` before every spec). Restarts the money request count. */

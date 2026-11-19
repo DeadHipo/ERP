@@ -694,14 +694,15 @@ const OPERATOR = 'contract-test';
     // the master money as rows (D-248), a read sent as a POST (D-246): the money of the release and of a list, no audit row
     const auditBeforeMoney = ((await R.get('/api/v1/audit').query({ limit: '500' }).expect(200)).body.items as unknown[]).length;
     type MoneyRow = { isrc?: string; month?: string; sums: Record<string, unknown>; months?: unknown };
-    const sumsOf = (x: Record<string, unknown>) => ({ net: x.net, B: x.B, C: x.C, ours: x.ours, cByReason: x.cByReason });
     const byIsrc = await call('post', '/money/master/query', { body: { scope: { kind: 'release', upc: UPC }, grain: 'isrc' } });
     expect((byIsrc.rows as MoneyRow[]).length).toBeGreaterThan(0);
-    // a track without units has no row; the rows are the money of the tracks of the release, character for character
-    const rowIsrcs = new Set((byIsrc.rows as MoneyRow[]).map((r) => r.isrc));
-    expect((byIsrc.rows as MoneyRow[]).map((r) => ({ isrc: r.isrc, ...r.sums }))).toEqual(
-      (releaseAnswer.tracks as Record<string, unknown>[]).filter((t) => rowIsrcs.has(t.isrc as string)).map((t) => ({ isrc: t.isrc, ...sumsOf(t) })),
-    );
+    // D-257: the card of the release has no money (no sums on a track, no months); a track without units has no row,
+    // every row is a track of the card, and the rows are the rows of the facade, character for character
+    for (const t of releaseAnswer.tracks as Record<string, unknown>[]) expect(Object.keys(t)).toEqual(['isrc', 'title', 'artists']);
+    expect(releaseAnswer).not.toHaveProperty('months');
+    const cardIsrcs = (releaseAnswer.tracks as { isrc: string }[]).map((t) => t.isrc);
+    for (const r of byIsrc.rows as MoneyRow[]) expect(cardIsrcs).toContain(r.isrc);
+    expect(byIsrc.rows).toEqual(JSON.parse(JSON.stringify((await (await orgs.get(orgId)).facade.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' })).rows)));
     const byMonth = await call('post', '/money/master/query', { query: { label: zero.id }, body: { scope: { kind: 'release', upc: UPC }, grain: 'month', period: { from: '2026-01' } } });
     for (const r of byMonth.rows as MoneyRow[]) expect([typeof r.month, r.isrc, r.months]).toEqual(['string', undefined, undefined]);
     const byBoth = await call('post', '/money/master/query', { body: { scope: { kind: 'isrcs', isrcs: [I2, I1, I1] }, grain: 'isrc,month', period: { from: '2026-07', to: '2026-07' } } });

@@ -347,21 +347,31 @@ describe('releases (N8, N9)', () => {
     expect(miss.body.items).toEqual([]);
   });
 
-  it('GET /releases/:upc: tracks and months add up to the units', async () => {
+  it('GET /releases/:upc names the tracks; their money and the months (POST /money/master/query) add up to the units', async () => {
     const { c } = await world();
     const app = appOf(c);
     const res = await request(app).get(`/api/v1/releases/${UPC}`).expect(200);
-    const sum = (xs: { net: string; B: string; C: string; ours: string }[], k: 'net' | 'B' | 'C' | 'ours') =>
-      xs.reduce((s, x) => s.add(x[k]), ZERO).toFixed();
+    // D-257: the card has no money; the money of its tracks and months is the master rows of the release
+    const rows = async (grain: 'isrc' | 'month') =>
+      (await request(app).post('/api/v1/money/master/query').send({ scope: { kind: 'release', upc: UPC }, grain }).expect(200)).body.rows as {
+        isrc?: string;
+        month?: string;
+        sums: { net: string; B: string; C: string; ours: string };
+      }[];
+    const [tracks, months] = [await rows('isrc'), await rows('month')];
+    const sum = (xs: { sums: { net: string; B: string; C: string; ours: string } }[], k: 'net' | 'B' | 'C' | 'ours') =>
+      xs.reduce((s, x) => s.add(x.sums[k]), ZERO).toFixed();
     for (const k of ['net', 'B', 'C', 'ours'] as const) {
-      expect(sum(res.body.tracks, k)).toBe(sum(res.body.months, k));
+      expect(sum(tracks, k)).toBe(sum(months, k));
     }
     expect(res.body.tracks.map((t: { isrc: string }) => t.isrc)).toEqual([I(1), I(2), I(3), I(4), I(7)]);
+    expect(res.body.tracks.map((t: object) => Object.keys(t))).toEqual(res.body.tracks.map(() => ['isrc', 'title', 'artists']));
+    expect(res.body).not.toHaveProperty('months');
     // D-166: the pseudonyms of every track and their union in the header
     expect(res.body.tracks.map((t: { artists: { pseudonym: string }[] }) => t.artists.map((a) => a.pseudonym))).toEqual([['A', 'P'], ['M'], [], ['U'], []]);
     expect(res.body.artists.map((a: { pseudonym: string }) => a.pseudonym)).toEqual(['A', 'M', 'P', 'U']);
-    expect(res.body.months.map((m: { reportingMonth: string }) => m.reportingMonth)).toEqual(['2026-03', '2026-04']);
-    expect(sum(res.body.tracks, 'net')).toBe('233');
+    expect(months.map((m) => m.month)).toEqual(['2026-03', '2026-04']);
+    expect(sum(tracks, 'net')).toBe('233');
     await request(app).get('/api/v1/releases/0000000000000').expect(404);
   });
 });

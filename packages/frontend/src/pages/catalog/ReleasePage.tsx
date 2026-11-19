@@ -19,7 +19,8 @@ const t = ru.catalog.release;
 /**
  * P8 «Релиз» on the money blocks (D-253, R2′: one money request per block):
  * - `GET /releases/:upc`: the header, the registry rows and the list of the tracks of the release (also those without
- *   units, which have no money row and show the sums of no units);
+ *   units, which have no money row and show the sums of no units); no money and no calculation since D-257, a
+ *   reference read;
  * - the block «Треки»: `POST /money/master/query` of the release at the grain `isrc`, named by the track directory
  *   (`useTracks`, D-250);
  * - the block «Месяцы»: the same scope at the grain `month`.
@@ -43,7 +44,7 @@ export function ReleasePage() {
   const tracks = useTracks(isrcs);
   return (
     <div data-testid="release-page">
-      <QueryView query={query} money>
+      <QueryView query={query}>
         {(data) => (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">

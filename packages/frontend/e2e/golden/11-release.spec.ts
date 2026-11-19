@@ -21,8 +21,8 @@ async function openRelease(page: Page, u: string) {
   await openAs(page, `/releases/${u}`);
   await settled(page);
   await expect(page.getByTestId('release-upc')).toHaveText(u);
-  // R2′ (D-253): `GET /releases/:upc` and one `POST /money/master/query` per block
-  expectMoneyCalls(page, 3);
+  // R2′ (D-253): one `POST /money/master/query` per block; `GET /releases/:upc` has no money (D-257)
+  expectMoneyCalls(page, 2);
 }
 
 type Sums = { net: string; B: string; C: string; ours: string; cByReason: Record<string, string> };
@@ -77,8 +77,8 @@ test('S11 G24: UPC1 and UPC2 of one ISRC, tracks and months', async ({ page }) =
     await expect(page.getByTestId(`track-name-${i}`).getByRole('link')).toHaveText('S11 Song');
     await expect(page.getByTestId(`track-name-${i}`).getByRole('link')).toHaveAttribute('href', `/tracks/${i}`);
     await expect(page.getByTestId(`track-version-${i}`)).toHaveText('Slowed');
-    // the directory is not a money request: still one read of the release and one per block (R2′)
-    expectMoneyCalls(page, 3);
+    // the directory is not a money request: still one per block (R2′)
+    expectMoneyCalls(page, 2);
     await expect(page.getByTestId('breadcrumbs')).toContainText(u);
     // D-166: the pseudonyms of the release (the row of A, the participation of P) in the header and on the track row, links to P12
     const k = sc(11, 1);
@@ -114,7 +114,7 @@ test('S11 under a label: the label goes to the three reads of P8, the screen equ
   await openAs(page, `/releases/${u}?label=${label}`);
   await settled(page);
   await expect(page.getByTestId('release-upc')).toHaveText(u);
-  expectMoneyCalls(page, 3);
+  expectMoneyCalls(page, 2);
   expect(asked.sort()).toEqual([`GET /api/v1/releases/${u}?label=${label}`, `POST /api/v1/money/master/query?label=${label}`, `POST /api/v1/money/master/query?label=${label}`]);
   await expectRow(page.getByTestId(`release-track-${i}`), '100', '55', '0', '45');
   await expectRow(page.getByTestId(`release-month-${M}`), '100', '55', '0', '45');
@@ -123,12 +123,12 @@ test('S11 under a label: the label goes to the three reads of P8, the screen equ
 
 test('P8: a track of the list without a money row shows 0 in the four cells, no reasons; the footer is the answer\'s', async ({ page }) => {
   const [i, u] = [isrc(11, 1, 1), upc(11, 1, 1)];
-  // a registered track without units: in the list of `GET /releases/:upc` (zero sums, as the server gives them), in no money row
+  // a registered track without units: in the list of `GET /releases/:upc` (no money there, D-257), in no money row
   const idle = 'QZTST2699901';
   await page.route(`**/api/v1/releases/${u}`, async (route) => {
     const res = await route.fetch();
     const body = (await res.json()) as { tracks: unknown[] };
-    body.tracks.push({ isrc: idle, title: '', artists: [], meta: null, net: '0', B: '0', C: '0', ours: '0', cByReason: {} });
+    body.tracks.push({ isrc: idle, title: '', artists: [] });
     await route.fulfill({ response: res, json: body });
   });
   await openRelease(page, u);

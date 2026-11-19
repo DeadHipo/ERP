@@ -95,8 +95,7 @@ describe('unit scope of the facade (D-161)', () => {
     const calls: [string, () => Promise<unknown>, (r: { filter: SnapshotFilter; units: number }) => void][] = [
       ['trackMoney', () => f.trackMoney(I(1)), (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(1)], 2])],
       ['explainTrack', () => f.explainTrack(I(3)), (r) => expect([r.filter.isrcs, r.units]).toEqual([[I(3)], 2])],
-      ['release', () => f.release(UPC2), (r) => expect([r.filter.upcs, r.units]).toEqual([[UPC2], 2])],
-      ['release UPC', () => f.release(UPC), (r) => expect(r.units).toBe(3)],
+      // D-257: `release()` reads no units any more; its two rows are the `masterRows release` rows below
       [
         'trackSummary account+month',
         () => f.trackSummary({ account: ACC1, month: '2026-03' }),
@@ -199,7 +198,7 @@ describe('unit scope of the facade (D-161)', () => {
     await f.trackMoney(I(1));
     await f.trackSummary({ isrcs: `${I(1)},${I(2)}` });
     await f.getAd(adId);
-    await f.release(UPC);
+    await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' }); // D-257: the money of a release
     expect(pub).toEqual([{ lines: false }, { lines: false }, { lines: false }, { lines: false }]);
     expect(idx).toEqual([{ isrcs: [I(1)] }, { isrcs: [I(1), I(2)] }, { isrcs: [I(1)] }, {}]);
     // D-247: `masterRows` is master only, as the answers it replaces
@@ -692,9 +691,12 @@ describe('the label as a book (D-168)', () => {
     const releases = (await f.releases(undefined, echo)).items;
     expect(releases.map((r) => [r.upc, r.trackCount, r.net])).toEqual([[UPC, 2, '150']]);
     expect((await f.releases()).items.map((r) => [r.trackCount, r.net])).toEqual([[4, '290']]);
-    const release = await f.release(UPC, echo);
-    expect(release.tracks.map((t) => [t.isrc, t.net.toFixed()])).toEqual([[I(2), '100'], [I(4), '50']]);
-    expect(release.months.map((m) => [m.reportingMonth, m.net.toFixed()])).toEqual([['2026-03', '110'], ['2026-04', '40']]);
+    // D-257: the card names the tracks, the money of the release is `masterRows`
+    expect((await f.release(UPC, echo)).tracks.map((t) => t.isrc)).toEqual([I(2), I(4)]);
+    const releaseTracks = await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' }, echo);
+    expect(releaseTracks.rows.map((t) => [t.isrc, t.sums.net.toFixed()])).toEqual([[I(2), '100'], [I(4), '50']]);
+    const releaseMonths = await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'month' }, echo);
+    expect(releaseMonths.rows.map((m) => [m.month, m.sums.net.toFixed()])).toEqual([['2026-03', '110'], ['2026-04', '40']]);
     // the queue: the unconfirmed split of E (Echo8) alone; of B under 0to8
     const q = await f.queue('split_unconfirmed');
     expect(q.groups.map((g) => g.key.label).sort()).toEqual([I(3), I(4)]);
@@ -842,8 +844,11 @@ describe('the book by the account of the file (D-169)', () => {
     expect(text((await f.trackCatalog({ label: zero })).items)).toBe(text(catalog.filter((i) => i.isrc === I(1))));
     expect((await f.releases(undefined, echo)).items.map((r) => [r.upc, r.trackCount, r.net])).toEqual([[UPC, 1, '40']]);
     reads.length = 0;
-    const release = await f.release(UPC, echo);
-    expect(release.tracks.map((t) => [t.isrc, t.net.toFixed()])).toEqual([[I(2), '40']]);
+    // D-257: the card reads no units and names the tracks of the label's files; the money is `masterRows`
+    expect((await f.release(UPC, echo)).tracks.map((t) => t.isrc)).toEqual([I(2)]);
+    expect(reads).toEqual([]);
+    const release = await f.masterRows({ scope: { kind: 'release', upc: UPC }, grain: 'isrc' }, echo);
+    expect(release.rows.map((t) => [t.isrc, t.sums.net.toFixed()])).toEqual([[I(2), '40']]);
     expect(reads.map((r) => [r.filter.labelIds, r.filter.upcs])).toEqual([[[echo], [UPC]]]);
     reads.length = 0;
     await f.queue('label_unmapped', {}, {}, echo);

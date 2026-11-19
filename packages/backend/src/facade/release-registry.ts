@@ -6,8 +6,8 @@ import { ALL_VIEWER, labelForbidden, viewerHolds, type Viewer } from './viewer';
 
 /**
  * The release registry of a label (D-172, D-195): the rows of a release export, keyed `(org, label, upc)`. Navigation,
- * not money (README §1 п. 8): the calculation never reads it (`boundaries.test.ts`); the money of a release stays
- * `GET /releases/:upc` over the units. A new export is previewed against the registry (nothing written) and the operator
+ * not money (README §1 п. 8): the calculation never reads it (`boundaries.test.ts`); the money of a release is
+ * `POST /money/master/query` over the units (D-257). A new export is previewed against the registry (nothing written) and the operator
  * applies the changes he accepts; no file is kept, the audit says who changed what. Two signals compare it with the
  * units of the label's book: `releasesIncomplete`, `releasesUnknown`.
  */
