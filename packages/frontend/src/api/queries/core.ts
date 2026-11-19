@@ -5,8 +5,8 @@ import { notifyError, notifySuccess } from '../../components/toast';
 
 /**
  * Query keys are `[domain, name, ...params]`. A key is a MONEY key when its first two elements are in this list:
- * the answer comes from one recalculation (D-012, R2). The recalc indicator watches these, and every mutation
- * invalidates them.
+ * the answer comes from one recalculation (D-012, R2′: one money request per block, D-251). The recalc indicator
+ * watches these, and every mutation invalidates them.
  */
 export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['owners', 'balance'],
@@ -30,6 +30,8 @@ export const MONEY_KEYS: readonly (readonly [string, string])[] = [
   ['tracks', 'explain'],
   ['tracks', 'summary'],
   ['tracks', 'money'],
+  // D-251: the master money as rows (`POST /money/master/query`), one request per block (R2′)
+  ['money', 'master'],
   ['releases', 'list'],
   ['releases', 'detail'],
   ['documents', 'uses'],

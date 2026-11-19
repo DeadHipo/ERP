@@ -108,9 +108,12 @@ export function sc(nn: number, k = 1): CaseKeys {
   return c;
 }
 
-/** The money endpoints of 17 §7 (every one runs a recalculation): R2 allows one request per page load. */
+/**
+ * The money endpoints of 17 §7 (every one runs a recalculation): each request is counted, and a spec states how many
+ * its page makes (R2: one per load; R2′, D-251: one per block, e.g. `POST /money/master/query`).
+ */
 const MONEY_PATH =
-  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|artists\/balances|artists\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|documents\/[^/]+\/uses)$/;
+  /^\/api\/v1\/(overview|reconciliation|signals|queue\/[^/]+|owners\/payables|owners\/[^/]+\/balance|artists\/balances|artists\/[^/]+\/balance|tracks\/summary|tracks\/[^/]+\/money|releases\/[^/]+|money\/master\/query|documents\/[^/]+\/uses)$/;
 const moneyCalls = new WeakMap<Page, string[]>();
 
 /** Opens a page with the operator set (19 §1: `e2e-operator` before every spec). Restarts the money request count. */
@@ -119,7 +122,9 @@ export async function openAs(page: Page, path: string): Promise<void> {
     const calls: string[] = [];
     moneyCalls.set(page, calls);
     page.on('request', (r) => {
-      if (r.method() === 'GET' && MONEY_PATH.test(new URL(r.url()).pathname)) calls.push(new URL(r.url()).pathname);
+      // D-251: a money read may be a POST (`readOnly`), only under `/money/`; every other POST is a write
+      const p = new URL(r.url()).pathname;
+      if ((r.method() === 'GET' || (r.method() === 'POST' && p.startsWith('/api/v1/money/'))) && MONEY_PATH.test(p)) calls.push(p);
     });
   }
   await page.addInitScript((name) => localStorage.setItem('erp.operator', name), OPERATOR);

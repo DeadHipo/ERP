@@ -24,6 +24,12 @@ export const catalog = {
     call('GET', '/releases', { query, schema: R.releasesSchema }),
   /** One release: tracks and report months with B, C and ours (N9). */
   release: (upc: string, query: z.input<typeof S.releaseQuery> = {}) => call('GET', `/releases/${id(upc)}`, { query, schema: R.releaseSchema }),
+  /**
+   * The master money of a release or of a list of ISRCs as rows of a grain (D-251, `POST /money/master/query`): a
+   * read sent as a POST, so no operator. The label view goes in the query only (`labelId` '' = «Все»): the body is strict.
+   */
+  masterRows: (body: z.input<typeof S.masterQueryBody>, labelId = '') =>
+    call('POST', '/money/master/query', { query: (labelId ? { label: labelId } : {}) satisfies z.input<typeof S.masterQueryQuery>, body, schema: R.masterRowsSchema, readOnly: true }),
   /** The audit trail of an entity (N16). */
   audit: (query: z.input<typeof S.auditQuery> = {}) => call('GET', '/audit', { query, schema: R.auditListSchema }),
 };
