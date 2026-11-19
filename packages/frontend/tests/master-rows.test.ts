@@ -12,6 +12,9 @@ let operator = '';
 vi.mock('../src/lib/operator', () => ({ getOperator: () => operator }));
 
 const { catalog } = await import('../src/api/catalog');
+const { setAuditFailedHandler } = await import('../src/api/client');
+const auditFailed = vi.fn();
+setAuditFailedHandler(auditFailed);
 
 const LABEL = '00000000-0000-4000-8000-0000000000aa';
 const zero: MasterRows['totals'] = { net: '0', B: '0', C: '0', ours: '0', cByReason: {} };
@@ -21,6 +24,7 @@ let answer: unknown;
 beforeEach(() => {
   operator = '';
   sent.length = 0;
+  auditFailed.mockClear();
   answer = { rows: [], totals: zero, calculatedAt: '2026-01-01T00:00:00.000Z' } satisfies MasterRows;
   vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
     sent.push({ url, init });
@@ -83,6 +87,8 @@ describe('catalog.masterRows (D-251)', () => {
     expect(sent[0]?.init.method).toBe('POST');
     expect(sent[0]?.init.body).toBe(JSON.stringify(body));
     expect(sent[0]?.init.headers).toEqual({ 'Content-Type': 'application/json' });
+    // the answer carries `X-Audit: failed`: a read has no audit record, so the handler is never called
+    expect(auditFailed).not.toHaveBeenCalled();
   });
 
   it('needs no operator; under «Все» the query has no label, and the body never carries one', async () => {

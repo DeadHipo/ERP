@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
-/** A plain table of a few money rows (no paging needed): header cells and rows rendered by the page. */
-export function SimpleTable(props: { testId?: string; headers: readonly string[]; children: ReactNode; className?: string }) {
+/** A plain table of a few money rows (no paging needed): header cells and rows rendered by the page; `footer` = rows of a `tfoot`. */
+export function SimpleTable(props: { testId?: string; headers: readonly string[]; children: ReactNode; className?: string; footer?: ReactNode }) {
   return (
     <div className={`overflow-x-auto rounded-xl border border-border ${props.className ?? ''}`}>
       <table className="w-full text-sm" data-testid={props.testId}>
@@ -15,6 +15,7 @@ export function SimpleTable(props: { testId?: string; headers: readonly string[]
           </tr>
         </thead>
         <tbody>{props.children}</tbody>
+        {props.footer ? <tfoot>{props.footer}</tfoot> : null}
       </table>
     </div>
   );

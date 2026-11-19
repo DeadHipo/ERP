@@ -1,6 +1,6 @@
 /** Каталог pages: tracks, the track card, releases. */
 export const catalog = {
-  money: { net: 'Получено', B: 'B: чужие', C: 'C: ждут', ours: 'Наше', labelShare: 'Доля лейбла' },
+  money: { net: 'Получено', B: 'B: чужие', C: 'C: ждут', ours: 'Наше', labelShare: 'Доля лейбла', total: 'Итого' },
   tracks: {
     title: 'Треки',
     subtitle: 'Какие ISRC зарабатывают, сколько в B, C и нашем по каждому (за счёт и месяц, если заданы) и у каких нет сплита?',

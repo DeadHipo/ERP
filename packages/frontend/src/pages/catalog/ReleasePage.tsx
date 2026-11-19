@@ -2,34 +2,45 @@ import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { releaseQueries } from '../../api/queries/releases';
+import { useMasterRows } from '../../api/queries/money';
 import { useTracks } from '../../api/queries/tracks';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { ArtistLinks } from '../../components/ArtistLinks';
-import { Money } from '../../components/Money';
-import { TrackName } from '../../components/TrackName';
+import { MonthsMoneyBlock } from '../../components/money-blocks/MonthsMoneyBlock';
+import { TracksMoneyBlock } from '../../components/money-blocks/TracksMoneyBlock';
 import { PageHeader } from '../../components/PageHeader';
 import { QueryView } from '../../components/PageState';
 import { formatLocalDateTime } from '../../lib/datetime';
 import { fmt, ru } from '../../i18n/ru';
 import { useLabel } from '../../lib/label';
-import { SimpleTable, Td } from './components/MoneyTable';
-import { CReasonList } from './components/CReasonList';
 
 const t = ru.catalog.release;
-const m = ru.catalog.money;
 
 /**
- * P8 «Релиз»: `GET /releases/:upc` (one calculation filtered by UPC): tracks and report months with B, C, ours. The
- * name of a track row (title, version, cover) and its pseudonyms come from the track directory (`useTracks`,
- * D-250), not from the money answer.
+ * P8 «Релиз» on the money blocks (D-253, R2′: one money request per block):
+ * - `GET /releases/:upc`: the header, the registry rows and the list of the tracks of the release (also those without
+ *   units, which have no money row and show the sums of no units);
+ * - the block «Треки»: `POST /money/master/query` of the release at the grain `isrc`, named by the track directory
+ *   (`useTracks`, D-250);
+ * - the block «Месяцы»: the same scope at the grain `month`.
+ * Each block has its own states and its own footer (`totals` of its answer); the label view goes to all three reads.
  */
 export function ReleasePage() {
   const upc = useParams().upc ?? '';
   const { labelId } = useLabel(); // the label view (D-168)
   const query = useQuery(releaseQueries.detail(upc, labelId));
   useBreadcrumbLabel(query.data ? `${query.data.title} (${upc})` : upc);
-  const isrcs = useMemo(() => (query.data?.tracks ?? []).map((r) => r.isrc), [query.data]);
-  const { track, artist } = useTracks(isrcs);
+  // the scope by value: the key of the query is structural, so a new object of the same UPC is the same query
+  const scope = useMemo(() => ({ kind: 'release', upc }) as const, [upc]);
+  const byTrack = useMasterRows(scope, 'isrc');
+  const byMonth = useMasterRows(scope, 'month');
+  // the rows of the block «Треки»: the list of the release and any ISRC only the money answer has, by ISRC; the
+  // directory is asked for all of them, so a row that came from the money alone is named too
+  const isrcs = useMemo(
+    () => [...new Set([...(query.data?.tracks ?? []).map((r) => r.isrc), ...(byTrack.data?.rows ?? []).flatMap((r) => r.isrc ?? [])])].sort(),
+    [query.data, byTrack.data],
+  );
+  const tracks = useTracks(isrcs);
   return (
     <div data-testid="release-page">
       <QueryView query={query} money>
@@ -78,56 +89,12 @@ export function ReleasePage() {
               {data.tracks.length === 0 ? (
                 <p className="text-sm text-muted">{t.noTracks}</p>
               ) : (
-                <SimpleTable testId="release-tracks" headers={[t.cols.title, t.cols.artists, m.net, m.B, m.C, m.ours]}>
-                  {data.tracks.map((r) => (
-                    <tr key={r.isrc} data-testid={`release-track-${r.isrc}`} className="border-t border-border">
-                      <Td col="title">
-                        <TrackName isrc={r.isrc} track={track(r.isrc)} />
-                      </Td>
-                      <Td col="artists">
-                        {/* the pseudonyms of the track in the directory's order; nothing until its track arrives */}
-                        {track(r.isrc) === undefined ? null : <ArtistLinks artists={(track(r.isrc)?.artists ?? []).flatMap((id) => artist(id) ?? [])} />}
-                      </Td>
-                      <Td col="net">
-                        <Money value={r.net} />
-                      </Td>
-                      <Td col="B">
-                        <Money value={r.B} />
-                      </Td>
-                      <Td col="C">
-                        <Money value={r.C} />
-                        <CReasonList byReason={r.cByReason} />
-                      </Td>
-                      <Td col="ours">
-                        <Money value={r.ours} />
-                      </Td>
-                    </tr>
-                  ))}
-                </SimpleTable>
+                <TracksMoneyBlock prefix="release" query={byTrack} isrcs={isrcs} noUnits="zero" tracks={tracks} />
               )}
             </section>
             <section>
               <h2 className="mb-2 text-sm font-medium">{t.months}</h2>
-              <SimpleTable testId="release-months" headers={[t.cols.reportingMonth, m.net, m.B, m.C, m.ours]}>
-                {data.months.map((r) => (
-                  <tr key={r.reportingMonth} data-testid={`release-month-${r.reportingMonth}`} className="border-t border-border">
-                    <Td>{r.reportingMonth}</Td>
-                    <Td col="net">
-                      <Money value={r.net} />
-                    </Td>
-                    <Td col="B">
-                      <Money value={r.B} />
-                    </Td>
-                    <Td col="C">
-                      <Money value={r.C} />
-                      <CReasonList byReason={r.cByReason} />
-                    </Td>
-                    <Td col="ours">
-                      <Money value={r.ours} />
-                    </Td>
-                  </tr>
-                ))}
-              </SimpleTable>
+              <MonthsMoneyBlock prefix="release" query={byMonth} />
             </section>
           </div>
         )}

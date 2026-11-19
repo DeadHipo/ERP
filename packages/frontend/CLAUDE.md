@@ -129,6 +129,12 @@ strings in `i18n/ru/<domain>.ts`, entry in `api/coverage.ts`, spec in `e2e/golde
 - **P31 Подключить Claude** `/claude` (`pages/claude/ClaudePage.tsx`, no API call, D-179; `nav-claude` under «Организация», `op: GET /users`): how do I connect Claude to this ERP? `claude-page`, `claude-url`, `claude-code-command`, `claude-code-check`, `claude-header` with `<id>-copy`, `claude-insecure` without https; built by `@erp/shared/mcp-connection` from `VITE_PUBLIC_ORIGIN` (D-180), else the address of the page; the token is the placeholder `ТОКЕН`.
 - **P27 Пользователи (система)** `/system/users` (`pages/system/UsersPage.tsx`, `GET /system/users`, the system administrator only, D-171): who can sign in, where and with which role? `system-users-page`, `system-users-grid`, rows `system-user-<login>` (memberships as «организация: роль (приостановлен)»), `action-disable-user` / `action-enable-user` (`PATCH /system/users/:id`, the sessions end), `action-reset-password` (`POST /system/users/:id/password`). No create: users are created inside an organization (P25).
 
+## The money blocks (D-253)
+
+- `components/money-blocks/TracksMoneyBlock.tsx`, `MonthsMoneyBlock.tsx` (cells `MoneyCells.tsx`): shared tables of master money over `MasterRow` (`useMasterRows`, D-251) + `TrackView` (`useTracks`). Each block takes its own query, has its own states (`QueryView money`) and a footer «Итого» = `totals` of its own answer; nothing is added on the client (R1). `noUnits: 'zero' | 'dash'` says what a listed track without a money row shows. Hooks: `<prefix>-tracks`, `<prefix>-track-<isrc>`, `<prefix>-tracks-total`, `<prefix>-months`, `<prefix>-month-<month>`, `<prefix>-months-total`, `[data-col=…]`.
+- P8 (prefix `release`): `GET /releases/:upc` gives the header, the registry and the list of tracks (also those without units, shown with `0`); the money comes from two `POST /money/master/query` (grain `isrc`, `month`): `expectMoneyCalls(page, 3)`.
+- `SimpleTable` / `Td` (`components/MoneyTable.tsx`, optional `footer`) and `components/CReasonList.tsx` live in `src/components/`.
+
 ## The track directory on the screens (D-250)
 
 - A track, its releases and pseudonyms come from `POST /tracks/query` (a `readOnly` POST, D-246), never from a money answer: `useTracks(isrcs)` (`api/queries/tracks.ts`) gives `{ track(isrc), release(upc), artist(id) }` from one cache entry per ISRC (`['tracks', 'view', isrc]`, `staleTime` 10 min, not in `MONEY_KEYS`, made stale by every `useAction` with `reference` / `all`). Pass only the ISRCs shown.

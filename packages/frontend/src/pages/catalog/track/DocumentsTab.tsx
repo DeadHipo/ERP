@@ -5,7 +5,7 @@ import { EntityLink } from '../../../components/EntityLink';
 import { PageState, QueryView } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
 import { ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.catalog.documents;
 type Use = keyof typeof t.used;

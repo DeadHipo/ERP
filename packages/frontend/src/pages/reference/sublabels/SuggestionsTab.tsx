@@ -8,7 +8,7 @@ import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
 import { fmt, ru } from '../../../i18n/ru';
 import { formatCount } from '../../../lib/money';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 import { AddTermsDialog } from './dialogs';
 
 const t = ru.sublabels;

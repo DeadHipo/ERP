@@ -10,7 +10,7 @@ import { Money } from '../../../components/Money';
 import { PageState } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 import { monthKey, monthRowId, type Allocation, type Layer, type Month } from './types';
 
 const t = ru.catalog.track;

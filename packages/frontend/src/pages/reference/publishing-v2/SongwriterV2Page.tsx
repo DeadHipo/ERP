@@ -7,7 +7,7 @@ import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
 import { ru } from '../../../i18n/ru';
 import { useLabel } from '../../../lib/label';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.reference.publishingV2;
 

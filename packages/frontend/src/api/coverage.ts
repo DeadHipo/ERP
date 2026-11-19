@@ -80,7 +80,7 @@ export const OPERATION_COVERAGE = {
   'PATCH /tracks/platforms/:id': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-edit-platform-<id> → action-platform-submit' },
   'POST /tracks/platforms/:id/remove': { page: 'P6', route: '/tracks/:isrc', note: 'D-238: action-remove-platform-<id> → ConfirmDialog' },
   'POST /tracks/query': { page: 'P8', route: '/releases/:upc', note: 'D-250: useTracks (api/queries/tracks.ts) through the batch loader api/tracks-loader.ts: the title, version, cover (track-name-<isrc>, track-version-<isrc>) and the pseudonyms of the track rows; also the shown rows of P5' },
-  'POST /money/master/query': { refusal: 'not on a screen yet: P8 and P5 move to it in M5 / M6' },
+  'POST /money/master/query': { page: 'P8', route: '/releases/:upc', note: 'D-253: useMasterRows (api/queries/money.ts), one request per block: components/money-blocks/TracksMoneyBlock (grain isrc: release-track-<isrc>, release-tracks-total) and MonthsMoneyBlock (grain month: release-month-<month>, release-months-total)' },
   'GET /tracks/:isrc/explain': { refusal: 'superseded by /tracks/:isrc/money and /breakdown/:month on the screens; kept for API users' },
 
   'GET /releases': { page: 'P7', route: '/releases', note: 'D-172: the registry columns [data-col="registered"], [data-col="trackCount"]' },

@@ -11,7 +11,7 @@ import { QueryView } from '../../../components/PageState';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.reference.publishingV2;
 type Song = z.output<typeof pubV2SongSchema>;

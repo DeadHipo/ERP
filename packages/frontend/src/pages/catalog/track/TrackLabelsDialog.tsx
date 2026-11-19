@@ -11,7 +11,7 @@ import { DateField } from '../../../components/fields/DateField';
 import { LabelField, useLabelChoice } from '../../../components/fields/LabelField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.catalog.catalogLabel;
 

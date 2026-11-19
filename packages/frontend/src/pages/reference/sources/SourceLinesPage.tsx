@@ -11,7 +11,7 @@ import { DateField } from '../../../components/fields/DateField';
 import { SelectField } from '../../../components/fields/SelectField';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 import { labelQuery, useLabel } from '../../../lib/label';
 import { toInt } from '../shared';
 

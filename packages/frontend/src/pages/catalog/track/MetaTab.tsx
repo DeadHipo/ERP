@@ -15,7 +15,7 @@ import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
 import { formatDateTime } from '../../../lib/datetime';
 import { formatDuration, parseDuration } from '../../../lib/duration';
-import { SimpleTable, Td } from '../components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.catalog.track.meta;
 type Meta = z.output<typeof trackMetaSchema>;

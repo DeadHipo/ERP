@@ -9,7 +9,7 @@ import { PageHeader } from '../../../components/PageHeader';
 import { QueryView } from '../../../components/PageState';
 import { StatusChip } from '../../../components/StatusChip';
 import { ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 import { OwnerLink, useOwnerNames } from '../shared';
 import { AssignOwnerAction } from './AssignOwnerAction';
 import { CreateSplitForArtistDialog } from './CreateSplitForArtistDialog';

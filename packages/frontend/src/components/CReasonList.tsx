@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { CReason } from '@erp/shared/api-responses';
-import { Money } from '../../../components/Money';
-import { ru } from '../../../i18n/ru';
+import { Money } from './Money';
+import { ru } from '../i18n/ru';
 
 /** Category C by reason (`cByReason` of a response), each a link to its queue: `data-testid="c-reason-<reason>"`. */
 export function CReasonList({ byReason }: { byReason: Partial<Record<CReason, string>> }) {

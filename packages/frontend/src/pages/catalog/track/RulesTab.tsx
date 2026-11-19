@@ -5,7 +5,7 @@ import { EntityLink } from '../../../components/EntityLink';
 import { StatusChip } from '../../../components/StatusChip';
 import { fmt, ru } from '../../../i18n/ru';
 import { ConfirmSplitDialog } from '../../work/actions/dialogs';
-import { SimpleTable, Td } from '../components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 import { BuyoutDialog, SplitDialog } from './SplitDialogs';
 import { CloseParticipationDialog, CreateParticipationDialog } from './ParticipationDialogs';
 import { periodText, type Participation, type Split } from './types';

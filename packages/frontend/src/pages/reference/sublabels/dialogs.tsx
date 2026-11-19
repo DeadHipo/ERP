@@ -10,7 +10,7 @@ import { FormDialog } from '../../../components/FormDialog';
 import { EntityPicker } from '../../../components/fields/EntityPicker';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.sublabels;
 export type Term = z.output<typeof sublabelTermListItemSchema>;

@@ -15,7 +15,7 @@ import { notifyError, notifySuccess } from '../../../components/toast';
 import { fmt, ru } from '../../../i18n/ru';
 import { saveBlob } from '../../../lib/download';
 import { formatCount } from '../../../lib/money';
-import { SimpleTable, Td } from '../../catalog/components/MoneyTable';
+import { SimpleTable, Td } from '../../../components/MoneyTable';
 
 const t = ru.sublabels;
 type Report = z.output<typeof sublabelReportSchema>;

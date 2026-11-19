@@ -14,7 +14,7 @@ import { Money } from '../../../components/Money';
 import { QueryView } from '../../../components/PageState';
 import { TextField } from '../../../components/fields/TextField';
 import { fmt, ru } from '../../../i18n/ru';
-import { CReasonList } from '../components/CReasonList';
+import { CReasonList } from '../../../components/CReasonList';
 import { MetaTab } from './MetaTab';
 import { MoneyTab } from './MoneyTab';
 import { RulesTab } from './RulesTab';
