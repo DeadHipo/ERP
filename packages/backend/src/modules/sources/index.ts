@@ -12,3 +12,4 @@ export {
 } from './columnar';
 export { createSourceFilesRegistry, type SourceFilesRegistry, type SourceFileRecord } from './registry';
 export { spreadAlbumLines } from './album-lines';
+export { byteCompare, LIST_CHUNK, listChunks } from './long-lists';

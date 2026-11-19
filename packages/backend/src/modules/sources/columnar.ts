@@ -1,5 +1,7 @@
 import type { ClickHouseClient } from '@clickhouse/client';
+import { parsePico, picoToString } from '../../shared/money';
 import { note, timed } from '../../shared/timing';
+import { byteCompare, LIST_CHUNK, readByList } from './long-lists';
 
 /**
  * What a read of the units may be narrowed to: a month range on one basis, and (the unit scope of the facade, D-161)
@@ -39,9 +41,6 @@ function unitsWhere(fileIds: string[], filter: UnitsFilter): { where: string; pa
   list('upcs', 'upc');
   return { where: where.join(' AND '), params, empty };
 }
-
-/** UPCs in one ClickHouse parameter (D-195): an HTML form field of the HTTP interface has a size limit. */
-const UPC_CHUNK = 1_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -154,6 +153,8 @@ export function createBelieveColumnar(
     database: 'believe',
     stageDatabase: 'believe_stage',
   },
+  /** `listChunk`: values of one list in one query parameter (`LIST_CHUNK`; a test lowers it, D-258). */
+  opts: { listChunk?: number } = {},
 ) {
   const DB = names.database;
   const STAGE_DB = names.stageDatabase;
@@ -178,6 +179,35 @@ export function createBelieveColumnar(
   };
   const partition = (fileId: string, reportingMonth: string) =>
     `(${reportingMonth.replace('-', '')}, '${fileId}')`;
+  // D-258: a list (ISRCs, UPCs, label strings) longer than `LIST_CHUNK` goes in chunks of distinct values, one query
+  // per chunk with the same files, one after another; a list within the size is one query with the list as given.
+  const listChunk = opts.listChunk ?? LIST_CHUNK;
+  const byList = <T>(values: string[] | undefined, read: (part: string[] | undefined) => Promise<T[]>) =>
+    readByList(values, read, listChunk);
+  /**
+   * A read filtered by two lists (`isrc IN … AND upc IN …`) whose rows each carry one ISRC and one UPC: the chunks of
+   * the ISRCs outside, of the UPCs inside. The rows of two chunks never share a pair (ISRC, UPC). `ordered` says the
+   * query is `ORDER BY isrc, upc, …`: the ISRC chunks follow one another in byte order, so only the UPC chunks of one
+   * ISRC chunk are put back in order, by (ISRC, UPC) with a stable sort (the rows of one pair come from one query and
+   * keep its order).
+   */
+  const byIsrcsAndUpcs = async <T extends { isrc: string; upc: string }>(
+    lists: { isrcs?: string[]; upcs?: string[] },
+    read: (part: { isrcs?: string[]; upcs?: string[] }) => Promise<T[]>,
+    ordered: boolean,
+  ): Promise<T[]> => {
+    const part = (isrcs: string[] | undefined, upcs: string[] | undefined) => ({
+      ...(isrcs ? { isrcs } : {}),
+      ...(upcs ? { upcs } : {}),
+    });
+    const { rows } = await byList(lists.isrcs, async (isrcs) => {
+      const inner = await byList(lists.upcs, (upcs) => read(part(isrcs, upcs)));
+      return inner.chunked && ordered
+        ? inner.rows.sort((a, b) => byteCompare(a.isrc, b.isrc) || byteCompare(a.upc, b.upc))
+        : inner.rows;
+    });
+    return rows;
+  };
 
   return {
     async createStage(fileId: string): Promise<void> {
@@ -250,29 +280,33 @@ export function createBelieveColumnar(
         net: string;
       }[]
     > {
-      const { where, params, empty } = unitsWhere(fileIds, filter);
-      if (empty) return [];
-      // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
-      // The view is answered from the `units_by_label` projection of believe.rows (D-122, D-124). Hundreds of thousands of units:
-      // compact rows (arrays in the order of the SELECT).
-      const rows = await compact<
-        [fid: string, isrc: string, upc: string, rm: string, sm: string, label: string, net: string]
-      >(
-        `SELECT toString(file_id) AS fid, isrc, upc, toString(reporting_month) AS rm,
+      if (unitsWhere(fileIds, filter).empty) return [];
+      const read = async (lists: { isrcs?: string[]; upcs?: string[] }) => {
+        const { where, params } = unitsWhere(fileIds, { from: filter.from, to: filter.to, basis: filter.basis, ...lists });
+        // Result aliases differ from the column names: ClickHouse would resolve a name in WHERE to the alias.
+        // The view is answered from the `units_by_label` projection of believe.rows (D-122, D-124). Hundreds of thousands of units:
+        // compact rows (arrays in the order of the SELECT).
+        const rows = await compact<
+          [fid: string, isrc: string, upc: string, rm: string, sm: string, label: string, net: string]
+        >(
+          `SELECT toString(file_id) AS fid, isrc, upc, toString(reporting_month) AS rm,
                 toString(sales_month) AS sm, label_name AS label, toString(net_revenue) AS net
          FROM ${DB}.units WHERE ${where}
          ORDER BY isrc, upc, reporting_month, sales_month, label_name, file_id`,
-        params,
-      );
-      return rows.map(([fid, isrc, upc, rm, sm, label, net]) => ({
-        fileId: fid,
-        isrc,
-        upc,
-        reportingMonth: rm.slice(0, 7),
-        salesMonth: sm.slice(0, 7),
-        labelName: label,
-        net,
-      }));
+          params,
+        );
+        return rows.map(([fid, isrc, upc, rm, sm, label, net]) => ({
+          fileId: fid,
+          isrc,
+          upc,
+          reportingMonth: rm.slice(0, 7),
+          salesMonth: sm.slice(0, 7),
+          labelName: label,
+          net,
+        }));
+      };
+      // D-258: a unit has one ISRC and one UPC, so the chunks share no unit; the order is the query's (ISRC first)
+      return byIsrcsAndUpcs(filter, read, true);
     },
 
     /** Every distinct label string of the given files (the owner reach of the facade, D-163). */
@@ -288,11 +322,15 @@ export function createBelieveColumnar(
     /** The ISRCs whose units carry one of the given (raw) label strings, over the given files (D-163). */
     async isrcsOfLabelStrings(fileIds: string[], labels: string[]): Promise<string[]> {
       if (fileIds.length === 0 || labels.length === 0) return [];
-      const rows = await json<{ isrc: string }>(
-        `SELECT DISTINCT isrc FROM ${DB}.units WHERE file_id IN {ids:Array(UUID)} AND label_name IN {labels:Array(String)} ORDER BY isrc`,
-        { ids: fileIds, labels },
+      const { rows, chunked } = await byList(labels, (part) =>
+        json<{ isrc: string }>(
+          `SELECT DISTINCT isrc FROM ${DB}.units WHERE file_id IN {ids:Array(UUID)} AND label_name IN {labels:Array(String)} ORDER BY isrc`,
+          { ids: fileIds, labels: part },
+        ),
       );
-      return rows.map((r) => r.isrc);
+      const isrcs = rows.map((r) => r.isrc);
+      // D-258: an ISRC may carry the strings of two chunks: the distinct ISRCs of all chunks, in the query's order
+      return chunked ? [...new Set(isrcs)].sort(byteCompare) : isrcs;
     },
 
     /** Every distinct ISRC of the given files (the book of a label = the files loaded under it, D-169). */
@@ -316,13 +354,16 @@ export function createBelieveColumnar(
     ): Promise<{ isrc: string; fileId: string; reportingMonth: string }[]> {
       if (fileIds.length === 0 || (isrcs && isrcs.length === 0)) return [];
       // aliases differ from the column names (an alias named like a column would change the WHERE)
-      const rows = await compact<[code: string, fid: string, rm: string]>(
-        `SELECT isrc AS code, toString(file_id) AS fid, toString(reporting_month) AS rm
+      // D-258: the ISRC is in the group key and first in the order: the chunks one after another are the one query
+      const { rows } = await byList(isrcs, (some) =>
+        compact<[code: string, fid: string, rm: string]>(
+          `SELECT isrc AS code, toString(file_id) AS fid, toString(reporting_month) AS rm
          FROM ${DB}.units
-         WHERE file_id IN {ids:Array(UUID)} AND isrc != ''${isrcs ? ' AND isrc IN {isrcs:Array(String)}' : ''}
+         WHERE file_id IN {ids:Array(UUID)} AND isrc != ''${some ? ' AND isrc IN {isrcs:Array(String)}' : ''}
          GROUP BY isrc, file_id, reporting_month
          ORDER BY code, rm, fid`,
-        isrcs ? { ids: fileIds, isrcs } : { ids: fileIds },
+          some ? { ids: fileIds, isrcs: some } : { ids: fileIds },
+        ),
       );
       return rows.map(([code, fid, rm]) => ({ isrc: code, fileId: fid, reportingMonth: rm.slice(0, 7) }));
     },
@@ -346,11 +387,10 @@ export function createBelieveColumnar(
         );
         return rows.map(([code, list, last]) => ({ upc: code, isrcs: list, lastMonth: last.slice(0, 7) }));
       };
-      if (!upcs || upcs.length <= UPC_CHUNK) return read(upcs);
-      // D-195: a whole release registry (8 000 UPCs) is longer than one form field of the HTTP interface: in chunks
-      const out: { upc: string; isrcs: string[]; lastMonth: string }[] = [];
-      for (let i = 0; i < upcs.length; i += UPC_CHUNK) out.push(...(await read(upcs.slice(i, i + UPC_CHUNK))));
-      return out.sort((a, b) => (a.upc < b.upc ? -1 : a.upc > b.upc ? 1 : 0));
+      // D-195: a whole release registry (8 000 UPCs) is longer than one form field of the HTTP interface: in chunks.
+      // D-258: the chunks hold distinct UPCs in byte order (the group key and the order of the query), so a UPC
+      // repeated in the list gives one row and the chunks one after another are the one query.
+      return (await byList(upcs, read)).rows;
     },
 
     /**
@@ -413,12 +453,25 @@ export function createBelieveColumnar(
      * filter narrows the units summed.
      */
     async netByUpc(fileIds: string[], filter: UnitsFilter = {}): Promise<{ upc: string; net: string }[]> {
-      const { where, params, empty } = unitsWhere(fileIds, filter);
-      if (empty) return [];
-      return json<{ upc: string; total: string }>(
-        `SELECT upc, toString(sum(net_revenue)) AS total FROM ${DB}.units WHERE ${where} GROUP BY upc`,
-        params,
-      ).then((rows) => rows.map((r) => ({ upc: r.upc, net: r.total })));
+      if (unitsWhere(fileIds, filter).empty) return [];
+      const read = (lists: { upcs?: string[]; isrcs?: string[] }) => {
+        const { where, params } = unitsWhere(fileIds, { from: filter.from, to: filter.to, basis: filter.basis, ...lists });
+        return json<{ upc: string; total: string }>(
+          `SELECT upc, toString(sum(net_revenue)) AS total FROM ${DB}.units WHERE ${where} GROUP BY upc`,
+          params,
+        ).then((rows) => rows.map((r) => ({ upc: r.upc, net: r.total })));
+      };
+      // D-258: the UPC is the group key, so the UPC chunks share no group. The ISRC is not: a release has tracks in
+      // several ISRC chunks, and its sums are added here, exact (pico integers), written as ClickHouse writes a
+      // Decimal (no padding zeros). The query has no ORDER BY: the order of the rows was never defined.
+      const { rows } = await byList(filter.upcs, async (upcs) => {
+        const inner = await byList(filter.isrcs, (isrcs) => read({ ...(upcs ? { upcs } : {}), ...(isrcs ? { isrcs } : {}) }));
+        if (!inner.chunked) return inner.rows;
+        const sums = new Map<string, bigint>();
+        for (const r of inner.rows) sums.set(r.upc, (sums.get(r.upc) ?? 0n) + parsePico(r.net));
+        return [...sums].map(([upc, pico]) => ({ upc, net: picoToString(pico) }));
+      });
+      return rows;
     },
 
     /** Net per (ISRC, UPC) of the given ISRCs over the given files, from the `units` view; exact decimal text. */
@@ -427,11 +480,15 @@ export function createBelieveColumnar(
       isrcs: string[],
     ): Promise<{ isrc: string; upc: string; net: string }[]> {
       if (fileIds.length === 0 || isrcs.length === 0) return [];
-      return json<{ isrc: string; upc: string; total: string }>(
-        `SELECT isrc, upc, toString(sum(net_revenue)) AS total FROM ${DB}.units
+      // D-258: the ISRC is in the group key and first in the order: the chunks one after another are the one query
+      const { rows } = await byList(isrcs, (some) =>
+        json<{ isrc: string; upc: string; total: string }>(
+          `SELECT isrc, upc, toString(sum(net_revenue)) AS total FROM ${DB}.units
          WHERE file_id IN {ids:Array(UUID)} AND isrc IN {isrcs:Array(String)} GROUP BY isrc, upc ORDER BY isrc, upc`,
-        { ids: fileIds, isrcs },
-      ).then((rows) => rows.map((r) => ({ isrc: r.isrc, upc: r.upc, net: r.total })));
+          { ids: fileIds, isrcs: some },
+        ),
+      );
+      return rows.map((r) => ({ isrc: r.isrc, upc: r.upc, net: r.total }));
     },
 
     /** Names per (ISRC, UPC) from the latest report month in which the pair appears (metadata only). */
@@ -447,29 +504,34 @@ export function createBelieveColumnar(
     > {
       if (fileIds.length === 0 || filter.isrcs?.length === 0 || filter.upcs?.length === 0) return [];
       // the unit scope of the facade (D-162): only the pairs of these ISRCs / UPCs
-      const where = ['file_id IN {ids:Array(UUID)}'];
-      const params: Record<string, unknown> = { ids: fileIds };
-      if (filter.isrcs) {
-        where.push('isrc IN {isrcs:Array(String)}');
-        params.isrcs = filter.isrcs;
-      }
-      if (filter.upcs) {
-        where.push('upc IN {upcs:Array(String)}');
-        params.upcs = filter.upcs;
-      }
-      const rows = await json<{
-        isrc: string;
-        upc: string;
-        artist: string;
-        track: string;
-        release: string;
-        label: string;
-      }>(
-        `SELECT isrc, upc, argMax(artist_name, reporting_month) AS artist, argMax(track_title, reporting_month) AS track,
+      const read = (lists: { isrcs?: string[]; upcs?: string[] }) => {
+        const where = ['file_id IN {ids:Array(UUID)}'];
+        const params: Record<string, unknown> = { ids: fileIds };
+        if (lists.isrcs) {
+          where.push('isrc IN {isrcs:Array(String)}');
+          params.isrcs = lists.isrcs;
+        }
+        if (lists.upcs) {
+          where.push('upc IN {upcs:Array(String)}');
+          params.upcs = lists.upcs;
+        }
+        return json<{
+          isrc: string;
+          upc: string;
+          artist: string;
+          track: string;
+          release: string;
+          label: string;
+        }>(
+          `SELECT isrc, upc, argMax(artist_name, reporting_month) AS artist, argMax(track_title, reporting_month) AS track,
                 argMax(release_title, reporting_month) AS release, argMax(label_name, reporting_month) AS label
          FROM ${DB}.rows WHERE ${where.join(' AND ')} GROUP BY isrc, upc`,
-        params,
-      );
+          params,
+        );
+      };
+      // D-258: the group key is the pair (ISRC, UPC), so the chunks of either list share no group and every group
+      // has all its rows in one query. The query has no ORDER BY: the order of the rows was never defined.
+      const rows = await byIsrcsAndUpcs(filter, read, false);
       return rows.map((r) => ({
         isrc: r.isrc,
         upc: r.upc,
