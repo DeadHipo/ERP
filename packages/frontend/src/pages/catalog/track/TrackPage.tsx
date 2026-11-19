@@ -7,6 +7,7 @@ import { useAction } from '../../../api/queries/core';
 import { trackQueries } from '../../../api/queries/tracks';
 import { ActionButton } from '../../../components/ActionButton';
 import { ArtistLinks } from '../../../components/ArtistLinks';
+import { Cover } from '../../../components/Cover';
 import { useBreadcrumbLabel } from '../../../components/breadcrumb-label';
 import { EntityCard } from '../../../components/EntityCard';
 import { EntityLink } from '../../../components/EntityLink';
@@ -196,10 +197,10 @@ function NoteEditor({ data }: { data: TrackMoney }) {
   );
 }
 
-/** D-238: the cover of the recording beside the title, when its metadata names one (a reference read, not money). */
+/** D-238: the cover of the recording beside the title; an empty box until the metadata arrives or when it names none (a reference read, not money). */
 function TrackCover({ isrc }: { isrc: string }) {
   const meta = useQuery(trackQueries.meta(isrc)).data?.meta;
-  return meta?.coverUrl ? <img data-testid="track-cover" src={meta.coverUrl} alt="" className="h-12 w-12 rounded-md object-cover" /> : null;
+  return <Cover url={meta?.coverUrl} size="md" testid="track-cover" />;
 }
 
 /** D-238: «· version» after the title, from the metadata of the recording. */

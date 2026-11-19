@@ -1,9 +1,10 @@
 import type { TrackView } from '@erp/shared/api-responses';
 import { displayTitle, fallbackTitleOf } from '../lib/track-title';
+import { Cover } from './Cover';
 import { EntityLink } from './EntityLink';
 
 /**
- * An ISRC as a person reads it: a small cover, the title, «version · ISRC» in small print, all a link to the track
+ * An ISRC as a person reads it: a 32 px cover box (empty without a cover), the title, «version · ISRC» in small print, all a link to the track
  * (P6). Nothing is computed: the fields come from the API.
  *
  * `track` (D-250) is the track of `useTracks`: the title is `displayTitle(track)`, without one the link reads the
@@ -18,7 +19,7 @@ export function TrackName(props: { isrc: string; track?: TrackView | null; fallb
   const coverUrl = props.track?.meta?.coverUrl ?? null;
   return (
     <span className="inline-flex items-center gap-2" data-testid={`track-name-${props.isrc}`}>
-      {coverUrl ? <img src={coverUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" loading="lazy" /> : null}
+      <Cover url={coverUrl} />
       <span className="flex flex-col leading-tight">
         <EntityLink kind="isrc" id={props.isrc} label={base ?? props.isrc} />
         {/* without any title the link already reads the ISRC: it is not repeated under it */}

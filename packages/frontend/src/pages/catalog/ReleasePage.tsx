@@ -6,6 +6,7 @@ import { useMasterRows } from '../../api/queries/money';
 import { useTracks } from '../../api/queries/tracks';
 import { useBreadcrumbLabel } from '../../components/breadcrumb-label';
 import { ArtistLinks } from '../../components/ArtistLinks';
+import { Cover } from '../../components/Cover';
 import { MonthsMoneyBlock } from '../../components/money-blocks/MonthsMoneyBlock';
 import { TracksMoneyBlock } from '../../components/money-blocks/TracksMoneyBlock';
 import { PageHeader } from '../../components/PageHeader';
@@ -48,7 +49,7 @@ export function ReleasePage() {
         {(data) => (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
-              {data.coverUrl ? <img src={data.coverUrl} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" data-testid="release-cover" /> : null}
+              <Cover url={data.coverUrl} size="lg" testid="release-cover" />
               <PageHeader title={data.title || upc} subtitle={t.subtitle} />
             </div>
             <div className="flex flex-wrap gap-4 text-sm" data-testid="release-header">
