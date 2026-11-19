@@ -160,13 +160,23 @@ export function failedOf(oldError: string | undefined, newError: string | undefi
 
 /**
  * Why a run proves nothing (an empty selection must not read as «equal»): no own label, no row of the new answer for
- * every ISRC under «all» (`null` = that comparison failed, which is counted elsewhere). Empty = the run counts; otherwise
- * the run ends with code 1. (The releases are no longer compared with the old answer, D-257.)
+ * every ISRC under «all» (`null` = that comparison failed, which is counted elsewhere), or, in a run against a release
+ * baseline (`baselineReleases` given), not one release compared or not one money row of the baseline in them. Empty = the run counts; otherwise the run ends with
+ * code 1. (The releases are no longer compared with the old answer in the same process, D-257.)
  */
-export function emptyRunReasons(r: { labels: number; allIsrcRows: number | null }): string[] {
+export function emptyRunReasons(r: {
+  labels: number;
+  allIsrcRows: number | null;
+  baselineReleases?: number;
+  /** The non-zero track and month rows of the baseline in the releases that were compared. */
+  baselineMoneyRows?: number;
+}): string[] {
   const out: string[] = [];
   if (r.labels === 0) out.push('no own label');
   if (r.allIsrcRows === 0) out.push('no row for every ISRC under «all»');
+  if (r.baselineReleases === 0) out.push('no release compared with the baseline');
+  // a baseline of zero rows only would be «equal» to anything empty
+  if (r.baselineMoneyRows === 0) out.push('no money row in the baseline releases');
   return out;
 }
 
@@ -177,3 +187,288 @@ export function emptyRunReasons(r: { labels: number; allIsrcRows: number | null 
  */
 export const exitCodeOf = (r: { differences: number; newOnlyFailures: number; notCompared: number; timingsOutside: number }): 0 | 1 | 2 | 3 =>
   r.differences + r.newOnlyFailures > 0 ? 2 : r.notCompared > 0 ? 1 : r.timingsOutside > 0 ? 3 : 0;
+
+// ---- The release slice against a saved baseline -------------------------------------------------------------------
+// The old `release()` gave the money of a release until D-257. `--save-release-baseline` writes it down on the code
+// before D-257; `--release-baseline` compares `masterRows` (scope `release`) of the final code with that file, by the
+// rules above. The file holds keys (label id, UPC, ISRC, month) and money strings only: no title, no pseudonym.
+
+/** The `n` rows with the largest `net` (a decimal string), ties by UPC. */
+export function topByNet<T extends { upc: string; net: string }>(items: T[], n: number): T[] {
+  return items
+    .map((item) => ({ item, net: new Decimal(item.net) }))
+    .sort((a, b) => b.net.comparedTo(a.net) || (a.item.upc < b.item.upc ? -1 : a.item.upc > b.item.upc ? 1 : 0))
+    .slice(0, n)
+    .map((x) => x.item);
+}
+
+/** The money of a row as the JSON of the old answer gives it: plain decimal strings, the reasons in its order. */
+export interface BaselineMoney {
+  net: string;
+  B: string;
+  C: string;
+  ours: string;
+  cByReason: Record<string, string>;
+}
+export type BaselineTrack = { isrc: string } & BaselineMoney;
+export type BaselineMonth = { reportingMonth: string } & BaselineMoney;
+export interface BaselineRelease {
+  upc: string;
+  tracks: BaselineTrack[];
+  months: BaselineMonth[];
+}
+/** The time of the old `release()` of the largest release of a book: taken in the process that saved the baseline. */
+export interface BaselineTiming {
+  upc: string;
+  ms: number[];
+  medianMs: number;
+  /** The size of the old JSON answer (a number only; the answer itself is not kept). */
+  bytes: number;
+}
+export interface BaselineBook {
+  /** `book N` in the order of the label list of the saving run, or `all`. */
+  book: string;
+  labelId: string | null;
+  /** The fingerprint of the data the baseline was taken on: the release list of the book (no calculation). */
+  list: ListFingerprint;
+  releases: BaselineRelease[];
+  timing: BaselineTiming | null;
+}
+/** How many releases `releases(undefined, label)` lists and their `net` added up exactly. */
+export interface ListFingerprint {
+  releases: number;
+  net: string;
+}
+export const listFingerprint = (items: { net: string }[]): ListFingerprint => ({
+  releases: items.length,
+  net: items.reduce((sum, x) => sum.add(new Decimal(x.net)), ZERO).toJSON(),
+});
+/** The same list: the same count and the same sum (as amounts, not as text). */
+export const sameFingerprint = (a: ListFingerprint, b: ListFingerprint): boolean =>
+  a.releases === b.releases && new Decimal(a.net).equals(new Decimal(b.net));
+/** The message of a run whose release lists are not those the baseline was taken on. */
+export const DATA_CHANGED = 'the data changed since the baseline was taken';
+export const BASELINE_KIND = 'master-rows-release-baseline';
+export interface ReleaseBaseline {
+  kind: typeof BASELINE_KIND;
+  version: 1;
+  takenAt: string;
+  /** The load average (1, 5, 15 minutes) when the baseline was saved: its timings were taken under it. */
+  loadavg: number[];
+  /** The own labels of the saving run («all» is one more entry). */
+  books: number;
+  topReleases: number;
+  rounds: number;
+  entries: BaselineBook[];
+}
+
+const AMOUNT_RE = /^-?\d+(\.\d+)?$/;
+const REASON_RE = /^[a-z][a-z0-9_]{0,60}$/;
+/** A key of the file: an ISRC, a UPC, a label id. Never free text. */
+const KEY_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const isKey = (x: unknown): x is string => typeof x === 'string' && KEY_RE.test(x);
+const isAmount = (x: unknown): x is string => typeof x === 'string' && AMOUNT_RE.test(x);
+
+/** What of a row the baseline does not take (never the value itself). */
+export type BadField = 'upc' | 'isrc' | 'month' | 'amount' | 'reason';
+
+function moneyOrWhy(x: unknown): { ok: true; money: BaselineMoney } | { ok: false; why: 'amount' | 'reason' } {
+  const amount = { ok: false as const, why: 'amount' as const };
+  if (!isRecord(x)) return amount;
+  let j: unknown;
+  try {
+    j = JSON.parse(JSON.stringify({ net: x.net, B: x.B, C: x.C, ours: x.ours, cByReason: x.cByReason }));
+  } catch {
+    return amount;
+  }
+  if (!isRecord(j) || !isAmount(j.net) || !isAmount(j.B) || !isAmount(j.C) || !isAmount(j.ours)) return amount;
+  if (!isRecord(j.cByReason)) return { ok: false, why: 'reason' };
+  const cByReason: Record<string, string> = {};
+  for (const [k, v] of Object.entries(j.cByReason)) {
+    if (!REASON_RE.test(k)) return { ok: false, why: 'reason' };
+    if (!isAmount(v)) return amount;
+    cByReason[k] = v;
+  }
+  return { ok: true, money: { net: j.net, B: j.B, C: j.C, ours: j.ours, cByReason } };
+}
+
+/**
+ * The money fields of a row of unknown shape (a row of the old answer, whose amounts are `Decimal`, or a row of the
+ * file, whose amounts are strings): through JSON, so both give the same strings. `undefined` = not a money row.
+ */
+export function baselineMoney(x: unknown): BaselineMoney | undefined {
+  const made = moneyOrWhy(x);
+  return made.ok ? made.money : undefined;
+}
+
+/** The message of the save mode on a code where `release()` has no money (D-257 and later). */
+export const NO_MONEY_HERE = 'release() gives no money here: the baseline is taken on the code before D-257';
+
+/**
+ * The baseline record of one release from the old answer of `release(upc, label)`, read as unknown (the final code has
+ * no money fields in its type): the keys and the money of its tracks and months, nothing else. `no_money` = the
+ * answer has no money (a track without `net`, no `months`); otherwise the field the file does not take: the UPC, an
+ * ISRC, a month, an amount, a C reason.
+ */
+export function baselineReleaseOf(upc: string, answer: unknown): { ok: true; release: BaselineRelease } | { ok: false; reason: 'no_money' | BadField } {
+  if (!isRecord(answer) || !Array.isArray(answer.tracks) || !Array.isArray(answer.months)) return { ok: false, reason: 'no_money' };
+  const rows: unknown[] = [...(answer.tracks as unknown[]), ...(answer.months as unknown[])];
+  if (rows.some((r) => !isRecord(r) || r.net === undefined)) return { ok: false, reason: 'no_money' };
+  if (!isKey(upc)) return { ok: false, reason: 'upc' };
+  const tracks: BaselineTrack[] = [];
+  for (const t of answer.tracks as Record<string, unknown>[]) {
+    if (!isKey(t.isrc)) return { ok: false, reason: 'isrc' };
+    const made = moneyOrWhy(t);
+    if (!made.ok) return { ok: false, reason: made.why };
+    tracks.push({ isrc: t.isrc, ...made.money });
+  }
+  const months: BaselineMonth[] = [];
+  for (const m of answer.months as Record<string, unknown>[]) {
+    if (typeof m.reportingMonth !== 'string' || !MONTH_RE.test(m.reportingMonth)) return { ok: false, reason: 'month' };
+    const made = moneyOrWhy(m);
+    if (!made.ok) return { ok: false, reason: made.why };
+    months.push({ reportingMonth: m.reportingMonth, ...made.money });
+  }
+  return { ok: true, release: { upc, tracks, months } };
+}
+
+const BAD_FIELD: Record<BadField, string> = {
+  upc: 'the UPC is not a key',
+  isrc: 'an ISRC is not a key',
+  month: 'a month is not YYYY-MM',
+  amount: 'an amount is not a plain decimal string',
+  reason: 'a C reason is not a reason code',
+};
+/** The refusal of the save mode for one release: its place in the book and the field, never the value. */
+export const badRowText = (book: string, place: number, of: number, field: BadField): string =>
+  `${book}: release ${place} of ${of}: ${BAD_FIELD[field]} in the old answer (the baseline takes keys and amounts only)`;
+
+/**
+ * A baseline file read back: checked field by field (nothing but keys, months and amounts gets through). Its header
+ * is checked against its own content (`books` = the entries of a label, one entry «all», at most `topReleases`
+ * releases a book and no more than its list has, `rounds` times a timing) and, with `expected`, against the constants
+ * of the run.
+ */
+export function parseBaseline(
+  x: unknown,
+  expected?: { topReleases: number; rounds: number },
+): { ok: true; baseline: ReleaseBaseline } | { ok: false; reason: string } {
+  const bad = (reason: string) => ({ ok: false as const, reason });
+  if (!isRecord(x) || x.kind !== BASELINE_KIND || x.version !== 1) return bad('not a release baseline of version 1');
+  if (typeof x.takenAt !== 'string' || Number.isNaN(Date.parse(x.takenAt))) return bad('no date of the baseline');
+  const int = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  if (!int(x.books) || !int(x.topReleases) || !int(x.rounds) || !Array.isArray(x.entries)) return bad('a broken header');
+  const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!Array.isArray(x.loadavg) || x.loadavg.length !== 3 || !(x.loadavg as unknown[]).every(finite)) return bad('no load average of the baseline');
+  if (expected && (x.topReleases !== expected.topReleases || x.rounds !== expected.rounds)) return bad('taken with another number of releases or rounds than this run uses');
+  const entries: BaselineBook[] = [];
+  for (const e of x.entries as unknown[]) {
+    if (!isRecord(e) || typeof e.book !== 'string' || !/^(all|book \d{1,4})$/.test(e.book)) return bad('a broken book');
+    if (!(e.labelId === null || isKey(e.labelId)) || (e.labelId === null) !== (e.book === 'all') || !Array.isArray(e.releases)) return bad('a broken book');
+    const list = e.list;
+    if (!isRecord(list) || !int(list.releases) || !isAmount(list.net)) return bad('a broken fingerprint of a release list');
+    if (e.releases.length > x.topReleases || e.releases.length > list.releases) return bad('more releases in a book than the header allows');
+    const releases: BaselineRelease[] = [];
+    for (const r of e.releases as unknown[]) {
+      if (!isRecord(r) || !isKey(r.upc)) return bad('a broken release');
+      const made = baselineReleaseOf(r.upc, r);
+      if (!made.ok) return bad('a broken release');
+      releases.push(made.release);
+    }
+    let timing: BaselineTiming | null = null;
+    if (e.timing !== null) {
+      const t = e.timing;
+      const ms = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+      if (!isRecord(t) || !isKey(t.upc) || !Array.isArray(t.ms) || t.ms.length === 0 || !(t.ms as unknown[]).every(ms) || !ms(t.medianMs) || !int(t.bytes)) return bad('a broken timing');
+      if (!releases.some((r) => r.upc === t.upc)) return bad('a timing of a release that is not in the baseline');
+      if (t.ms.length !== x.rounds) return bad('a timing of another number of rounds than the header says');
+      timing = { upc: t.upc, ms: t.ms as number[], medianMs: t.medianMs, bytes: t.bytes };
+    }
+    entries.push({ book: e.book, labelId: e.labelId, list: { releases: list.releases, net: list.net }, releases, timing });
+  }
+  if (entries.filter((e) => e.labelId !== null).length !== x.books || entries.filter((e) => e.labelId === null).length !== 1) return bad('the header names another number of books than the file has');
+  return {
+    ok: true,
+    baseline: { kind: BASELINE_KIND, version: 1, takenAt: x.takenAt, loadavg: x.loadavg as number[], books: x.books, topReleases: x.topReleases, rounds: x.rounds, entries },
+  };
+}
+
+/** The message of a run whose books are not those of the baseline. */
+export const OTHER_BOOKS = 'baseline of another organization or label set';
+
+/** The books of the baseline are exactly the books of the run, by label id (`null` = «all»), each once. */
+export function sameBooks(baseline: { labelId: string | null }[], run: (string | null)[]): boolean {
+  const a = baseline.map((e) => e.labelId ?? '');
+  const b = run.map((id) => id ?? '');
+  const distinct = new Set(a);
+  return a.length === b.length && distinct.size === a.length && new Set(b).size === b.length && b.every((id) => distinct.has(id));
+}
+
+/** The sums of a baseline row (its strings read exactly). */
+export const baselineSums = (m: BaselineMoney): Sums => ({
+  net: new Decimal(m.net),
+  B: new Decimal(m.B),
+  C: new Decimal(m.C),
+  ours: new Decimal(m.ours),
+  cByReason: Object.fromEntries(Object.entries(m.cByReason).map(([k, v]) => [k, new Decimal(v)])) as Sums['cByReason'],
+});
+
+/** One part of the comparison of a release: the rows by ISRC, the rows by month, the totals. */
+export interface ReleasePart {
+  part: 'isrc' | 'month' | 'totals';
+  oldRows: number;
+  newRows: number;
+  differences: Difference[];
+}
+
+/**
+ * A release of the baseline against the two answers of `masterRows` (scope `release`, the grains `isrc` and `month`):
+ * the comparison D-257 removed, with the baseline in the place of the old answer. The tracks against the rows by ISRC
+ * (a track of the old answer has no months: the money alone), the months against the rows by month (`reportingMonth`
+ * is `month`; a row by month that carries `months` differs), the totals against the old tracks added up, and the same
+ * totals at both grains. Zero rows are dropped on both sides; a key of one side is a difference.
+ */
+export function compareReleaseWithBaseline(
+  old: BaselineRelease,
+  byIsrc: { rows: MasterRow[]; totals: Sums },
+  byMonth: { rows: MasterRow[]; totals: Sums },
+): ReleasePart[] {
+  const tracks = old.tracks.map((t) => ({ isrc: t.isrc, ...baselineSums(t) }));
+  const months = old.months.map((m) => ({ reportingMonth: m.reportingMonth, ...baselineSums(m) }));
+  const tracksOld = oldPairs(tracks, (t) => t.isrc);
+  const tracksNew = newPairs(byIsrc.rows, (r) => r.isrc as string, { months: false });
+  const monthsOld = oldPairs(months, (m) => m.reportingMonth);
+  const monthsNew = newPairs(byMonth.rows, (r) => r.month as string, { months: true });
+  const totals = diffTotals(tracks, byIsrc.totals);
+  const a = moneyText(byIsrc.totals);
+  const b = moneyText(byMonth.totals);
+  if (a !== b) totals.push({ key: 'totals (by ISRC against by month)', old: a, new: b });
+  return [
+    { part: 'isrc', oldRows: tracksOld.length, newRows: tracksNew.length, differences: diffPairs(tracksOld, tracksNew) },
+    { part: 'month', oldRows: monthsOld.length, newRows: monthsNew.length, differences: diffPairs(monthsOld, monthsNew) },
+    { part: 'totals', oldRows: 1, newRows: 1, differences: totals },
+  ];
+}
+
+/** The arguments of the script: `[dataDir] [--save-release-baseline <file> | --release-baseline <file>]`. */
+export type Args = { ok: true; dataDir?: string; save?: string; baseline?: string } | { ok: false; error: string };
+
+export function parseArgs(argv: string[]): Args {
+  const out: { ok: true; dataDir?: string; save?: string; baseline?: string } = { ok: true };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === '--save-release-baseline' || a === '--release-baseline') {
+      const key = a === '--save-release-baseline' ? 'save' : 'baseline';
+      const value = argv[++i];
+      if (value === undefined || value === '' || value.startsWith('--')) return { ok: false, error: `${a} needs a file` };
+      if (out[key] !== undefined) return { ok: false, error: `${a} is given twice` };
+      out[key] = value;
+    } else if (a.startsWith('--')) return { ok: false, error: `unknown option ${a}` };
+    else if (out.dataDir !== undefined) return { ok: false, error: 'more than one data directory' };
+    else out.dataDir = a;
+  }
+  if (out.save !== undefined && out.baseline !== undefined) return { ok: false, error: '--save-release-baseline and --release-baseline do not go together' };
+  return out;
+}

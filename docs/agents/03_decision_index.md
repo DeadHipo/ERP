@@ -1,4 +1,4 @@
-# Decision index (D-001 … D-258 by topic)
+# Decision index (D-001 … D-259 by topic)
 
 Written 2026-11-01 (D-120). `docs/97_принятые_решения.md` is append-only, so an old entry keeps its old status
 even when a later entry replaced it. This index records the **effective** status. When you add a D-entry, add
@@ -240,6 +240,7 @@ Legend: **in force** · *refined by* (read both) · ~~replaced~~ (read the newer
 - D-256 P36 / P37 on the track directory; the lite track meta removed from the release, owner, artist, splits, participations, track-money, document-uses and sublabel answers (kept on `/tracks/catalog`, `/tracks/summary`, `coverUrl` of the release); the old `TrackName` props gone; a fallback title equal to the ISRC is no title · in force
 - D-257 `GET /releases/:upc` runs no calculation and gives no money (the track list = the pairs of the book's files ∪ the visible tracks; `tracks[]` money and `months[]` removed; the ability unchanged); the money of a release is `POST /money/master/query` only; `['releases','detail']` is not a money key, P8 `expectMoneyCalls(page, 2)`; `GET /tracks/summary` stays for P5 «account / month» · in force
 - D-258 Long list parameters to ClickHouse (`isrcs`, `upcs`, label strings) go in chunks (`sources/long-lists.ts`: 1 000 values and 100 000 encoded bytes; within it the old query byte for byte; the joined answer = one query, same order), fixing «Field value too long» on a large book; the live check of D-249 is clean: exit 0, 178 comparisons, 0 differences · in force
+- D-259 `check-master-rows.ts --save-release-baseline` (on the code before D-257) / `--release-baseline` (on the final code): the release slice against a saved baseline of the old answer; one run on the final code covers every slice: exit 0, 358 comparisons, 0 differences, 8 timings within the threshold · in force
 - D-237 An MC bears no advertising by the `isMc` mark of its split row (never by the name; `isMcPseudonym` removed); every MC row of every split version marked (`scripts/mc/mark-mc-rows.sql`, 1 111 rows): the carves of D-216 hold for the whole history (20 owners, MCs +9 979,88), the advertising unchanged · in force
 - D-090 Handover contains name links (owner's instruction) · in force
 - D-170 Publishing per organization: `pub_statements (org_id, sha256)`, `pub_statement_periods (org_id, source, period)`, `pub_writers (org_id, writer_norm)`, `pub_lines_by_key` grouped by `org_id` first; files in `<dataDir>/orgs/<id>/files/publishing`; a losing concurrent load never deletes the winner's stored copy · in force

@@ -4,8 +4,13 @@ import type { Sums } from '../src/facade/aggregates';
 import type { MasterRow } from '../src/facade/money';
 import {
   addSums,
+  badRowText,
+  BASELINE_KIND,
+  baselineMoney,
+  baselineReleaseOf,
   canonText,
   chunksOf,
+  compareReleaseWithBaseline,
   diffPairs,
   describeError,
   diffTotals,
@@ -13,11 +18,18 @@ import {
   exitCodeOf,
   failedOf,
   isZero,
+  listFingerprint,
   median,
   moneyText,
   newPairs,
   oldPairs,
+  parseArgs,
+  parseBaseline,
+  sameBooks,
+  sameFingerprint,
+  topByNet,
   withinThreshold,
+  type ReleaseBaseline,
 } from '../scripts/lib/master-rows-compare';
 
 // The pure rules of `scripts/check-master-rows.ts` (D-249), on synthetic objects: no storage.
@@ -115,6 +127,12 @@ describe('check-master-rows: the comparison rules (D-249)', () => {
     expect(emptyRunReasons({ labels: 0, allIsrcRows: 0 })).toHaveLength(2);
     // the comparison under «all» failed: counted as a failure, not as an empty selection
     expect(emptyRunReasons({ ...full, allIsrcRows: null })).toEqual([]);
+    // against a release baseline: not one release compared proves nothing; without a baseline it is not asked
+    expect(emptyRunReasons({ ...full, baselineReleases: 0 })).toEqual(['no release compared with the baseline']);
+    expect(emptyRunReasons({ ...full, baselineReleases: 3 })).toEqual([]);
+    // releases compared, but the baseline has no money row in them: equal to anything empty, so not a proof
+    expect(emptyRunReasons({ ...full, baselineReleases: 3, baselineMoneyRows: 0 })).toEqual(['no money row in the baseline releases']);
+    expect(emptyRunReasons({ ...full, baselineReleases: 3, baselineMoneyRows: 7 })).toEqual([]);
   });
 
   it('an error is described by its class and the ClickHouse code, never by its message', () => {
@@ -149,5 +167,261 @@ describe('check-master-rows: the comparison rules (D-249)', () => {
     expect(chunksOf(list.slice(0, 500), 500).map((c) => c.length)).toEqual([500]);
     expect(chunksOf([], 500)).toEqual([]);
     expect(() => chunksOf(list, 0)).toThrow();
+  });
+
+  // ---- the release slice against a saved baseline ----
+
+  const U1 = '9990000000017';
+  const U2 = '9990000000024';
+  const LABEL_A = '00000000-0000-4000-8000-0000000000a1';
+  const LABEL_B = '00000000-0000-4000-8000-0000000000b2';
+  /** The old answer of `release()` (the code before D-257): the money flat on a track and on a month, with texts. */
+  const oldRelease = () => ({
+    upc: U1,
+    title: 'a title',
+    artistName: 'a name',
+    artists: [{ id: 'x', pseudonym: 'a pseudonym' }],
+    tracks: [
+      { isrc: I1, title: 'a title', artists: [], ...sums('100', '50', '0', '50') },
+      { isrc: I2, title: 'a title', artists: [], ...sums('20', '0', '20', '0', { split_unconfirmed: '15', no_split: '5' }) },
+      { isrc: I3, title: 'a title', artists: [], ...sums('0', '0', '0', '0') },
+    ],
+    coverUrl: null,
+    months: [
+      { reportingMonth: '2026-03', ...sums('70', '30', '10', '30', { split_unconfirmed: '10' }) },
+      { reportingMonth: '2026-04', ...sums('50', '20', '10', '20', { split_unconfirmed: '5', no_split: '5' }) },
+    ],
+    registry: [{ note: 'a text' }],
+  });
+  const newAnswers = () => ({
+    byIsrc: {
+      rows: [
+        { isrc: I1, sums: sums('100', '50', '0', '50'), months },
+        { isrc: I2, sums: sums('20', '0', '20', '0', { split_unconfirmed: '15', no_split: '5' }), months },
+      ] as MasterRow[],
+      totals: sums('120', '50', '20', '50', { no_split: '5', split_unconfirmed: '15' }),
+    },
+    byMonth: {
+      rows: [
+        { month: '2026-03', sums: sums('70', '30', '10', '30', { split_unconfirmed: '10' }) },
+        { month: '2026-04', sums: sums('50', '20', '10', '20', { split_unconfirmed: '5', no_split: '5' }) },
+      ] as MasterRow[],
+      totals: sums('120', '50', '20', '50', { no_split: '5', split_unconfirmed: '15' }),
+    },
+  });
+  const saved = () => {
+    const made = baselineReleaseOf(U1, oldRelease());
+    if (!made.ok) throw new Error(made.reason);
+    return made.release;
+  };
+
+  it('the largest releases by net, ties by UPC', () => {
+    const items = [
+      { upc: 'C', net: '10.5' },
+      { upc: 'B', net: '100' },
+      { upc: 'A', net: '10.5' },
+      { upc: 'D', net: '-1' },
+    ];
+    expect(topByNet(items, 3).map((x) => x.upc)).toEqual(['B', 'A', 'C']);
+    expect(topByNet(items, 20)).toHaveLength(4);
+    expect(topByNet([], 20)).toEqual([]);
+  });
+
+  it('a baseline record is the keys and the money strings of the old answer, nothing else', () => {
+    const release = saved();
+    expect(release).toEqual({
+      upc: U1,
+      tracks: [
+        { isrc: I1, net: '100', B: '50', C: '0', ours: '50', cByReason: {} },
+        { isrc: I2, net: '20', B: '0', C: '20', ours: '0', cByReason: { split_unconfirmed: '15', no_split: '5' } },
+        // a zero row is kept as it is: the comparison drops it
+        { isrc: I3, net: '0', B: '0', C: '0', ours: '0', cByReason: {} },
+      ],
+      months: [
+        { reportingMonth: '2026-03', net: '70', B: '30', C: '10', ours: '30', cByReason: { split_unconfirmed: '10' } },
+        { reportingMonth: '2026-04', net: '50', B: '20', C: '10', ours: '20', cByReason: { split_unconfirmed: '5', no_split: '5' } },
+      ],
+    });
+    expect(JSON.stringify(release)).not.toMatch(/title|name|pseudonym|text/);
+    // the order of the reasons is the order of the old answer
+    expect(Object.keys(release.tracks[1]?.cByReason ?? {})).toEqual(['split_unconfirmed', 'no_split']);
+    // the same strings from the `Decimal` of the answer and from the strings of the file
+    expect(baselineMoney(JSON.parse(JSON.stringify(sums('1.10', '0', '0', '1.10'))))).toEqual(baselineMoney(sums('1.1', '0', '0', '1.1')));
+    expect(baselineMoney({ net: 1, B: '0', C: '0', ours: '0', cByReason: {} })).toBeUndefined();
+    expect(baselineMoney({ net: '1e-7', B: '0', C: '0', ours: '0', cByReason: {} })).toBeUndefined();
+    expect(baselineMoney({ net: '1', B: '0', C: '0', ours: '0', cByReason: { 'A reason': '1' } })).toBeUndefined();
+    expect(baselineMoney({ B: '0' })).toBeUndefined();
+  });
+
+  it('the answer of the code after D-257 has no money: no baseline from it', () => {
+    const noMonths: Record<string, unknown> = oldRelease();
+    delete noMonths.months;
+    const after = { ...noMonths, tracks: [{ isrc: I1, title: 'a title', artists: [] }] };
+    expect(baselineReleaseOf(U1, after)).toEqual({ ok: false, reason: 'no_money' });
+    expect(baselineReleaseOf(U1, { ...oldRelease(), tracks: [{ isrc: I1, title: 'a title' }] })).toEqual({ ok: false, reason: 'no_money' });
+    expect(baselineReleaseOf(U1, { ...noMonths, tracks: [] })).toEqual({ ok: false, reason: 'no_money' });
+    expect(baselineReleaseOf(U1, null)).toEqual({ ok: false, reason: 'no_money' });
+    // a key that is not a key, an amount that is not an amount
+  });
+
+  it('a row the baseline does not take is named by its field, never by its value', () => {
+    const why = (upc: string, answer: unknown) => {
+      const made = baselineReleaseOf(upc, answer);
+      return made.ok ? 'ok' : made.reason;
+    };
+    expect(why('a upc with text', oldRelease())).toBe('upc');
+    expect(why(U1, { ...oldRelease(), tracks: [{ isrc: 'not an isrc!', ...sums('1', '1', '0', '0') }] })).toBe('isrc');
+    expect(why(U1, { ...oldRelease(), months: [{ reportingMonth: '2026-3', ...sums('1', '1', '0', '0') }] })).toBe('month');
+    expect(why(U1, { ...oldRelease(), tracks: [{ isrc: I1, net: 1, B: 1, C: 0, ours: 0, cByReason: {} }] })).toBe('amount');
+    expect(why(U1, { ...oldRelease(), months: [{ reportingMonth: '2026-03', net: '1', B: '1e-7', C: '0', ours: '0', cByReason: {} }] })).toBe('amount');
+    expect(why(U1, { ...oldRelease(), tracks: [{ isrc: I1, net: '1', B: '0', C: '1', ours: '0', cByReason: { no_split: 'much' } }] })).toBe('amount');
+    expect(why(U1, { ...oldRelease(), tracks: [{ isrc: I1, net: '1', B: '0', C: '1', ours: '0', cByReason: { 'A reason': '1' } }] })).toBe('reason');
+    expect(why(U1, { ...oldRelease(), tracks: [{ isrc: I1, net: '1', B: '0', C: '1', ours: '0' }] })).toBe('reason');
+    expect(badRowText('book 2', 3, 20, 'isrc')).toBe('book 2: release 3 of 20: an ISRC is not a key in the old answer (the baseline takes keys and amounts only)');
+    const texts = (['upc', 'isrc', 'month', 'amount', 'reason'] as const).map((field) => badRowText('all', 1, 20, field));
+    expect(new Set(texts).size).toBe(5);
+  });
+
+  it('the fingerprint of the data: the count of the release list and its net added exactly', () => {
+    const items = [{ net: '0.1' }, { net: '0.2' }, { net: '100.000000000001' }, { net: '-0.3' }];
+    expect(listFingerprint(items)).toEqual({ releases: 4, net: '100.000000000001' });
+    expect(listFingerprint([])).toEqual({ releases: 0, net: '0' });
+    const base = listFingerprint(items);
+    // the same list in another order, an amount written another way
+    expect(sameFingerprint(base, listFingerprint([...items].reverse()))).toBe(true);
+    expect(sameFingerprint(base, { releases: 4, net: '100.0000000000010' })).toBe(true);
+    // one more release without money, another net by the smallest step
+    expect(sameFingerprint(base, listFingerprint([...items, { net: '0' }]))).toBe(false);
+    expect(sameFingerprint(base, { releases: 4, net: '100.000000000002' })).toBe(false);
+  });
+
+  it('the new answers equal to the baseline: no difference, zero rows dropped on both sides', () => {
+    const { byIsrc, byMonth } = newAnswers();
+    const parts = compareReleaseWithBaseline(saved(), byIsrc, byMonth);
+    expect(parts.map((p) => [p.part, p.oldRows, p.newRows, p.differences])).toEqual([
+      ['isrc', 2, 2, []],
+      ['month', 2, 2, []],
+      ['totals', 1, 1, []],
+    ]);
+    // a zero row of the new answer is dropped too
+    const withZero = { ...byIsrc, rows: [...byIsrc.rows, { isrc: I3, sums: sums('0', '0', '0', '0') }] };
+    expect(compareReleaseWithBaseline(saved(), withZero, byMonth).flatMap((p) => p.differences)).toEqual([]);
+    // through the file: written and read back, the same comparison
+    const file: ReleaseBaseline = {
+      kind: BASELINE_KIND,
+      version: 1,
+      takenAt: '2026-11-19T10:00:00.000Z',
+      loadavg: [1.5, 2, 2.25],
+      books: 0,
+      topReleases: 20,
+      rounds: 5,
+      entries: [{ book: 'all', labelId: null, list: { releases: 3, net: '120' }, releases: [saved()], timing: { upc: U1, ms: [5, 1, 4, 2, 3], medianMs: 3, bytes: 100 } }],
+    };
+    const read = parseBaseline(JSON.parse(JSON.stringify(file)));
+    if (!read.ok) throw new Error(read.reason);
+    expect(read.baseline).toEqual(file);
+    const back = read.baseline.entries[0]?.releases[0];
+    expect(back && compareReleaseWithBaseline(back, byIsrc, byMonth).flatMap((p) => p.differences)).toEqual([]);
+  });
+
+  it('against the baseline: another amount, a key of one side, another month, other totals are differences', () => {
+    const { byIsrc, byMonth } = newAnswers();
+    const keys = (a: typeof byIsrc, b: typeof byMonth) => compareReleaseWithBaseline(saved(), a, b).map((p) => p.differences.map((x) => x.key));
+    // another amount of a track (the smallest step) and of the totals
+    const off = { ...byIsrc, rows: [{ isrc: I1, sums: sums('100', '50.000000000001', '0', '50') }, byIsrc.rows[1] as MasterRow] };
+    expect(keys(off, byMonth)).toEqual([[I1], [], []]);
+    expect(keys({ ...byIsrc, totals: sums('120', '50', '20', '50', { no_split: '5.01', split_unconfirmed: '15' }) }, byMonth)).toEqual([[], [], ['totals', 'totals (by ISRC against by month)']]);
+    // a track only in the baseline, a track only in the new answer
+    expect(keys({ ...byIsrc, rows: byIsrc.rows.slice(0, 1) }, byMonth)[0]).toEqual([I2]);
+    const extra = { ...byIsrc, rows: [...byIsrc.rows, { isrc: 'QZTST2600009', sums: sums('1', '1', '0', '0') }] };
+    const added = compareReleaseWithBaseline(saved(), extra, byMonth)[0]?.differences;
+    expect(added).toEqual([{ key: 'QZTST2600009', old: null, new: '{"net":"1","B":"1","C":"0","ours":"0","cByReason":{}}' }]);
+    // a month only on one side; a row by month that carries `months` differs; another order of the reasons differs
+    expect(keys(byIsrc, { ...byMonth, rows: byMonth.rows.slice(1) })[1]).toEqual(['2026-03']);
+    expect(keys(byIsrc, { ...byMonth, rows: [{ ...(byMonth.rows[0] as MasterRow), months }, byMonth.rows[1] as MasterRow] })[1]).toEqual(['2026-03']);
+    const swapped = { month: '2026-04', sums: sums('50', '20', '10', '20', { no_split: '5', split_unconfirmed: '5' }) };
+    expect(keys(byIsrc, { ...byMonth, rows: [byMonth.rows[0] as MasterRow, swapped] })[1]).toEqual(['2026-04']);
+    // the totals of the two grains differ from each other
+    expect(keys(byIsrc, { ...byMonth, totals: sums('121', '50', '20', '50', { no_split: '5', split_unconfirmed: '15' }) })[2]).toEqual(['totals (by ISRC against by month)']);
+  });
+
+  it('a file is a baseline only field by field', () => {
+    const file = (): ReleaseBaseline => ({
+      kind: BASELINE_KIND,
+      version: 1,
+      takenAt: '2026-11-19T10:00:00.000Z',
+      loadavg: [1.5, 2, 2.25],
+      books: 1,
+      topReleases: 20,
+      rounds: 5,
+      entries: [
+        { book: 'book 1', labelId: LABEL_A, list: { releases: 1, net: '120' }, releases: [saved()], timing: { upc: U1, ms: [1, 2, 3, 4, 5], medianMs: 3, bytes: 10 } },
+        { book: 'all', labelId: null, list: { releases: 0, net: '0' }, releases: [], timing: null },
+      ],
+    });
+    const reason = (x: unknown, expected?: { topReleases: number; rounds: number }) => {
+      const r = parseBaseline(x, expected);
+      return r.ok ? 'ok' : r.reason;
+    };
+    expect(reason(file())).toBe('ok');
+    expect(reason({ ...file(), kind: 'report' })).toBe('not a release baseline of version 1');
+    expect(reason({ ...file(), version: 2 })).toBe('not a release baseline of version 1');
+    expect(reason([])).toBe('not a release baseline of version 1');
+    expect(reason({ ...file(), takenAt: 'yesterday' })).toBe('no date of the baseline');
+    expect(reason({ ...file(), entries: 'x' })).toBe('a broken header');
+    const entry = file().entries[0];
+    const all = file().entries[1];
+    // the header against the constants of the run and against the content of the file
+    expect(reason(file(), { topReleases: 20, rounds: 5 })).toBe('ok');
+    expect(reason(file(), { topReleases: 10, rounds: 5 })).toBe('taken with another number of releases or rounds than this run uses');
+    expect(reason(file(), { topReleases: 20, rounds: 3 })).toBe('taken with another number of releases or rounds than this run uses');
+    expect(reason({ ...file(), books: 2 })).toBe('the header names another number of books than the file has');
+    expect(reason({ ...file(), entries: [entry] })).toBe('the header names another number of books than the file has');
+    expect(reason({ ...file(), topReleases: 0 })).toBe('more releases in a book than the header allows');
+    expect(reason({ ...file(), entries: [{ ...entry, list: { releases: 0, net: '0' } }, all] })).toBe('more releases in a book than the header allows');
+    expect(reason({ ...file(), rounds: 4 })).toBe('a timing of another number of rounds than the header says');
+    expect(reason({ ...file(), loadavg: undefined })).toBe('no load average of the baseline');
+    expect(reason({ ...file(), loadavg: [1, 2] })).toBe('no load average of the baseline');
+    expect(reason({ ...file(), entries: [{ ...entry, list: undefined }, all] })).toBe('a broken fingerprint of a release list');
+    expect(reason({ ...file(), entries: [{ ...entry, list: { releases: 1, net: 120 } }, all] })).toBe('a broken fingerprint of a release list');
+    expect(reason({ ...file(), entries: [{ ...entry, book: 'Some Label' }] })).toBe('a broken book');
+    expect(reason({ ...file(), entries: [{ ...entry, labelId: null }] })).toBe('a broken book');
+    expect(reason({ ...file(), entries: [{ ...entry, releases: [{ upc: U1, tracks: [{ isrc: I1, net: 1 }], months: [] }] }] })).toBe('a broken release');
+    expect(reason({ ...file(), entries: [{ ...entry, timing: { upc: U2, ms: [1], medianMs: 1, bytes: 1 } }] })).toBe('a timing of a release that is not in the baseline');
+    expect(reason({ ...file(), entries: [{ ...entry, timing: { upc: U1, ms: [], medianMs: 1, bytes: 1 } }] })).toBe('a broken timing');
+    // a field the baseline does not know does not get through
+    const extra = parseBaseline({ ...file(), entries: [{ ...entry, releases: [{ ...saved(), title: 'a title' }] }, all] });
+    if (!extra.ok) throw new Error(extra.reason);
+    expect(JSON.stringify(extra.baseline)).not.toMatch(/title/);
+  });
+
+  it('the books of the baseline are the books of the run, by label id', () => {
+    const base = [{ labelId: LABEL_A }, { labelId: LABEL_B }, { labelId: null }];
+    expect(sameBooks(base, [LABEL_A, LABEL_B, null])).toBe(true);
+    // the order of the label list may differ
+    expect(sameBooks(base, [LABEL_B, LABEL_A, null])).toBe(true);
+    expect(sameBooks(base, [LABEL_A, null])).toBe(false);
+    expect(sameBooks(base, [LABEL_A, LABEL_B, '00000000-0000-4000-8000-0000000000c3', null])).toBe(false);
+    expect(sameBooks(base, [LABEL_A, '00000000-0000-4000-8000-0000000000c3', null])).toBe(false);
+    expect(sameBooks([{ labelId: LABEL_A }, { labelId: LABEL_A }, { labelId: null }], [LABEL_A, LABEL_B, null])).toBe(false);
+    expect(sameBooks([], [])).toBe(true);
+  });
+
+  it('the arguments: a data directory and one of the two baseline modes', () => {
+    expect(parseArgs([])).toEqual({ ok: true });
+    expect(parseArgs(['data/real'])).toEqual({ ok: true, dataDir: 'data/real' });
+    expect(parseArgs(['--save-release-baseline', 'b.json'])).toEqual({ ok: true, save: 'b.json' });
+    expect(parseArgs(['data/real', '--release-baseline', 'b.json'])).toEqual({ ok: true, dataDir: 'data/real', baseline: 'b.json' });
+    expect(parseArgs(['--release-baseline', 'b.json', 'data/real'])).toEqual({ ok: true, dataDir: 'data/real', baseline: 'b.json' });
+    const error = (argv: string[]) => {
+      const a = parseArgs(argv);
+      return a.ok ? 'ok' : a.error;
+    };
+    expect(error(['--release-baseline'])).toBe('--release-baseline needs a file');
+    expect(error(['--save-release-baseline', '--release-baseline', 'b.json'])).toBe('--save-release-baseline needs a file');
+    expect(error(['--release-baseline', 'a.json', '--release-baseline', 'b.json'])).toBe('--release-baseline is given twice');
+    expect(error(['--save-release-baseline', 'a.json', '--release-baseline', 'b.json'])).toBe('--save-release-baseline and --release-baseline do not go together');
+    expect(error(['--baseline', 'b.json'])).toBe('unknown option --baseline');
+    expect(error(['a', 'b'])).toBe('more than one data directory');
   });
 });
